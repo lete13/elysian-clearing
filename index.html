@@ -127,18 +127,16 @@
     <button class="nav-btn" onclick="showTab('ann',this)">Annual Tracker</button>
     <button class="nav-btn" onclick="showTab('hhapi',this)" id="nav-hhapi">🔌 Hosthub API</button>
     <button class="nav-btn" onclick="showTab('imports',this)" id="nav-imports">📥 Imports</button>
-  </nav>
-  <div style="position:absolute;top:10px;right:16px;display:flex;gap:8px;align-items:center">
     <span id="db-badge" title="Database status"
-      style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#888;color:#fff;cursor:default;transition:background .3s">
-      ☁ Connecting…
-    </span>
-    <button id="db-refresh-btn"
-      style="font-size:11px;padding:3px 10px;border-radius:20px;border:.5px solid var(--bdr2);background:var(--bg);cursor:pointer;color:var(--tx2)"
-      onclick="loadFromDb().then(()=>toast('Refreshed from database','ok'))">
-      ↻ Refresh
-    </button>
-  </div>
+    style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#888;color:#fff;cursor:default;transition:background .3s;margin-left:auto">
+    ☁ Connecting…
+  </span>
+  <button id="db-refresh-btn"
+    style="font-size:11px;padding:3px 10px;border-radius:20px;border:.5px solid rgba(255,255,255,.2);background:transparent;cursor:pointer;color:rgba(255,255,255,.7)"
+    onclick="loadFromDb().then(()=>toast('Refreshed from database','ok'))">
+    ↻ Refresh
+  </button>
+</nav>
   <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
     <button class="btn sm" onclick="clearAll()" style="border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.6);background:transparent"><i class="ti ti-trash"></i> Clear data</button>
     <div style="text-align:right">
@@ -2217,6 +2215,7 @@ function applyDefaults(){
       if(!apt.fixedCharges?.length) apt.fixedCharges = def.fixedCharges;
       if(apt.vatOnFees===false && def.vatOnFees) apt.vatOnFees = def.vatOnFees;
       apt.isLeased       = def.isLeased;
+      if(apt.deductCT===undefined) apt.deductCT = true; // default ON for existing properties
       apt.b2b            = def.b2b;
       apt.municipalityTax= def.municipalityTax;
       apt.businessTax    = def.businessTax;
@@ -2299,7 +2298,7 @@ function findApt(name){
 function ensureApt(name){
   if(!name)return null;
   let a=findApt(name);
-  if(!a){a={id:gid(),name:name.trim(),aliases:[],mgmtFee:20,language:'EN',vatOnFees:false,deductCleaning:true,isLeased:false,postReportReminders:[],vatLiable:false,municipalityTax:true,businessTax:false,chargeVat:false,b2b:false,b2bPartner:'',b2bRemitRate:0,cleaningFee:0,fixedCharges:[],ownerName:'',ownerSurname:'',ownerEmail:''};S.apts.push(a);}
+  if(!a){a={id:gid(),name:name.trim(),aliases:[],mgmtFee:20,language:'EN',vatOnFees:false,deductCleaning:true,deductCT:true,isLeased:false,postReportReminders:[],vatLiable:false,municipalityTax:true,businessTax:false,chargeVat:false,b2b:false,b2bPartner:'',b2bRemitRate:0,cleaningFee:0,fixedCharges:[],ownerName:'',ownerSurname:'',ownerEmail:''};S.apts.push(a);}
   return a;
 }
 function resolveKat(raw){
@@ -2893,7 +2892,7 @@ function closeSpl(){
 function addApt(){
   const inp=document.getElementById('new-apt'),name=inp.value.trim();if(!name)return;
   if(findApt(name)){alert('Already exists.');return;}
-  S.apts.push({id:gid(),name,aliases:[],mgmtFee:20,language:'EN',vatOnFees:false,deductCleaning:true,isLeased:false,postReportReminders:[],vatLiable:false,municipalityTax:true,businessTax:false,chargeVat:false,b2b:false,b2bPartner:'',b2bRemitRate:0,cleaningFee:0,fixedCharges:[],ownerName:'',ownerSurname:'',ownerEmail:''});
+  S.apts.push({id:gid(),name,aliases:[],mgmtFee:20,language:'EN',vatOnFees:false,deductCleaning:true,deductCT:true,isLeased:false,postReportReminders:[],vatLiable:false,municipalityTax:true,businessTax:false,chargeVat:false,b2b:false,b2bPartner:'',b2bRemitRate:0,cleaningFee:0,fixedCharges:[],ownerName:'',ownerSurname:'',ownerEmail:''});
   inp.value='';save();renderCfg();renderDash();
 }
 function setApt(id,f,v){const a=S.apts.find(x=>x.id===id);if(a){a[f]=v;save();}}
@@ -2975,7 +2974,8 @@ function renderCfg(){
                 <button onclick="setApt('${a.id}','language','GR')" style="padding:3px 10px;font-size:11px;font-weight:600;border-radius:4px;border:.5px solid var(--bdr2);cursor:pointer;background:${(a.language||'EN')==='GR'?'#0F1E2E':'var(--bg2)'};color:${(a.language||'EN')==='GR'?'#C9A84C':'var(--tx3)'}">GR</button>
               </div>
             </div>
-            ${togHtml(a.id,'vatOnFees','Charge 24% VAT on Elysian fees (non-leased property)')}${togHtml(a.id,'isLeased','Property leased by Elysian')}${togHtml(a.id,'vatLiable','VAT liable')}${togHtml(a.id,'chargeVat','Charge VAT to guests')}<div style='display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:.5px solid var(--bdr)'>${togHtml(a.id,'deductCleaning','Deduct cleaning from payout')}<div style='font-size:10px;color:var(--tx3);line-height:1.4;padding-top:2px'>When OFF, cleaning still used for management base but not billed to owner</div></div>
+            ${togHtml(a.id,'vatOnFees','Charge 24% VAT on Elysian fees (non-leased property)')}${togHtml(a.id,'deductCT','Deduct Climate Tax (CT) from remittance')}
+            ${togHtml(a.id,'isLeased','Property leased by Elysian')}${togHtml(a.id,'vatLiable','VAT liable')}${togHtml(a.id,'chargeVat','Charge VAT to guests')}<div style='display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:.5px solid var(--bdr)'>${togHtml(a.id,'deductCleaning','Deduct cleaning from payout')}<div style='font-size:10px;color:var(--tx3);line-height:1.4;padding-top:2px'>When OFF, cleaning still used for management base but not billed to owner</div></div>
             ${togHtml(a.id,'municipalityTax','Municipality / stayover tax')}${togHtml(a.id,'businessTax','Business tax')}
           </div>
         </div>
@@ -3044,7 +3044,10 @@ function buildRptHTML(apt,bks,exps,getEA){
   const totExpIncl = totExp + expVat;
   // Remittance = Gross - Platform fees - All Elysian charges (incl VAT) - Expenses (incl VAT)
   // Greek taxes (CT/VAT/AT) are NOT deducted: owner receives them from platform and remits themselves.
-  const payout = m.gross - m.svc - m.pchg - mf - cleanDeduct - elysianVat - fixedCh - totExpIncl;
+  // deductCT: when true (default), Climate Tax is deducted from remittance
+  // OTAs do not remit CT to authorities — owner/Elysian does — so CT reduces the net payout
+  const ctDeduct = (apt.deductCT !== false) ? m.ct : 0;
+  const payout = m.gross - m.svc - m.pchg - ctDeduct - mf - cleanDeduct - elysianVat - fixedCh - totExpIncl;
   // B2B Remittance = net payout to owner + Greek taxes returned to partner (CT + VAT + AT)
   // These taxes were shown as deductions in Net Earnings but must be passed to the B2B partner
   // so they can remit to tax authorities on behalf of the owner.
@@ -3052,7 +3055,8 @@ function buildRptHTML(apt,bks,exps,getEA){
   // Net Earnings = Gross - ALL deductions (taxes + platform + cleaning + fixed + mgmt fee + expenses)
   // Equivalent to: payout + Greek taxes (since payout already deducts everything including mgmt fee)
   // Greek taxes are added back separately because owner receives them from platform to remit themselves
-  const netEarnings = payout - m.ct - m.vat - m.at;
+  // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
+  const netEarnings = payout - (apt.deductCT !== false ? 0 : m.ct) - m.vat - m.at;
   const nights=bks.reduce((s,b)=>s+(parseInt(b.nights)||0),0);
   const dates=getRptDates();
   const totalDays=dates?Math.ceil((dates.to-dates.from)/(86400000))+1:30;
@@ -3392,7 +3396,8 @@ function exportPDF() {
   const elysianVat = apt.vatOnFees ? (mf + cleanDeduct + fixedCh) * 0.24 : 0;
   const expVat     = apt.vatOnFees ? totExp * 0.24 : 0;
   const totExpIncl = totExp + expVat;
-  const netEarnings = payout - m.ct - m.vat - m.at;
+  // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
+  const netEarnings = payout - (apt.deductCT !== false ? 0 : m.ct) - m.vat - m.at;
   // feeItems mirrors the same array built in buildRptHTML
   const feeItems = [
     { label: `Management fee (${apt.mgmtFee}%)`, sub: `${fmt(m.base)} × ${apt.mgmtFee}%`, amount: mf },
