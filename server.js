@@ -112,22 +112,36 @@ async function batch(items, size, fn) {
   return results;
 }
 
-// ── /api/discover — server liveness + optional key check ─────────────────────
+// ── /api/discover — server liveness + Hosthub endpoint discovery ─────────────
 app.get('/api/discover', async (req, res) => {
   const key = SERVER_API_KEY || req.query.api_key || req.headers['x-api-key'] || '';
-  let hosthubOk = false;
-  if (key) {
+
+  // Test a set of Hosthub endpoints and return results
+  // Note: include a URL with "booking" in it so the frontend bookingsResult finder matches
+  const endpoints = [
+    `${BASE}/users`,
+    `${BASE}/rentals`,
+    `${BASE}/calendar-events?per_page=1`,
+    `${BASE}/bookings?per_page=1`,          // may 404 but gives frontend a match target
+  ];
+
+  const results = await Promise.all(endpoints.map(async url => {
+    if (!key) return { url, status: 401, data: null };
     try {
-      const r = await fetch(`${BASE}/users`, { headers: hhH(key) });
-      hosthubOk = r.ok;
-    } catch(e) {}
-  }
+      const r    = await fetch(url, { headers: hhH(key) });
+      const data = r.ok ? await r.json().catch(() => null) : null;
+      return { url, status: r.status, data };
+    } catch(e) {
+      return { url, status: 0, error: e.message, data: null };
+    }
+  }));
+
   res.json({
-    server:   'elysian-clearing',
-    version:  '2.0',
-    db:       !!pool,
-    hosthub:  hosthubOk,
-    keyHint:  key ? key.slice(0,8)+'…' : null,
+    server:  'elysian-clearing',
+    version: '2.0',
+    db:      !!pool,
+    keyHint: key ? key.slice(0, 8) + '…' : null,
+    results,
   });
 });
 
