@@ -618,7 +618,7 @@
 </div>
 
 <!-- ELYSIAN REVENUE TAB -->
-<div id="tab-rev" class="tab-panel">
+<div id="tab-rev" class="tab-panel" style="background:var(--bg)">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
     <div>
       <div style="font-size:18px;font-weight:600;color:var(--tx)">Elysian Revenue Tracker</div>
@@ -638,7 +638,7 @@
     <button id="rev-tab-combined" onclick="setRevTab('combined')" style="padding:7px 18px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:var(--bg2);color:var(--tx3)">Combined</button>
   </div>
 
-  <div id="rev-table-wrap"></div>
+  <div id="rev-table-wrap" style="background:var(--bg);min-height:200px"></div>
 </div>
 
  -->
@@ -4914,7 +4914,8 @@ function renderRevenue() {
   ])].filter(Boolean).sort((a,b)=>b-a);
   const curYr = parseInt(yrSel.value) || new Date().getFullYear();
   yrSel.innerHTML = years.map(y=>`<option value="${y}" ${y===curYr?'selected':''}>${y}</option>`).join('');
-  renderRevTable();
+  // Defer render so tab panel is fully visible before we paint the table
+  requestAnimationFrame(() => setTimeout(renderRevTable, 0));
 }
 
 function revKey(aptId, mo, yr) { return `${aptId}::${yr}::${mo}`; }
@@ -4988,6 +4989,7 @@ function renderRevTable() {
     addTo(rev.cleaning); addTo(rev.mgmt);
     wrap.innerHTML = buildTable(combined, 'Combined Revenue (Cleaning + Management)', '#C9A84C');
   }
+
 }
 
 // ── Save Revenue Snapshot from current report ─────────────────────────────────
