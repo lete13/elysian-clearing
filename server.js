@@ -112,7 +112,57 @@ async function batch(items, size, fn) {
   return results;
 }
 
-// ── Database API ──────────────────────────────────────────────────────────────
+// ── /api/discover — server liveness + optional key check ─────────────────────
+app.get('/api/discover', async (req, res) => {
+  const key = SERVER_API_KEY || req.query.api_key || req.headers['x-api-key'] || '';
+  let hosthubOk = false;
+  if (key) {
+    try {
+      const r = await fetch(`${BASE}/users`, { headers: hhH(key) });
+      hosthubOk = r.ok;
+    } catch(e) {}
+  }
+  res.json({
+    server:   'elysian-clearing',
+    version:  '2.0',
+    db:       !!pool,
+    hosthub:  hosthubOk,
+    keyHint:  key ? key.slice(0,8)+'…' : null,
+  });
+});
+
+// ── /api/session — shared session (backed by DB when available) ───────────────
+let _memSession = null; // fallback when no DB
+
+app.get('/api/session', async (req, res) => {
+  if (pool) {
+    try {
+      const r = await pool.query("SELECT data, updated_at FROM app_data WHERE key = 'session'");
+      if (!r.rows.length) return res.status(404).json({ error: 'No session yet' });
+      return res.json({ ...r.rows[0].data, _savedAt: r.rows[0].updated_at });
+    } catch(e) { console.error('[session] read:', e.message); }
+  }
+  if (!_memSession) return res.status(404).json({ error: 'No session yet' });
+  res.json(_memSession);
+});
+
+app.post('/api/session', async (req, res) => {
+  const payload = { ...req.body, _pushedAt: new Date().toISOString() };
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO app_data (key, data) VALUES ('session', $1::jsonb)
+         ON CONFLICT (key) DO UPDATE SET data = $1::jsonb, updated_at = NOW()`,
+        [JSON.stringify(payload)]
+      );
+      return res.json({ ok: true, db: true });
+    } catch(e) { console.error('[session] write:', e.message); }
+  }
+  _memSession = payload;
+  res.json({ ok: true, db: false });
+});
+
+
 
 // GET /api/db/data — load the shared app state from PostgreSQL
 app.get('/api/db/data', async (req, res) => {
