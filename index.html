@@ -2270,14 +2270,29 @@ function findApt(name){
   if(!a) a=S.apts.find(x=>(x.aliases||[]).some(al=>normAptName(al)===nn));
   // 5. Partial match: configured name is contained in the Hosthub name or vice-versa
   //    (catches "Votsala 1 Luxury Stay with Patio" ↔ "Votsala 1")
+  //    BUT: do NOT match if the only difference is a numeric suffix (Veranda ≠ Veranda 2)
   if(!a) a=S.apts.find(x=>{
     const xn=normAptName(x.name);
-    return xn.length>4 && (nn.includes(xn)||xn.includes(nn));
+    if(xn.length<=4) return false;
+    if(nn.includes(xn)){
+      const suffix=nn.slice(xn.length).trim();
+      if(/^\d+$/.test(suffix)) return false; // "Veranda" + "2" = different property
+      return true;
+    }
+    if(xn.includes(nn)){
+      const suffix=xn.slice(nn.length).trim();
+      if(/^\d+$/.test(suffix)) return false;
+      return true;
+    }
+    return false;
   });
-  // 6. Partial alias match
+  // 6. Partial alias match (same number-suffix guard)
   if(!a) a=S.apts.find(x=>(x.aliases||[]).some(al=>{
     const an=normAptName(al);
-    return an.length>4 && (nn.includes(an)||an.includes(nn));
+    if(an.length<=4) return false;
+    if(nn.includes(an)){const s=nn.slice(an.length).trim();if(/^\d+$/.test(s))return false;return true;}
+    if(an.includes(nn)){const s=an.slice(nn.length).trim();if(/^\d+$/.test(s))return false;return true;}
+    return false;
   }));
   return a||null;
 }
@@ -4001,7 +4016,7 @@ async function startSync() {
       const apt = ensureApt(b.aptName);
 
       // Track mismatches (Hosthub name ≠ local name)
-      if(apt && apt.name !== b.aptName) _aptMapLog[b.aptName]=apt.name;
+      if(apt && apt.name !== b.aptName && apt.name.trim()!==b.aptName.trim()) _aptMapLog[b.aptName]=apt.name;
 
       S.bks.push({
         ...b,                          // spread all pre-mapped server fields
