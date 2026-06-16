@@ -3135,10 +3135,11 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     // ── Elysian service charges ─────────────────────────────────────────────────
     .concat([cg(L.elysianCharges + (hasVat ? ' *' : ''))])
     .concat(apt.deductCleaning!==false&&m.configCl>0 ? [cr(L.cleaningFee, bks.length+' stays × '+fmt(apt.cleaningFee)+'/stay', -cleanDeduct, hasVat ? -m.cleanVat : null)] : [])
-    .concat((apt.fixedCharges||[]).filter(f=>parseFloat(f.amount)>0).map(f => {
+    .concat(_apts.flatMap(a => (a.fixedCharges||[]).filter(f=>parseFloat(f.amount)>0).map(f => {
       const fa=parseFloat(f.amount);
-      return cr(f.label||'Software / Fixed charge', null, -fa, hasVat ? -fa*0.24 : null);
-    }))
+      const lbl = _apts.length > 1 ? (f.label||'Software')+' — '+a.name : (f.label||'Software / Fixed charge');
+      return cr(lbl, null, -fa, hasVat ? -fa*0.24 : null);
+    })))
     .concat(exps.length>0 ? [
       cr('Expenses', exps.length+' item'+(exps.length!==1?'s':''), -totExp, hasVat ? -expVat : null, {bold:true})
     ] : [])
