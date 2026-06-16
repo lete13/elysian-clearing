@@ -127,16 +127,7 @@
     <button class="nav-btn" onclick="showTab('ann',this)">Annual Tracker</button>
     <button class="nav-btn" onclick="showTab('hhapi',this)" id="nav-hhapi">🔌 Hosthub API</button>
     <button class="nav-btn" onclick="showTab('imports',this)" id="nav-imports">📥 Imports</button>
-    <span id="db-badge" title="Database status"
-    style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#888;color:#fff;cursor:default;transition:background .3s;margin-left:auto">
-    ☁ Connecting…
-  </span>
-  <button id="db-refresh-btn"
-    style="font-size:11px;padding:3px 10px;border-radius:20px;border:.5px solid rgba(255,255,255,.2);background:transparent;cursor:pointer;color:rgba(255,255,255,.7)"
-    onclick="loadFromDb().then(()=>toast('Refreshed from database','ok'))">
-    ↻ Refresh
-  </button>
-</nav>
+  </nav>
   <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
     <button class="btn sm" onclick="clearAll()" style="border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.6);background:transparent"><i class="ti ti-trash"></i> Clear data</button>
     <div style="text-align:right">
@@ -521,7 +512,10 @@
 <div id="tab-imports" class="tab-panel">
 
   <!-- ── DATA STATUS (top, 4 equal cards) ─────────────────── -->
-  <div class="shdr" style="margin-bottom:12px">Data status</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div class="shdr" style="margin:0">Data status</div>
+    <button class="btn sm" onclick="loadFromDb().then(()=>{renderHealth();toast('Refreshed from database','ok')})" style="font-size:11px"><i class="ti ti-refresh"></i> Refresh from DB</button>
+  </div>
   <div id="health-panel" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px"></div>
 
   <!-- ── IMPORT BOXES (3 equal columns) ───────────────────── -->
@@ -2447,11 +2441,15 @@ function renderHealth(){
       aptCount>0 && cfgFilled===aptCount),
 
     // localStorage usage
-    card('database','Local Storage',
-      'Active',
-      'Config saved automatically in this browser',
-      'Clears if you clear browser data · Re-import on new machines',
-      true),
+    card('database', _dbAvailable ? 'Shared Database' : 'Local Storage',
+      _dbAvailable ? 'PostgreSQL' : 'Browser only',
+      _dbAvailable
+        ? 'All team members share the same data'
+        : 'Data saved in this browser only — no shared database connected',
+      _dbAvailable
+        ? (_lastDbSave ? 'Last saved: '+new Date(_lastDbSave).toLocaleString('en-GB') : 'Not yet saved to database')
+        : 'Set DATABASE_URL on Railway to enable shared database',
+      _dbAvailable),
 
   ].join('');
 }
@@ -3034,7 +3032,10 @@ function buildRptHTML(apt,bks,exps,getEA){
   const rate=parseFloat(apt.mgmtFee||0)/100;
   const mf=m.base*rate;
   const totExp=exps.reduce((s,e)=>s+getEA(e),0);
-  const fixedCh=(apt.fixedCharges||[]).reduce((s,f)=>s+(parseFloat(f.amount)||0),0);
+  // For multi-property reports, sum fixed charges across ALL selected properties
+  // _selApts is passed as optional 5th argument; falls back to apt alone
+  const fixedCh = (typeof arguments[4] !== 'undefined' ? arguments[4] : [apt])
+    .reduce((total, a) => total + (a.fixedCharges||[]).reduce((s,f)=>s+(parseFloat(f.amount)||0),0), 0);
     const vatRate    = 0.24;
   // elysianVat = VAT on all Elysian service fees (mgmt + cleaning + fixed charges)
   const cleanDeduct = (apt.deductCleaning !== false) ? m.configCl : 0;
@@ -3320,7 +3321,7 @@ function renderRpt(){
   const gea=e=>{if(e.aptId==='__spl'){const s=e.splits?.find(x=>x.aptId===aptId);return parseFloat(s?.amt||0);}return parseFloat(e.total||0);};
   let panelHTML,payout,occ,nights,totalDays,m;
   try {
-    const _r=buildRptHTML(apt,bks,exps,gea);
+    const _r=buildRptHTML(apt,bks,exps,gea,_selApts);
     ({panelHTML,payout,occ,nights,totalDays,m}=_r);
   } catch(err) {
     panels.innerHTML='<div style="padding:20px;background:#fdecea;border:.5px solid #f44336;border-radius:var(--r);color:#b71c1c;font-size:12px">'
@@ -3333,7 +3334,7 @@ function renderRpt(){
   document.getElementById('r-occ').textContent=bks.length>0?`${fmtPct(occ)} occupancy · ${nights}/${totalDays} nights`:'';
   document.getElementById('r-lbl').textContent=`${dates.lbl} · ${apt.name}`;
   panels.innerHTML=panelHTML;
-  window._rpt={apt,bks,exps,gea,dates,payout,occ,nights,totalDays,panelHTML,m};
+  window._rpt={apt,bks,exps,gea,dates,payout,occ,nights,totalDays,panelHTML,m,selApts:_selApts};
 }
 
 // ── Fetch Greek taxes for current report period ────────────────────────────
@@ -3391,7 +3392,9 @@ function exportPDF() {
   const rate       = parseFloat(apt.mgmtFee || 0) / 100;
   const mf         = m.base * rate;
   const totExp     = exps.reduce((s,e) => s + gea(e), 0);
-  const fixedCh    = (apt.fixedCharges||[]).reduce((s,f) => s + (parseFloat(f.amount)||0), 0);
+  // For multi-property PDFs, sum fixed charges from all selected properties
+  const _pdfApts = window._rpt?.selApts || [apt];
+  const fixedCh  = _pdfApts.reduce((t,a)=>t+(a.fixedCharges||[]).reduce((s,f)=>s+(parseFloat(f.amount)||0),0),0);
   const cleanDeduct = (apt.deductCleaning !== false) ? m.configCl : 0;
   const elysianVat = apt.vatOnFees ? (mf + cleanDeduct + fixedCh) * 0.24 : 0;
   const expVat     = apt.vatOnFees ? totExp * 0.24 : 0;
