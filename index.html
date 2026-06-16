@@ -4914,8 +4914,9 @@ function renderRevenue() {
   ])].filter(Boolean).sort((a,b)=>b-a);
   const curYr = parseInt(yrSel.value) || new Date().getFullYear();
   yrSel.innerHTML = years.map(y=>`<option value="${y}" ${y===curYr?'selected':''}>${y}</option>`).join('');
-  // Defer render so tab panel is fully visible before we paint the table
-  requestAnimationFrame(() => setTimeout(renderRevTable, 0));
+  renderRevTable();
+  // Fallback in case first render fires before DOM settles
+  setTimeout(renderRevTable, 80);
 }
 
 function revKey(aptId, mo, yr) { return `${aptId}::${yr}::${mo}`; }
@@ -4963,14 +4964,14 @@ function renderRevTable() {
               <th style="text-align:right;padding:7px 10px;font-size:10px;font-weight:700;color:#C9A84C;border-left:.5px solid rgba(255,255,255,.1)">Total</th>
             </tr>
           </thead>
-          <tbody style="background:var(--bg)">${rows}</tbody>
-          <tfoot>
-            <tr style="background:var(--bg2);border-top:.5px solid var(--bdr2)">
-              <td style="padding:6px 12px;font-size:12px;font-weight:700;color:var(--tx);position:sticky;left:0;background:var(--bg2)">Total</td>
+          <tbody style="background:var(--bg)">
+            <tr style="background:var(--bg2);border-bottom:.5px solid var(--bdr2)">
+              <td style="padding:6px 12px;font-size:12px;font-weight:700;color:var(--tx);position:sticky;left:0;background:var(--bg2)">TOTAL</td>
               ${footerCells}
               <td style="text-align:right;padding:6px 10px;font-family:var(--mono);font-size:12px;font-weight:700;color:${color};border-left:.5px solid var(--bdr2)">${fmt2(grandTotal)}</td>
             </tr>
-          </tfoot>
+            ${rows}
+          </tbody>
         </table>
       </div>
     </div>`;
