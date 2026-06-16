@@ -127,6 +127,7 @@
     <button class="nav-btn" onclick="showTab('ann',this)">Annual Tracker</button>
     <button class="nav-btn" onclick="showTab('hhapi',this)" id="nav-hhapi">🔌 Hosthub API</button>
     <button class="nav-btn" onclick="showTab('imports',this)" id="nav-imports">📥 Imports</button>
+    <button class="nav-btn" onclick="showTab('rev',this)" id="nav-rev">💰 Elysian Revenue</button>
   </nav>
   <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
     <button class="btn sm" onclick="clearAll()" style="border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.6);background:transparent"><i class="ti ti-trash"></i> Clear data</button>
@@ -500,6 +501,7 @@
         <div style="display:flex;flex-direction:column;gap:8px">
           <button class="btn primary" onclick="exportPDF()" style="justify-content:center"><i class="ti ti-file-type-pdf"></i> Export PDF</button>
           <button class="btn ok" onclick="emailRpt()" style="justify-content:center"><i class="ti ti-mail"></i> Email key metrics to owner</button>
+          <button class="btn" onclick="saveRevenueSnapshot()" style="justify-content:center;border-color:#C9A84C;color:#C9A84C"><i class="ti ti-device-floppy"></i> Save to Revenue Tracker</button>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:14px;min-width:0;overflow:hidden" id="r-panels"></div>
@@ -615,7 +617,31 @@
   </div>
 </div>
 
-<!-- ANNUAL -->
+<!-- ELYSIAN REVENUE TAB -->
+<div id="tab-rev" class="tab-panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+    <div>
+      <div style="font-size:18px;font-weight:600;color:var(--tx)">Elysian Revenue Tracker</div>
+      <div style="font-size:12px;color:var(--tx3);margin-top:2px">Cleaning fees and management fees earned per property per month</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <label class="lbl" style="margin:0">Year</label>
+      <select id="rev-year" onchange="renderRevenue()" style="padding:5px 10px;border:.5px solid var(--bdr2);border-radius:var(--r);background:var(--bg);font-size:13px">
+      </select>
+    </div>
+  </div>
+
+  <!-- Tab switcher -->
+  <div style="display:flex;gap:0;border:.5px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:18px;width:fit-content">
+    <button id="rev-tab-clean"  onclick="setRevTab('clean')"  style="padding:7px 18px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:#0F1E2E;color:#C9A84C">Cleaning Fees</button>
+    <button id="rev-tab-mgmt"   onclick="setRevTab('mgmt')"   style="padding:7px 18px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:var(--bg2);color:var(--tx3)">Management Fees</button>
+    <button id="rev-tab-combined" onclick="setRevTab('combined')" style="padding:7px 18px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:var(--bg2);color:var(--tx3)">Combined</button>
+  </div>
+
+  <div id="rev-table-wrap"></div>
+</div>
+
+ -->
 <div id="tab-ann" class="tab-panel">
   <div style="display:flex;gap:14px;align-items:center;margin-bottom:18px">
     <div style="font-size:22px;font-weight:500">Annual Revenue Tracker</div>
@@ -702,7 +728,7 @@ const GENERIC_AL={
   "ΠΛΥΝΤΗΡΙΑ ΘΕΣ":"Cleaning Material Thessaloniki"
 };
 
-let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null};
+let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}}};
 let rptMode="mo";
 
 // ── Persistence ──────────────────────────────────────────
@@ -760,7 +786,7 @@ function save() {
 async function saveToDb() {
   if (!_dbAvailable) return;
   try {
-    const payload = { apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {} };
+    const payload = { apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}} };
     const r = await fetch('/api/db/data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -801,10 +827,11 @@ async function loadFromDb() {
     const data = await r.json();
     if (!data) return; // No data in DB yet
     // Merge: DB data wins over localStorage (it's more up to date)
-    S.apts = data.apts || S.apts;
-    S.bks  = data.bks  || S.bks;
-    S.exps = data.exps || S.exps;
-    S.meta = data.meta || S.meta || {};
+    S.apts    = data.apts    || S.apts;
+    S.bks     = data.bks     || S.bks;
+    S.exps    = data.exps    || S.exps;
+    S.meta    = data.meta    || S.meta    || {};
+    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};
     _lastDbSave = data._savedAt;
     // Update localStorage too
     try { localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta })); } catch(e) {}
@@ -4856,6 +4883,191 @@ async function checkServerStatus(){
       '<div>☁ Shared session: '+sessInfo+'</div>';
   }catch(e){
     el.innerHTML='<div style="color:var(--tx-err)">Cannot reach server API</div>';
+  }
+}
+
+// ── Elysian Revenue Tracker ──────────────────────────────────────────────────
+
+let _revTab = 'clean';
+const REV_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function setRevTab(tab) {
+  _revTab = tab;
+  ['clean','mgmt','combined'].forEach(t => {
+    const btn = document.getElementById('rev-tab-'+t);
+    if (btn) {
+      btn.style.background = t === tab ? '#0F1E2E' : 'var(--bg2)';
+      btn.style.color      = t === tab ? '#C9A84C' : 'var(--tx3)';
+    }
+  });
+  renderRevTable();
+}
+
+function renderRevenue() {
+  // Populate year selector
+  const yrSel = document.getElementById('rev-year');
+  if (!yrSel) return;
+  const years = [...new Set([
+    ...Object.values(S.revenue?.cleaning||{}).map(v=>v.yr),
+    ...Object.values(S.revenue?.mgmt||{}).map(v=>v.yr),
+    new Date().getFullYear(), new Date().getFullYear()-1
+  ])].filter(Boolean).sort((a,b)=>b-a);
+  const curYr = parseInt(yrSel.value) || new Date().getFullYear();
+  yrSel.innerHTML = years.map(y=>`<option value="${y}" ${y===curYr?'selected':''}>${y}</option>`).join('');
+  renderRevTable();
+}
+
+function revKey(aptId, mo, yr) { return `${aptId}::${yr}::${mo}`; }
+
+function renderRevTable() {
+  const wrap = document.getElementById('rev-table-wrap');
+  if (!wrap) return;
+  const yr  = parseInt(document.getElementById('rev-year')?.value) || new Date().getFullYear();
+  const rev = S.revenue || {cleaning:{},mgmt:{}};
+
+  // Properties that have any data OR are in S.apts
+  const apts = S.apts.filter(a=>a.name);
+
+  const fmt2 = v => v ? v.toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2})+'€' : '–';
+
+  const buildTable = (dataMap, label, color) => {
+    const totals = Array(12).fill(0);
+    const rows = apts.map(a => {
+      const cells = REV_MONTHS.map((mo, mi) => {
+        const k = revKey(a.id, mi, yr);
+        const val = dataMap[k]?.amount || 0;
+        if (val) totals[mi] += val;
+        return `<td style="text-align:right;padding:5px 10px;font-family:var(--mono);font-size:12px;color:${val?color:'var(--tx3)'}">${fmt2(val)}</td>`;
+      });
+      const rowTotal = REV_MONTHS.reduce((s,_,mi) => s+(dataMap[revKey(a.id,mi,yr)]?.amount||0), 0);
+      return `<tr>
+        <td style="padding:5px 12px;font-size:12px;font-weight:500;color:var(--tx);white-space:nowrap;position:sticky;left:0;background:var(--bg);border-right:.5px solid var(--bdr2)">${a.name}</td>
+        ${cells.join('')}
+        <td style="text-align:right;padding:5px 10px;font-family:var(--mono);font-size:12px;font-weight:700;color:${rowTotal?color:'var(--tx3)'};border-left:.5px solid var(--bdr2)">${fmt2(rowTotal)}</td>
+      </tr>`;
+    }).join('');
+    const grandTotal = totals.reduce((s,v)=>s+v,0);
+    const footerCells = totals.map(v=>`<td style="text-align:right;padding:6px 10px;font-family:var(--mono);font-size:12px;font-weight:700;color:${color}">${fmt2(v)}</td>`).join('');
+    return `<div style="margin-bottom:24px">
+      <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:8px;display:flex;justify-content:space-between">
+        <span>${label} — ${yr}</span>
+        <span style="color:${color}">${fmt2(grandTotal)} total</span>
+      </div>
+      <div style="overflow-x:auto;border:.5px solid var(--bdr2);border-radius:var(--r)">
+        <table style="border-collapse:collapse;width:100%;min-width:800px">
+          <thead>
+            <tr style="background:#0F1E2E">
+              <th style="text-align:left;padding:7px 12px;font-size:10px;font-weight:700;color:#C9A84C;text-transform:uppercase;position:sticky;left:0;background:#0F1E2E">Property</th>
+              ${REV_MONTHS.map(m=>`<th style="text-align:right;padding:7px 10px;font-size:10px;font-weight:700;color:#C9A84C">${m}</th>`).join('')}
+              <th style="text-align:right;padding:7px 10px;font-size:10px;font-weight:700;color:#C9A84C;border-left:.5px solid rgba(255,255,255,.1)">Total</th>
+            </tr>
+          </thead>
+          <tbody style="background:var(--bg)">${rows}</tbody>
+          <tfoot>
+            <tr style="background:var(--bg2);border-top:.5px solid var(--bdr2)">
+              <td style="padding:6px 12px;font-size:12px;font-weight:700;color:var(--tx);position:sticky;left:0;background:var(--bg2)">Total</td>
+              ${footerCells}
+              <td style="text-align:right;padding:6px 10px;font-family:var(--mono);font-size:12px;font-weight:700;color:${color};border-left:.5px solid var(--bdr2)">${fmt2(grandTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>`;
+  };
+
+  if (_revTab === 'clean') {
+    wrap.innerHTML = buildTable(rev.cleaning||{}, 'Cleaning Fees', '#1a7a4a');
+  } else if (_revTab === 'mgmt') {
+    wrap.innerHTML = buildTable(rev.mgmt||{}, 'Management Fees', '#0369A1');
+  } else {
+    // Combined: sum cleaning + mgmt per cell
+    const combined = {};
+    const addTo = (src) => Object.entries(src||{}).forEach(([k,v])=>{
+      combined[k] = { ...(combined[k]||{}), amount: ((combined[k]?.amount)||0) + (v.amount||0), yr: v.yr };
+    });
+    addTo(rev.cleaning); addTo(rev.mgmt);
+    wrap.innerHTML = buildTable(combined, 'Combined Revenue (Cleaning + Management)', '#C9A84C');
+  }
+}
+
+// ── Save Revenue Snapshot from current report ─────────────────────────────────
+
+async function saveRevenueSnapshot() {
+  const rpt = window._rpt;
+  if (!rpt) { toast('Generate a report first', 'err'); return; }
+
+  const { apt, bks, m, selApts, dates } = rpt;
+  const _apts = (selApts && selApts.length) ? selApts : [apt];
+
+  // Determine month/year from current report date range
+  const d    = dates?.from || new Date();
+  const mo   = d.getMonth();
+  const yr   = d.getFullYear();
+  const moLbl = REV_MONTHS[mo] + ' ' + yr;
+
+  if (!S.revenue) S.revenue = {cleaning:{},mgmt:{}};
+
+  // Build snapshot entries for each selected property
+  const rate = parseFloat(apt.mgmtFee||0)/100;
+  const entries = _apts.map(a => {
+    const aptBks = bks.filter(b => b.aptId === a.id);
+    const m2 = calcBase(aptBks, a);
+    const mfAmt = m2.base * (parseFloat(a.mgmtFee||0)/100);
+    const cleanAmt = m2.configCl; // cleaning fee ex-VAT
+    return { aptId: a.id, aptName: a.name, mo, yr, moLbl, mfAmt, cleanAmt };
+  });
+
+  // Check for existing values — collect conflicts
+  const conflicts = entries.filter(e => {
+    const kc = revKey(e.aptId, e.mo, e.yr);
+    const km = revKey(e.aptId, e.mo, e.yr);
+    return S.revenue.cleaning[kc] || S.revenue.mgmt[km];
+  });
+
+  const doSave = () => {
+    entries.forEach(e => {
+      const k = revKey(e.aptId, e.mo, e.yr);
+      S.revenue.cleaning[k] = { aptId:e.aptId, aptName:e.aptName, mo:e.mo, yr:e.yr, amount:e.cleanAmt, savedAt:Date.now() };
+      S.revenue.mgmt[k]     = { aptId:e.aptId, aptName:e.aptName, mo:e.mo, yr:e.yr, amount:e.mfAmt,   savedAt:Date.now() };
+    });
+    save();
+    toast(`Saved ${entries.length} propert${entries.length===1?'y':'ies'} for ${moLbl} ✓`, 'ok');
+  };
+
+  if (conflicts.length === 0) {
+    doSave();
+  } else {
+    // Show overwrite warning modal
+    const conflictNames = conflicts.map(e=>e.aptName).join(', ');
+    let modal = document.getElementById('rev-confirm-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'rev-confirm-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+      <div style="background:var(--bg);border-radius:var(--r);padding:24px;max-width:480px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <i class="ti ti-alert-triangle" style="font-size:22px;color:#D97706"></i>
+          <div style="font-size:15px;font-weight:600;color:var(--tx)">Overwrite existing data?</div>
+        </div>
+        <div style="font-size:13px;color:var(--tx2);margin-bottom:8px">
+          Data already exists for <strong>${moLbl}</strong> in:
+        </div>
+        <div style="font-size:12px;color:var(--tx3);background:var(--bg2);border-radius:var(--r);padding:10px 12px;margin-bottom:16px;max-height:120px;overflow-y:auto">
+          ${conflictNames}
+        </div>
+        <div style="font-size:12px;color:var(--tx2);margin-bottom:20px">
+          ${entries.length - conflicts.length > 0 ? `${entries.length - conflicts.length} other properties will be saved without issue.` : 'All selected properties have existing data for this period.'}
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn" onclick="document.getElementById('rev-confirm-modal').style.display='none'" style="padding:8px 18px">Cancel</button>
+          <button class="btn primary" onclick="document.getElementById('rev-confirm-modal').style.display='none';_revConfirmedSave()" style="padding:8px 18px">Yes, overwrite</button>
+        </div>
+      </div>`;
+    modal.style.display = 'flex';
+    window._revConfirmedSave = doSave;
   }
 }
 
