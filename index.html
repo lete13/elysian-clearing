@@ -3027,15 +3027,14 @@ function rrow(lbl,val,indent,color,bold,sub){
   </div>`;
 }
 
-function buildRptHTML(apt,bks,exps,getEA){
+function buildRptHTML(apt,bks,exps,getEA,selApts){
   const m=calcBase(bks,apt);
   const rate=parseFloat(apt.mgmtFee||0)/100;
   const mf=m.base*rate;
   const totExp=exps.reduce((s,e)=>s+getEA(e),0);
   // For multi-property reports, sum fixed charges across ALL selected properties
-  // _selApts is passed as optional 5th argument; falls back to apt alone
-  const fixedCh = (typeof arguments[4] !== 'undefined' ? arguments[4] : [apt])
-    .reduce((total, a) => total + (a.fixedCharges||[]).reduce((s,f)=>s+(parseFloat(f.amount)||0),0), 0);
+  const _apts = (selApts && selApts.length > 0) ? selApts : [apt];
+  const fixedCh = _apts.reduce((total, a) => total + (a.fixedCharges||[]).reduce((s,f)=>s+(parseFloat(f.amount)||0),0), 0);
     const vatRate    = 0.24;
   // elysianVat = VAT on all Elysian service fees (mgmt + cleaning + fixed charges)
   const cleanDeduct = (apt.deductCleaning !== false) ? m.configCl : 0;
