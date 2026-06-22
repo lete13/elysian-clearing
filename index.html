@@ -5017,7 +5017,10 @@ function _opsRowKey(aptId, date) { return aptId+'::'+date; }
 
 function _opsAutoRows(date) {
   const rows = []; const seen = new Set();
-  const checkouts = S.bks.filter(b => b.checkOut === date);
+  // Bookings store dates as D/M/YYYY, _opsDate is YYYY-MM-DD — normalise for comparison
+  const [_y,_m,_d] = date.split('-');
+  const dateFmt = parseInt(_d)+'/'+parseInt(_m)+'/'+_y; // e.g. "22/6/2026"
+  const checkouts = S.bks.filter(b => b.checkOut === date || b.checkOut === dateFmt);
   // Sort by aptName
   checkouts.sort((a,b) => (a.aptName||'').localeCompare(b.aptName||''));
   checkouts.forEach(bk => {
@@ -5026,7 +5029,7 @@ function _opsAutoRows(date) {
     seen.add(key);
     const apt = S.apts.find(a => a.id === bk.aptId) || {};
     const nxt = S.bks.find(b =>
-      b.aptId === bk.aptId && b.checkIn === date && b.id !== bk.id
+      b.aptId === bk.aptId && (b.checkIn === date || b.checkIn === dateFmt) && b.id !== bk.id
     );
     rows.push({
       aptId: bk.aptId||'',
