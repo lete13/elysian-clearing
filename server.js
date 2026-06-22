@@ -207,10 +207,43 @@ app.get('/api/db/data', async (req, res) => {
 });
 
 // POST /api/db/data — save the full app state to PostgreSQL
+// SERVER-SIDE DATA PROTECTION: never allow overwriting real data with empty state
 app.post('/api/db/data', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'No database configured.' });
   try {
     const payload = req.body;
+    const inBks  = Array.isArray(payload.bks)  ? payload.bks.length  : 0;
+    const inExps = Array.isArray(payload.exps) ? payload.exps.length : 0;
+
+    // Read current DB state
+    const cur = await pool.query("SELECT data FROM app_data WHERE key = 'main'");
+    const existing = cur.rows[0]?.data;
+
+    if (existing) {
+      const dbBks  = Array.isArray(existing.bks)  ? existing.bks.length  : 0;
+      const dbExps = Array.isArray(existing.exps) ? existing.exps.length : 0;
+
+      // ANTI-WIPE: refuse if incoming would drop records significantly
+      if (dbBks > 10 && inBks === 0) {
+        console.warn('[db] BLOCKED write: would wipe', dbBks, 'bookings');
+        return res.status(409).json({
+          error: 'Write blocked: would delete ' + dbBks + ' bookings. Reload the app first.',
+          blocked: true, dbBks, inBks
+        });
+      }
+      if (dbExps > 0 && inExps === 0 && dbBks > 0) {
+        console.warn('[db] BLOCKED write: would wipe', dbExps, 'expenses');
+        return res.status(409).json({
+          error: 'Write blocked: would delete ' + dbExps + ' expenses. Reload the app first.',
+          blocked: true, dbExps, inExps
+        });
+      }
+
+      // Merge: never drop non-empty arrays without a replacement
+      if (dbExps > 0 && inExps === 0) payload.exps = existing.exps;
+      if (dbBks  > 0 && inBks  === 0) payload.bks  = existing.bks;
+    }
+
     await pool.query(
       `INSERT INTO app_data (key, data)
        VALUES ($1, $2::jsonb)
