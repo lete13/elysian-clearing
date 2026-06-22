@@ -823,6 +823,12 @@ async function loadFromDb() {
     // Refresh UI
     renderDash(); renderCfg(); renderBk(); renderExp();
     if (typeof renderHealth === 'function') renderHealth();
+    if (document.getElementById('tab-ops')?.classList.contains('active')) renderOps();
+    if (document.getElementById('tab-rev')?.classList.contains('active')) renderRevenue();
+    // Re-render Daily Ops if it's the active tab (data may not have been ready on first click)
+    if (document.getElementById('tab-ops')?.classList.contains('active')) renderOps();
+    // Re-render Revenue if active
+    if (document.getElementById('tab-rev')?.classList.contains('active')) renderRevenue();
     updateDbBadge();
     console.log('[db] Loaded from shared database, savedAt:', data._savedAt);
   } catch(e) {
@@ -2384,6 +2390,8 @@ function showTab(name,btn){
     else if(name==='rpt'){initRptSel();renderRpt();}
     else if(name==='ann'){initAnnSel();renderAnn();}
     else if(name==='imports'){renderHealth();checkServerStatus();}
+    else if(name==='rev'){renderRevenue();}
+    else if(name==='ops'){if(!_opsDate)_opsDate=_opsTodayStr();renderOps();}
   });
 }
 
