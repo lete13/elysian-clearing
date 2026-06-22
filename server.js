@@ -222,24 +222,42 @@ app.post('/api/db/data', async (req, res) => {
     if (existing) {
       const dbBks  = Array.isArray(existing.bks)  ? existing.bks.length  : 0;
       const dbExps = Array.isArray(existing.exps) ? existing.exps.length : 0;
+      const dbApts = Array.isArray(existing.apts) ? existing.apts : [];
+      const inApts = Array.isArray(payload.apts)  ? payload.apts  : [];
 
-      // ANTI-WIPE: refuse if incoming would drop records significantly
+      // ANTI-WIPE BOOKINGS
       if (dbBks > 10 && inBks === 0) {
         console.warn('[db] BLOCKED write: would wipe', dbBks, 'bookings');
-        return res.status(409).json({
-          error: 'Write blocked: would delete ' + dbBks + ' bookings. Reload the app first.',
-          blocked: true, dbBks, inBks
-        });
+        return res.status(409).json({ error: 'Write blocked: would delete ' + dbBks + ' bookings.', blocked: true });
       }
+      // ANTI-WIPE EXPENSES
       if (dbExps > 0 && inExps === 0 && dbBks > 0) {
         console.warn('[db] BLOCKED write: would wipe', dbExps, 'expenses');
-        return res.status(409).json({
-          error: 'Write blocked: would delete ' + dbExps + ' expenses. Reload the app first.',
-          blocked: true, dbExps, inExps
-        });
+        return res.status(409).json({ error: 'Write blocked: would delete ' + dbExps + ' expenses.', blocked: true });
       }
 
-      // Merge: never drop non-empty arrays without a replacement
+      // MERGE APTS: only protect against startup resets, not user changes
+      // A startup reset is detected when ALL (or nearly all) apts have the global default mgmtFee of 20
+      // A user save will have mixed mgmtFee values — trust it fully
+      if (dbApts.length > 0 && inApts.length > 0) {
+        const inWith20 = inApts.filter(a => a.mgmtFee === 20 || (!a.mgmtFee)).length;
+        const isStartupReset = inWith20 > inApts.length * 0.7; // >70% at default = startup reset
+
+        if (isStartupReset) {
+          console.warn('[db] Detected startup reset for apts (' + inWith20 + '/' + inApts.length + ' at default) — merging with DB configs');
+          const dbByName = {};
+          dbApts.forEach(a => { if (a.name) dbByName[a.name.trim()] = a; });
+          payload.apts = inApts.map(apt => {
+            const dbApt = dbByName[apt.name?.trim()];
+            if (!dbApt) return apt;
+            // Startup reset: restore all custom configs from DB
+            return { ...apt, ...dbApt, id: apt.id || dbApt.id, name: apt.name || dbApt.name };
+          });
+        }
+        // Otherwise: user intentionally saved — trust incoming values completely
+      }
+
+      // Fallback merges
       if (dbExps > 0 && inExps === 0) payload.exps = existing.exps;
       if (dbBks  > 0 && inBks  === 0) payload.bks  = existing.bks;
     }

@@ -771,26 +771,17 @@ function save() {
 
 async function saveToDb() {
   if (!_dbAvailable) return;
-  // Guard 1: Never write before data is initialized from DB or import
   if (!_dataInitialized) {
-    console.log('[db] Skipping write — waiting for DB load to complete');
+    // Not yet initialized — queue a retry after initialization
     return;
   }
-  // Guard 2: Never write if it would wipe bookings already in DB
-  // (race condition protection — load current DB count first)
   try {
-    const dbCheck = await fetch('/api/db/status').then(r=>r.json());
-    if (dbCheck._bksCount > 0 && S.bks.length === 0) {
-      console.warn('[db] Refusing write — would wipe ' + dbCheck._bksCount + ' bookings');
-      return;
-    }
-    if (dbCheck._expsCount > 0 && S.exps.length === 0) {
-      console.warn('[db] Refusing write — would wipe ' + dbCheck._expsCount + ' expenses');
-      return;
-    }
-  } catch(e) { /* if status check fails, proceed */ }
-  try {
-    const payload = { apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]} };
+    const payload = {
+      apts: S.apts, bks: S.bks, exps: S.exps,
+      meta: S.meta || {},
+      revenue: S.revenue || {cleaning:{},mgmt:{}},
+      daily: S.daily || {snapshots:{},tasks:[]}
+    };
     const r = await fetch('/api/db/data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -800,30 +791,14 @@ async function saveToDb() {
     if (result.ok) {
       _lastDbSave = result.savedAt;
       updateDbBadge();
+    } else if (result.blocked) {
+      console.warn('[db] Write blocked by server:', result.error);
     }
   } catch(e) {
-    const badge = document.getElementById('db-badge');
-    if (badge) { badge.style.background = '#c0392b'; badge.textContent = '☁ Error'; }
+    console.error('[db] save error:', e.message);
   }
 }
 
-function load() {
-  // Load from localStorage immediately (fast, works offline)
-  try {
-    const d = localStorage.getItem('e_v3') || localStorage.getItem('elysian_v2') || localStorage.getItem('elysian_v1');
-    if (d) {
-      const p = JSON.parse(d);
-      S.apts = p.apts || p.apartments || [];
-      S.bks  = p.bks  || p.bookings   || [];
-      S.exps = p.exps || p.expenses   || [];
-      S.meta = p.meta || {};
-    }
-  } catch(e) {}
-  // If localStorage had real data, mark as initialized
-  if (S.bks?.length || S.exps?.length) _dataInitialized = true;
-  // Always ensure default properties exist
-  applyDefaults();
-}
 
 async function loadFromDb() {
   if (!_dbAvailable) return;
@@ -839,12 +814,9 @@ async function loadFromDb() {
     S.meta    = data.meta    || S.meta    || {};
     S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};
     _lastDbSave = data._savedAt;
-    _dataInitialized = true; // Data confirmed loaded from DB
-    // Update localStorage too
-    try { localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta })); } catch(e) {}
-    // Immediately persist the correct merged state back to DB
-    // This prevents any pending startup timer from overwriting with stale data
-    setTimeout(saveToDb, 100);
+    _dataInitialized = true;
+    // Persist loaded state to localStorage
+    try { localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily })); } catch(e) {}
     // Refresh UI
     renderDash(); renderCfg(); renderBk(); renderExp();
     if (typeof renderHealth === 'function') renderHealth();
@@ -2245,17 +2217,19 @@ function applyDefaults(){
       S.apts.push(apt);
     } else {
       // Only fill fields that are still at their blank/default values
-      if(!apt.ownerName)     apt.ownerName    = def.ownerName;
-      if(!apt.ownerSurname)  apt.ownerSurname = def.ownerSurname;
-      if(apt.mgmtFee===20)   apt.mgmtFee      = def.mgmtFee;
-      if(!apt.cleaningFee)   apt.cleaningFee  = def.cleaningFee;
+      // Fill in ONLY blank fields — never overwrite user-set values
+      if(!apt.ownerName)      apt.ownerName     = def.ownerName;
+      if(!apt.ownerSurname)   apt.ownerSurname  = def.ownerSurname;
+      if(!apt.ownerEmail)     apt.ownerEmail    = def.ownerEmail;
+      if(apt.mgmtFee===20||apt.mgmtFee===undefined)  apt.mgmtFee = def.mgmtFee;
+      if(!apt.cleaningFee)    apt.cleaningFee   = def.cleaningFee;
       if(!apt.fixedCharges?.length) apt.fixedCharges = def.fixedCharges;
       if(apt.vatOnFees===false && def.vatOnFees) apt.vatOnFees = def.vatOnFees;
-      apt.isLeased       = def.isLeased;
-      if(apt.deductCT===undefined) apt.deductCT = true; // default ON for existing properties
-      apt.b2b            = def.b2b;
-      apt.municipalityTax= def.municipalityTax;
-      apt.businessTax    = def.businessTax;
+      if(apt.deductCT===undefined)  apt.deductCT = true;
+      if(apt.isLeased===undefined)  apt.isLeased = def.isLeased;
+      if(apt.b2b===undefined)       apt.b2b      = def.b2b;
+      if(!apt.municipalityTax && def.municipalityTax) apt.municipalityTax = def.municipalityTax;
+      if(!apt.businessTax    && def.businessTax)     apt.businessTax     = def.businessTax;
     }
   });
 }
@@ -5024,6 +4998,7 @@ async function saveRevenueSnapshot() {
 // Full implementation — applies as a patch to index.html
 
 let _opsDate = '';
+let _opsSaveTimer = null;
 
 function _opsTodayStr() {
   return new Date().toISOString().slice(0,10);
@@ -5143,21 +5118,24 @@ function _opsBuildRow(row, i) {
     </td>
     ${_opsCheckoutDateCell(row, i)}
     <td style="padding:4px 6px;border:1px solid #ddd;text-align:center">
-      <input type="checkbox" ${row.checkoutRequested?'checked':''} onchange="opsSetRow(${i},'checkoutRequested',this.checked)" style="cursor:pointer;width:16px;height:16px">
+      <input type="checkbox" ${row.checkoutRequested?'checked':''} onchange="opsSetRow(${i},'checkoutRequested',this.checked);_opsAutoSave()" style="cursor:pointer;width:16px;height:16px">
     </td>
     ${_opsCheckinCell(row, i)}
     <td style="padding:4px 4px;border:1px solid #ddd;text-align:center">
-      <input type="number" min="0" max="20" value="${row.people||''}" onchange="opsSetRow(${i},'people',this.value)"
+      <input type="number" min="0" max="20" value="${row.people||''}" data-field="people"
+        oninput="opsSetRow(${i},'people',this.value);_opsAutoSave()"
         placeholder="–"
         style="width:44px;border:none;background:transparent;text-align:center;font-size:13px;font-weight:${row.people?'700':'400'};outline:none;color:${row.people?'#1a1a2e':'#9CA3AF'}">
     </td>
     <td style="padding:4px 4px;border:1px solid #ddd">
-      <input type="text" value="${row.arrivalTime||''}" onchange="opsSetRow(${i},'arrivalTime',this.value)"
+      <input type="text" value="${row.arrivalTime||''}" data-field="arrivalTime"
+        oninput="opsSetRow(${i},'arrivalTime',this.value);_opsAutoSave()"
         placeholder="—"
         style="width:80px;border:none;background:transparent;font-size:12px;outline:none;color:#1a1a2e;text-align:center">
     </td>
     <td style="padding:4px 4px;border:1px solid #ddd">
-      <input type="text" value="${row.comments||''}" onchange="opsSetRow(${i},'comments',this.value)"
+      <input type="text" value="${row.comments||''}" data-field="comments"
+        oninput="opsSetRow(${i},'comments',this.value);_opsAutoSave()"
         placeholder=""
         style="width:100%;box-sizing:border-box;border:none;background:transparent;font-size:12px;outline:none;color:#1a1a2e">
     </td>
@@ -5207,6 +5185,39 @@ function opsToggleCleaned(i) {
   // Re-render just this cell
   const tbody = document.getElementById('ops-tbody');
   if (tbody) { tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join(''); }
+}
+
+function _opsAutoSave() {
+  // Debounced auto-save: collect all current input values then snapshot
+  clearTimeout(_opsSaveTimer);
+  _opsSaveTimer = setTimeout(function() {
+    // Sync all editable inputs from DOM into _opsRows before saving
+    const tbody = document.getElementById('ops-tbody');
+    if (tbody) {
+      tbody.querySelectorAll('tr').forEach(function(tr, i) {
+        if (!_opsRows[i]) return;
+        const inputs = tr.querySelectorAll('input[type=text], input[type=number]');
+        inputs.forEach(function(inp) {
+          const field = inp.dataset.field;
+          if (field) _opsRows[i][field] = inp.value;
+        });
+      });
+    }
+    // Also sync notes
+    const notesEl = document.getElementById('ops-notes-edit');
+    if (notesEl) _opsNotes = notesEl.value;
+    // Save snapshot silently
+    _opsEnsure();
+    S.daily.snapshots[_opsDate] = {
+      date: _opsDate, savedAt: Date.now(),
+      rows: JSON.parse(JSON.stringify(_opsRows)),
+      notes: _opsNotes,
+    };
+    save();
+    // Update snapshot time indicator
+    const ts = document.getElementById('ops-snap-time');
+    if (ts) ts.textContent = '💾 ' + new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'});
+  }, 1500);
 }
 
 function opsToggleLate(i) {
@@ -5470,7 +5481,7 @@ function renderOps() {
         <div style="margin-top:10px;border-top:1px solid #E5E7EB;padding-top:8px;display:flex;gap:8px;align-items:flex-start">
           <div style="font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;padding-top:4px;font-family:Arial,sans-serif">📝 Σχόλια</div>
           <textarea id="ops-notes-edit" rows="2" placeholder="Γενικές σημειώσεις..."
-            oninput="_opsNotes=this.value"
+            oninput="_opsNotes=this.value;_opsAutoSave()"
             style="flex:1;padding:6px 8px;border:1px solid #E5E7EB;border-radius:4px;font-size:12px;resize:vertical;font-family:inherit;color:#374151">${notes||''}</textarea>
         </div>
       </div>
@@ -5502,21 +5513,48 @@ function renderOps() {
 }
 
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── Init ────────────────────────────────────────────────────────────────────
+// DB-FIRST: load from localStorage immediately (instant), then load from DB
+// No saves happen until DB load completes (_dataInitialized = true)
+
+function _showLoadingSpinner(show) {
+  const app = document.getElementById('app');
+  let spinner = document.getElementById('_db_spinner');
+  if (show && !spinner) {
+    spinner = document.createElement('div');
+    spinner.id = '_db_spinner';
+    spinner.style.cssText = 'position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px';
+    spinner.innerHTML = '<div style="width:36px;height:36px;border:3px solid #C9A84C;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite"></div><div style="font-size:13px;color:#374151;font-weight:500">Loading data…</div>';
+    if (!document.querySelector('#_spin_style')) {
+      const s = document.createElement('style');
+      s.id = '_spin_style';
+      s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(spinner);
+  } else if (!show && spinner) {
+    spinner.remove();
+  }
+}
+
+// Step 1: immediate load from localStorage (fast)
 load();
-renderDash();
-renderCfg();
-updBkBadge();
-updUA();
+renderDash(); renderCfg(); updBkBadge(); updUA();
 initSyncUI();
-// Apply searchable selects to any selects already populated
-setTimeout(applySearchSelects, 100);
-// Async: check if server has a database, then load shared data
+setTimeout(applySearchSelects, 200);
+
+// Step 2: async load from DB (authoritative)
+_showLoadingSpinner(true);
 checkServerConfig().then(() => {
   if (_dbAvailable) {
-    loadFromDb().then(() => {
-      startDbPoll();
-    });
+    loadFromDb()
+      .then(() => {
+        _showLoadingSpinner(false);
+        startDbPoll();
+      })
+      .catch(() => { _showLoadingSpinner(false); });
+  } else {
+    _showLoadingSpinner(false);
   }
 });
 </script>
