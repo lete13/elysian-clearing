@@ -771,12 +771,24 @@ function save() {
 
 async function saveToDb() {
   if (!_dbAvailable) return;
-  // Guard: never overwrite real DB data with empty startup state
-  // Only write if we have meaningful data OR the DB is already empty
-  if (!S.bks?.length && !S.exps?.length && !_dataInitialized) {
-    console.log('[db] Skipping empty write — data not yet initialized');
+  // Guard 1: Never write before data is initialized from DB or import
+  if (!_dataInitialized) {
+    console.log('[db] Skipping write — waiting for DB load to complete');
     return;
   }
+  // Guard 2: Never write if it would wipe bookings already in DB
+  // (race condition protection — load current DB count first)
+  try {
+    const dbCheck = await fetch('/api/db/status').then(r=>r.json());
+    if (dbCheck._bksCount > 0 && S.bks.length === 0) {
+      console.warn('[db] Refusing write — would wipe ' + dbCheck._bksCount + ' bookings');
+      return;
+    }
+    if (dbCheck._expsCount > 0 && S.exps.length === 0) {
+      console.warn('[db] Refusing write — would wipe ' + dbCheck._expsCount + ' expenses');
+      return;
+    }
+  } catch(e) { /* if status check fails, proceed */ }
   try {
     const payload = { apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]} };
     const r = await fetch('/api/db/data', {
@@ -830,6 +842,9 @@ async function loadFromDb() {
     _dataInitialized = true; // Data confirmed loaded from DB
     // Update localStorage too
     try { localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta })); } catch(e) {}
+    // Immediately persist the correct merged state back to DB
+    // This prevents any pending startup timer from overwriting with stale data
+    setTimeout(saveToDb, 100);
     // Refresh UI
     renderDash(); renderCfg(); renderBk(); renderExp();
     if (typeof renderHealth === 'function') renderHealth();

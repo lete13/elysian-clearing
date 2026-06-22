@@ -229,8 +229,16 @@ app.post('/api/db/data', async (req, res) => {
 app.get('/api/db/status', async (req, res) => {
   if (!pool) return res.json({ db: false });
   try {
-    const result = await pool.query("SELECT updated_at FROM app_data WHERE key = 'main'");
-    res.json({ db: true, updatedAt: result.rows[0]?.updated_at || null });
+    const result = await pool.query("SELECT updated_at, data FROM app_data WHERE key = 'main'");
+    if (!result.rows.length) return res.json({ db: true, updatedAt: null, _bksCount: 0, _expsCount: 0 });
+    const data = result.rows[0].data;
+    res.json({
+      db: true,
+      updatedAt:   result.rows[0].updated_at || null,
+      _bksCount:   Array.isArray(data?.bks)  ? data.bks.length  : 0,
+      _expsCount:  Array.isArray(data?.exps) ? data.exps.length : 0,
+      _aptsCount:  Array.isArray(data?.apts) ? data.apts.length : 0,
+    });
   } catch(e) {
     res.json({ db: false, error: e.message });
   }
@@ -396,9 +404,10 @@ async function runAutoSync() {
       const existing = await pool.query("SELECT data FROM app_data WHERE key='main'").catch(()=>({rows:[]}));
       const current  = existing.rows[0]?.data || {};
       const merged   = {
-        ...current,
-        bks:  result.bookings,
-        apts: mergeApts(current.apts || [], result.rentals),
+        ...current,                                          // preserve ALL existing data (exps, revenue, daily, etc.)
+        bks:  result.bookings,                              // replace bookings with fresh Hosthub data
+        apts: mergeApts(current.apts || [], result.rentals), // merge properties (preserve custom configs)
+        exps: current.exps || [],                           // explicitly preserve expenses
         meta: { ...( current.meta||{}), lastAutoSync: started.toISOString() },
       };
       await pool.query(
