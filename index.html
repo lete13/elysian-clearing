@@ -801,7 +801,14 @@ async function saveToDb() {
 
 
 async function loadFromDb() {
-  if (!_dbAvailable) return;
+  // Self-sufficient: check server config first if not yet done
+  if (!_dbAvailable) {
+    try {
+      const cfg = await fetch('/api/server-config').then(r=>r.json());
+      _dbAvailable = !!cfg.hasDatabase;
+    } catch(e) {}
+    if (!_dbAvailable) return;
+  }
   try {
     const r = await fetch('/api/db/data');
     if (!r.ok) return;
@@ -5543,20 +5550,11 @@ renderDash(); renderCfg(); updBkBadge(); updUA();
 initSyncUI();
 setTimeout(applySearchSelects, 200);
 
-// Step 2: async load from DB (authoritative)
+// Step 2: load from DB (self-sufficient — checks server config internally)
 _showLoadingSpinner(true);
-checkServerConfig().then(() => {
-  if (_dbAvailable) {
-    loadFromDb()
-      .then(() => {
-        _showLoadingSpinner(false);
-        startDbPoll();
-      })
-      .catch(() => { _showLoadingSpinner(false); });
-  } else {
-    _showLoadingSpinner(false);
-  }
-});
+loadFromDb()
+  .then(() => { _showLoadingSpinner(false); startDbPoll(); })
+  .catch(() => { _showLoadingSpinner(false); });
 </script>
 </body>
 </html>
