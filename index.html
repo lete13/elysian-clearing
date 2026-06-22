@@ -721,6 +721,7 @@ let rptMode="mo";
 
 let _saveTimer = null;
 let _dbAvailable = false;
+let _dataInitialized = false; // set true after DB load or import
 let _lastDbSave = null;
 
 // Check if the server has a database on startup
@@ -770,6 +771,12 @@ function save() {
 
 async function saveToDb() {
   if (!_dbAvailable) return;
+  // Guard: never overwrite real DB data with empty startup state
+  // Only write if we have meaningful data OR the DB is already empty
+  if (!S.bks?.length && !S.exps?.length && !_dataInitialized) {
+    console.log('[db] Skipping empty write — data not yet initialized');
+    return;
+  }
   try {
     const payload = { apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]} };
     const r = await fetch('/api/db/data', {
@@ -800,6 +807,8 @@ function load() {
       S.meta = p.meta || {};
     }
   } catch(e) {}
+  // If localStorage had real data, mark as initialized
+  if (S.bks?.length || S.exps?.length) _dataInitialized = true;
   // Always ensure default properties exist
   applyDefaults();
 }
@@ -818,6 +827,7 @@ async function loadFromDb() {
     S.meta    = data.meta    || S.meta    || {};
     S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};
     _lastDbSave = data._savedAt;
+    _dataInitialized = true; // Data confirmed loaded from DB
     // Update localStorage too
     try { localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta })); } catch(e) {}
     // Refresh UI
@@ -5044,6 +5054,7 @@ function _opsAutoRows(date) {
       aptName: bk.aptName||'',
       checkoutGuest: bk.guestName||'',
       alreadyCleaned: false, cleanedDate: null,
+      lateCheckout: false,
       checkoutRequested: false,
       checkinSameDay: nxt ? 'yes' : 'unknown',
       nextNights: nxt ? (nxt.nights||null) : null,
@@ -5102,9 +5113,19 @@ function _opsCheckoutDateCell(row, i) {
 
 function _opsBuildRow(row, i) {
   const bg = _opsRowBg(row);
+  const lBg  = row.lateCheckout ? '#FEF3C7' : 'transparent';
+  const lClr = row.lateCheckout ? '#92400E' : '#9CA3AF';
+  const lBrd = row.lateCheckout ? '1.5px solid #F59E0B' : '1px solid #ddd';
+  const lTxt = row.lateCheckout ? '\u26a0 LATE CO' : 'Late CO';
   return `<tr style="background:${bg}">
     <td style="padding:4px 6px;border:1px solid #ddd;text-align:center;font-size:11px;color:#666">${i+1}</td>
     <td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;font-weight:600;color:#1a1a2e">${row.aptName}</td>
+    <td style="padding:4px 6px;border:1px solid #ddd;text-align:center">
+      <button onclick="opsToggleLate(${i})"
+        style="background:${lBg};border:${lBrd};border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;color:${lClr};cursor:pointer;white-space:nowrap;font-family:inherit">
+        ${lTxt}
+      </button>
+    </td>
     ${_opsCheckoutDateCell(row, i)}
     <td style="padding:4px 6px;border:1px solid #ddd;text-align:center">
       <input type="checkbox" ${row.checkoutRequested?'checked':''} onchange="opsSetRow(${i},'checkoutRequested',this.checked)" style="cursor:pointer;width:16px;height:16px">
@@ -5171,6 +5192,13 @@ function opsToggleCleaned(i) {
   // Re-render just this cell
   const tbody = document.getElementById('ops-tbody');
   if (tbody) { tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join(''); }
+}
+
+function opsToggleLate(i) {
+  if (!_opsRows[i]) return;
+  _opsRows[i].lateCheckout = !_opsRows[i].lateCheckout;
+  const tbody = document.getElementById('ops-tbody');
+  if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');
 }
 
 function opsToggleCheckin(i) {
@@ -5313,7 +5341,7 @@ function renderOps() {
 
   const rowsHtml = _opsRows.length
     ? _opsRows.map(function(r,i){ return _opsBuildRow(r,i); }).join('')
-    : '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9CA3AF;font-style:italic">Δεν υπάρχουν checkout για ' + _opsFmtDate(_opsDate) + '</td></tr>';
+    : '<tr><td colspan="8" style="text-align:center;padding:20px;color:#9CA3AF;font-style:italic">Δεν υπάρχουν checkout για ' + _opsFmtDate(_opsDate) + '</td></tr>';
 
   el.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:0;height:100%">
@@ -5376,6 +5404,7 @@ function renderOps() {
             <tr style="background:#1a1a2e;color:#fff">
               <th style="padding:7px 6px;border:1px solid #374151;width:24px;text-align:center">#</th>
               <th style="padding:7px 10px;border:1px solid #374151;text-align:left;min-width:170px">Καταλύματα</th>
+              <th style="padding:7px 8px;border:1px solid #374151;text-align:center;white-space:nowrap;width:80px">Late CO</th>
               <th style="padding:7px 8px;border:1px solid #374151;text-align:center;white-space:nowrap">Check out</th>
               <th style="padding:7px 6px;border:1px solid #374151;text-align:center;width:30px" title="Cleaned">✓</th>
               <th style="padding:7px 8px;border:1px solid #374151;text-align:center;min-width:150px">Check in ίδιας</th>
@@ -5387,9 +5416,35 @@ function renderOps() {
           <tbody id="ops-tbody">${rowsHtml}</tbody>
         </table>
 
+        <!-- Tasks inside printable -->
+        ${(function(){
+          const pending = tasks.filter(function(t){return !t.completed;});
+          if(!pending.length) return '';
+          const rows = pending.map(function(t){
+            const apt = t.aptId ? (S.apts.find(function(a){return a.id===t.aptId;})||{}).name||t.aptName||'' : '';
+            const overdue = t.createdDate < _opsDate;
+            const bg = overdue ? '#FFFBEB' : '#fff';
+            const chk = '<input type=checkbox onchange="opsCompleteTask(\'' + t.id + '\',this.checked)" style=cursor:pointer>';
+            return '<tr style="background:'+bg+'">'
+              +'<td style="padding:4px 8px;border:1px solid #E5E7EB;width:20px;text-align:center">'+chk+'</td>'
+              +'<td style="padding:4px 8px;border:1px solid #E5E7EB;font-weight:700;color:#374151;white-space:nowrap;width:160px">'+(apt||'<span style=color:#9CA3AF>General</span>')+'</td>'
+              +'<td style="padding:4px 8px;border:1px solid #E5E7EB;color:#374151">'+t.text+'</td>'
+              +'<td style="padding:4px 8px;border:1px solid #E5E7EB;color:#92400E;font-size:10px;white-space:nowrap">'+(overdue?'Από '+_opsFmtDate(t.createdDate):'')+'</td>'
+              +'</tr>';
+          }).join('');
+          return '<div style="margin-top:10px;border-top:1px solid #E5E7EB;padding-top:10px">'
+            +'<div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">📋 Εκκρεμείς εργασίες ('+pending.length+')</div>'
+            +'<table style="border-collapse:collapse;width:100%;font-size:11px"><thead>'
+            +'<tr style="background:#F3F4F6"><th style="padding:4px 8px;border:1px solid #E5E7EB;width:20px"></th>'
+            +'<th style="padding:4px 8px;border:1px solid #E5E7EB;text-align:left;color:#374151">Κατάλυμα</th>'
+            +'<th style="padding:4px 8px;border:1px solid #E5E7EB;text-align:left;color:#374151">Εργασία</th>'
+            +'<th style="padding:4px 8px;border:1px solid #E5E7EB;text-align:left;color:#374151">Από</th></tr>'
+            +'</thead><tbody>'+rows+'</tbody></table></div>';
+        })()}
+
         <!-- Notes -->
-        <div style="margin-top:10px;display:flex;gap:8px;align-items:flex-start">
-          <div style="font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;padding-top:6px">📝 Σχόλια</div>
+        <div style="margin-top:10px;border-top:1px solid #E5E7EB;padding-top:8px;display:flex;gap:8px;align-items:flex-start">
+          <div style="font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;padding-top:4px;font-family:Arial,sans-serif">📝 Σχόλια</div>
           <textarea id="ops-notes-edit" rows="2" placeholder="Γενικές σημειώσεις..."
             oninput="_opsNotes=this.value"
             style="flex:1;padding:6px 8px;border:1px solid #E5E7EB;border-radius:4px;font-size:12px;resize:vertical;font-family:inherit;color:#374151">${notes||''}</textarea>
