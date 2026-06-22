@@ -755,6 +755,26 @@ function updateDbBadge() {
   }
 }
 
+function load() {
+  // Load from localStorage immediately (fast, works offline)
+  try {
+    const d = localStorage.getItem('e_v3') || localStorage.getItem('elysian_v2') || localStorage.getItem('elysian_v1');
+    if (d) {
+      const p = JSON.parse(d);
+      S.apts = p.apts || p.apartments || [];
+      S.bks  = p.bks  || p.bookings   || [];
+      S.exps = p.exps || p.expenses   || [];
+      S.meta = p.meta || {};
+      S.revenue = p.revenue || { cleaning: {}, mgmt: {} };
+      S.daily   = p.daily   || { snapshots: {}, tasks: [] };
+    }
+  } catch(e) {}
+  // If localStorage had real data, mark as initialized
+  if (S.bks?.length || S.exps?.length) _dataInitialized = true;
+  // Apply property defaults (fills blanks only, never overwrites)
+  applyDefaults();
+}
+
 function save() {
   // Immediate local save
   try {
