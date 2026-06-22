@@ -5048,7 +5048,8 @@ function _opsAutoRows(date) {
       checkinSameDay: nxt ? 'yes' : 'unknown',
       nextNights: nxt ? (nxt.nights||null) : null,
       nextGuest:  nxt ? (nxt.guestName||'') : '',
-      people: '', arrivalTime: '', comments: '',
+      people: nxt ? (nxt.guests||'') : '',
+      arrivalTime: '', comments: '',
     });
   });
   return rows;
@@ -5112,7 +5113,7 @@ function _opsBuildRow(row, i) {
     <td style="padding:4px 4px;border:1px solid #ddd;text-align:center">
       <input type="number" min="0" max="20" value="${row.people||''}" onchange="opsSetRow(${i},'people',this.value)"
         placeholder="–"
-        style="width:44px;border:none;background:transparent;text-align:center;font-size:12px;outline:none;color:#1a1a2e">
+        style="width:44px;border:none;background:transparent;text-align:center;font-size:13px;font-weight:${row.people?'700':'400'};outline:none;color:${row.people?'#1a1a2e':'#9CA3AF'}">
     </td>
     <td style="padding:4px 4px;border:1px solid #ddd">
       <input type="text" value="${row.arrivalTime||''}" onchange="opsSetRow(${i},'arrivalTime',this.value)"

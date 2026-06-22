@@ -22,12 +22,27 @@ const PORT = process.env.PORT || 3000;
 // ── PostgreSQL ────────────────────────────────────────────────────────────────
 let pool = null;
 
-if (process.env.DATABASE_URL) {
+// Railway uses several possible variable names for the Postgres connection
+const DB_URL = process.env.DATABASE_URL
+            || process.env.POSTGRES_URL
+            || process.env.PGDATABASE_URL
+            || process.env.DATABASE_PRIVATE_URL
+            || process.env.POSTGRES_PRIVATE_URL;
+
+// Railway also exposes individual PG variables — build URL from those as fallback
+const PG_URL = (!DB_URL && process.env.PGHOST)
+  ? `postgresql://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT||5432}/${process.env.PGDATABASE}`
+  : null;
+
+const connStr = DB_URL || PG_URL;
+
+console.log('  DB_URL found:', connStr ? connStr.slice(0,30)+'…' : 'none');
+console.log('  Env DB vars:', Object.keys(process.env).filter(k=>k.includes('PG')||k.includes('DATABASE')||k.includes('POSTGRES')).join(', '));
+
+if (connStr) {
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes('localhost')
-      ? false
-      : { rejectUnauthorized: false },
+    connectionString: connStr,
+    ssl: connStr.includes('localhost') ? false : { rejectUnauthorized: false },
   });
 
   // Create table on first run
@@ -43,8 +58,8 @@ if (process.env.DATABASE_URL) {
     console.error('  ✗  PostgreSQL init error:', e.message);
   });
 } else {
-  console.log('  ⚠  DATABASE_URL not set — running in local mode (no shared DB)');
-  console.log('     Set DATABASE_URL to enable shared team database.');
+  console.log('  ⚠  No Postgres connection string found — running in local mode');
+  console.log('     Checked: DATABASE_URL, POSTGRES_URL, PGHOST/PGUSER/PGPASSWORD/PGDATABASE');
 }
 
 // ── Password protection (optional) ───────────────────────────────────────────
@@ -237,26 +252,22 @@ app.all('/api/hosthub/*', async (req, res) => {
 });
 
 // ── Full Hosthub Sync ─────────────────────────────────────────────────────────
-app.post('/api/sync', async (req, res) => {
-  const { apiKey: clientKey } = req.body;
-  const apiKey = SERVER_API_KEY || clientKey || '';
-  if (!apiKey) return res.status(400).json({ error: 'Missing apiKey' });
-
-  res.setHeader('Content-Type', 'application/x-ndjson');
-  const log  = (msg, type='info') => { try { res.write(JSON.stringify({ type, msg }) + '\n'); } catch(e) {} };
-  const done = (payload)          => { try { res.write(JSON.stringify({ type:'done', ...payload }) + '\n'); res.end(); } catch(e) {} };
+// ── Core sync function (shared by HTTP endpoint + auto-scheduler) ─────────────
+async function runSync(apiKey, onLog) {
+  const log  = (msg, type='info') => { onLog && onLog(msg, type); };
+  const results = { rentals: [], bookings: [], error: false };
 
   // 1. Verify key
   log('Verifying API key…');
   try {
     const r = await fetch(`${BASE}/users`, { headers: hhH(apiKey) });
-    if (r.status === 401) { log('API key rejected (401).', 'error'); return done({ rentals:[], bookings:[], error:true }); }
-    if (!r.ok)            { log(`Unexpected ${r.status} from /users`, 'error'); return done({ rentals:[], bookings:[], error:true }); }
+    if (r.status === 401) { log('API key rejected (401).', 'error'); results.error=true; return results; }
+    if (!r.ok)            { log(`Unexpected ${r.status} from /users`, 'error'); results.error=true; return results; }
     const u = (await r.json())?.data?.[0];
     log(`Authenticated: ${u?.name || '?'} (${u?.email || '?'})`, 'ok');
   } catch(e) {
     log(`Network error: ${e.message}`, 'error');
-    return done({ rentals:[], bookings:[], error:true });
+    results.error=true; return results;
   }
 
   // 2. Rentals
@@ -274,7 +285,6 @@ app.post('/api/sync', async (req, res) => {
     (total, pageLen, page) => { if (pageLen > 0) log(`  Global page ${page}: +${pageLen} (${total} total)`); }
   ).catch(() => []);
   addEvents(globalEvs);
-  log(`  Global: ${allEvents.length} events`);
 
   log(`  Per-rental fetch for ${rentals.length} properties…`);
   for (const rental of rentals) {
@@ -291,7 +301,7 @@ app.post('/api/sync', async (req, res) => {
   log(`${allEvents.length} total events → ${bookingEvs.length} active bookings`, 'ok');
 
   // 4. Greek taxes
-  log(`Fetching Greek taxes for ${bookingEvs.length} bookings…`, 'warn');
+  log(`Fetching Greek taxes for ${bookingEvs.length} bookings…`);
   const grTaxMap = {}; const BATCH_SIZE = 20; let fetched = 0;
   for (let i = 0; i < bookingEvs.length; i += BATCH_SIZE) {
     const chunk = bookingEvs.slice(i, i + BATCH_SIZE);
@@ -302,12 +312,9 @@ app.post('/api/sync', async (req, res) => {
       } catch(e) {}
     }));
     fetched += chunk.length;
-    if (fetched % 100 === 0 || fetched === bookingEvs.length) {
-      const pct = Math.round(fetched / bookingEvs.length * 100);
-      log(`  ${fetched}/${bookingEvs.length} (${pct}%) — ${Object.keys(grTaxMap).length} with tax data`);
-    }
+    if (fetched % 200 === 0 || fetched === bookingEvs.length)
+      log(`  Taxes: ${fetched}/${bookingEvs.length} — ${Object.keys(grTaxMap).length} with data`);
   }
-  log(`Greek taxes loaded for ${Object.keys(grTaxMap).length}/${bookingEvs.length} bookings`, 'ok');
 
   // 5. Map bookings
   const bookings = bookingEvs.map(ev => {
@@ -320,8 +327,7 @@ app.post('/api/sync', async (req, res) => {
     const gross=grTotal>0?grTotal:guestPd>0?guestPd:ct>0?calcGross+ct:calcGross;
     const d=ev.date_from?new Date(ev.date_from+'T00:00:00'):new Date();
     return {
-      id:ev.id, aptId:'',
-      aptName: ev.rental_unit?.name||ev.rental?.name||rName[ev.rental?.id]||'',
+      id:ev.id, aptId:'', aptName: ev.rental_unit?.name||ev.rental?.name||rName[ev.rental?.id]||'',
       platform: (()=>{
         const code=(ev.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
         const n=(ev.source?.name||'').toLowerCase();
@@ -329,20 +335,128 @@ app.post('/api/sync', async (req, res) => {
         if(CODE[code]) return CODE[code];
         if(n.includes('airbnb')) return 'Airbnb';
         if(n.includes('booking')) return 'Booking.com';
-        if(n.includes('expedia')) return 'Expedia';
-        if(n.includes('vrbo')||n.includes('homeaway')) return 'VRBO';
         return ev.source?.name||code||'Direct';
       })(),
-      guestName:ev.guest_name||ev.title||'', checkIn:ev.date_from||'', checkOut:ev.date_to||'', nights:ev.nights||0,
+      guestName:ev.guest_name||ev.title||'', guests:ev.guest_number||ev.guest_adults||null, checkIn:ev.date_from||'', checkOut:ev.date_to||'', nights:ev.nights||0,
       bkv, cleanH:clf, othr:otf, taxTot:tax, gross, svc, pchg, platFee:svc+pchg, payout:pay,
       ct, bvPrevat:bvpv, vat, at, nbv:nbv||(gross-ct-vat-at), trHost:ct+vat+at, trChan:0, thHost:0,
       mo:d.getMonth(), yr:d.getFullYear(),
     };
   });
 
+  results.rentals  = rentals;
+  results.bookings = bookings;
   log(`Sync complete — ${rentals.length} properties, ${bookings.length} bookings`, 'ok');
-  done({ rentals, bookings });
+  return results;
+}
+
+// ── /api/sync HTTP endpoint ───────────────────────────────────────────────────
+app.post('/api/sync', async (req, res) => {
+  const { apiKey: clientKey } = req.body;
+  const apiKey = SERVER_API_KEY || clientKey || '';
+  if (!apiKey) return res.status(400).json({ error: 'Missing apiKey' });
+
+  res.setHeader('Content-Type', 'application/x-ndjson');
+  const writeLine = (obj) => { try { res.write(JSON.stringify(obj) + '\n'); } catch(e) {} };
+
+  const onLog = (msg, type='info') => writeLine({ type, msg });
+
+  const result = await runSync(apiKey, onLog);
+  writeLine({ type: 'done', rentals: result.rentals, bookings: result.bookings, error: result.error });
+  res.end();
 });
+
+// ── Auto-sync scheduler (runs at 4am server time daily) ──────────────────────
+let _lastAutoSync = null;
+let _autoSyncLog  = [];
+
+async function runAutoSync() {
+  const apiKey = SERVER_API_KEY;
+  if (!apiKey) {
+    console.log('[auto-sync] Skipped — HOSTHUB_API_KEY not set');
+    return;
+  }
+
+  const started = new Date();
+  console.log(`[auto-sync] Starting at ${started.toISOString()}`);
+  _autoSyncLog = [`Started: ${started.toISOString()}`];
+
+  const onLog = (msg, type) => {
+    const line = `[${type||'info'}] ${msg}`;
+    console.log('[auto-sync]', line);
+    _autoSyncLog.push(line);
+    if (_autoSyncLog.length > 100) _autoSyncLog.shift();
+  };
+
+  try {
+    const result = await runSync(apiKey, onLog);
+
+    if (!result.error && pool) {
+      // Load existing DB data, merge new bookings/rentals, save back
+      const existing = await pool.query("SELECT data FROM app_data WHERE key='main'").catch(()=>({rows:[]}));
+      const current  = existing.rows[0]?.data || {};
+      const merged   = {
+        ...current,
+        bks:  result.bookings,
+        apts: mergeApts(current.apts || [], result.rentals),
+        meta: { ...( current.meta||{}), lastAutoSync: started.toISOString() },
+      };
+      await pool.query(
+        `INSERT INTO app_data (key,data) VALUES ('main',$1::jsonb)
+         ON CONFLICT (key) DO UPDATE SET data=$1::jsonb, updated_at=NOW()`,
+        [JSON.stringify(merged)]
+      );
+      console.log(`[auto-sync] Saved ${result.bookings.length} bookings to database`);
+    }
+
+    _lastAutoSync = { at: started.toISOString(), bookings: result.bookings.length, rentals: result.rentals.length, error: result.error };
+  } catch(e) {
+    console.error('[auto-sync] Error:', e.message);
+    _lastAutoSync = { at: started.toISOString(), error: true, message: e.message };
+  }
+}
+
+function mergeApts(existing, rentals) {
+  // Keep existing apt config (fees, aliases etc), add any new rentals
+  const byName = {};
+  for (const a of existing) byName[a.name] = a;
+  for (const r of rentals)  if (!byName[r.name]) byName[r.name] = { id: r.id, name: r.name };
+  return Object.values(byName);
+}
+
+function scheduleAutoSync() {
+  const AUTO_SYNC_HOUR = parseInt(process.env.AUTO_SYNC_HOUR || '4');
+  const now   = new Date();
+  const next  = new Date(now);
+  next.setHours(AUTO_SYNC_HOUR, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const delay = next - now;
+  const hh    = Math.floor(delay / 3600000);
+  const mm    = Math.floor((delay % 3600000) / 60000);
+  console.log(`  ✓  Auto-sync scheduled → ${next.toISOString()} (in ${hh}h ${mm}m)`);
+  setTimeout(async () => {
+    await runAutoSync();
+    scheduleAutoSync(); // schedule next day
+  }, delay);
+}
+
+// Start the scheduler
+scheduleAutoSync();
+
+// ── /api/auto-sync-status — last auto-sync info ───────────────────────────────
+app.get('/api/auto-sync-status', (req, res) => {
+  const AUTO_SYNC_HOUR = parseInt(process.env.AUTO_SYNC_HOUR || '4');
+  const now  = new Date();
+  const next = new Date(now);
+  next.setHours(AUTO_SYNC_HOUR, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  res.json({
+    lastSync: _lastAutoSync,
+    nextSync: next.toISOString(),
+    log: _autoSyncLog.slice(-20),
+  });
+});
+
 
 // ── Server config (tells client what's available) ─────────────────────────────
 app.get('/api/server-config', (req, res) => {
