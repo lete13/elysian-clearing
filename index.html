@@ -5501,6 +5501,24 @@ function renderOps() {
     </div>`;
 }
 
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+load();
+renderDash();
+renderCfg();
+updBkBadge();
+updUA();
+initSyncUI();
+// Apply searchable selects to any selects already populated
+setTimeout(applySearchSelects, 100);
+// Async: check if server has a database, then load shared data
+checkServerConfig().then(() => {
+  if (_dbAvailable) {
+    loadFromDb().then(() => {
+      startDbPoll();
+    });
+  }
+});
 </script>
 </body>
 </html>
