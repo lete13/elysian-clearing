@@ -542,50 +542,34 @@ app.get('/', (req, res) => {
   try {
     let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-    // Inject a guaranteed DB-load script that runs after page load
-    // This runs regardless of what the index.html init does
-    const injected = `
-<script>
-(function() {
-  var _retries = 0;
-  function _ensureDbLoaded() {
-    // Wait until app functions exist, then force DB load if needed
-    if (typeof loadFromDb !== 'function' || typeof S === 'undefined') {
-      if (_retries++ < 20) setTimeout(_ensureDbLoaded, 500);
-      return;
-    }
-    if (S.bks && S.bks.length > 0) return; // already loaded
-    // Not loaded — do it now
-    (async function() {
-      try {
-        var cfg = await fetch('/api/server-config').then(function(r){return r.json();});
-        if (cfg.hasDatabase) {
-          if (typeof _dbAvailable !== 'undefined') _dbAvailable = true;
-          if (typeof _dataInitialized !== 'undefined') _dataInitialized = false;
-          await loadFromDb();
-          if (typeof renderDash === 'function') {
-            renderDash(); renderCfg();
-            if (typeof renderBk === 'function') renderBk();
-            if (typeof renderExp === 'function') renderExp();
-            if (typeof updBkBadge === 'function') updBkBadge();
-          }
-          if (typeof startDbPoll === 'function') startDbPoll();
-        }
-      } catch(e) { console.error('[init] DB load error:', e.message); }
-    })();
-  }
-  // Start checking 1 second after page load
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { setTimeout(_ensureDbLoaded, 1000); });
-  } else {
-    setTimeout(_ensureDbLoaded, 1000);
-  }
-})();
-</script>`;
+    // Inject missing load() function if absent, and guarantee DB load on startup
+    const loadFn = html.includes('function load()') ? '' : [
+      'function load(){',
+      '  try{var d=localStorage.getItem("e_v3")||localStorage.getItem("elysian_v2");',
+      '  if(d){var p=JSON.parse(d);S.apts=p.apts||[];S.bks=p.bks||[];S.exps=p.exps||[];',
+      '  S.meta=p.meta||{};S.revenue=p.revenue||{cleaning:{},mgmt:{}};S.daily=p.daily||{snapshots:{},tasks:[]};}}catch(e){}',
+      '  if(S.bks&&S.bks.length)_dataInitialized=true;',
+      '  if(typeof applyDefaults==="function")applyDefaults();',
+      '}'
+    ].join('\n');
 
-    // Inject before </body>
-    html = html.replace('</body>', injected + '\n</body>');
-    res.setHeader('Content-Type', 'text/html');
+    const injected = '<script>\n' + loadFn + '\n' +
+      '(function(){var _r=0;function _go(){' +
+      'if(typeof S==="undefined"||typeof loadFromDb!=="function"){if(_r++<30)setTimeout(_go,300);return;}' +
+      'if(S.bks&&S.bks.length>0)return;' +
+      '(async function(){try{var cfg=await fetch("/api/server-config").then(function(r){return r.json();});' +
+      'if(cfg.hasDatabase){_dbAvailable=true;_dataInitialized=false;await loadFromDb();' +
+      'if(typeof renderDash==="function")renderDash();' +
+      'if(typeof renderCfg==="function")renderCfg();' +
+      'if(typeof renderBk==="function")renderBk();' +
+      'if(typeof renderExp==="function")renderExp();' +
+      'if(typeof updBkBadge==="function")updBkBadge();' +
+      'if(typeof startDbPoll==="function")startDbPoll();' +
+      '}}catch(e){console.error("[init]",e.message);}})();}' +
+      'setTimeout(_go,800);})();' +
+      '\n<\/script>';
+
+    html = html.replace('</body>', injected + '\n</body>');res.setHeader('Content-Type', 'text/html');
     res.send(html);
   } catch(e) {
     res.sendFile(path.join(__dirname, 'index.html'));
