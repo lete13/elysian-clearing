@@ -5307,11 +5307,20 @@ async function opsCopyImage() {
   }
   try {
     toast('Generating image…', 'info');
+    // Ensure full element height is captured (not clipped to viewport)
+    const fullH = el.scrollHeight;
+    const fullW = el.scrollWidth;
     const canvas = await html2canvas(el, {
       backgroundColor: '#ffffff',
       scale: 2,
       useCORS: true,
       logging: false,
+      height:      fullH,
+      width:       fullW,
+      windowHeight: fullH,
+      windowWidth:  fullW,
+      scrollY: -window.scrollY,
+      scrollX: -window.scrollX,
     });
     canvas.toBlob(async blob => {
       try {
