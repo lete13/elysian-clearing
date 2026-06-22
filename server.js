@@ -536,8 +536,61 @@ app.get('/health', async (req, res) => {
   res.json({ status: 'ok', db: dbOk, ts: Date.now() });
 });
 
-// ── Catch-all: serve the app ──────────────────────────────────────────────────
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+// ── Catch-all: serve the app with injected DB-load guarantee ─────────────────
+const fs = require('fs');
+app.get('/', (req, res) => {
+  try {
+    let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+
+    // Inject a guaranteed DB-load script that runs after page load
+    // This runs regardless of what the index.html init does
+    const injected = `
+<script>
+(function() {
+  var _retries = 0;
+  function _ensureDbLoaded() {
+    // Wait until app functions exist, then force DB load if needed
+    if (typeof loadFromDb !== 'function' || typeof S === 'undefined') {
+      if (_retries++ < 20) setTimeout(_ensureDbLoaded, 500);
+      return;
+    }
+    if (S.bks && S.bks.length > 0) return; // already loaded
+    // Not loaded — do it now
+    (async function() {
+      try {
+        var cfg = await fetch('/api/server-config').then(function(r){return r.json();});
+        if (cfg.hasDatabase) {
+          if (typeof _dbAvailable !== 'undefined') _dbAvailable = true;
+          if (typeof _dataInitialized !== 'undefined') _dataInitialized = false;
+          await loadFromDb();
+          if (typeof renderDash === 'function') {
+            renderDash(); renderCfg();
+            if (typeof renderBk === 'function') renderBk();
+            if (typeof renderExp === 'function') renderExp();
+            if (typeof updBkBadge === 'function') updBkBadge();
+          }
+          if (typeof startDbPoll === 'function') startDbPoll();
+        }
+      } catch(e) { console.error('[init] DB load error:', e.message); }
+    })();
+  }
+  // Start checking 1 second after page load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(_ensureDbLoaded, 1000); });
+  } else {
+    setTimeout(_ensureDbLoaded, 1000);
+  }
+})();
+</script>`;
+
+    // Inject before </body>
+    html = html.replace('</body>', injected + '\n</body>');
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch(e) {
+    res.sendFile(path.join(__dirname, 'index.html'));
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`\n  ✓  Elysian Clearing  →  http://localhost:${PORT}`);
