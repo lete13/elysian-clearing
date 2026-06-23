@@ -542,7 +542,12 @@ function scheduleAutoSync() {
             const code = (e.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
             const srcName = (e.source?.name||'').toLowerCase();
             const platform = CODE[code]||(srcName.includes('airbnb')?'Airbnb':srcName.includes('booking')?'Booking.com':'Direct');
-            return { id:e.id, aptId:apt?.id||'', aptName, cancelled:true, cancelledAt:e.cancelled_at||null, platform, guestName:e.guest_name||e.title||'', guests:e.guest_number||null, checkIn:fmtDate(e.date_from), checkOut:fmtDate(e.date_to), nights:e.nights||0, gross, mo:d.getMonth(), yr:d.getFullYear(), bkv:gross, svc:0, pchg:0, ct:0, vat:0, at:0 };
+            // Estimate platform fee from channel (no financial API for cancelled events)
+            // Professional host rates (verified from actual Elysian bookings)
+            const CHAN_RATES = { 'Airbnb': 0.17, 'Booking.com': 0.15, 'Expedia': 0.15, 'VRBO': 0.05, 'Direct': 0 };
+            const chanRate = CHAN_RATES[platform] ?? 0.03;
+            const svc = Math.round(gross * chanRate * 100) / 100;
+            return { id:e.id, aptId:apt?.id||'', aptName, cancelled:true, cancelledAt:e.cancelled_at||null, platform, guestName:e.guest_name||e.title||'', guests:e.guest_number||null, checkIn:fmtDate(e.date_from), checkOut:fmtDate(e.date_to), nights:e.nights||0, gross, mo:d.getMonth(), yr:d.getFullYear(), bkv:gross-svc, svc, pchg:0, ct:0, vat:0, at:0 };
           });
         if (cancelledBks.length) onLog(`  + ${cancelledBks.length} cancelled-but-paid booking(s) merged`);
 
@@ -737,22 +742,28 @@ app.post('/api/debug-cancelled', async (req, res) => {
   try {
     const evs = await fetchPages(`${BASE}/calendar-events?is_visible=false`, apiKey).catch(()=>[]);
     // Return first 5 raw events with all financial fields
-    const sample = evs.slice(0,5).map(e => ({
-      id: e.id, type: e.type, is_visible: e.is_visible,
-      guest: e.guest_name, rental: e.rental?.name || e.rental_unit?.name,
+    // Return ALL keys from the first paid cancelled event
+    const paidEvs = evs.filter(e => {
+      const g = e.guest_paid?.cents || 0;
+      const b = e.booking_value?.cents || 0;
+      return g > 0 || b > 0;
+    });
+    // Full dump of first paid event
+    const fullDump = paidEvs[0] || evs[0] || {};
+    const sample = paidEvs.slice(0,3).map(e => ({
+      id: e.id, guest: e.guest_name, rental: e.rental?.name||e.rental_unit?.name,
       date_from: e.date_from, date_to: e.date_to,
-      cancelled_at: e.cancelled_at,
-      // All possible financial fields
-      total_price: e.total_price,
-      total_booking_value: e.total_booking_value,
-      guest_paid: e.guest_paid,
-      total_reservation_price: e.total_reservation_price,
-      booking_value: e.booking_value,
-      financial: e.financial_details,
-      channel_commission: e.channel_commission,
-      payout: e.payout,
+      // Financial fields
+      guest_paid: e.guest_paid, booking_value: e.booking_value,
+      total_price: e.total_price, total_booking_value: e.total_booking_value,
+      total_payout: e.total_payout, service_fee_host: e.service_fee_host,
+      service_fee_guest: e.service_fee_guest, cleaning_fee: e.cleaning_fee,
+      other_fees: e.other_fees, taxes: e.taxes,
+      channel_commission: e.channel_commission, payment_processing_fee: e.payment_processing_fee,
+      // Any nested financial object
+      financial_details: e.financial_details, financials: e.financials,
     }));
-    res.json({ total: evs.length, sample });
+    res.json({ total: evs.length, paidCount: paidEvs.length, allKeysOnFirstPaid: Object.keys(fullDump), sample });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
