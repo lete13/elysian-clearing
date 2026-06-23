@@ -454,6 +454,26 @@ app.post('/api/sync', async (req, res) => {
   res.end();
 });
 
+// ── Merge apt configs: preserve existing custom configs, deduplicate by trimmed name ─────
+function mergeApts(existing, rentals) {
+  // Index existing by trimmed lowercase name to preserve configs
+  const byName = {};
+  existing.forEach(a => {
+    if (a.name) byName[a.name.trim().toLowerCase()] = a;
+  });
+  // Add any new rentals from Hosthub not already present
+  rentals.forEach(r => {
+    const key = r.name?.trim().toLowerCase();
+    if (key && !byName[key]) {
+      byName[key] = { id: r.id, name: r.name.trim() };
+    } else if (key && byName[key]) {
+      // Normalize the name (remove trailing spaces) but keep existing config
+      byName[key].name = byName[key].name.trim();
+    }
+  });
+  return Object.values(byName).filter(a => a.name);
+}
+
 // ── Auto-sync scheduler (every 2 hours: 00:00, 02:00, 04:00 ... 22:00) ───────
 function scheduleAutoSync() {
   const now   = new Date();
