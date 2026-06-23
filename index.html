@@ -497,7 +497,7 @@
         <div class="card" style="padding:14px">
           <div class="shdr">Mgmt fee formula</div>
           <div style="font-size:12px;color:var(--tx2);line-height:2.1">
-            (Total value<br>- Climate tax<br>- VAT<br>- Accommodation tax<br>- Cleaning fee (incl. VAT if applicable)<br>- Service fee host<br>- Payment charges)<br>× Management %
+            (Total value<br>- Climate tax<br>- VAT<br>- Accommodation tax<br>- Cleaning fee<br>- Service fee host<br>- Payment charges)<br>× Management %
           </div>
         </div>
         <!-- Actions -->
@@ -2954,7 +2954,7 @@ function addApt(){
   S.apts.push({id:gid(),name,aliases:[],mgmtFee:20,language:'EN',vatOnFees:false,deductCleaning:true,deductCT:true,isLeased:false,postReportReminders:[],vatLiable:false,municipalityTax:true,businessTax:false,chargeVat:false,b2b:false,b2bPartner:'',b2bRemitRate:0,cleaningFee:0,fixedCharges:[],ownerName:'',ownerSurname:'',ownerEmail:''});
   inp.value='';save();renderCfg();renderDash();
 }
-function setApt(id,f,v){const a=S.apts.find(x=>x.id===id);if(a){a[f]=v;save();}}
+function setApt(id,f,v){const a=S.apts.find(x=>x.id===id);if(a){a[f]=v;save();renderCfg();}}
 function togApt(id,f){const a=S.apts.find(x=>x.id===id);if(a){a[f]=!a[f];save();renderCfg();}}
 function delApt(id){
   if(!confirm('Remove this property?'))return;
@@ -3195,7 +3195,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     .concat([csep])
     // ── Elysian service charges ─────────────────────────────────────────────────
     .concat([cg(L.elysianCharges + (hasVat ? ' *' : ''))])
-    .concat(apt.deductCleaning!==false&&m.configCl>0 ? [cr(L.cleaningFee, bks.length+' stays × '+fmt(apt.cleaningFee)+'/stay', -cleanDeduct, hasVat ? -m.cleanVat : null)] : [])
+    .concat(apt.deductCleaning!==false&&m.configCl>0 ? [cr(L.cleaningFee, activeBks.length+' stays × '+fmt(apt.cleaningFee)+'/stay', -cleanDeduct, hasVat ? -m.cleanVat : null)] : [])
     .concat(_apts.flatMap(a => (a.fixedCharges||[]).filter(f=>parseFloat(f.amount)>0).map(f => {
       const fa=parseFloat(f.amount);
       const lbl = _apts.length > 1 ? (f.label||'Software')+' — '+a.name : (f.label||'Software / Fixed charge');
