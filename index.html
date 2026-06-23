@@ -843,7 +843,12 @@ async function loadFromDb() {
     _lastDbSave = data._savedAt;
     _dataInitialized = true;
     // Persist loaded state to localStorage
-    try { localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily })); } catch(e) {}
+    try {
+      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily }));
+      // Sync the "Last synced" display with actual last sync from DB meta
+      const lastSync = S.meta?.lastSync || S.meta?.lastAutoSync;
+      if (lastSync) localStorage.setItem('hh_last_sync', lastSync);
+    } catch(e) {}
     // Refresh UI
     renderDash(); renderCfg(); renderBk(); renderExp();
     if (typeof renderHealth === 'function') renderHealth();
@@ -3926,7 +3931,11 @@ function initSyncUI() {
   if (key) {
     kwrap.style.display = 'block';
     kprev.textContent = key.slice(0,8) + '…' + key.slice(-4);
-    const last = localStorage.getItem('hh_last_sync');
+    const lastManual = localStorage.getItem('hh_last_sync');
+    const lastAuto   = S.meta?.lastAutoSync;
+    // Pick whichever is more recent
+    let last = lastManual;
+    if (lastAuto && (!last || new Date(lastAuto) > new Date(last))) last = lastAuto;
     if (last) sub.textContent = `Last synced: ${new Date(last).toLocaleString('el-GR')}`;
     else sub.textContent = 'API key configured — click to sync all bookings';
   } else {
