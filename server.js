@@ -618,6 +618,85 @@ app.get('/', (req, res) => {
   }
 });
 
+
+// ── Sync cancelled bookings (non-refundable) ────────────────────────────────
+app.post('/api/sync-cancelled', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'No database' });
+  const apiKey = SERVER_API_KEY || req.body?.apiKey;
+  if (!apiKey) return res.status(400).json({ error: 'No API key' });
+
+  try {
+    // Fetch only cancelled events from Hosthub
+    const evs = await fetchPages(`${BASE}/calendar-events?is_visible=false`, apiKey).catch(()=>[]);
+
+    // Keep only those with financial value (owner keeps the money)
+    const paid = evs.filter(e => {
+      const t = (e.type||'').toLowerCase();
+      if (t.includes('hold') || t.includes('block')) return false;
+      const gross = parseFloat(e.total_booking_value || e.guest_paid || e.total_price || 0);
+      return gross > 0;
+    });
+
+    if (!paid.length) return res.json({ added: 0, message: 'No cancelled-but-paid bookings found' });
+
+    // Load existing data
+    const cur = await pool.query("SELECT data FROM app_data WHERE key='main'");
+    const current = cur.rows[0]?.data || {};
+    const existingIds = new Set((current.bks||[]).map(b=>b.id));
+    const currentApts = current.apts || [];
+
+    // Build apt name lookup
+    const aptByName = {};
+    currentApts.forEach(a => { if (a.name) aptByName[a.name.trim().toLowerCase()] = a; });
+
+    const fmtDate = iso => {
+      if (!iso || iso.includes('/')) return iso;
+      const p = iso.split('-');
+      return p.length===3 ? parseInt(p[2])+'/'+parseInt(p[1])+'/'+p[0] : iso;
+    };
+
+    const CODE = {airbnb:'Airbnb',bookingcom:'Booking.com',booking:'Booking.com',
+      expedia:'Expedia',vrbo:'VRBO',direct:'Direct',directbooking:'Direct',hosthub:'Direct'};
+
+    const newBks = paid
+      .filter(e => !existingIds.has(e.id))
+      .map(e => {
+        const aptName = e.rental_unit?.name||e.rental?.name||'';
+        const apt = aptByName[aptName.trim().toLowerCase()];
+        const d = e.date_from ? new Date(e.date_from+'T00:00:00') : new Date();
+        const gr = e.financial_details||{};
+        const gross = parseFloat(e.total_booking_value||e.guest_paid||e.total_price||0);
+        const code = (e.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
+        const name = (e.source?.name||'').toLowerCase();
+        const platform = CODE[code]||(name.includes('airbnb')?'Airbnb':name.includes('booking')?'Booking.com':'Direct');
+        return {
+          id: e.id, aptId: apt?.id||'', aptName,
+          cancelled: true, cancelledAt: e.cancelled_at||null,
+          platform, guestName: e.guest_name||e.title||'',
+          guests: e.guest_number||e.guest_adults||null,
+          checkIn: fmtDate(e.date_from), checkOut: fmtDate(e.date_to),
+          nights: e.nights||0, gross,
+          mo: d.getMonth(), yr: d.getFullYear(),
+          bkv: gross, svc: 0, pchg: 0, ct: 0, vat: 0, at: 0,
+        };
+      });
+
+    if (!newBks.length) return res.json({ added: 0, message: 'All cancelled bookings already in DB' });
+
+    const merged = { ...current, bks: [...(current.bks||[]), ...newBks] };
+    await pool.query(
+      `INSERT INTO app_data (key,data) VALUES ($1,$2::jsonb)
+       ON CONFLICT (key) DO UPDATE SET data=$2::jsonb, updated_at=NOW()`,
+      ['main', JSON.stringify(merged)]
+    );
+
+    res.json({ added: newBks.length, bookings: newBks.map(b=>({ guest:b.guestName, apt:b.aptName, checkIn:b.checkIn, checkOut:b.checkOut, gross:b.gross })) });
+  } catch(e) {
+    console.error('[sync-cancelled]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n  ✓  Elysian Clearing  →  http://localhost:${PORT}`);
   console.log(`  ✓  Hosthub base URL  →  ${BASE}`);

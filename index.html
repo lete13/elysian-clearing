@@ -281,6 +281,7 @@
         <div style="display:flex;flex-direction:column;gap:8px">
           <button class="btn primary" onclick="showTab('imports',document.querySelector('[onclick*=imports]'))" style="justify-content:flex-start"><i class="ti ti-upload"></i> Import data</button>
           <button class="btn" onclick="startSync()" style="justify-content:flex-start"><i class="ti ti-refresh"></i> Sync Hosthub</button>
+          <button class="btn" onclick="syncCancelled()" style="justify-content:flex-start;border-color:#F59E0B;color:#92400E"><i class="ti ti-ban"></i> Sync Cancelled Bookings</button>
           <button class="btn" onclick="showTab('rpt',document.querySelector('[onclick*=rpt]'))" style="justify-content:flex-start"><i class="ti ti-file-analytics"></i> Generate report</button>
           <button class="btn" onclick="showTab('cfg',document.querySelector('[onclick*=cfg]'))" style="justify-content:flex-start"><i class="ti ti-settings-2"></i> Configuration</button>
         </div>
@@ -3971,6 +3972,27 @@ function syncLog(msg, type='') {
 }
 function syncProgress(pct) {
   document.getElementById('sync-bar').style.width = pct + '%';
+}
+
+async function syncCancelled() {
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = 'Syncing…';
+  try {
+    const r = await fetch('/api/sync-cancelled', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const res = await r.json();
+    if (res.added > 0) {
+      // Reload data from DB
+      _dataInitialized = false;
+      await loadFromDb();
+      renderDash();
+      toast(`✓ Added ${res.added} cancelled booking${res.added>1?'s':''} with payment`, 'success');
+    } else {
+      toast(res.message || 'No new cancelled bookings found', 'info');
+    }
+  } catch(e) {
+    toast('Sync failed: ' + e.message, 'error');
+  }
+  btn.disabled = false; btn.textContent = '⊘ Sync Cancelled';
 }
 
 async function startSync() {
