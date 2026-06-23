@@ -335,6 +335,15 @@ async function runSync(apiKey, onLog) {
   const rName = {}; for (const r of rentals) rName[r.id] = r.name;
   log(`${rentals.length} properties loaded`, 'ok');
 
+  // 2b. Load current apts from DB for aptId matching
+  let currentApts = [];
+  if (pool) {
+    try {
+      const dbRow = await pool.query("SELECT data FROM app_data WHERE key='main'");
+      currentApts = dbRow.rows[0]?.data?.apts || [];
+    } catch(e) {}
+  }
+
   // 3. Calendar events
   log('Fetching all bookings…');
   const allEvents = []; const seen = new Set();
@@ -355,7 +364,11 @@ async function runSync(apiKey, onLog) {
 
   const bookingEvs = allEvents.filter(e => {
     const t = (e.type || '').toLowerCase();
-    return !t.includes('hold') && !t.includes('block') && e.is_visible !== false;
+    if (t.includes('hold') || t.includes('block')) return false; // exclude holds/blocks
+    if (e.is_visible !== false) return true;  // active booking — always include
+    // Cancelled booking: only include if there is financial value (owner keeps some payment)
+    const gross = parseFloat(e.total_price || e.guest_paid || e.total_reservation_price || 0);
+    return gross > 0;
   });
   log(`${allEvents.length} total events → ${bookingEvs.length} active bookings`, 'ok');
 
@@ -385,8 +398,24 @@ async function runSync(apiKey, onLog) {
     const calcGross=bkv+clf+otf+tax;
     const gross=grTotal>0?grTotal:guestPd>0?guestPd:ct>0?calcGross+ct:calcGross;
     const d=ev.date_from?new Date(ev.date_from+'T00:00:00'):new Date();
+    // Lookup internal aptId by matching rental name to existing apts
+    const _aptName = ev.rental_unit?.name||ev.rental?.name||rName[ev.rental?.id]||'';
+    const _aptMatch = (currentApts||[]).find(a =>
+      a.name && (_aptName && (
+        a.name.trim().toLowerCase() === _aptName.trim().toLowerCase() ||
+        a.name.trim().toLowerCase().includes(_aptName.trim().toLowerCase()) ||
+        _aptName.trim().toLowerCase().includes(a.name.trim().toLowerCase())
+      ))
+    );
+    // Format date as D/M/YYYY (consistent with rest of app)
+    const _fmtDate = iso => {
+      if (!iso) return '';
+      const p = iso.split('-');
+      if (p.length === 3) return parseInt(p[2]) + '/' + parseInt(p[1]) + '/' + p[0];
+      return iso;
+    };
     return {
-      id:ev.id, aptId:'', aptName: ev.rental_unit?.name||ev.rental?.name||rName[ev.rental?.id]||'',
+      id:ev.id, aptId:_aptMatch?.id||'', aptName:_aptName, cancelled:ev.is_visible===false, cancelledAt:ev.cancelled_at||null,
       platform: (()=>{
         const code=(ev.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
         const n=(ev.source?.name||'').toLowerCase();
@@ -396,7 +425,7 @@ async function runSync(apiKey, onLog) {
         if(n.includes('booking')) return 'Booking.com';
         return ev.source?.name||code||'Direct';
       })(),
-      guestName:ev.guest_name||ev.title||'', guests:ev.guest_number||ev.guest_adults||null, platform:ev.source||'Direct', checkIn:ev.date_from||'', checkOut:ev.date_to||'', nights:ev.nights||0,
+      guestName:ev.guest_name||ev.title||'', guests:ev.guest_number||ev.guest_adults||null, platform:ev.source||'Direct', checkIn:_fmtDate(ev.date_from), checkOut:_fmtDate(ev.date_to), nights:ev.nights||0,
       bkv, cleanH:clf, othr:otf, taxTot:tax, gross, svc, pchg, platFee:svc+pchg, payout:pay,
       ct, bvPrevat:bvpv, vat, at, nbv:nbv||(gross-ct-vat-at), trHost:ct+vat+at, trChan:0, thHost:0,
       mo:d.getMonth(), yr:d.getFullYear(),

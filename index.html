@@ -3324,7 +3324,9 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     +'</div>'
     +bks.map(b=>'<div style="display:grid;grid-template-columns:100px 1fr 90px 90px 50px 100px 100px 90px;padding:5px 14px;border-bottom:.5px solid var(--bdr);gap:8px;align-items:center">'
         +'<div style="font-size:11px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+b.platform+'</div>'
-        +'<div style="font-size:12px;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+b.guestName+'</div>'
+        +'<div style="font-size:12px;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+        +(b.cancelled?'<span style="background:#FEE2E2;color:#991B1B;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-right:4px;vertical-align:middle">ΑΚΥΡ</span>':'')
+        +b.guestName+'</div>'
         +'<div style="font-size:12px;color:var(--tx2);text-align:right">'+b.checkIn+'</div>'
         +'<div style="font-size:12px;color:var(--tx2);text-align:right">'+b.checkOut+'</div>'
         +'<div style="font-size:12px;color:var(--tx2);text-align:right">'+b.nights+'</div>'
