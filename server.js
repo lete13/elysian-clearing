@@ -518,9 +518,37 @@ function scheduleAutoSync() {
       if (!result.error && pool) {
         const existing = await pool.query("SELECT data FROM app_data WHERE key = 'main'").catch(() => ({ rows: [] }));
         const current  = existing.rows[0]?.data || {};
+        // Also fetch cancelled-but-paid bookings and merge them in
+        const cancelledEvs = await fetchPages(`${BASE}/calendar-events?is_visible=false`, apiKey).catch(()=>[]);
+        const centsToEur = v => v && typeof v === 'object' ? (v.cents||0)/100 : parseFloat(v||0);
+        const existingIds = new Set(result.bookings.map(b=>b.id));
+        const currentApts = current.apts || [];
+        const aptByName = {};
+        currentApts.forEach(a => { if (a.name) aptByName[a.name.trim().toLowerCase()] = a; });
+        const fmtDate = iso => { if (!iso||iso.includes('/')) return iso; const p=iso.split('-'); return p.length===3?parseInt(p[2])+'/'+parseInt(p[1])+'/'+p[0]:iso; };
+        const CODE = {airbnb:'Airbnb',bookingcom:'Booking.com',booking:'Booking.com',expedia:'Expedia',vrbo:'VRBO',direct:'Direct',directbooking:'Direct',hosthub:'Direct'};
+        const cancelledBks = cancelledEvs
+          .filter(e => {
+            const t=(e.type||'').toLowerCase();
+            if (t.includes('hold')||t.includes('block')) return false;
+            const gross = centsToEur(e.guest_paid)||centsToEur(e.booking_value);
+            return gross > 0 && !existingIds.has(e.id);
+          })
+          .map(e => {
+            const aptName = e.rental_unit?.name||e.rental?.name||'';
+            const apt = aptByName[aptName.trim().toLowerCase()];
+            const d = e.date_from ? new Date(e.date_from+'T00:00:00') : new Date();
+            const gross = centsToEur(e.guest_paid)||centsToEur(e.booking_value);
+            const code = (e.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
+            const srcName = (e.source?.name||'').toLowerCase();
+            const platform = CODE[code]||(srcName.includes('airbnb')?'Airbnb':srcName.includes('booking')?'Booking.com':'Direct');
+            return { id:e.id, aptId:apt?.id||'', aptName, cancelled:true, cancelledAt:e.cancelled_at||null, platform, guestName:e.guest_name||e.title||'', guests:e.guest_number||null, checkIn:fmtDate(e.date_from), checkOut:fmtDate(e.date_to), nights:e.nights||0, gross, mo:d.getMonth(), yr:d.getFullYear(), bkv:gross, svc:0, pchg:0, ct:0, vat:0, at:0 };
+          });
+        if (cancelledBks.length) onLog(`  + ${cancelledBks.length} cancelled-but-paid booking(s) merged`);
+
         const merged   = {
           ...current,
-          bks:  result.bookings,
+          bks:  [...result.bookings, ...cancelledBks],
           apts: mergeApts(current.apts || [], result.rentals),
           exps: current.exps || [],
           meta: { ...(current.meta || {}), lastAutoSync: started.toISOString(), lastSync: started.toISOString() },
@@ -630,10 +658,13 @@ app.post('/api/sync-cancelled', async (req, res) => {
     const evs = await fetchPages(`${BASE}/calendar-events?is_visible=false`, apiKey).catch(()=>[]);
 
     // Keep only those with financial value (owner keeps the money)
+    // guest_paid is { cents: 6200, currency: "EUR" } format
+    const centsToEur = v => v && typeof v === 'object' ? (v.cents||0)/100 : parseFloat(v||0);
     const paid = evs.filter(e => {
       const t = (e.type||'').toLowerCase();
       if (t.includes('hold') || t.includes('block')) return false;
-      const gross = parseFloat(e.total_booking_value || e.guest_paid || e.total_price || 0);
+      const gross = centsToEur(e.guest_paid) || centsToEur(e.booking_value) ||
+                    centsToEur(e.total_booking_value) || parseFloat(e.total_price||0);
       return gross > 0;
     });
 
@@ -665,7 +696,8 @@ app.post('/api/sync-cancelled', async (req, res) => {
         const apt = aptByName[aptName.trim().toLowerCase()];
         const d = e.date_from ? new Date(e.date_from+'T00:00:00') : new Date();
         const gr = e.financial_details||{};
-        const gross = parseFloat(e.total_booking_value||e.guest_paid||e.total_price||0);
+        const gross = centsToEur(e.guest_paid) || centsToEur(e.booking_value) ||
+          centsToEur(e.total_booking_value) || parseFloat(e.total_price||0);
         const code = (e.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
         const name = (e.source?.name||'').toLowerCase();
         const platform = CODE[code]||(name.includes('airbnb')?'Airbnb':name.includes('booking')?'Booking.com':'Direct');
