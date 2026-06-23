@@ -425,7 +425,7 @@ async function runSync(apiKey, onLog) {
         if(n.includes('booking')) return 'Booking.com';
         return ev.source?.name||code||'Direct';
       })(),
-      guestName:ev.guest_name||ev.title||'', guests:ev.guest_number||ev.guest_adults||null, platform:ev.source||'Direct', checkIn:_fmtDate(ev.date_from), checkOut:_fmtDate(ev.date_to), nights:ev.nights||0,
+      guestName:ev.guest_name||ev.title||'', guests:ev.guest_number||ev.guest_adults||null, checkIn:_fmtDate(ev.date_from), checkOut:_fmtDate(ev.date_to), nights:ev.nights||0,
       bkv, cleanH:clf, othr:otf, taxTot:tax, gross, svc, pchg, platFee:svc+pchg, payout:pay,
       ct, bvPrevat:bvpv, vat, at, nbv:nbv||(gross-ct-vat-at), trHost:ct+vat+at, trChan:0, thHost:0,
       mo:d.getMonth(), yr:d.getFullYear(),
