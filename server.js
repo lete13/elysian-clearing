@@ -697,6 +697,35 @@ app.post('/api/sync-cancelled', async (req, res) => {
   }
 });
 
+
+// ── Debug: inspect raw cancelled events from Hosthub ────────────────────────
+app.post('/api/debug-cancelled', async (req, res) => {
+  const apiKey = SERVER_API_KEY || req.body?.apiKey;
+  if (!apiKey) return res.status(400).json({ error: 'No API key' });
+  try {
+    const evs = await fetchPages(`${BASE}/calendar-events?is_visible=false`, apiKey).catch(()=>[]);
+    // Return first 5 raw events with all financial fields
+    const sample = evs.slice(0,5).map(e => ({
+      id: e.id, type: e.type, is_visible: e.is_visible,
+      guest: e.guest_name, rental: e.rental?.name || e.rental_unit?.name,
+      date_from: e.date_from, date_to: e.date_to,
+      cancelled_at: e.cancelled_at,
+      // All possible financial fields
+      total_price: e.total_price,
+      total_booking_value: e.total_booking_value,
+      guest_paid: e.guest_paid,
+      total_reservation_price: e.total_reservation_price,
+      booking_value: e.booking_value,
+      financial: e.financial_details,
+      channel_commission: e.channel_commission,
+      payout: e.payout,
+    }));
+    res.json({ total: evs.length, sample });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n  ✓  Elysian Clearing  →  http://localhost:${PORT}`);
   console.log(`  ✓  Hosthub base URL  →  ${BASE}`);
