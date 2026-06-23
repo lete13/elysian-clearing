@@ -2375,7 +2375,9 @@ function calcBase(bks,apt){
   const thHost   =bks.reduce((s,b)=>s+(b.thHost||0),0);
   const bvPreVat =bks.reduce((s,b)=>s+(b.bvPrevat||0),0);
   // Configured cleaning fee (ex-VAT)
-  const configCl = parseFloat(apt?.cleaningFee||0)*bks.length;
+  // Cancelled bookings don't incur a cleaning fee (no stay happened)
+  const activeBks = bks.filter(b => !b.cancelled);
+  const configCl = parseFloat(apt?.cleaningFee||0)*activeBks.length;
   // When vatOnFees is ON, cleaning cost to owner = configCl × 1.24 (fee + 24% VAT)
   // The full VAT-inclusive cleaning amount must be deducted before applying management %
   const cleanVat   = apt?.vatOnFees ? configCl * 0.24 : 0;
@@ -2400,8 +2402,11 @@ function getRptBks(aptId,from,to){
 }
 function getRptDates(){
   if(rptMode==='mo'){
-    const mo=parseInt(document.getElementById('r-mo')?.value??0);
-    const yr=parseInt(document.getElementById('r-yr')?.value)||2026;
+    // Ensure month select is populated before reading
+    const ms=document.getElementById('r-mo');
+    if(ms&&!ms.options.length) ms.innerHTML=MONTHS.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
+    const mo=parseInt(ms?.value??ms?.selectedIndex??new Date().getMonth());
+    const yr=parseInt(document.getElementById('r-yr')?.value)||new Date().getFullYear();
     return{from:new Date(yr,mo,1),to:new Date(yr,mo+1,0),lbl:`${MONTHS[mo]} ${yr}`};
   }else{
     const f=parseD(document.getElementById('r-from')?.value);
