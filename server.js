@@ -538,16 +538,20 @@ function scheduleAutoSync() {
             const aptName = e.rental_unit?.name||e.rental?.name||'';
             const apt = aptByName[aptName.trim().toLowerCase()];
             const d = e.date_from ? new Date(e.date_from+'T00:00:00') : new Date();
-            const gross = centsToEur(e.guest_paid)||centsToEur(e.booking_value);
+            const gross  = (e.guest_paid?.cents  || 0) / 100;
+            const svc    = (e.service_fee_host?.cents  || 0) / 100;
+            const pchg   = (e.payment_charges?.cents   || 0) / 100;
+            const payout = (e.total_payout?.cents      || 0) / 100;
+            const bkv    = gross - svc - pchg;
             const code = (e.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
             const srcName = (e.source?.name||'').toLowerCase();
+            const CODE = {airbnb:'Airbnb',bookingcom:'Booking.com',booking:'Booking.com',expedia:'Expedia',vrbo:'VRBO',direct:'Direct',directbooking:'Direct',hosthub:'Direct'};
             const platform = CODE[code]||(srcName.includes('airbnb')?'Airbnb':srcName.includes('booking')?'Booking.com':'Direct');
-            // Estimate platform fee from channel (no financial API for cancelled events)
-            // Professional host rates (verified from actual Elysian bookings)
-            const CHAN_RATES = { 'Airbnb': 0.17, 'Booking.com': 0.15, 'Expedia': 0.15, 'VRBO': 0.05, 'Direct': 0 };
-            const chanRate = CHAN_RATES[platform] ?? 0.03;
-            const svc = Math.round(gross * chanRate * 100) / 100;
-            return { id:e.id, aptId:apt?.id||'', aptName, cancelled:true, cancelledAt:e.cancelled_at||null, platform, guestName:e.guest_name||e.title||'', guests:e.guest_number||null, checkIn:fmtDate(e.date_from), checkOut:fmtDate(e.date_to), nights:e.nights||0, gross, mo:d.getMonth(), yr:d.getFullYear(), bkv:gross-svc, svc, pchg:0, ct:0, vat:0, at:0 };
+            return { id:e.id, aptId:apt?.id||'', aptName, cancelled:true, cancelledAt:e.cancelled_at||null,
+              platform, guestName:e.guest_name||e.title||'',
+              guests:e.guest_number||null, checkIn:fmtDate(e.date_from), checkOut:fmtDate(e.date_to),
+              nights:e.nights||0, gross, mo:d.getMonth(), yr:d.getFullYear(),
+              bkv, svc, pchg, payout, ct:0, vat:0, at:0 };
           });
         if (cancelledBks.length) onLog(`  + ${cancelledBks.length} cancelled-but-paid booking(s) merged`);
 
@@ -700,22 +704,20 @@ app.post('/api/sync-cancelled', async (req, res) => {
         const aptName = e.rental_unit?.name||e.rental?.name||'';
         const apt = aptByName[aptName.trim().toLowerCase()];
         const d = e.date_from ? new Date(e.date_from+'T00:00:00') : new Date();
-        const gr = e.financial_details||{};
-        const gross = centsToEur(e.guest_paid) || centsToEur(e.booking_value) ||
-          centsToEur(e.total_booking_value) || parseFloat(e.total_price||0);
+        const gross  = (e.guest_paid?.cents || 0) / 100;
+        const svc    = (e.service_fee_host?.cents  || 0) / 100;
+        const pchg   = (e.payment_charges?.cents   || 0) / 100;
+        const payout = (e.total_payout?.cents      || 0) / 100;
+        const bkv    = gross - svc - pchg;
         const code = (e.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
-        const name = (e.source?.name||'').toLowerCase();
-        const platform = CODE[code]||(name.includes('airbnb')?'Airbnb':name.includes('booking')?'Booking.com':'Direct');
-        return {
-          id: e.id, aptId: apt?.id||'', aptName,
-          cancelled: true, cancelledAt: e.cancelled_at||null,
-          platform, guestName: e.guest_name||e.title||'',
-          guests: e.guest_number||e.guest_adults||null,
-          checkIn: fmtDate(e.date_from), checkOut: fmtDate(e.date_to),
-          nights: e.nights||0, gross,
-          mo: d.getMonth(), yr: d.getFullYear(),
-          bkv: gross, svc: 0, pchg: 0, ct: 0, vat: 0, at: 0,
-        };
+        const srcName = (e.source?.name||'').toLowerCase();
+        const CODE = {airbnb:'Airbnb',bookingcom:'Booking.com',booking:'Booking.com',expedia:'Expedia',vrbo:'VRBO',direct:'Direct',directbooking:'Direct',hosthub:'Direct'};
+        const platform = CODE[code]||(srcName.includes('airbnb')?'Airbnb':srcName.includes('booking')?'Booking.com':'Direct');
+        return { id:e.id, aptId:apt?.id||'', aptName, cancelled:true, cancelledAt:e.cancelled_at||null,
+          platform, guestName:e.guest_name||e.title||'',
+          guests:e.guest_number||null, checkIn:fmtDate(e.date_from), checkOut:fmtDate(e.date_to),
+          nights:e.nights||0, gross, mo:d.getMonth(), yr:d.getFullYear(),
+          bkv, svc, pchg, payout, ct:0, vat:0, at:0 };
       });
 
     if (!newBks.length) return res.json({ added: 0, message: 'All cancelled bookings already in DB' });
@@ -742,28 +744,32 @@ app.post('/api/debug-cancelled', async (req, res) => {
   try {
     const evs = await fetchPages(`${BASE}/calendar-events?is_visible=false`, apiKey).catch(()=>[]);
     // Return first 5 raw events with all financial fields
-    // Return ALL keys from the first paid cancelled event
-    const paidEvs = evs.filter(e => {
-      const g = e.guest_paid?.cents || 0;
-      const b = e.booking_value?.cents || 0;
-      return g > 0 || b > 0;
+    // Find first paid cancelled event
+    const paidEvs = evs.filter(e => (e.guest_paid?.cents||0) > 0 || (e.booking_value?.cents||0) > 0);
+    const firstPaid = paidEvs[0];
+
+    // Fetch the same event from per-rental endpoint to compare fields
+    let perRentalEvent = null;
+    if (firstPaid?.rental?.id) {
+      const perRental = await fetchPages(
+        `${BASE}/rentals/${firstPaid.rental.id}/calendar-events?is_visible=false`, apiKey
+      ).catch(()=>[]);
+      perRentalEvent = perRental.find(e => e.id === firstPaid.id);
+    }
+
+    const sample = paidEvs.slice(0,3).map(e => {
+      const all = {};
+      Object.keys(e).forEach(k => { all[k] = e[k]; });
+      return all;
     });
-    // Full dump of first paid event
-    const fullDump = paidEvs[0] || evs[0] || {};
-    const sample = paidEvs.slice(0,3).map(e => ({
-      id: e.id, guest: e.guest_name, rental: e.rental?.name||e.rental_unit?.name,
-      date_from: e.date_from, date_to: e.date_to,
-      // Financial fields
-      guest_paid: e.guest_paid, booking_value: e.booking_value,
-      total_price: e.total_price, total_booking_value: e.total_booking_value,
-      total_payout: e.total_payout, service_fee_host: e.service_fee_host,
-      service_fee_guest: e.service_fee_guest, cleaning_fee: e.cleaning_fee,
-      other_fees: e.other_fees, taxes: e.taxes,
-      channel_commission: e.channel_commission, payment_processing_fee: e.payment_processing_fee,
-      // Any nested financial object
-      financial_details: e.financial_details, financials: e.financials,
-    }));
-    res.json({ total: evs.length, paidCount: paidEvs.length, allKeysOnFirstPaid: Object.keys(fullDump), sample });
+    res.json({
+      total: evs.length,
+      paidCount: paidEvs.length,
+      globalEventKeys: firstPaid ? Object.keys(firstPaid) : [],
+      perRentalEventKeys: perRentalEvent ? Object.keys(perRentalEvent) : ['not fetched'],
+      globalSample: sample,
+      perRentalComparison: perRentalEvent || null,
+    });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
