@@ -425,79 +425,72 @@ app.post('/api/sync', async (req, res) => {
   res.end();
 });
 
-// ── Auto-sync scheduler (runs at 4am server time daily) ──────────────────────
-let _lastAutoSync = null;
-let _autoSyncLog  = [];
+// ── Auto-sync scheduler (every 2 hours: 00:00, 02:00, 04:00 ... 22:00) ───────
+function scheduleAutoSync() {
+  const now   = new Date();
+  const hh    = now.getHours();
+  const mm    = now.getMinutes();
+  const ss    = now.getSeconds();
 
-async function runAutoSync() {
-  const apiKey = SERVER_API_KEY;
-  if (!apiKey) {
-    console.log('[auto-sync] Skipped — HOSTHUB_API_KEY not set');
-    return;
+  // Next even hour (0, 2, 4, 6 ... 22)
+  const nextHour = hh % 2 === 0 && mm === 0 && ss < 5
+    ? hh                          // just hit an even hour — run now-ish handled below
+    : (Math.floor(hh / 2) + 1) * 2; // next even hour
+
+  const nextRun = new Date(now);
+  if (nextHour >= 24) {
+    // wrap to midnight next day
+    nextRun.setDate(nextRun.getDate() + 1);
+    nextRun.setHours(0, 0, 0, 0);
+  } else {
+    nextRun.setHours(nextHour, 0, 0, 0);
   }
 
-  const started = new Date();
-  console.log(`[auto-sync] Starting at ${started.toISOString()}`);
-  _autoSyncLog = [`Started: ${started.toISOString()}`];
+  const msUntil = nextRun - now;
+  const hLeft   = Math.floor(msUntil / 3600000);
+  const mLeft   = Math.floor((msUntil % 3600000) / 60000);
 
-  const onLog = (msg, type) => {
-    const line = `[${type||'info'}] ${msg}`;
-    console.log('[auto-sync]', line);
-    _autoSyncLog.push(line);
-    if (_autoSyncLog.length > 100) _autoSyncLog.shift();
-  };
+  console.log(`  ✓  Auto-sync scheduled → ${nextRun.toISOString()} (in ${hLeft}h ${mLeft}m)`);
 
-  try {
-    const result = await runSync(apiKey, onLog);
-
-    if (!result.error && pool) {
-      // Load existing DB data, merge new bookings/rentals, save back
-      const existing = await pool.query("SELECT data FROM app_data WHERE key='main'").catch(()=>({rows:[]}));
-      const current  = existing.rows[0]?.data || {};
-      const merged   = {
-        ...current,                                          // preserve ALL existing data (exps, revenue, daily, etc.)
-        bks:  result.bookings,                              // replace bookings with fresh Hosthub data
-        apts: mergeApts(current.apts || [], result.rentals), // merge properties (preserve custom configs)
-        exps: current.exps || [],                           // explicitly preserve expenses
-        meta: { ...( current.meta||{}), lastAutoSync: started.toISOString() },
-      };
-      await pool.query(
-        `INSERT INTO app_data (key,data) VALUES ('main',$1::jsonb)
-         ON CONFLICT (key) DO UPDATE SET data=$1::jsonb, updated_at=NOW()`,
-        [JSON.stringify(merged)]
-      );
-      console.log(`[auto-sync] Saved ${result.bookings.length} bookings to database`);
+  setTimeout(async () => {
+    const apiKey = SERVER_API_KEY || (pool ? await getStoredApiKey() : null);
+    if (!apiKey) {
+      console.log('[auto-sync] No API key — skipping');
+      scheduleAutoSync();
+      return;
     }
 
-    _lastAutoSync = { at: started.toISOString(), bookings: result.bookings.length, rentals: result.rentals.length, error: result.error };
-  } catch(e) {
-    console.error('[auto-sync] Error:', e.message);
-    _lastAutoSync = { at: started.toISOString(), error: true, message: e.message };
-  }
-}
+    const started = new Date();
+    console.log(`[auto-sync] Starting sync at ${started.toISOString()}`);
+    const onLog = msg => console.log('[auto-sync]', msg);
 
-function mergeApts(existing, rentals) {
-  // Keep existing apt config (fees, aliases etc), add any new rentals
-  const byName = {};
-  for (const a of existing) byName[a.name] = a;
-  for (const r of rentals)  if (!byName[r.name]) byName[r.name] = { id: r.id, name: r.name };
-  return Object.values(byName);
-}
+    try {
+      const result = await runSync(apiKey, onLog);
+      if (!result.error && pool) {
+        const existing = await pool.query("SELECT data FROM app_data WHERE key = 'main'").catch(() => ({ rows: [] }));
+        const current  = existing.rows[0]?.data || {};
+        const merged   = {
+          ...current,
+          bks:  result.bookings,
+          apts: mergeApts(current.apts || [], result.rentals),
+          exps: current.exps || [],
+          meta: { ...(current.meta || {}), lastAutoSync: started.toISOString(), lastSync: started.toISOString() },
+        };
+        await pool.query(
+          `INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb)
+           ON CONFLICT (key) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`,
+          ['main', JSON.stringify(merged)]
+        );
+        console.log(`[auto-sync] ✓ Done — ${result.bookings.length} bookings saved at ${started.toISOString()}`);
+      } else if (result.error) {
+        console.error('[auto-sync] Sync error:', result.error);
+      }
+    } catch (e) {
+      console.error('[auto-sync] Unexpected error:', e.message);
+    }
 
-function scheduleAutoSync() {
-  const AUTO_SYNC_HOUR = parseInt(process.env.AUTO_SYNC_HOUR || '4');
-  const now   = new Date();
-  const next  = new Date(now);
-  next.setHours(AUTO_SYNC_HOUR, 0, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1);
-  const delay = next - now;
-  const hh    = Math.floor(delay / 3600000);
-  const mm    = Math.floor((delay % 3600000) / 60000);
-  console.log(`  ✓  Auto-sync scheduled → ${next.toISOString()} (in ${hh}h ${mm}m)`);
-  setTimeout(async () => {
-    await runAutoSync();
-    scheduleAutoSync(); // schedule next day
-  }, delay);
+    scheduleAutoSync(); // schedule next run
+  }, msUntil);
 }
 
 // Start the scheduler
