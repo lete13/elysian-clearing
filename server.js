@@ -682,7 +682,9 @@ app.post('/api/sync-cancelled', async (req, res) => {
     // Load existing data
     const cur = await pool.query("SELECT data FROM app_data WHERE key='main'");
     const current = cur.rows[0]?.data || {};
-    const existingIds = new Set((current.bks||[]).map(b=>b.id));
+    // Remove ALL existing cancelled bookings — replace with fresh real data from Hosthub
+    const nonCancelled = (current.bks||[]).filter(b => !b.cancelled);
+    const existingIds = new Set(); // empty — always re-add all paid cancelled bookings
     const currentApts = current.apts || [];
 
     // Build apt name lookup
@@ -722,7 +724,7 @@ app.post('/api/sync-cancelled', async (req, res) => {
 
     if (!newBks.length) return res.json({ added: 0, message: 'All cancelled bookings already in DB' });
 
-    const merged = { ...current, bks: [...(current.bks||[]), ...newBks] };
+    const merged = { ...current, bks: [...nonCancelled, ...newBks] };
     await pool.query(
       `INSERT INTO app_data (key,data) VALUES ($1,$2::jsonb)
        ON CONFLICT (key) DO UPDATE SET data=$2::jsonb, updated_at=NOW()`,
@@ -757,11 +759,17 @@ app.post('/api/debug-cancelled', async (req, res) => {
       perRentalEvent = perRental.find(e => e.id === firstPaid.id);
     }
 
-    const sample = paidEvs.slice(0,3).map(e => {
-      const all = {};
-      Object.keys(e).forEach(k => { all[k] = e[k]; });
-      return all;
-    });
+    const sample = paidEvs.slice(0,3).map(e => ({
+      id: e.id, guest: e.guest_name, rental: e.rental?.name||e.rental_unit?.name,
+      guest_paid:             e.guest_paid,
+      service_fee_host:       e.service_fee_host,
+      service_fee_host_base:  e.service_fee_host_base,
+      service_fee_host_vat:   e.service_fee_host_vat,
+      payment_charges:        e.payment_charges,
+      total_payout:           e.total_payout,
+      taxes:                  e.taxes,
+      cancellation_fee:       e.cancellation_fee,
+    }));
     res.json({
       total: evs.length,
       paidCount: paidEvs.length,

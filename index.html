@@ -2387,8 +2387,8 @@ function calcBase(bks,apt){
   // Falls back to gross-ct-vat if API data not yet fetched
   // Management base: pre-VAT booking value minus accommodation tax, cleaning (ex-VAT only), platform fees
   // Cleaning VAT is NOT deducted from base — it is an Elysian service charge, not a base deduction
-  const preVatBase = bvPreVat > 0 ? bvPreVat : (gross - ct - vat);
-  const base = preVatBase - at - configCl - svc - pchg;
+  // Management fee base = Revenue - Climate Tax - VAT - Platform Fees (incl VAT) - Payment Charges - Cleaning
+  const base = gross - ct - vat - at - svc - pchg - configCl;
   return{base,gross,ct,vat,at,totTax,cleanH,configCl,cleanVat,cleanTotal,svc,pchg,totPay,netBkVal,trHost,trChan,thHost,bvPreVat};
 }
 
@@ -3324,26 +3324,28 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     +'</div>';
 
   // ── Reservations table ──────────────────────────────────────────────────────
+  const RSV_COLS = '90px 1fr 80px 80px 40px 90px 90px 80px 80px 90px';
   const rsvTable = bks.length === 0 ? '' :
-    '<div style="margin-top:14px;border:.5px solid var(--bdr2);border-radius:var(--r);overflow:hidden">'
+    '<div style="margin-top:14px;border:.5px solid var(--bdr2);border-radius:var(--r);overflow:hidden;page-break-inside:avoid">'
     +'<div style="padding:8px 14px;background:#0F1E2E;font-size:10px;font-weight:600;color:#C9A84C;text-transform:uppercase;letter-spacing:.06em">'
       +L.reservations+' ('+bks.length+') · '+nights+' nights</div>'
-    +'<div style="display:grid;grid-template-columns:100px 1fr 90px 90px 50px 100px 100px 90px;padding:6px 14px;background:var(--bg2);border-bottom:.5px solid var(--bdr);gap:8px">'
-      +[L.channel||'Channel','Guest','Check-in','Check-out','Nts','Gross','Payout','Clim. Tax']
-        .map((c,i)=>'<div style="font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;'+(i>1?'text-align:right;':'')+'">'+c+'</div>')
-        .join('')
+    +'<div style="display:grid;grid-template-columns:'+RSV_COLS+';padding:6px 14px;background:var(--bg2);border-bottom:.5px solid var(--bdr);gap:6px">'
+      +['Channel','Guest','Check-in','Check-out','Nts','Gross','Platf. fee','Pmt chg','Clim.tax','Payout']
+        .map(c=>'<div style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;text-align:center">'+c+'</div>').join('')
     +'</div>'
-    +bks.map(b=>'<div style="display:grid;grid-template-columns:100px 1fr 90px 90px 50px 100px 100px 90px;padding:5px 14px;border-bottom:.5px solid var(--bdr);gap:8px;align-items:center">'
-        +'<div style="font-size:11px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+b.platform+'</div>'
-        +'<div style="font-size:12px;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-        +(b.cancelled?'<span style="background:#FEE2E2;color:#991B1B;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-right:4px;vertical-align:middle">ΑΚΥΡ</span>':'')
+    +bks.map(b=>'<div style="display:grid;grid-template-columns:'+RSV_COLS+';padding:5px 14px;border-bottom:.5px solid var(--bdr);gap:6px;align-items:center">'
+        +'<div style="font-size:10px;color:var(--tx2);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+b.platform+'</div>'
+        +'<div style="font-size:11px;color:var(--tx);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+        +(b.cancelled?'<span style="background:#FEE2E2;color:#991B1B;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-right:4px">ΑΚΥΡ</span>':'')
         +b.guestName+'</div>'
-        +'<div style="font-size:12px;color:var(--tx2);text-align:right">'+b.checkIn+'</div>'
-        +'<div style="font-size:12px;color:var(--tx2);text-align:right">'+b.checkOut+'</div>'
-        +'<div style="font-size:12px;color:var(--tx2);text-align:right">'+b.nights+'</div>'
-        +'<div style="font-family:var(--mono);font-size:12px;text-align:right">'+fmt(b.gross)+'</div>'
-        +'<div style="font-family:var(--mono);font-size:12px;text-align:right;color:#1a7a4a">'+fmt(b.payout)+'</div>'
-        +'<div style="font-family:var(--mono);font-size:12px;text-align:right;color:#92400E">'+(b.ct>0?fmt(b.ct):'–')+'</div>'
+        +'<div style="font-size:10px;color:var(--tx2);text-align:center">'+b.checkIn+'</div>'
+        +'<div style="font-size:10px;color:var(--tx2);text-align:center">'+b.checkOut+'</div>'
+        +'<div style="font-size:10px;color:var(--tx2);text-align:center">'+b.nights+'</div>'
+        +'<div style="font-family:var(--mono);font-size:10px;text-align:center">'+fmt(b.gross)+'</div>'
+        +'<div style="font-family:var(--mono);font-size:10px;text-align:center;color:'+((b.svc||0)>0?'#DC2626':'var(--tx3)')+'">'+((b.svc||0)>0?fmt(b.svc):'–')+'</div>'
+        +'<div style="font-family:var(--mono);font-size:10px;text-align:center;color:'+((b.pchg||0)>0?'#DC2626':'var(--tx3)')+'">'+((b.pchg||0)>0?fmt(b.pchg):'–')+'</div>'
+        +'<div style="font-family:var(--mono);font-size:10px;text-align:center;color:'+((b.ct||0)>0?'#92400E':'var(--tx3)')+'">'+((b.ct||0)>0?fmt(b.ct):'–')+'</div>'
+        +'<div style="font-family:var(--mono);font-size:10px;font-weight:600;text-align:center;color:#1a7a4a">'+fmt(b.payout||0)+'</div>'
       +'</div>'
     ).join('')
     +'</div>';
