@@ -847,12 +847,16 @@ async function loadFromDb() {
     // Refresh UI
     renderDash(); renderCfg(); renderBk(); renderExp();
     if (typeof renderHealth === 'function') renderHealth();
-    if (document.getElementById('tab-ops')?.classList.contains('active')) renderOps();
-    if (document.getElementById('tab-rev')?.classList.contains('active')) renderRevenue();
-    // Re-render Daily Ops if it's the active tab (data may not have been ready on first click)
-    if (document.getElementById('tab-ops')?.classList.contains('active')) renderOps();
-    // Re-render Revenue if active
-    if (document.getElementById('tab-rev')?.classList.contains('active')) renderRevenue();
+    // Re-render whichever tab is currently active with fresh DB data
+    const _activeTab = document.querySelector('.tab-panel.active')?.id;
+    if (_activeTab === 'tab-rpt')  { initRptSel(); renderRpt(); }
+    if (_activeTab === 'tab-ann')  { initAnnSel(); renderAnn(); }
+    if (_activeTab === 'tab-bk')   { populateBkF(); renderBk(); }
+    if (_activeTab === 'tab-exp')  renderExp();
+    if (_activeTab === 'tab-cfg')  renderCfg();
+    if (_activeTab === 'tab-ops')  renderOps();
+    if (_activeTab === 'tab-rev')  renderRevenue();
+    renderDash();
     updateDbBadge();
     console.log('[db] Loaded from shared database, savedAt:', data._savedAt);
   } catch(e) {
@@ -3355,7 +3359,7 @@ function renderRpt(){
   // Filter bookings by date AND selected channels
   // Gather bookings from ALL selected properties
   const allBks=_selIds.flatMap(id=>getRptBks(id,dates.from,dates.to));
-  const bks=allBks.filter(b=>chanSel.has(b.platform));
+  const bks=allBks.filter(b=>chanSel.has(b.platform||b.channel));
   const pED=e=>{if(!e.date)return null;const d=parseD(e.date);return d&&!isNaN(d)?d:null;};
   const exps=S.exps.filter(e=>{
     if(!e.aptId||e.charge===false)return false;
@@ -4425,7 +4429,7 @@ let rptChanSel = null;
 let cfgSearch = ''; // Set of selected platforms, null = use default
 
 function getAptChannels(aptId) {
-  return [...new Set(S.bks.filter(b=>b.aptId===aptId).map(b=>b.platform).filter(Boolean))].sort();
+  return [...new Set(S.bks.filter(b=>b.aptId===aptId).map(b=>b.platform||b.channel).filter(Boolean))].sort();
 }
 function getSelChannels(aptId) {
   const all = getAptChannels(aptId);
@@ -4449,7 +4453,7 @@ function renderChanPills(aptId) {
   if (!all.length) { el.innerHTML='<div style="font-size:12px;color:var(--tx3)">No bookings yet</div>'; return; }
   const sel = getSelChannels(aptId);
   const counts = {};
-  S.bks.filter(b=>b.aptId===aptId).forEach(b => { counts[b.platform]=(counts[b.platform]||0)+1; });
+  S.bks.filter(b=>b.aptId===aptId).forEach(b => { const _p=b.platform||b.channel;counts[_p]=(counts[_p]||0)+1; });
   const CCOL = {
     airbnb:       'background:#FF5A5F22;border:.5px solid #FF5A5F88;color:#c0392b',
     'booking.com':'background:#00357a;border:.5px solid #00357a;color:#fff',
