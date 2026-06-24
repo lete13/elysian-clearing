@@ -5149,8 +5149,27 @@ function _opsAutoRows(date) {
 function _opsLoadData(date) {
   _opsEnsure();
   const snap = S.daily.snapshots[date];
-  if (snap) return { rows: snap.rows, notes: snap.notes||'', savedAt: snap.savedAt };
-  return { rows: _opsAutoRows(date), notes: '', savedAt: null };
+  const freshRows = _opsAutoRows(date);
+
+  if (!snap) return { rows: freshRows, notes: '', savedAt: null };
+
+  // Merge: start from snapshot rows, append any new bookings not yet in snapshot
+  const snapAptIds = new Set(snap.rows.map(r => r.aptId||r.aptName));
+  const newRows = freshRows.filter(r => !snapAptIds.has(r.aptId||r.aptName));
+
+  if (newRows.length > 0) {
+    // New bookings arrived since snapshot — toast notification
+    setTimeout(() => {
+      if (typeof toast === 'function')
+        toast(newRows.length + ' νέα checkout προστέθηκαν από τελευταία αποθήκευση', 'info');
+    }, 300);
+  }
+
+  return {
+    rows: [...snap.rows, ...newRows],
+    notes: snap.notes||'',
+    savedAt: snap.savedAt,
+  };
 }
 
 function _opsRowBg(row) {
