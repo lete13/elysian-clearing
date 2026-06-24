@@ -5124,6 +5124,25 @@ function _opsAutoRows(date) {
       arrivalTime: '', comments: '',
     });
   });
+  // Feature 2: Also show today's CHECK-INS that don't have a same-day checkout
+  // Guests arriving today that weren't captured above (previous guest left yesterday)
+  const checkinOnly = S.bks.filter(b => {
+    if (b.checkIn !== date && b.checkIn !== dateFmt) return false;
+    if (b.cancelled) return false;
+    const key = b.aptId||b.aptName;
+    return !seen.has(key);
+  });
+  checkinOnly.sort((a,b) => (a.aptName||'').localeCompare(b.aptName||''));
+  checkinOnly.forEach(bk => {
+    rows.push({
+      aptId: bk.aptId||'', aptName: bk.aptName||'',
+      checkoutGuest: '', isCheckinOnly: true,
+      alreadyCleaned: false, cleanedDate: null, lateCheckout: false, checkoutRequested: false,
+      checkinSameDay: 'checkin_only',
+      nextNights: bk.nights||null, nextGuest: bk.guestName||'',
+      people: bk.guests||'', arrivalTime: '', comments: '',
+    });
+  });
   return rows;
 }
 
@@ -5135,12 +5154,14 @@ function _opsLoadData(date) {
 }
 
 function _opsRowBg(row) {
+  if (row.isCheckinOnly) return '#EFF6FF'; // light blue — arriving today, no checkout
   if (row.checkinSameDay === 'unknown') return '#FFF3CD';
   if (row.checkinSameDay === 'yes') return '#F0FFF4';
   return '#fff';
 }
 
 function _opsCheckinCell(row, i) {
+  if (row.isCheckinOnly) return `<td style="padding:4px 8px;border:1px solid #ddd;text-align:center;" colspan="1"><span style="background:#BFDBFE;color:#1E40AF;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px">🔑 Άφιξη ${row.nextNights?'('+row.nextNights+' νύχτες)':''}</span></td>`;
   const opts = {
     yes:     { label:'Ναι',               bg:'#D1FAE5', color:'#065F46' },
     no:      { label:'Όχι',               bg:'#FEE2E2', color:'#991B1B' },
@@ -5157,6 +5178,9 @@ function _opsCheckinCell(row, i) {
 }
 
 function _opsCheckoutDateCell(row, i) {
+  if (row.isCheckinOnly) {
+    return `<td style="padding:4px 6px;border:1px solid #ddd;text-align:center;color:#9CA3AF;font-size:12px">—</td>`;
+  }
   if (row.alreadyCleaned) {
     const lbl = 'ήδη καθαρό ' + (row.cleanedDate ? _opsFmtDate(row.cleanedDate) : '');
     return `<td style="padding:4px 6px;border:1px solid #ddd;text-align:center">
@@ -5209,6 +5233,12 @@ function _opsBuildRow(row, i) {
         oninput="opsSetRow(${i},'comments',this.value);_opsAutoSave()"
         placeholder=""
         style="width:100%;box-sizing:border-box;border:none;background:transparent;font-size:12px;outline:none;color:#1a1a2e">
+    </td>
+    <td style="padding:4px 4px;border:1px solid #ddd;text-align:center;width:28px">
+      <button onclick="opsRemoveRow(${i})"
+        title="Remove from today's list"
+        style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:18px;line-height:1;padding:0"
+        onmouseover="this.style.color='#EF4444'" onmouseout="this.style.color='#D1D5DB'">×</button>
     </td>
   </tr>`;
 }
@@ -5289,6 +5319,17 @@ function _opsAutoSave() {
     const ts = document.getElementById('ops-snap-time');
     if (ts) ts.textContent = '💾 ' + new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'});
   }, 1500);
+}
+
+function opsRemoveRow(i) {
+  const row = _opsRows[i];
+  if (!row) return;
+  const name = row.aptName || 'this property';
+  if (!confirm('Remove ' + name + ' from today\'s list?')) return;
+  _opsRows.splice(i, 1);
+  const tbody = document.getElementById('ops-tbody');
+  if (tbody) tbody.innerHTML = _opsRows.map((r,idx) => _opsBuildRow(r,idx)).join('');
+  _opsAutoSave();
 }
 
 function opsToggleLate(i) {
@@ -5447,7 +5488,7 @@ function renderOps() {
 
   const rowsHtml = _opsRows.length
     ? _opsRows.map(function(r,i){ return _opsBuildRow(r,i); }).join('')
-    : '<tr><td colspan="8" style="text-align:center;padding:20px;color:#9CA3AF;font-style:italic">Δεν υπάρχουν checkout για ' + _opsFmtDate(_opsDate) + '</td></tr>';
+    : '<tr><td colspan="9" style="text-align:center;padding:20px;color:#9CA3AF;font-style:italic">Δεν υπάρχουν checkout για ' + _opsFmtDate(_opsDate) + '</td></tr>';
 
   el.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:0;height:100%">
@@ -5517,6 +5558,7 @@ function renderOps() {
               <th style="padding:7px 6px;border:1px solid #374151;text-align:center;width:48px">👥</th>
               <th style="padding:7px 8px;border:1px solid #374151;text-align:center;min-width:90px">⏰ Άφιξη</th>
               <th style="padding:7px 8px;border:1px solid #374151;text-align:left;min-width:120px">Σχόλια</th>
+              <th style="padding:7px 4px;border:1px solid #374151;width:28px"></th>
             </tr>
           </thead>
           <tbody id="ops-tbody">${rowsHtml}</tbody>
