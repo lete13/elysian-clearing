@@ -853,6 +853,17 @@ async function loadFromDb() {
     // Refresh UI
     renderDash(); renderCfg(); renderBk(); renderExp();
     if (typeof renderHealth === 'function') renderHealth();
+    if (document.getElementById('tab-ops')?.classList.contains('active')) {
+      // Ops tab open — merge any new bookings into current view
+      const curDate = _opsDate || _opsTodayStr();
+      const snap = S.daily.snapshots[curDate];
+      const fresh = _opsAutoRows(curDate);
+      if (snap) {
+        const ids = new Set(snap.rows.map(r=>r.aptId||r.aptName));
+        const newR = fresh.filter(r=>!ids.has(r.aptId||r.aptName));
+        if (newR.length) { _opsRows = [...(snap.rows), ...newR]; renderOps(); }
+      } else { renderOps(); }
+    }
     // Re-render whichever tab is currently active with fresh DB data
     const _activeTab = document.querySelector('.tab-panel.active')?.id;
     if (_activeTab === 'tab-rpt')  { initRptSel(); renderRpt(); }
@@ -2896,7 +2907,15 @@ function renderExp(){
       <td class="mono" style="text-align:right;color:var(--tx2)">${fmt(e.vat)}</td>
       <td class="mono" style="text-align:right;font-weight:500">${fmt(e.total)}</td>
       <td>${e.kat&&e.kat!=='?'?`<span class="tag" style="background:var(--bg2);color:var(--tx2);font-size:11px">${e.kat}</span>`:`<span style="color:var(--tx3)">—</span>`}</td>
-      <td style="min-width:220px"><select onchange="handleEA('${e.id}',this.value)" style="font-size:12px;padding:5px 8px;border-color:${bc}">${buildExpOpts(e)}</select>${sd?`<div style="font-size:10px;color:var(--tx2);margin-top:3px">${sd}</div>`:''}</td>
+      <td style="min-width:220px">${(()=>{
+        const matchedApt = !isSpl && !isG && e.aptId ? aptById(e.aptId) : null;
+        const badge = matchedApt
+          ? `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">
+               <span style="background:#0F1E2E;color:#C9A84C;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px" title="${matchedApt.name}">${matchedApt.name}</span>
+             </div>`
+          : '';
+        return badge + `<select onchange="handleEA('${e.id}',this.value)" style="font-size:11px;padding:4px 6px;border-color:${bc};width:100%">${buildExpOpts(e)}</select>`;
+      })()}${sd?`<div style="font-size:10px;color:var(--tx2);margin-top:3px">${sd}</div>`:''}</td>
       <td style="text-align:center">${chgPill}</td>
       <td><button class="btn danger sm" onclick="delExp('${e.id}')">✕</button></td>
     </tr>`;
