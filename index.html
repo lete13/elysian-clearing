@@ -2329,17 +2329,17 @@ function findApt(name){
   // 5. Partial match: configured name is contained in the Hosthub name or vice-versa
   //    (catches "Votsala 1 Luxury Stay with Patio" ↔ "Votsala 1")
   //    BUT: do NOT match if the only difference is a numeric suffix (Veranda ≠ Veranda 2)
-  if(!a) a=S.apts.find(x=>{
+  if(!a && nn.length>=3) a=S.apts.find(x=>{ // guard: nn must be non-trivial (blocks empty-string-matches-everything bug)
     const xn=normAptName(x.name);
     if(xn.length<=4) return false;
     if(nn.includes(xn)){
       const suffix=nn.slice(xn.length).trim();
-      if(/^\d+$/.test(suffix)) return false; // "Veranda" + "2" = different property
+      if(/^\d/.test(suffix)) return false; // "Veranda"+"2" or "Votsala"+"5 luxury..." = different property
       return true;
     }
     if(xn.includes(nn)){
       const suffix=xn.slice(nn.length).trim();
-      if(/^\d+$/.test(suffix)) return false;
+      if(/^\d/.test(suffix)) return false; // suffix STARTING with a digit = different numbered unit
       return true;
     }
     return false;
@@ -2822,7 +2822,7 @@ function importExp(input){
       const col=(...terms)=>{for(const t of terms){const i=hdrs.findIndex(h=>h.includes(t));if(i>=0)return i;}return -1;};
       const iDate=col('Ημ/','Ημερ','date'),iDesc=col('Περιγραφ','Descr'),iSupp=col('Επαφ','Supplier');
       const iNet=col('Καθαρ','Net','Καθαρή'),iVat=col('Αξία ΦΠΑ','ΦΠΑ','VAT'),iTotal=col('Συνολ','Total');
-      const iSer=col('Σειρ'),iNum=col('Αριθμ'),iMark=col('ΜΑΡΚ','MARK'),iKat=col('ΚΑΤΑΛΥΜ','ΚΑΤΑ'),iSVat=col('ΑΦΜ Εκδ','ΑΦΜ');
+      const iSer=col('Σειρ'),iNum=col('Αριθμ'),iMark=col('ΜΑΡΚ','MARK'),iKat=col('ΚΑΤΑΛΥΜ','ΚΑΤΑ','COST CENTER'),iSVat=col('ΑΦΜ Εκδ','ΑΦΜ');
       const marks=new Set(S.exps.map(e=>e.mark).filter(Boolean));
       // Fallback dedup fingerprint: date|supplier|total|series|num — used when MARK is absent
       const fp=e=>[e.date,e.supp,e.total,e.series,e.num].join('|');
