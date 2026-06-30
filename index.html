@@ -2824,26 +2824,39 @@ function importExp(input){
       const iNet=col('Καθαρ','Net','Καθαρή'),iVat=col('Αξία ΦΠΑ','ΦΠΑ','VAT'),iTotal=col('Συνολ','Total');
       const iSer=col('Σειρ'),iNum=col('Αριθμ'),iMark=col('MARK'),iKat=col('ΚΑΤΑΛΥΜ','ΚΑΤΑ'),iSVat=col('ΑΦΜ Εκδ','ΑΦΜ');
       const marks=new Set(S.exps.map(e=>e.mark).filter(Boolean));
-      let imp=0,auto=0;
+      // Fallback dedup fingerprint: date|supplier|total|series|num — used when MARK is absent
+      const fp=e=>[e.date,e.supp,e.total,e.series,e.num].join('|');
+      const fingerprints=new Set(S.exps.filter(e=>!e.mark).map(fp));
+      let imp=0,auto=0,skippedDupe=0;
       for(let r=1;r<rows.length;r++){
         const row=rows[r];if(!row||row.every(c=>!c))continue;
         const mark=iMark>=0?String(row[iMark]||'').trim():'';
-        if(mark&&marks.has(mark))continue;
+        if(mark&&marks.has(mark)){skippedDupe++;continue;}
         const tot=iTotal>=0?parseFloat(row[iTotal])||0:0;
         const net=iNet>=0?parseFloat(row[iNet])||0:0;
         const vat=iVat>=0?parseFloat(row[iVat])||0:0;
         if(tot===0&&net===0)continue;
+        const dateVal=iDate>=0?row[iDate]||'':'';
+        const seriesVal=iSer>=0?String(row[iSer]||'').trim():'';
+        const numVal=iNum>=0?String(row[iNum]||'').trim():'';
+        const suppVal=iSupp>=0?String(row[iSupp]||'').trim():'';
+        // No MARK on this row — check fingerprint to prevent duplicate on re-upload
+        if(!mark){
+          const candidateFp=[dateVal,suppVal,tot,seriesVal,numVal].join('|');
+          if(fingerprints.has(candidateFp)){skippedDupe++;continue;}
+          fingerprints.add(candidateFp);
+        }
         const kat=iKat>=0?String(row[iKat]||'').trim():'';
         const res=resolveKat(kat);if(res)auto++;
-        S.exps.push({id:gid(),mark,date:iDate>=0?row[iDate]||'':'',
-          series:iSer>=0?String(row[iSer]||'').trim():'',num:iNum>=0?String(row[iNum]||'').trim():'',
+        S.exps.push({id:gid(),mark,date:dateVal,
+          series:seriesVal,num:numVal,
           desc:iDesc>=0?String(row[iDesc]||'').trim()||'Expense':'Expense',
-          supp:iSupp>=0?String(row[iSupp]||'').trim():'',suppVat:iSVat>=0?String(row[iSVat]||'').trim():'',
+          supp:suppVal,suppVat:iSVat>=0?String(row[iSVat]||'').trim():'',
           net,vat,total:tot||(net+vat),kat,aptId:res,splits:null,charge:true});
         if(mark)marks.add(mark);imp++;
       }
       save();updUA();renderExp();renderDash();
-      toast(`${imp} expenses · ${auto} auto-matched · ${S.exps.filter(e=>!e.aptId).length} unassigned`);
+      toast(`${imp} expenses · ${auto} auto-matched · ${skippedDupe} duplicates skipped · ${S.exps.filter(e=>!e.aptId).length} unassigned`);
     }catch(err){toast('Import failed: '+err.message,'err');console.error(err);}
   };
   reader.readAsArrayBuffer(file);input.value='';
