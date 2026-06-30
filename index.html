@@ -2822,7 +2822,7 @@ function importExp(input){
       const col=(...terms)=>{for(const t of terms){const i=hdrs.findIndex(h=>h.includes(t));if(i>=0)return i;}return -1;};
       const iDate=col('Ημ/','Ημερ','date'),iDesc=col('Περιγραφ','Descr'),iSupp=col('Επαφ','Supplier');
       const iNet=col('Καθαρ','Net','Καθαρή'),iVat=col('Αξία ΦΠΑ','ΦΠΑ','VAT'),iTotal=col('Συνολ','Total');
-      const iSer=col('Σειρ'),iNum=col('Αριθμ'),iMark=col('MARK'),iKat=col('ΚΑΤΑΛΥΜ','ΚΑΤΑ'),iSVat=col('ΑΦΜ Εκδ','ΑΦΜ');
+      const iSer=col('Σειρ'),iNum=col('Αριθμ'),iMark=col('ΜΑΡΚ','MARK'),iKat=col('ΚΑΤΑΛΥΜ','ΚΑΤΑ'),iSVat=col('ΑΦΜ Εκδ','ΑΦΜ');
       const marks=new Set(S.exps.map(e=>e.mark).filter(Boolean));
       // Fallback dedup fingerprint: date|supplier|total|series|num — used when MARK is absent
       const fp=e=>[e.date,e.supp,e.total,e.series,e.num].join('|');
