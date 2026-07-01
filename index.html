@@ -3342,16 +3342,16 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     ] : [])
     .concat([csep])
     // ── Net Earnings ────────────────────────────────────────────────────────────
-    .concat([cr(L.netEarningsLbl, 'Gross minus all taxes, platform fees & Elysian charges', netEarnings, null, {bold:true, pos:netEarnings>=0, tot:true})])
+    .concat([cr(L.netEarningsLbl, (isGR?'Ακαθάριστα κέρδη μετά φόρων & χρεώσεων':'Gross minus all taxes, platform fees & Elysian charges'), netEarnings, null, {bold:true, pos:netEarnings>=0, tot:true})])
     .concat([csep])
     // ── Management fee ──────────────────────────────────────────────────────────
     .concat([cg(L.mgmtFeeLbl + (hasVat ? ' *' : ''))])
-    .concat([cr(L.mgmtFeeLbl, apt.mgmtFee+'% of base ('+fmt(m.base)+')', -mf, hasVat ? -(mf*0.24) : null)])
+    .concat([cr(L.mgmtFeeLbl, apt.mgmtFee+(isGR?'% επί βάσης ('+fmt(m.base)+')':'% of base ('+fmt(m.base)+')'), -mf, hasVat ? -(mf*0.24) : null)])
     .concat([csep])
     // ── Remittance amount ───────────────────────────────────────────────────────
     .concat(apt.b2b ? [
       '<div style="display:grid;grid-template-columns:'+C+';padding:8px 14px;background:var(--bg2);border-top:.5px solid var(--bdr);gap:8px">'
-        +'<div style="font-size:13px;font-weight:600;color:var(--tx)">Remittance Amount'
+        +'<div style="font-size:13px;font-weight:600;color:var(--tx)">'+L.remittanceLbl
           +'<div style="font-size:10px;color:var(--tx3);margin-top:1px">Net payout + Greek taxes returned to B2B partner</div></div>'
         +'<div style="font-family:var(--mono);font-size:13.5px;text-align:right;font-weight:600;color:#1a7a4a">'+fmt(b2bRem)+'</div>'
         +'<div style="text-align:right;color:var(--tx3)">–</div>'
@@ -3361,8 +3361,8 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     // ── Owner payout (final highlighted row) ────────────────────────────────────
     .concat([
       '<div style="display:grid;grid-template-columns:'+C+';padding:12px 14px;background:#0F1E2E;border-radius:0 0 var(--r) var(--r);gap:8px">'
-        +'<div><div style="font-size:15px;font-weight:700;color:#C9A84C">Remittance Amount</div>'
-          +(hasVat ? '<div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">* Prices subject to 24% VAT</div>' : '')
+        +'<div><div style="font-size:15px;font-weight:700;color:#C9A84C">'+L.remittanceLbl+'</div>'
+          +(hasVat ? '<div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">'+L.vatNote+'</div>' : '')
         +'</div>'
         +'<div style="font-family:var(--mono);font-size:16px;font-weight:700;text-align:right;color:#C9A84C">'+fmt(payout)+'</div>'
         +'<div style="text-align:right;color:rgba(255,255,255,.3)">–</div>'
@@ -3416,7 +3416,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     +'<div style="font-size:10px;font-weight:600;color:#C9A84C;text-transform:uppercase;letter-spacing:.07em">'+L.description+'</div>'
     +'<div style="font-size:10px;font-weight:600;color:#C9A84C;text-align:right">'+L.charges+'</div>'
     +'<div style="font-size:10px;font-weight:600;color:#C9A84C;text-align:right">'+L.vat+'</div>'
-    +'<div style="font-size:10px;font-weight:600;color:#C9A84C;text-align:right">Total (€)</div>'
+    +'<div style="font-size:10px;font-weight:600;color:#C9A84C;text-align:right">'+(isGR?'Συνολο (€)':'Total (€)')+'</div>'
     +'</div>';
 
   const mainTable = '<div style="border:.5px solid var(--bdr2);border-radius:var(--r);overflow:hidden;width:100%">'
@@ -5172,7 +5172,9 @@ async function saveRevenueSnapshot() {
   const yr   = d.getFullYear();
   const moLbl = REV_MONTHS[mo] + ' ' + yr;
 
-  if (!S.revenue) S.revenue = {cleaning:{},mgmt:{}};
+  if (!S.revenue) S.revenue = {};
+  if (!S.revenue.cleaning) S.revenue.cleaning = {};
+  if (!S.revenue.mgmt)     S.revenue.mgmt     = {};
 
   // Build snapshot entries for each selected property
   const rate = parseFloat(apt.mgmtFee||0)/100;
