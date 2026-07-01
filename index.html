@@ -6005,7 +6005,14 @@ function runFinancialTests() {
       const gVatDed = goldenApt.deductVAT !== false ? gM.vat : 0;
       const gAtDed  = goldenApt.municipalityTax ? gM.at : 0;
       const gCtDed  = goldenApt.deductCT !== false ? gM.ct : 0;
-      const gExp    = typeof S !== 'undefined' ? S.exps.filter(function(e){ return e.aptId===HORIZON_JUNE.aptId; }).reduce(function(s,e){ return s + (e.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0)); }, 0) : 0;
+      const gExp    = typeof S !== 'undefined' ? S.exps.filter(function(e){
+        if (e.aptId !== HORIZON_JUNE.aptId || e.charge === false) return false;
+        if (!e.date) return true;
+        const ed = parseD(e.date);
+        if (!ed || isNaN(ed)) return true;
+        const edS = ds(ed);
+        return edS >= gFrom && edS <= gTo;
+      }).reduce(function(s,e){ return s + (goldenApt.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0)); }, 0) : 0;
       const gPayout = gM.gross - gM.svc - gM.pchg - gCtDed - gVatDed - gAtDed - gMf - gM.bt - gM.configCl - gFixed - gExp;
       const gNetE   = gPayout + gMf;
 
@@ -6060,7 +6067,14 @@ function runFinancialTests() {
       const sVatDeduct = skylineApt.deductVAT !== false ? sM.vat : 0;
       const sAtDeduct  = skylineApt.municipalityTax ? sM.at : 0;
       const sElysianVat = sHasVat ? (sMf+sCleanDeduct+sFixedCh)*0.24 : 0;
-      const sExps = S.exps.filter(function(e){ return e.aptId===skylineApt.id; });
+      const sExps = S.exps.filter(function(e){
+        if (e.aptId !== skylineApt.id || e.charge === false) return false;
+        if (!e.date) return true;
+        const ed = parseD(e.date);
+        if (!ed || isNaN(ed)) return true;
+        const edS = ds(ed);
+        return edS >= sFrom && edS <= sTo;
+      });
       const sTotExp = sExps.reduce(function(s,e){ return s + (skylineApt.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0)); }, 0);
       const sExpVat = sHasVat ? sTotExp*0.24 : 0;
       const sTotExpIncl = sTotExp + sExpVat;
