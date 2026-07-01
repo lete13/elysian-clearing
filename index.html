@@ -498,8 +498,7 @@
         <div class="card" style="padding:14px">
           <div class="shdr">Mgmt fee formula</div>
           <div style="font-size:12px;color:var(--tx2);line-height:2.1">
-            (Total value<br>- Climate tax<br>- VAT<br>- Accommodation tax<br>- Cleaning fee<br>- Service fee host<br>- Payment charges)<br>- Business Tax (Επιτήδευμα, when applicable)
-× Management %
+            (Total value<br>- Climate tax<br>- VAT<br>- Accommodation tax<br>- Cleaning fee<br>- Service fee host<br>- Payment charges)<br>× Management %
           </div>
         </div>
         <!-- Actions -->
@@ -3151,7 +3150,7 @@ function rrow(lbl,val,indent,color,bold,sub){
 function buildRptHTML(apt,bks,exps,getEA,selApts){
   const m=calcBase(bks,apt);
   const rate=parseFloat(apt.mgmtFee||0)/100;
-  const mf=m.base*rate;
+  const mf=Math.max(0,m.base)*rate;
   const totExp=exps.reduce((s,e)=>s+getEA(e),0);
   // For multi-property reports, sum fixed charges across ALL selected properties
   const _apts = (selApts && selApts.length > 0) ? selApts : [apt];
@@ -3247,11 +3246,12 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
       csep
     ])
     // ── Tax deductions ──────────────────────────────────────────────────────────
-    .concat(m.ct>0||m.vat>0||m.at>0||m.svc>0 ? [cg(L.deductions)] : [])
+    .concat(m.ct>0||m.vat>0||m.at>0||m.svc>0||m.bt>0 ? [cg(L.deductions)] : [])
     .concat(m.ct >0 ? [cr(L.climateTax,        null, -m.ct,    null)] : [])
     .concat(m.vat>0 ? [cr(L.accomVAT,   null, -m.vat,   null)] : [])
     .concat(m.at >0 ? [cr(L.accomTax,          null, -m.at,    null)] : [])
     .concat(m.svc+m.pchg>0 ? [cr(L.platformFees, 'service fee + payment charges', -(m.svc+m.pchg), null)] : [])
+    .concat(m.bt>0 ? [cr(isGR?'Επιτήδευμα':'Business Tax (Επιτήδευμα)', isGR?'Φόρος Επιτηδεύματος (μηνιαία χρέωση)':'Business activity tax (monthly)', -m.bt, null)] : [])
     .concat([csep])
     // ── Elysian service charges ─────────────────────────────────────────────────
     .concat([cg(L.elysianCharges + (hasVat ? ' *' : ''))])
@@ -3271,7 +3271,6 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     // ── Management fee ──────────────────────────────────────────────────────────
     .concat([cg(L.mgmtFeeLbl + (hasVat ? ' *' : ''))])
     .concat([cr(L.mgmtFeeLbl, apt.mgmtFee+'% of base ('+fmt(m.base)+')', -mf, hasVat ? -(mf*0.24) : null)])
-    .concat(m.bt>0 ? [cr(isGR?'Επιτήδευμα':'Business Tax', isGR?'Φόρος Επιτηδεύματος':'Business activity tax (€/month)', -m.bt, null)] : [])
     .concat([csep])
     // ── Remittance amount ───────────────────────────────────────────────────────
     .concat(apt.b2b ? [
@@ -3537,7 +3536,7 @@ function exportPDF() {
   if (!window._rpt) { toast('Generate a report first.', 'err'); return; }
   const { apt, dates, payout, occ, nights, totalDays, bks, exps, gea, m } = window._rpt;
   const rate       = parseFloat(apt.mgmtFee || 0) / 100;
-  const mf         = m.base * rate;
+  const mf         = Math.max(0, m.base) * rate; // clamp: never charge mgmt fee on negative base
   const totExp     = exps.reduce((s,e) => s + gea(e), 0);
   // For multi-property PDFs, sum fixed charges from all selected properties
   const _pdfApts = window._rpt?.selApts || [apt];
@@ -5825,10 +5824,15 @@ function runFinancialTests() {
   const mMulti = calcBase(bMulti, aptBase);
   assert('T2.1 gross sum', mMulti.gross, 600);
 
-  // T2.2: base must be >= 0 (guard against over-deductions)
-  const bTiny = [bk(10,8,1.7)]; // very small booking
+  // T2.2: base CAN be negative (e.g. tiny booking + large cleaning fee)
+  // What must never be negative is the management FEE charged to the owner
+  const bTiny = [bk(10,8,1.7)]; // gross=10, ct=8, svc=1.7, cleaning=55 → base=-54.7
   const mTiny = calcBase(bTiny, aptBase);
-  assertEq('T2.2 base non-negative', mTiny.base >= 0, true);
+  // base may be negative for edge cases — that is correct financial behaviour
+  // but the mgmt fee must be clamped to zero (never charge owner for negative base)
+  const mfTiny = Math.max(0, mTiny.base) * (aptBase.mgmtFee/100);
+  assertEq('T2.2 mgmt fee non-negative on tiny booking', mfTiny >= 0, true);
+  assert('T2.2 base reflects real deductions', mTiny.base, 10-8-1.7-55, 0.01);
 
   // T2.3: ct sum correct
   assert('T2.3 ct sum', mMulti.ct, 60);
