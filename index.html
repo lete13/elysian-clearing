@@ -706,6 +706,54 @@
 </div><!-- /app -->
 
 <script>
+// ── Property Profiles ─────────────────────────────────────────────────────────
+const PROPERTY_PROFILES = {
+  leased:  { label:'Leased by Elysian', emoji:'🏢', color:'#0369A1',
+    flags:{ deductCT:true,  deductVAT:true,  municipalityTax:true,  businessTax:true,  vatOnFees:false } },
+  private: { label:'Private Property',  emoji:'🏠', color:'#059669',
+    flags:{ deductCT:false, deductVAT:false, municipalityTax:false, businessTax:false, vatOnFees:true  } },
+  b2b:     { label:'B2B Property',      emoji:'🤝', color:'#7C3AED',
+    flags:{ deductCT:true,  deductVAT:false, municipalityTax:false, businessTax:false, vatOnFees:true  } },
+};
+
+const PROFILE_FLAG_LABELS = {
+  deductCT:'Climate Tax', deductVAT:'Income VAT', municipalityTax:'Municipality Tax',
+  businessTax:'Business Tax', vatOnFees:'VAT on Fees'
+};
+
+function applyProfile(aptId, profileKey) {
+  const apt = S.apts.find(a=>a.id===aptId); if(!apt) return;
+  const prof = PROPERTY_PROFILES[profileKey]; if(!prof) return;
+  apt.profile = profileKey;
+  Object.entries(prof.flags).forEach(function(entry){ apt[entry[0]] = entry[1]; });
+  save(); renderCfg();
+}
+
+function profileDeviations(apt) {
+  if (!apt.profile) return [];
+  const prof = PROPERTY_PROFILES[apt.profile]; if(!prof) return [];
+  return Object.entries(prof.flags)
+    .filter(function(e){ return apt[e[0]] !== e[1]; })
+    .map(function(e){ return PROFILE_FLAG_LABELS[e[0]] || e[0]; });
+}
+
+function profileSelectorHtml(apt) {
+  const devs = profileDeviations(apt);
+  const warn = devs.length
+    ? '<span title="Settings deviate from profile: '+devs.join(', ')+'" style="font-size:15px;cursor:pointer;margin-left:4px" onclick="alert(\'Profile deviations for this property:\\n\\n'+devs.join('\\n')+'\')">⚠️</span>'
+    : '';
+  const btns = Object.entries(PROPERTY_PROFILES).map(function(entry){
+    const key = entry[0], prof = entry[1];
+    const active = apt.profile === key;
+    return '<button onclick="applyProfile(\''+apt.id+'\',\''+key+'\')" style="'
+      +'padding:4px 11px;font-size:11px;font-weight:600;border:1.5px solid '+(active?prof.color:'var(--bdr2)')
+      +';border-radius:20px;cursor:pointer;background:'+(active?prof.color:'var(--bg)')
+      +';color:'+(active?'#fff':'var(--tx3)')+'">'+prof.emoji+' '+prof.label+'</button>';
+  }).join('');
+  return btns + warn;
+}
+
+
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const GENERIC_CATS=["Corporate expenses","Cleaning Material Cholargos","Cleaning Material Thessaloniki"];
 const GENERIC_AL={
@@ -2358,7 +2406,7 @@ function findApt(name){
 function ensureApt(name){
   if(!name)return null;
   let a=findApt(name);
-  if(!a){a={id:gid(),name:name.trim(),aliases:[],mgmtFee:20,language:'EN',vatOnFees:false,deductCleaning:true,deductCT:true,isLeased:false,postReportReminders:[],vatLiable:false,municipalityTax:true,businessTax:false,chargeVat:false,b2b:false,b2bPartner:'',b2bRemitRate:0,cleaningFee:0,fixedCharges:[],ownerName:'',ownerSurname:'',ownerEmail:''};S.apts.push(a);}
+  if(!a){a={id:gid(),name:name.trim(),aliases:[],mgmtFee:20,language:'EN',vatOnFees:false,deductCleaning:true,deductCT:true,isLeased:false,postReportReminders:[],vatLiable:false,municipalityTax:true,businessTax:false,deductVAT:true,chargeVat:false,b2b:false,b2bPartner:'',b2bRemitRate:0,cleaningFee:0,fixedCharges:[],ownerName:'',ownerSurname:'',ownerEmail:''};S.apts.push(a);}
   return a;
 }
 function resolveKat(raw){
@@ -2399,10 +2447,12 @@ function calcBase(bks,apt){
   // Falls back to gross-ct-vat if API data not yet fetched
   // Management base: pre-VAT booking value minus accommodation tax, cleaning (ex-VAT only), platform fees
   // Cleaning VAT is NOT deducted from base — it is an Elysian service charge, not a base deduction
-  // Management fee base = Revenue - Climate Tax - VAT - Platform Fees (incl VAT) - Payment Charges - Cleaning
-  const base = gross - ct - vat - at - svc - pchg - configCl;
-  // Business tax (Επιτηδεύματος): fixed monthly amount per property when enabled
+  // Business tax (Επιτηδεύματος): fixed monthly amount — computed first as it reduces the mgmt fee base
   const bt = apt?.businessTax ? (parseFloat(apt?.businessTaxAmt)||50) : 0;
+  // Management fee base = Revenue - Taxes (per profile flags) - Platform Fees - Business Tax - Cleaning
+  const vatForBase = (apt?.deductVAT !== false) ? vat : 0;
+  const atForBase  = apt?.municipalityTax ? at : 0;
+  const base = gross - ct - vatForBase - atForBase - svc - pchg - bt - configCl;
   return{base,gross,ct,vat,at,totTax,cleanH,configCl,cleanVat,cleanTotal,svc,pchg,totPay,netBkVal,trHost,trChan,thHost,bvPreVat,bt};
 }
 
@@ -3003,7 +3053,7 @@ function closeSpl(){
 function addApt(){
   const inp=document.getElementById('new-apt'),name=inp.value.trim();if(!name)return;
   if(findApt(name)){alert('Already exists.');return;}
-  S.apts.push({id:gid(),name,aliases:[],mgmtFee:20,language:'EN',vatOnFees:false,deductCleaning:true,deductCT:true,isLeased:false,postReportReminders:[],vatLiable:false,municipalityTax:true,businessTax:false,chargeVat:false,b2b:false,b2bPartner:'',b2bRemitRate:0,cleaningFee:0,fixedCharges:[],ownerName:'',ownerSurname:'',ownerEmail:''});
+  S.apts.push({id:gid(),name,aliases:[],mgmtFee:20,language:'EN',vatOnFees:false,deductCleaning:true,deductCT:true,isLeased:false,postReportReminders:[],vatLiable:false,municipalityTax:true,businessTax:false,deductVAT:true,chargeVat:false,b2b:false,b2bPartner:'',b2bRemitRate:0,cleaningFee:0,fixedCharges:[],ownerName:'',ownerSurname:'',ownerEmail:''});
   inp.value='';save();renderCfg();renderDash();
 }
 function setApt(id,f,v){const a=S.apts.find(x=>x.id===id);if(a){a[f]=v;save();renderCfg();}}
@@ -3033,10 +3083,16 @@ function renderCfg(){
   const _cfgCount=document.getElementById('cfg-count');
   if(_cfgCount)_cfgCount.textContent=_cfgQ?(_cfgList.length+' of '+S.apts.length+' properties'):S.apts.length+' properties';
   document.getElementById('cfg-grid').innerHTML=_cfgList.map(a=>`
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
-        <div style="font-size:16px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px">${a.name}</div>
-        <button class="btn danger sm" onclick="delApt('${a.id}')">Remove</button>
+    <div class="card" style="border-top:3px solid ${a.profile&&PROPERTY_PROFILES[a.profile]?PROPERTY_PROFILES[a.profile].color:'var(--bdr)'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <div style="font-size:16px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px">${a.name}</div>
+          ${a.profile&&PROPERTY_PROFILES[a.profile]?'<div style="font-size:10px;color:'+PROPERTY_PROFILES[a.profile].color+';font-weight:600;margin-top:2px">'+PROPERTY_PROFILES[a.profile].emoji+' '+PROPERTY_PROFILES[a.profile].label+'</div>':''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${profileDeviations(a).length?'<span title="Advanced settings deviate from profile" style="font-size:18px">⚠️</span>':''}
+          <button class="btn danger sm" onclick="delApt('${a.id}')">Remove</button>
+        </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:12px">
         <div><label class="lbl">Aliases (comma-separated, for expense auto-match)</label>
@@ -3085,9 +3141,17 @@ function renderCfg(){
                 <button onclick="setApt('${a.id}','language','GR')" style="padding:3px 10px;font-size:11px;font-weight:600;border-radius:4px;border:.5px solid var(--bdr2);cursor:pointer;background:${(a.language||'EN')==='GR'?'#0F1E2E':'var(--bg2)'};color:${(a.language||'EN')==='GR'?'#C9A84C':'var(--tx3)'}">GR</button>
               </div>
             </div>
+            <!-- Profile Selector -->
+            <div style="margin:8px 0 12px;padding:10px 12px;background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r)">
+              <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Property Profile</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${profileSelectorHtml(a)}</div>
+              <div style="font-size:10px;color:var(--tx3);margin-top:6px">Selecting a profile sets all tax defaults. Use Advanced Settings below to override.</div>
+            </div>
+            <!-- Advanced Settings -->
+            <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 6px">Advanced Settings</div>
             ${togHtml(a.id,'vatOnFees','Charge 24% VAT on Elysian fees (non-leased property)')}${togHtml(a.id,'deductCT','Deduct Climate Tax (CT) from remittance')}
             ${togHtml(a.id,'isLeased','Property leased by Elysian')}${togHtml(a.id,'vatLiable','VAT liable')}${togHtml(a.id,'chargeVat','Charge VAT to guests')}<div style='display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:.5px solid var(--bdr)'>${togHtml(a.id,'deductCleaning','Deduct cleaning from payout')}<div style='font-size:10px;color:var(--tx3);line-height:1.4;padding-top:2px'>When OFF, cleaning still used for management base but not billed to owner</div></div>
-            ${togHtml(a.id,'municipalityTax','Municipality / stayover tax')}${togHtml(a.id,'businessTax','Business tax')}
+            ${togHtml(a.id,'municipalityTax','Municipality / stayover tax')}${togHtml(a.id,'deductVAT','Deduct Income VAT from remittance')}${togHtml(a.id,'businessTax','Επιτηδεύματος (€50/μήνα)')}
           ${a.businessTax?`<div style="display:flex;align-items:center;gap:6px;margin-top:4px">
             <label style="font-size:11px;color:var(--tx3);min-width:80px">Monthly amt</label>
             <input type="number" value="${a.businessTaxAmt||50}" min="0" step="5"
@@ -3167,7 +3231,9 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
   // deductCT: when true (default), Climate Tax is deducted from remittance
   // OTAs do not remit CT to authorities — owner/Elysian does — so CT reduces the net payout
   const ctDeduct = (apt.deductCT !== false) ? m.ct : 0;
-  const payout = m.gross - m.svc - m.pchg - ctDeduct - mf - (m.bt||0) - cleanDeduct - elysianVat - fixedCh - totExpIncl;
+  const vatDeduct = (apt.deductVAT !== false) ? m.vat : 0;
+  const atDeduct  = apt.municipalityTax ? m.at : 0;
+  const payout = m.gross - m.svc - m.pchg - ctDeduct - vatDeduct - atDeduct - mf - (m.bt||0) - cleanDeduct - elysianVat - fixedCh - totExpIncl;
   // B2B Remittance = net payout to owner + Greek taxes returned to partner (CT + VAT + AT)
   // These taxes were shown as deductions in Net Earnings but must be passed to the B2B partner
   // so they can remit to tax authorities on behalf of the owner.
@@ -3176,7 +3242,10 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
   // Equivalent to: payout + Greek taxes (since payout already deducts everything including mgmt fee)
   // Greek taxes are added back separately because owner receives them from platform to remit themselves
   // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
-  const netEarnings = payout - (apt.deductCT !== false ? 0 : m.ct) - m.vat - m.at;
+  // Net Earnings = what owner earned before Elysian's management fee
+  // Owner retains m.vat + m.at (remits to authorities themselves) — do NOT deduct them here.
+  // Net Earnings appears ABOVE management fee line in display, so it equals payout + mf.
+  const netEarnings = payout + mf;
   const nights=bks.reduce((s,b)=>s+(parseInt(b.nights)||0),0);
   const dates=getRptDates();
   const totalDays=dates?Math.ceil((dates.to-dates.from)/(86400000))+1:30;
@@ -3246,10 +3315,10 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
       csep
     ])
     // ── Tax deductions ──────────────────────────────────────────────────────────
-    .concat(m.ct>0||m.vat>0||m.at>0||m.svc>0||m.bt>0 ? [cg(L.deductions)] : [])
+    .concat(m.ct>0||vatDeduct>0||atDeduct>0||m.svc>0||m.bt>0 ? [cg(L.deductions)] : [])
     .concat(m.ct >0 ? [cr(L.climateTax,        null, -m.ct,    null)] : [])
-    .concat(m.vat>0 ? [cr(L.accomVAT,   null, -m.vat,   null)] : [])
-    .concat(m.at >0 ? [cr(L.accomTax,          null, -m.at,    null)] : [])
+    .concat(vatDeduct>0 ? [cr(L.accomVAT, null, -vatDeduct, null)] : [])
+    .concat(atDeduct>0  ? [cr(L.accomTax, null, -atDeduct,  null)] : [])
     .concat(m.svc+m.pchg>0 ? [cr(L.platformFees, 'service fee + payment charges', -(m.svc+m.pchg), null)] : [])
     .concat(m.bt>0 ? [cr(isGR?'Επιτηδεύματος':'Business Tax (Επιτηδεύματος)', isGR?'Φόρος Επιτηδεύματος (μηνιαία χρέωση)':'Business activity tax (monthly)', -m.bt, null)] : [])
     .concat([csep])
@@ -3551,7 +3620,10 @@ function exportPDF() {
   const expVat     = apt.vatOnFees ? totExp * 0.24 : 0;
   const totExpIncl = totExp + expVat;
   // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
-  const netEarnings = payout - (apt.deductCT !== false ? 0 : m.ct) - m.vat - m.at;
+  // Net Earnings = what owner earned before Elysian's management fee
+  // Owner retains m.vat + m.at (remits to authorities themselves) — do NOT deduct them here.
+  // Net Earnings appears ABOVE management fee line in display, so it equals payout + mf.
+  const netEarnings = payout + mf;
   // feeItems mirrors the same array built in buildRptHTML
   // ── Validate before generating PDF ────────────────────────────────────────
   const _valErrors = validateReport(m, apt, bks);
@@ -5854,6 +5926,12 @@ function runFinancialTests() {
   const vatReal = (mfReal + mReal.configCl) * 0.24;
   const payoutReal = mReal.gross - mReal.svc - mReal.pchg - mReal.ct - mfReal - mReal.bt - mReal.configCl - vatReal;
   assertEq('T3.1 payout < gross', payoutReal < mReal.gross, true);
+
+  // T3.1b: Net Earnings (before mgmt fee) must be > Remittance (after mgmt fee)
+  // This invariant catches the vat/at double-deduction bug
+  const netE = payoutReal + (mfReal);
+  assertEq('T3.1b net earnings >= remittance', netE >= payoutReal, true);
+  assert('T3.1b net - remittance = mgmt fee', netE - payoutReal, mfReal, 0.02);
 
   // T3.2: Management fee must equal base × rate (to the cent)
   assert('T3.2 mgmt fee exact', mfReal, mReal.base * 0.15, 0.01);
