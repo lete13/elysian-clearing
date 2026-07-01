@@ -400,13 +400,27 @@ async function runSync(apiKey, onLog) {
     const d=ev.date_from?new Date(ev.date_from+'T00:00:00'):new Date();
     // Lookup internal aptId by matching rental name to existing apts
     const _aptName = ev.rental_unit?.name||ev.rental?.name||rName[ev.rental?.id]||'';
-    const _aptMatch = (currentApts||[]).find(a =>
-      a.name && (_aptName && (
-        a.name.trim().toLowerCase() === _aptName.trim().toLowerCase() ||
-        a.name.trim().toLowerCase().includes(_aptName.trim().toLowerCase()) ||
-        _aptName.trim().toLowerCase().includes(a.name.trim().toLowerCase())
-      ))
-    );
+    const _aptNameNorm = _aptName.trim().toLowerCase();
+    // Pass 1: exact match always wins (prevents "Veranda 2" grabbing "Veranda" bookings)
+    let _aptMatch = (currentApts||[]).find(a => a.name && a.name.trim().toLowerCase() === _aptNameNorm);
+    // Pass 2: partial match only if no exact match exists, guarded against numeric-suffix collisions
+    // (e.g. "Veranda" must NOT match "Veranda 2" — different physical units)
+    if (!_aptMatch && _aptNameNorm.length >= 3) {
+      _aptMatch = (currentApts||[]).find(a => {
+        if (!a.name) return false;
+        const an = a.name.trim().toLowerCase();
+        if (an.length <= 4) return false;
+        if (_aptNameNorm.includes(an)) {
+          const suffix = _aptNameNorm.slice(an.length).trim();
+          return !/^\d/.test(suffix); // reject if suffix starts with a digit
+        }
+        if (an.includes(_aptNameNorm)) {
+          const suffix = an.slice(_aptNameNorm.length).trim();
+          return !/^\d/.test(suffix); // reject if suffix starts with a digit
+        }
+        return false;
+      });
+    }
     // Format date as D/M/YYYY (consistent with rest of app)
     const _fmtDate = iso => {
       if (!iso) return '';

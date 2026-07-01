@@ -2495,6 +2495,9 @@ function showTab(name,btn){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');btn.classList.add('active');
+  // Reset channel filter whenever entering Reports fresh — prevents a stale
+  // selection from a previously viewed property silently carrying over
+  if(name==='rpt') rptChanSel = null;
   // Defer expensive renders until after browser has painted the new tab
   requestAnimationFrame(()=>{
     if(name==='dash')renderDash();
