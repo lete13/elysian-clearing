@@ -3103,6 +3103,7 @@ function renderCfg(){
           <div><label class="lbl">Management fee %</label><input type="number" value="${a.mgmtFee}" onchange="setApt('${a.id}','mgmtFee',parseFloat(this.value)||0)" step="0.5"></div>
           <div><label class="lbl">Cleaning fee €/stay</label><input type="number" value="${a.cleaningFee}" onchange="setApt('${a.id}','cleaningFee',parseFloat(this.value)||0)" step="1"></div>
         </div>
+        </div>
         <div style="background:var(--bg2);border-radius:var(--r);padding:12px">
           <div class="shdr">Owner contact (for email reports)</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -3147,8 +3148,14 @@ function renderCfg(){
               <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${profileSelectorHtml(a)}</div>
               <div style="font-size:10px;color:var(--tx3);margin-top:6px">Selecting a profile sets all tax defaults. Use Advanced Settings below to override.</div>
             </div>
-            <!-- Advanced Settings -->
-            <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 6px">Advanced Settings</div>
+            <!-- Advanced Settings (collapsible) -->
+            <div style="margin:8px 0 4px">
+              <button onclick="(function(btn){const sec=btn.closest('div').nextElementSibling;const open=sec.style.display!=='none';sec.style.display=open?'none':'block';btn.textContent=open?'⚙ Advanced Settings ▶':'⚙ Advanced Settings ▼';})(this)"
+                style="background:none;border:none;cursor:pointer;font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;padding:0">
+                ⚙ Advanced Settings ▶
+              </button>
+            </div>
+            <div style="display:none">
             ${togHtml(a.id,'vatOnFees','Charge 24% VAT on Elysian fees (non-leased property)')}${togHtml(a.id,'deductCT','Deduct Climate Tax (CT) from remittance')}
             ${togHtml(a.id,'isLeased','Property leased by Elysian')}${togHtml(a.id,'vatLiable','VAT liable')}${togHtml(a.id,'chargeVat','Charge VAT to guests')}<div style='display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:.5px solid var(--bdr)'>${togHtml(a.id,'deductCleaning','Deduct cleaning from payout')}<div style='font-size:10px;color:var(--tx3);line-height:1.4;padding-top:2px'>When OFF, cleaning still used for management base but not billed to owner</div></div>
             ${togHtml(a.id,'municipalityTax','Municipality / stayover tax')}${togHtml(a.id,'deductVAT','Deduct Income VAT from remittance')}${togHtml(a.id,'businessTax','Επιτηδεύματος (€50/μήνα)')}
@@ -3665,7 +3672,7 @@ function exportPDF() {
     </tr>`).join('') : '<tr><td colspan="4" style="color:#888;font-style:italic">None</td></tr>';
 
   const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
+<html><head><meta charset="UTF-8"><title>Elysian Properties — Clearing Report</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'Helvetica Neue',Arial,sans-serif; font-size:9pt; color:#1a1a1a; background:#fff; }
@@ -3935,10 +3942,11 @@ function exportPDF() {
 </body></html>`;
 
   // Open in new window and print
-  const win = window.open('', '_blank', 'width=900,height=700');
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => { win.focus(); win.print(); };
+  // Use blob URL so print header shows title not "about:blank"
+  const _blob = new Blob([html], { type: 'text/html' });
+  const _blobUrl = URL.createObjectURL(_blob);
+  const win = window.open(_blobUrl, '_blank', 'width=900,height=700');
+  win.onload = () => { win.focus(); win.print(); URL.revokeObjectURL(_blobUrl); };
   // Show post-report checklist after a short delay
   setTimeout(() => showPostReportReminders(apt), 800);
 }
