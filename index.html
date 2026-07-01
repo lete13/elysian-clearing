@@ -2404,7 +2404,7 @@ function calcBase(bks,apt){
   const base = gross - ct - vat - at - svc - pchg - configCl;
   // Business tax (Επιτήδευμα): fixed monthly amount per property when enabled
   const bt = apt?.businessTax ? (parseFloat(apt?.businessTaxAmt)||50) : 0;
-  return{base,gross,ct,vat,at,totTax,cleanH,configCl,cleanVat,cleanTotal,svc,pchg,totPay,netBkVal,trHost,trChan,thHost,bvPreVat,bt,nights};
+  return{base,gross,ct,vat,at,totTax,cleanH,configCl,cleanVat,cleanTotal,svc,pchg,totPay,netBkVal,trHost,trChan,thHost,bvPreVat,bt};
 }
 
 // ── Report date range ────────────────────────────────────
