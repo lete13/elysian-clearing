@@ -2401,7 +2401,7 @@ function calcBase(bks,apt){
   // Cleaning VAT is NOT deducted from base — it is an Elysian service charge, not a base deduction
   // Management fee base = Revenue - Climate Tax - VAT - Platform Fees (incl VAT) - Payment Charges - Cleaning
   const base = gross - ct - vat - at - svc - pchg - configCl;
-  // Business tax (Επιτήδευμα): fixed monthly amount per property when enabled
+  // Business tax (Επιτηδεύματος): fixed monthly amount per property when enabled
   const bt = apt?.businessTax ? (parseFloat(apt?.businessTaxAmt)||50) : 0;
   return{base,gross,ct,vat,at,totTax,cleanH,configCl,cleanVat,cleanTotal,svc,pchg,totPay,netBkVal,trHost,trChan,thHost,bvPreVat,bt};
 }
@@ -3251,7 +3251,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     .concat(m.vat>0 ? [cr(L.accomVAT,   null, -m.vat,   null)] : [])
     .concat(m.at >0 ? [cr(L.accomTax,          null, -m.at,    null)] : [])
     .concat(m.svc+m.pchg>0 ? [cr(L.platformFees, 'service fee + payment charges', -(m.svc+m.pchg), null)] : [])
-    .concat(m.bt>0 ? [cr(isGR?'Επιτήδευμα':'Business Tax (Επιτήδευμα)', isGR?'Φόρος Επιτηδεύματος (μηνιαία χρέωση)':'Business activity tax (monthly)', -m.bt, null)] : [])
+    .concat(m.bt>0 ? [cr(isGR?'Επιτηδεύματος':'Business Tax (Επιτηδεύματος)', isGR?'Φόρος Επιτηδεύματος (μηνιαία χρέωση)':'Business activity tax (monthly)', -m.bt, null)] : [])
     .concat([csep])
     // ── Elysian service charges ─────────────────────────────────────────────────
     .concat([cg(L.elysianCharges + (hasVat ? ' *' : ''))])
@@ -3443,7 +3443,12 @@ function renderRpt(){
     if(e.aptId==='__spl'&&e.splits?.some(s=>s.aptId===aptId&&parseFloat(s.amt)>0))return true;
     return false;
   });
-  const gea=e=>{if(e.aptId==='__spl'){const s=e.splits?.find(x=>x.aptId===aptId);return parseFloat(s?.amt||0);}return parseFloat(e.total||0);};
+  const gea=e=>{
+    if(e.aptId==='__spl'){const s=e.splits?.find(x=>x.aptId===aptId);return parseFloat(s?.amt||0);}
+    // Use net (pre-VAT) amount when Elysian does not charge VAT on fees for this property
+    const aptObj=aptById(aptId);
+    return aptObj?.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0);
+  };
   let panelHTML,payout,occ,nights,totalDays,m;
   try {
     const _r=buildRptHTML(apt,bks,exps,gea,_selApts);
