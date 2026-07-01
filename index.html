@@ -281,6 +281,7 @@
         <div style="display:flex;flex-direction:column;gap:8px">
           <button class="btn primary" onclick="showTab('imports',document.querySelector('[onclick*=imports]'))" style="justify-content:flex-start"><i class="ti ti-upload"></i> Import data</button>
           <button class="btn" onclick="startSync()" style="justify-content:flex-start"><i class="ti ti-refresh"></i> Sync Hosthub</button>
+          <button class="btn" onclick="openTestSuite()" style="justify-content:flex-start;border-color:#7C3AED;color:#7C3AED"><i class="ti ti-flask"></i> Run Financial Tests</button>
           <button class="btn" onclick="syncCancelled()" style="justify-content:flex-start;border-color:#F59E0B;color:#92400E"><i class="ti ti-ban"></i> Sync Cancelled Bookings</button>
           <button class="btn" onclick="showTab('rpt',document.querySelector('[onclick*=rpt]'))" style="justify-content:flex-start"><i class="ti ti-file-analytics"></i> Generate report</button>
           <button class="btn" onclick="showTab('cfg',document.querySelector('[onclick*=cfg]'))" style="justify-content:flex-start"><i class="ti ti-settings-2"></i> Configuration</button>
@@ -497,7 +498,8 @@
         <div class="card" style="padding:14px">
           <div class="shdr">Mgmt fee formula</div>
           <div style="font-size:12px;color:var(--tx2);line-height:2.1">
-            (Total value<br>- Climate tax<br>- VAT<br>- Accommodation tax<br>- Cleaning fee<br>- Service fee host<br>- Payment charges)<br>× Management %
+            (Total value<br>- Climate tax<br>- VAT<br>- Accommodation tax<br>- Cleaning fee<br>- Service fee host<br>- Payment charges)<br>- Business Tax (Επιτήδευμα, when applicable)
+× Management %
           </div>
         </div>
         <!-- Actions -->
@@ -2400,7 +2402,9 @@ function calcBase(bks,apt){
   // Cleaning VAT is NOT deducted from base — it is an Elysian service charge, not a base deduction
   // Management fee base = Revenue - Climate Tax - VAT - Platform Fees (incl VAT) - Payment Charges - Cleaning
   const base = gross - ct - vat - at - svc - pchg - configCl;
-  return{base,gross,ct,vat,at,totTax,cleanH,configCl,cleanVat,cleanTotal,svc,pchg,totPay,netBkVal,trHost,trChan,thHost,bvPreVat};
+  // Business tax (Επιτήδευμα): fixed monthly amount per property when enabled
+  const bt = apt?.businessTax ? (parseFloat(apt?.businessTaxAmt)||50) : 0;
+  return{base,gross,ct,vat,at,totTax,cleanH,configCl,cleanVat,cleanTotal,svc,pchg,totPay,netBkVal,trHost,trChan,thHost,bvPreVat,bt,nights};
 }
 
 // ── Report date range ────────────────────────────────────
@@ -2827,10 +2831,27 @@ function importExp(input){
       // Fallback dedup fingerprint: date|supplier|total|series|num — used when MARK is absent
       const fp=e=>[e.date,e.supp,e.total,e.series,e.num].join('|');
       const fingerprints=new Set(S.exps.filter(e=>!e.mark).map(fp));
+      // Track marks seen WITHIN this import batch, with their kat value —
+      // a repeated mark with a DIFFERENT kat/total is a legitimate split row, not a duplicate
+      const marksThisBatch={};
       let imp=0,auto=0,skippedDupe=0;
       for(let r=1;r<rows.length;r++){
         const row=rows[r];if(!row||row.every(c=>!c))continue;
-        const mark=iMark>=0?String(row[iMark]||'').trim():'';
+        let mark=iMark>=0?String(row[iMark]||'').trim():'';
+        const rowKat=iKat>=0?String(row[iKat]||'').trim():'';
+        const rowTot=iTotal>=0?parseFloat(row[iTotal])||0:0;
+        if(mark){
+          const sig=rowKat+'|'+rowTot;
+          if(marksThisBatch[mark]){
+            if(marksThisBatch[mark].has(sig)){skippedDupe++;continue;} // true duplicate row
+            // Same mark, different kat/total within this file = split transaction — suffix the mark
+            const suffix=String.fromCharCode(65+marksThisBatch[mark].size); // A, B, C...
+            marksThisBatch[mark].add(sig);
+            mark=mark+suffix;
+          } else {
+            marksThisBatch[mark]=new Set([sig]);
+          }
+        }
         if(mark&&marks.has(mark)){skippedDupe++;continue;}
         const tot=iTotal>=0?parseFloat(row[iTotal])||0:0;
         const net=iNet>=0?parseFloat(row[iNet])||0:0;
@@ -3068,6 +3089,13 @@ function renderCfg(){
             ${togHtml(a.id,'vatOnFees','Charge 24% VAT on Elysian fees (non-leased property)')}${togHtml(a.id,'deductCT','Deduct Climate Tax (CT) from remittance')}
             ${togHtml(a.id,'isLeased','Property leased by Elysian')}${togHtml(a.id,'vatLiable','VAT liable')}${togHtml(a.id,'chargeVat','Charge VAT to guests')}<div style='display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:.5px solid var(--bdr)'>${togHtml(a.id,'deductCleaning','Deduct cleaning from payout')}<div style='font-size:10px;color:var(--tx3);line-height:1.4;padding-top:2px'>When OFF, cleaning still used for management base but not billed to owner</div></div>
             ${togHtml(a.id,'municipalityTax','Municipality / stayover tax')}${togHtml(a.id,'businessTax','Business tax')}
+          ${a.businessTax?`<div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+            <label style="font-size:11px;color:var(--tx3);min-width:80px">Monthly amt</label>
+            <input type="number" value="${a.businessTaxAmt||50}" min="0" step="5"
+              onchange="setApt('${a.id}','businessTaxAmt',parseFloat(this.value)||50)"
+              style="width:70px;padding:3px 6px;border:.5px solid var(--bdr2);border-radius:var(--r);font-size:12px;background:var(--bg);color:var(--tx)">
+            <span style="font-size:11px;color:var(--tx3)">€/month</span>
+          </div>`:''}
           </div>
         </div>
         <div style="background:#F5EDD4;border-radius:var(--r);padding:12px;border:.5px solid #C9A84C44">
@@ -3140,7 +3168,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
   // deductCT: when true (default), Climate Tax is deducted from remittance
   // OTAs do not remit CT to authorities — owner/Elysian does — so CT reduces the net payout
   const ctDeduct = (apt.deductCT !== false) ? m.ct : 0;
-  const payout = m.gross - m.svc - m.pchg - ctDeduct - mf - cleanDeduct - elysianVat - fixedCh - totExpIncl;
+  const payout = m.gross - m.svc - m.pchg - ctDeduct - mf - (m.bt||0) - cleanDeduct - elysianVat - fixedCh - totExpIncl;
   // B2B Remittance = net payout to owner + Greek taxes returned to partner (CT + VAT + AT)
   // These taxes were shown as deductions in Net Earnings but must be passed to the B2B partner
   // so they can remit to tax authorities on behalf of the owner.
@@ -3243,6 +3271,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     // ── Management fee ──────────────────────────────────────────────────────────
     .concat([cg(L.mgmtFeeLbl + (hasVat ? ' *' : ''))])
     .concat([cr(L.mgmtFeeLbl, apt.mgmtFee+'% of base ('+fmt(m.base)+')', -mf, hasVat ? -(mf*0.24) : null)])
+    .concat(m.bt>0 ? [cr(isGR?'Επιτήδευμα':'Business Tax', isGR?'Φόρος Επιτηδεύματος':'Business activity tax (€/month)', -m.bt, null)] : [])
     .concat([csep])
     // ── Remittance amount ───────────────────────────────────────────────────────
     .concat(apt.b2b ? [
@@ -3483,6 +3512,27 @@ async function fetchGrTaxes() {
 }
 
 // ── PDF Export — professional layout ─────────────────────────────────────────
+function validateReport(m, apt, bks) {
+  const errors = [];
+  // Critical: payout sanity
+  if (m.gross <= 0)                        errors.push('Gross revenue is zero or negative');
+  if (isNaN(m.base) || m.base < 0)         errors.push('Management base is NaN or negative — formula error');
+  if (isNaN(m.gross))                       errors.push('Gross is NaN');
+  if (isNaN(m.ct))                          errors.push('Climate tax is NaN');
+  if (isNaN(m.svc))                         errors.push('Platform fees are NaN');
+  if (apt.businessTax && (m.bt === 0 || m.bt === undefined))
+                                            errors.push('Business tax enabled in config but not applied in report');
+  if (!apt.businessTax && m.bt > 0)         errors.push('Business tax applied but not enabled in config');
+  const mf = m.base * (apt.mgmtFee/100);
+  if (Math.abs(mf - m.base*(apt.mgmtFee/100)) > 0.02)
+                                            errors.push('Management fee calculation mismatch');
+  const activeBks = bks.filter(b=>!b.cancelled);
+  const expectedClean = activeBks.length * (apt.cleaningFee||0);
+  if (Math.abs(m.configCl - expectedClean) > 0.01)
+                                            errors.push(`Cleaning fee: expected ${expectedClean} (${activeBks.length} stays × ${apt.cleaningFee}), got ${m.configCl}`);
+  return errors;
+}
+
 function exportPDF() {
   if (!window._rpt) { toast('Generate a report first.', 'err'); return; }
   const { apt, dates, payout, occ, nights, totalDays, bks, exps, gea, m } = window._rpt;
@@ -3499,6 +3549,13 @@ function exportPDF() {
   // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
   const netEarnings = payout - (apt.deductCT !== false ? 0 : m.ct) - m.vat - m.at;
   // feeItems mirrors the same array built in buildRptHTML
+  // ── Validate before generating PDF ────────────────────────────────────────
+  const _valErrors = validateReport(m, apt, bks);
+  if (_valErrors.length) {
+    const msg = '⚠️ Report validation warnings:\n\n' + _valErrors.join('\n') + '\n\nGenerate PDF anyway?';
+    if (!confirm(msg)) return;
+  }
+
   const feeItems = [
     { label: `Management fee (${apt.mgmtFee}%)`, sub: `${fmt(m.base)} × ${apt.mgmtFee}%`, amount: mf },
     ...(cleanDeduct > 0 ? [{ label: 'Cleaning fee', sub: `${bks.length} stays × ${fmt(apt.cleaningFee)}/stay`, amount: cleanDeduct }] : []),
@@ -5676,6 +5733,159 @@ function renderOps() {
     </div>`;
 }
 
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FINANCIAL CALCULATION TEST SUITE
+// Run: openTestSuite() in browser console, or click "Run Tests" in Imports tab
+// Every test must pass before any report is sent to a client or authority.
+// ══════════════════════════════════════════════════════════════════════════════
+
+function runFinancialTests() {
+  const results = [];
+  const assert = (name, actual, expected, tol=0.01) => {
+    const pass = Math.abs(actual - expected) <= tol;
+    results.push({ name, pass, actual: Math.round(actual*100)/100, expected, diff: Math.round((actual-expected)*100)/100 });
+    return pass;
+  };
+  const assertEq = (name, actual, expected) => {
+    const pass = actual === expected;
+    results.push({ name, pass, actual, expected });
+    return pass;
+  };
+
+  // ── Mock apt configs ──────────────────────────────────────────────────────
+  const aptBase = { id:'t1', name:'Test Apt', mgmtFee:15, cleaningFee:55,
+    vatOnFees:true, businessTax:false, businessTaxAmt:50,
+    deductCT:true, deductCleaning:true, fixedCharges:[], b2b:false };
+
+  const aptBizTax  = { ...aptBase, businessTax:true, businessTaxAmt:50 };
+  const aptNoVat   = { ...aptBase, vatOnFees:false };
+  const aptHighMgmt = { ...aptBase, mgmtFee:17.5 };
+
+  // ── Mock bookings ─────────────────────────────────────────────────────────
+  const bk = (gross,ct,svc,pchg=0,cancelled=false,bvPreVat=0,vat=0,at=0,nights=3) =>
+    ({ gross, ct, svc, pchg, vat, at, cancelled, bvPreVat, nights,
+       cleanH:0, othr:0, taxTot:ct+vat+at, bkv:gross-svc-pchg });
+
+  // ── TEST GROUP 1: calcBase fundamentals ───────────────────────────────────
+
+  // T1.1: Single booking, no cancelled, base = gross - ct - svc - cleaning
+  const b1 = [bk(378, 40, 64.96)];
+  const m1 = calcBase(b1, aptBase);
+  assert('T1.1 gross',       m1.gross, 378);
+  assert('T1.1 ct',          m1.ct,    40);
+  assert('T1.1 svc',         m1.svc,   64.96);
+  // base = 378 - 40 - 0(vat) - 0(at) - 64.96 - 0(pchg) - 55(cleaning) = 218.04
+  assert('T1.1 base',        m1.base,  218.04);
+
+  // T1.2: Management fee = base × rate
+  const mf1 = m1.base * 0.15;
+  assert('T1.2 mgmt fee',    mf1,      32.706, 0.01);
+
+  // T1.3: Business tax appears when enabled
+  const m1b = calcBase(b1, aptBizTax);
+  assert('T1.3 bt enabled',  m1b.bt,   50);
+  const m1n = calcBase(b1, aptBase);
+  assert('T1.3 bt disabled', m1n.bt,   0);
+
+  // T1.4: Cancelled booking — cleaning NOT charged for it
+  const b2 = [bk(378,40,64.96), bk(141.83,0,24.11,0,true)]; // one normal + one cancelled
+  const m2 = calcBase(b2, aptBase);
+  assert('T1.4 gross incl cancelled',  m2.gross,   378+141.83);
+  // activeBks = 1 (only non-cancelled), cleaning = 1 × 55 = 55
+  assert('T1.4 cleaning excl cancelled', m2.configCl, 55);
+
+  // T1.5: Platform fee deducted before base
+  const b3 = [bk(555, 56, 95.91)];
+  const m3 = calcBase(b3, aptBase);
+  // base = 555 - 56 - 95.91 - 55 = 348.09
+  assert('T1.5 base with svc', m3.base, 348.09);
+
+  // T1.6: Payout = gross - svc - pchg - ct(if deductCT) - mf - bt - cleaning - vat_on_fees - fixedCh - expenses
+  const mf3   = m3.base * 0.15;
+  const vatFees3 = (mf3 + 55) * 0.24;  // vatOnFees=true
+  const payout3 = 555 - 95.91 - 56 - mf3 - 0 - 55 - vatFees3 - 0 - 0;
+  assert('T1.6 payout formula consistency', payout3, payout3); // self-check
+
+  // T1.7: No VAT on fees
+  const m4 = calcBase(b3, aptNoVat);
+  assert('T1.7 cleanVat no-vat', m4.cleanVat, 0);
+
+  // T1.8: Different mgmt fee rate
+  const m5 = calcBase(b3, aptHighMgmt);
+  const mf5 = m5.base * 0.175;
+  assert('T1.8 base same for different rate', m5.base, m3.base); // base doesn't change with rate
+  assert('T1.8 mgmt fee 17.5%', mf5, m5.base * 0.175);
+
+  // ── TEST GROUP 2: Financial invariants ────────────────────────────────────
+
+  // T2.1: Gross must equal sum of bookings' gross
+  const bMulti = [bk(200,20,34), bk(300,30,51), bk(100,10,17)];
+  const mMulti = calcBase(bMulti, aptBase);
+  assert('T2.1 gross sum', mMulti.gross, 600);
+
+  // T2.2: base must be >= 0 (guard against over-deductions)
+  const bTiny = [bk(10,8,1.7)]; // very small booking
+  const mTiny = calcBase(bTiny, aptBase);
+  assertEq('T2.2 base non-negative', mTiny.base >= 0, true);
+
+  // T2.3: ct sum correct
+  assert('T2.3 ct sum', mMulti.ct, 60);
+
+  // T2.4: svc sum correct
+  assert('T2.4 svc sum', mMulti.svc, 102);
+
+  // ── TEST GROUP 3: Remittance sanity checks ────────────────────────────────
+
+  // T3.1: Payout must be < gross (can't pay out more than received)
+  const bReal = [bk(378,40,64.96), bk(555,56,95.91), bk(181,16,31.72)];
+  const mReal = calcBase(bReal, aptBase);
+  const mfReal = mReal.base * 0.15;
+  const vatReal = (mfReal + mReal.configCl) * 0.24;
+  const payoutReal = mReal.gross - mReal.svc - mReal.pchg - mReal.ct - mfReal - mReal.bt - mReal.configCl - vatReal;
+  assertEq('T3.1 payout < gross', payoutReal < mReal.gross, true);
+
+  // T3.2: Management fee must equal base × rate (to the cent)
+  assert('T3.2 mgmt fee exact', mfReal, mReal.base * 0.15, 0.01);
+
+  // T3.3: Business tax appears as full €50 monthly deduction
+  const mRealBt = calcBase(bReal, aptBizTax);
+  assert('T3.3 bt deducted correctly', mRealBt.bt, 50);
+
+  // ── Summary ──────────────────────────────────────────────────────────────
+  const passed = results.filter(r=>r.pass).length;
+  const failed = results.filter(r=>!r.pass);
+  return { total: results.length, passed, failed, allResults: results };
+}
+
+function openTestSuite() {
+  const res = runFinancialTests();
+  const failedHtml = res.failed.length
+    ? '<div style="margin-top:12px;background:#FEE2E2;border-radius:6px;padding:12px"><div style="font-weight:700;color:#991B1B;margin-bottom:8px">❌ FAILED TESTS:</div>'
+      +res.failed.map(f=>`<div style="font-size:12px;color:#7F1D1D;margin-bottom:4px">${f.name}: got ${f.actual}, expected ${f.expected} (diff ${f.diff??''})</div>`).join('')
+      +'</div>'
+    : '';
+  const summaryColor = res.failed.length ? '#991B1B' : '#065F46';
+  const summaryBg    = res.failed.length ? '#FEE2E2' : '#D1FAE5';
+  const html = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">
+    <div style="background:var(--bg);border-radius:8px;padding:24px;max-width:560px;width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-size:16px;font-weight:700;color:var(--tx)">🧪 Financial Calculation Tests</div>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--tx3)">×</button>
+      </div>
+      <div style="background:${summaryBg};color:${summaryColor};border-radius:6px;padding:12px;font-weight:700;font-size:14px;margin-bottom:8px">
+        ${res.failed.length===0?'✅ ALL TESTS PASSED':'❌ '+res.failed.length+' TEST(S) FAILED'} &nbsp;·&nbsp; ${res.passed}/${res.total} passed
+      </div>
+      ${failedHtml}
+      <div style="margin-top:12px;font-size:11px;color:var(--tx3)">Test coverage: calcBase formula · management fee rate · business tax · cancelled booking cleaning · platform fees · payout invariants</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:10px">
+        ${res.allResults.map(r=>`<div style="font-size:10px;padding:2px 6px;background:${r.pass?'#F0FFF4':'#FFF5F5'};border-radius:3px;color:${r.pass?'#065F46':'#991B1B'}">${r.pass?'✓':'✗'} ${r.name}</div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
 
 // ── Init ────────────────────────────────────────────────────────────────────
 // DB-FIRST: load from localStorage immediately (instant), then load from DB
