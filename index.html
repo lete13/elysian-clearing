@@ -3259,14 +3259,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
   // Equivalent to: payout + Greek taxes (since payout already deducts everything including mgmt fee)
   // Greek taxes are added back separately because owner receives them from platform to remit themselves
   // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
-  // Net Earnings = Gross minus ALL deductions shown ABOVE the NE line (at their TOTAL column value)
-  // CT always deducted here (even if owner remits themselves — it reduces their earnings)
-  // Clean/software/expenses at their TOTAL (charges + VAT when vatOnFees=true)
-  // Then: Net Earnings - Management fee TOTAL = Remittance
-  const netEarnings = m.gross - m.ct - vatDeduct - atDeduct - m.svc - m.pchg - m.bt
-    - cleanDeduct * (hasVat ? 1.24 : 1)
-    - fixedCh    * (hasVat ? 1.24 : 1)
-    - totExpIncl;
+
   const nights=bks.reduce((s,b)=>s+(parseInt(b.nights)||0),0);
   const dates=getRptDates();
   const totalDays=dates?Math.ceil((dates.to-dates.from)/(86400000))+1:30;
@@ -3298,6 +3291,15 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
   };
   const C = '1fr 130px 80px 112px'; // grid columns
   const hasVat = apt.vatOnFees;
+
+  // Net Earnings = Gross minus ALL deductions shown ABOVE the NE line (at their TOTAL column value)
+  // CT always deducted here (even if owner remits themselves — it reduces their earnings)
+  // Clean/software/expenses at their TOTAL (charges + VAT when vatOnFees=true)
+  // Then: Net Earnings - Management fee TOTAL = Remittance
+  const netEarnings = m.gross - m.ct - vatDeduct - atDeduct - m.svc - m.pchg - m.bt
+    - cleanDeduct * (hasVat ? 1.24 : 1)
+    - fixedCh    * (hasVat ? 1.24 : 1)
+    - totExpIncl;
 
   // Row builder: (label, sublabel, chargesAmt, vatAmt)
   // vatAmt=null → show "–" in VAT column; vatAmt=0 → show "–" too
@@ -3641,14 +3643,7 @@ function exportPDF() {
   const expVat     = apt.vatOnFees ? totExp * 0.24 : 0;
   const totExpIncl = totExp + expVat;
   // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
-  // Net Earnings = Gross minus ALL deductions shown ABOVE the NE line (at their TOTAL column value)
-  // CT always deducted here (even if owner remits themselves — it reduces their earnings)
-  // Clean/software/expenses at their TOTAL (charges + VAT when vatOnFees=true)
-  // Then: Net Earnings - Management fee TOTAL = Remittance
-  const netEarnings = m.gross - m.ct - vatDeduct - atDeduct - m.svc - m.pchg - m.bt
-    - cleanDeduct * (hasVat ? 1.24 : 1)
-    - fixedCh    * (hasVat ? 1.24 : 1)
-    - totExpIncl;
+
   // feeItems mirrors the same array built in buildRptHTML
   // ── Validate before generating PDF ────────────────────────────────────────
   const _valErrors = validateReport(m, apt, bks);
