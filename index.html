@@ -5948,7 +5948,72 @@ function runFinancialTests() {
   const mRealBt = calcBase(bReal, aptBizTax);
   assert('T3.3 bt deducted correctly', mRealBt.bt, 50);
 
-  // ── Summary ──────────────────────────────────────────────────────────────
+  // ── TEST GROUP 4: Golden Standard — Horizon June 2026 (Leased by Elysian) ────
+  // Verified reference: DO NOT change these values without accountant sign-off.
+  // Property: Elysian Lycabettus - Horizon  |  Period: June 2026  |  Profile: Leased
+
+  const HORIZON_JUNE = {
+    aptId: 'blriczb', mgmtFee: 15,
+    gross: 3067.39, ct: 200.00, vat: 329.88, at: 18.91,
+    svc: 413.58, pchg: 32.09, bt: 50.00, cleaning: 420.00,
+    base: 1602.93, mf: 240.44, netEarnings: 1553.33, remittance: 1312.89,
+  };
+
+  // Run the real calc against the golden values
+  const goldenApt = S && S.apts ? S.apts.find(function(a){ return a.id === HORIZON_JUNE.aptId; }) : null;
+  if (goldenApt && typeof getRptBks === 'function') {
+    const gFrom = new Date(2026,5,1), gTo = new Date(2026,6,0);
+    if (typeof rptChanSel !== 'undefined') rptChanSel = null;
+    const gChanSel = typeof getSelChannels === 'function' ? getSelChannels(HORIZON_JUNE.aptId) : new Set(['Airbnb','Booking.com','Direct']);
+    const gBks = getRptBks(HORIZON_JUNE.aptId, gFrom, gTo).filter(function(b){ return gChanSel.has(b.platform||b.channel); });
+    if (gBks.length > 0) {
+      const gM = calcBase(gBks, goldenApt);
+      const gMf = Math.max(0, gM.base) * (goldenApt.mgmtFee/100);
+      const gFixed = (goldenApt.fixedCharges||[]).reduce(function(s,f){ return s+(parseFloat(f.amount)||0); }, 0);
+      const gVatDed = goldenApt.deductVAT !== false ? gM.vat : 0;
+      const gAtDed  = goldenApt.municipalityTax ? gM.at : 0;
+      const gCtDed  = goldenApt.deductCT !== false ? gM.ct : 0;
+      const gExp    = typeof S !== 'undefined' ? S.exps.filter(function(e){ return e.aptId===HORIZON_JUNE.aptId; }).reduce(function(s,e){ return s + (e.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0)); }, 0) : 0;
+      const gPayout = gM.gross - gM.svc - gM.pchg - gCtDed - gVatDed - gAtDed - gMf - gM.bt - gM.configCl - gFixed - gExp;
+      const gNetE   = gPayout + gMf;
+
+      assert('G1 Horizon gross',       gM.gross,       HORIZON_JUNE.gross);
+      assert('G2 Horizon CT',          gM.ct,          HORIZON_JUNE.ct);
+      assert('G3 Horizon VAT',         gM.vat,         HORIZON_JUNE.vat);
+      assert('G4 Horizon municipality',gM.at,          HORIZON_JUNE.at);
+      assert('G5 Horizon platform fee',gM.svc,         HORIZON_JUNE.svc);
+      assert('G6 Horizon pmt charges', gM.pchg,        HORIZON_JUNE.pchg);
+      assert('G7 Horizon business tax',gM.bt,          HORIZON_JUNE.bt);
+      assert('G8 Horizon cleaning',    gM.configCl,    HORIZON_JUNE.cleaning);
+      assert('G9 Horizon base',        gM.base,        HORIZON_JUNE.base);
+      assert('G10 Horizon mgmt fee',   gMf,            HORIZON_JUNE.mf);
+      assert('G11 Horizon net earnings',gNetE,         HORIZON_JUNE.netEarnings);
+      assert('G12 Horizon remittance', gPayout,        HORIZON_JUNE.remittance);
+    } else {
+      results.push({ name:'G1-G12 Horizon golden (no bks found)', pass:false, actual:'0 bookings', expected:'14 bookings' });
+    }
+  } else {
+    results.push({ name:'G1-G12 Horizon golden (apt not found)', pass:false, actual:'apt missing', expected:'blriczb' });
+  }
+
+  // ── TEST GROUP 5: Leased Profile invariants ───────────────────────────────
+  // Any property with profile='leased' must have these flags set correctly
+  if (typeof S !== 'undefined' && S.apts) {
+    const leasedApts = S.apts.filter(function(a){ return a.profile === 'leased'; });
+    leasedApts.forEach(function(a) {
+      const name = a.name.slice(0,20);
+      assertEq('P1 '+name+' deductCT',         a.deductCT,         true);
+      assertEq('P2 '+name+' deductVAT',         a.deductVAT,        true);
+      assertEq('P3 '+name+' municipalityTax',   a.municipalityTax,  true);
+      assertEq('P4 '+name+' businessTax',       a.businessTax,      true);
+      assertEq('P5 '+name+' vatOnFees=false',   a.vatOnFees,        false);
+    });
+    if (leasedApts.length === 0) {
+      results.push({ name:'P1-P5 Leased profile (no leased properties configured)', pass:true, actual:'skip', expected:'skip' });
+    }
+  }
+
+  // ── Summary ──────────────────────────────────────────────────────────────────
   const passed = results.filter(r=>r.pass).length;
   const failed = results.filter(r=>!r.pass);
   return { total: results.length, passed, failed, allResults: results };
