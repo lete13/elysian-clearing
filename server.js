@@ -740,6 +740,37 @@ app.post('/api/sync-cancelled', async (req, res) => {
 
 
 // ── Debug: inspect raw cancelled events from Hosthub ────────────────────────
+app.post('/api/debug-checkin', async (req, res) => {
+  const apiKey = SERVER_API_KEY || req.body?.apiKey;
+  if (!apiKey) return res.status(400).json({ error: 'No API key' });
+  const propertyNames = req.body?.propertyNames || [];
+  const targetDate = req.body?.date; // 'YYYY-MM-DD'
+  try {
+    const evs = await fetchPages(`${BASE}/calendar-events?is_visible=true`, apiKey).catch(()=>[]);
+    const matches = evs.filter(e => {
+      const rentalName = (e.rental_unit?.name || e.rental?.name || '').toLowerCase();
+      const nameMatch = propertyNames.some(n => rentalName.includes(n.toLowerCase()));
+      if (!nameMatch) return false;
+      if (targetDate) {
+        return e.date_from === targetDate || e.date_to === targetDate ||
+               (e.date_from <= targetDate && e.date_to >= targetDate);
+      }
+      return true;
+    });
+    res.json({
+      total: evs.length,
+      matchCount: matches.length,
+      matches: matches.map(e => ({
+        id: e.id, rental: e.rental_unit?.name || e.rental?.name,
+        guest: e.guest_name, date_from: e.date_from, date_to: e.date_to,
+        type: e.type, updated: e.updated, created: e.created,
+      })),
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/debug-cancelled', async (req, res) => {
   const apiKey = SERVER_API_KEY || req.body?.apiKey;
   if (!apiKey) return res.status(400).json({ error: 'No API key' });
