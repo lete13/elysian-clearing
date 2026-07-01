@@ -711,7 +711,7 @@ const PROPERTY_PROFILES = {
   leased:  { label:'Leased by Elysian', emoji:'🏢', color:'#0369A1',
     flags:{ deductCT:true,  deductVAT:true,  municipalityTax:true,  businessTax:true,  vatOnFees:false } },
   private: { label:'Private Property',  emoji:'🏠', color:'#059669',
-    flags:{ deductCT:false, deductVAT:false, municipalityTax:false, businessTax:false, vatOnFees:true  } },
+    flags:{ deductCT:true,  deductVAT:false, municipalityTax:false, businessTax:false, vatOnFees:true  } },
   b2b:     { label:'B2B Property',      emoji:'🤝', color:'#7C3AED',
     flags:{ deductCT:true,  deductVAT:false, municipalityTax:false, businessTax:false, vatOnFees:true  } },
 };
@@ -6025,6 +6025,61 @@ function runFinancialTests() {
     results.push({ name:'G1-G12 Horizon golden (apt not found)', pass:false, actual:'apt missing', expected:'blriczb' });
   }
 
+  // ── TEST GROUP 4b: Golden Standard — Acropolis Skyline June 2026 (Private) ───
+  // Verified reference: DO NOT change these values without accountant sign-off.
+  // Property: Acropolis Skyline Sunset  |  Period: June 2026  |  Profile: Private
+  // Note: excludes 1 "Maintenance" block booking (gross=8, ct=8) — not real revenue
+
+  const SKYLINE_JUNE = {
+    aptId: null, // resolved by name below (id may vary by environment)
+    aptName: 'Acropolis Skyline Sunset', mgmtFee: 15,
+    gross: 2245.83, ct: 216.00, svc: 390.15,
+    cleaning: 280.00, cleaningTotal: 347.20,
+    software: 45.00, softwareTotal: 55.80,
+    expensesTotal: 79.86,
+    base: 1359.68, mfCharges: 203.95, mfTotal: 252.90,
+    netEarnings: 1156.82, remittance: 903.92,
+  };
+
+  const skylineApt = S && S.apts ? S.apts.find(function(a){ return a.name === SKYLINE_JUNE.aptName; }) : null;
+  if (skylineApt && typeof getRptBks === 'function') {
+    const sFrom = new Date(2026,5,1), sTo = new Date(2026,6,0);
+    if (typeof rptChanSel !== 'undefined') rptChanSel = null;
+    const sChanSel = typeof getSelChannels === 'function' ? getSelChannels(skylineApt.id) : new Set(['Airbnb','Booking.com','Direct']);
+    const sBksRaw = getRptBks(skylineApt.id, sFrom, sTo).filter(function(b){ return sChanSel.has(b.platform||b.channel); });
+    if (sBksRaw.length > 0) {
+      const sM = calcBase(sBksRaw, skylineApt); // calcBase filters maintenance blocks internally
+      const sMf = Math.max(0, sM.base) * (skylineApt.mgmtFee/100);
+      const sFixedCh = (skylineApt.fixedCharges||[]).reduce(function(s,f){ return s+(parseFloat(f.amount)||0); }, 0);
+      const sHasVat = skylineApt.vatOnFees;
+      const sCleanDeduct = sM.configCl;
+      const sCtDeduct = skylineApt.deductCT !== false ? sM.ct : 0;
+      const sVatDeduct = skylineApt.deductVAT !== false ? sM.vat : 0;
+      const sAtDeduct  = skylineApt.municipalityTax ? sM.at : 0;
+      const sElysianVat = sHasVat ? (sMf+sCleanDeduct+sFixedCh)*0.24 : 0;
+      const sExps = S.exps.filter(function(e){ return e.aptId===skylineApt.id; });
+      const sTotExp = sExps.reduce(function(s,e){ return s + (skylineApt.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0)); }, 0);
+      const sExpVat = sHasVat ? sTotExp*0.24 : 0;
+      const sTotExpIncl = sTotExp + sExpVat;
+      const sPayout = sM.gross - sM.svc - sM.pchg - sCtDeduct - sVatDeduct - sAtDeduct - sMf - sM.bt - sCleanDeduct - sElysianVat - sFixedCh - sTotExpIncl;
+      const sNetE = sM.gross - sM.ct - sVatDeduct - sAtDeduct - sM.svc - sM.pchg - sM.bt
+        - sCleanDeduct*(sHasVat?1.24:1) - sFixedCh*(sHasVat?1.24:1) - sTotExpIncl;
+
+      assert('G13 Skyline gross (excl. maintenance)', sM.gross, SKYLINE_JUNE.gross);
+      assert('G14 Skyline CT',                        sM.ct,    SKYLINE_JUNE.ct);
+      assert('G15 Skyline platform fee',               sM.svc,   SKYLINE_JUNE.svc);
+      assert('G16 Skyline cleaning (8 stays, excl. maintenance)', sCleanDeduct, SKYLINE_JUNE.cleaning);
+      assert('G17 Skyline base',                       sM.base,  SKYLINE_JUNE.base);
+      assert('G18 Skyline mgmt fee charges',           sMf,      SKYLINE_JUNE.mfCharges);
+      assert('G19 Skyline net earnings',               sNetE,    SKYLINE_JUNE.netEarnings);
+      assert('G20 Skyline remittance',                 sPayout,  SKYLINE_JUNE.remittance);
+    } else {
+      results.push({ name:'G13-G20 Skyline golden (no bks found)', pass:false, actual:'0 bookings', expected:'9 bookings (incl 1 maintenance)' });
+    }
+  } else {
+    results.push({ name:'G13-G20 Skyline golden (apt not found)', pass:false, actual:'apt missing', expected:SKYLINE_JUNE.aptName });
+  }
+
   // ── TEST GROUP 5: Leased Profile invariants ───────────────────────────────
   // Any property with profile='leased' must have these flags set correctly
   if (typeof S !== 'undefined' && S.apts) {
@@ -6039,6 +6094,20 @@ function runFinancialTests() {
     });
     if (leasedApts.length === 0) {
       results.push({ name:'P1-P5 Leased profile (no leased properties configured)', pass:true, actual:'skip', expected:'skip' });
+    }
+
+    // Private profile invariants
+    const privateApts = S.apts.filter(function(a){ return a.profile === 'private'; });
+    privateApts.forEach(function(a) {
+      const name = a.name.slice(0,20);
+      assertEq('P6 '+name+' deductCT=true',       a.deductCT,        true);
+      assertEq('P7 '+name+' deductVAT=false',      a.deductVAT,       false);
+      assertEq('P8 '+name+' municipalityTax=false',a.municipalityTax, false);
+      assertEq('P9 '+name+' businessTax=false',    a.businessTax,     false);
+      assertEq('P10 '+name+' vatOnFees=true',      a.vatOnFees,       true);
+    });
+    if (privateApts.length === 0) {
+      results.push({ name:'P6-P10 Private profile (no private properties configured)', pass:true, actual:'skip', expected:'skip' });
     }
   }
 
