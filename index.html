@@ -713,7 +713,7 @@ const PROPERTY_PROFILES = {
   private: { label:'Private Property',  emoji:'🏠', color:'#059669',
     flags:{ deductCT:true,  deductVAT:false, municipalityTax:false, businessTax:false, vatOnFees:true  } },
   b2b:     { label:'B2B Property',      emoji:'🤝', color:'#7C3AED',
-    flags:{ deductCT:true,  deductVAT:false, municipalityTax:false, businessTax:false, vatOnFees:true  } },
+    flags:{ deductCT:true,  deductVAT:true,  municipalityTax:true,  businessTax:false, vatOnFees:true  } },
 };
 
 const PROFILE_FLAG_LABELS = {
@@ -3172,7 +3172,7 @@ function renderCfg(){
             </div>
             <div style="display:none">
             ${togHtml(a.id,'vatOnFees','Charge 24% VAT on Elysian fees (non-leased property)')}${togHtml(a.id,'deductCT','Deduct Climate Tax (CT) from remittance')}
-            ${togHtml(a.id,'isLeased','Property leased by Elysian')}${togHtml(a.id,'vatLiable','VAT liable')}${togHtml(a.id,'chargeVat','Charge VAT to guests')}<div style='display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:.5px solid var(--bdr)'>${togHtml(a.id,'deductCleaning','Deduct cleaning from payout')}<div style='font-size:10px;color:var(--tx3);line-height:1.4;padding-top:2px'>When OFF, cleaning still used for management base but not billed to owner</div></div>
+            ${togHtml(a.id,'isLeased','Property leased by Elysian')}<div style='display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:.5px solid var(--bdr)'>${togHtml(a.id,'deductCleaning','Deduct cleaning from payout')}<div style='font-size:10px;color:var(--tx3);line-height:1.4;padding-top:2px'>When OFF, cleaning still used for management base but not billed to owner</div></div>
             ${togHtml(a.id,'municipalityTax','Municipality / stayover tax')}${togHtml(a.id,'deductVAT','Deduct Income VAT from remittance')}${togHtml(a.id,'businessTax','Επιτηδεύματος (€50/μήνα)')}
           ${a.businessTax?`<div style="display:flex;align-items:center;gap:6px;margin-top:4px">
             <label style="font-size:11px;color:var(--tx3);min-width:80px">Monthly amt</label>
@@ -3385,7 +3385,13 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
     .concat(apt.b2b ? [
       '<div style="display:grid;grid-template-columns:'+C+';padding:8px 14px;background:var(--bg2);border-top:.5px solid var(--bdr);gap:8px">'
         +'<div style="font-size:13px;font-weight:600;color:var(--tx)">'+L.remittanceLbl
-          +'<div style="font-size:10px;color:var(--tx3);margin-top:1px">Net payout + Greek taxes returned to B2B partner</div></div>'
+          +'<div style="font-size:10px;color:var(--tx3);margin-top:1px">'
+            +(isGR?'Καθαρό ':'Net ')+fmt(payout)
+            +(ctDeduct>0?' + ΤΑΚΚ '+fmt(ctDeduct):'')
+            +(vatDeduct>0?' + ΦΠΑ '+fmt(vatDeduct):'')
+            +(atDeduct>0?(isGR?' + Δημ.φόρος ':' + Mun.tax ')+fmt(atDeduct):'')
+            +(isGR?' — αποδίδεται στον συνεργάτη B2B':' — remitted to B2B partner')
+          +'</div></div>'
         +'<div style="font-family:var(--mono);font-size:13.5px;text-align:right;font-weight:600;color:#1a7a4a">'+fmt(b2bRem)+'</div>'
         +'<div style="text-align:right;color:var(--tx3)">–</div>'
         +'<div style="font-family:var(--mono);font-size:13.5px;text-align:right;font-weight:600;color:#1a7a4a">'+fmt(b2bRem)+'</div>'
@@ -6182,6 +6188,20 @@ function runFinancialTests() {
     });
     if (privateApts.length === 0) {
       results.push({ name:'P6-P10 Private profile (no private properties configured)', pass:true, actual:'skip', expected:'skip' });
+    }
+
+    // B2B profile invariants — Elysian deducts CT+VAT+AT and remits them to the partner
+    const b2bApts = S.apts.filter(function(a){ return a.profile === 'b2b'; });
+    b2bApts.forEach(function(a) {
+      const name = a.name.slice(0,20);
+      assertEq('P11 '+name+' deductCT=true',        a.deductCT,        true);
+      assertEq('P12 '+name+' deductVAT=true',        a.deductVAT,       true);
+      assertEq('P13 '+name+' municipalityTax=true',  a.municipalityTax, true);
+      assertEq('P14 '+name+' businessTax=false',     a.businessTax,     false);
+      assertEq('P15 '+name+' vatOnFees=true',        a.vatOnFees,       true);
+    });
+    if (b2bApts.length === 0) {
+      results.push({ name:'P11-P15 B2B profile (no b2b properties configured)', pass:true, actual:'skip', expected:'skip' });
     }
   }
 
