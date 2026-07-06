@@ -763,7 +763,7 @@ const GENERIC_AL={
   "ΠΛΥΝΤΗΡΙΑ ΘΕΣ":"Cleaning Material Thessaloniki"
 };
 
-let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]}};
+let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]},cleanOverride:{}};
 let rptMode="mo";
 
 // ── Persistence ──────────────────────────────────────────
@@ -817,6 +817,7 @@ function load() {
       S.meta = p.meta || {};
       S.revenue = p.revenue || { cleaning: {}, mgmt: {} };
       S.daily   = p.daily   || { snapshots: {}, tasks: [] };
+      S.cleanOverride = p.cleanOverride || {};
     }
   } catch(e) {}
   // If localStorage had real data, mark as initialized
@@ -828,7 +829,7 @@ function load() {
 function save() {
   // Immediate local save
   try {
-    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {} }));
+    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, cleanOverride: S.cleanOverride || {} }));
   } catch(e) {}
   // Debounced DB save (2s after last change)
   if (_dbAvailable) {
@@ -850,7 +851,8 @@ async function saveToDb() {
       apts: S.apts, bks: S.bks, exps: S.exps,
       meta: S.meta || {},
       revenue: S.revenue || {cleaning:{},mgmt:{}},
-      daily: S.daily || {snapshots:{},tasks:[]}
+      daily: S.daily || {snapshots:{},tasks:[]},
+      cleanOverride: S.cleanOverride || {}
     };
     const r = await fetch('/api/db/data', {
       method: 'POST',
@@ -889,12 +891,12 @@ async function loadFromDb() {
     S.bks     = data.bks     || S.bks;
     S.exps    = data.exps    || S.exps;
     S.meta    = data.meta    || S.meta    || {};
-    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};
+    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};
     _lastDbSave = data._savedAt;
     _dataInitialized = true;
     // Persist loaded state to localStorage
     try {
-      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily }));
+      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily, cleanOverride: S.cleanOverride }));
       // Sync the "Last synced" display with actual last sync from DB meta
       const lastSync = S.meta?.lastSync || S.meta?.lastAutoSync;
       if (lastSync) localStorage.setItem('hh_last_sync', lastSync);
@@ -2426,7 +2428,7 @@ function isRevenueBooking(b) {
   return !BLOCK_NAMES.includes(n);
 }
 
-function calcBase(bks,apt){
+function calcBase(bks,apt,stayOverride){
   // Exclude maintenance/owner blocks from financial calculations
   bks = bks.filter(isRevenueBooking);
   const gross    =bks.reduce((s,b)=>s+(b.gross||0),0);
@@ -2446,7 +2448,8 @@ function calcBase(bks,apt){
   // Configured cleaning fee (ex-VAT)
   // Cancelled bookings don't incur a cleaning fee (no stay happened)
   const activeBks = bks.filter(b => !b.cancelled);
-  const configCl = parseFloat(apt?.cleaningFee||0)*activeBks.length;
+  const cleanStays = (stayOverride !== undefined && stayOverride !== null) ? stayOverride : activeBks.length;
+  const configCl = parseFloat(apt?.cleaningFee||0)*cleanStays;
   // When vatOnFees is ON, cleaning cost to owner = configCl × 1.24 (fee + 24% VAT)
   // The full VAT-inclusive cleaning amount must be deducted before applying management %
   const cleanVat   = apt?.vatOnFees ? configCl * 0.24 : 0;
@@ -2462,7 +2465,7 @@ function calcBase(bks,apt){
   const vatForBase = (apt?.deductVAT !== false) ? vat : 0;
   const atForBase  = apt?.municipalityTax ? at : 0;
   const base = gross - ct - vatForBase - atForBase - svc - pchg - bt - configCl;
-  return{base,gross,ct,vat,at,totTax,cleanH,configCl,cleanVat,cleanTotal,svc,pchg,totPay,netBkVal,trHost,trChan,thHost,bvPreVat,bt};
+  return{base,gross,ct,vat,at,totTax,cleanH,configCl,cleanVat,cleanTotal,svc,pchg,totPay,netBkVal,trHost,trChan,thHost,bvPreVat,bt,cleanStays,cleanStaysAuto:activeBks.length};
 }
 
 // ── Report date range ────────────────────────────────────
@@ -3230,11 +3233,13 @@ function rrow(lbl,val,indent,color,bold,sub){
   </div>`;
 }
 
-function buildRptHTML(apt,bks,exps,getEA,selApts){
+function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
   bks = bks.filter(isRevenueBooking); // exclude maintenance/owner blocks
-  const m=calcBase(bks,apt);
+  const m=calcBase(bks,apt,cleanOverride);
   const rate=parseFloat(apt.mgmtFee||0)/100;
   const mf=Math.max(0,m.base)*rate;
+  // Fall back to a per-expense 24% estimate only if caller didn't supply real-VAT getter
+  const _geaVat = getEAVat || (e => (e.aptId==='__spl' ? getEA(e)*0.24 : (parseFloat(e.vat)||0)));
   const totExp=exps.reduce((s,e)=>s+getEA(e),0);
   // For multi-property reports, sum fixed charges across ALL selected properties
   const _apts = (selApts && selApts.length > 0) ? selApts : [apt];
@@ -3244,7 +3249,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
   const cleanDeduct = (apt.deductCleaning !== false) ? m.configCl : 0;
   const elysianVat   = apt.vatOnFees ? (mf + cleanDeduct + fixedCh) * vatRate : 0;
   // Expenses also carry 24% VAT for non-leased (vatOnFees) properties
-  const expVat     = apt.vatOnFees ? totExp * vatRate : 0;
+  const expVat     = apt.vatOnFees ? exps.reduce((s,e)=>s+_geaVat(e),0) : 0;
   const totExpIncl = totExp + expVat;
   // Remittance = Gross - Platform fees - All Elysian charges (incl VAT) - Expenses (incl VAT)
   // Greek taxes (CT/VAT/AT) are NOT deducted: owner receives them from platform and remits themselves.
@@ -3257,13 +3262,13 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
   // B2B Remittance = net payout to owner + Greek taxes returned to partner (CT + VAT + AT)
   // These taxes were shown as deductions in Net Earnings but must be passed to the B2B partner
   // so they can remit to tax authorities on behalf of the owner.
-  const b2bRem = apt.b2b ? payout + m.ct + m.vat + m.at : 0;
+  const b2bRem = apt.b2b ? payout + ctDeduct + vatDeduct + atDeduct : 0; // add back ONLY taxes actually deducted (else double-count)
   // Net Earnings = Gross - ALL deductions (taxes + platform + cleaning + fixed + mgmt fee + expenses)
   // Equivalent to: payout + Greek taxes (since payout already deducts everything including mgmt fee)
   // Greek taxes are added back separately because owner receives them from platform to remit themselves
   // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
 
-  const nights=bks.reduce((s,b)=>s+(parseInt(b.nights)||0),0);
+  const nights=bks.filter(b=>!b.cancelled).reduce((s,b)=>s+(parseInt(b.nights)||0),0); // cancelled stays don't occupy nights
   const dates=getRptDates();
   const totalDays=dates?Math.ceil((dates.to-dates.from)/(86400000))+1:30;
   const occ=totalDays>0?(nights/totalDays*100):0;
@@ -3350,7 +3355,16 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     .concat([csep])
     // ── Elysian service charges ─────────────────────────────────────────────────
     .concat([cg(L.elysianCharges + (hasVat ? ' *' : ''))])
-    .concat(apt.deductCleaning!==false&&m.configCl>0 ? [cr(L.cleaningFee, bks.filter(b=>!b.cancelled).length+' stays × '+fmt(apt.cleaningFee)+'/stay', -cleanDeduct, hasVat ? -m.cleanVat : null)] : [])
+    .concat(apt.deductCleaning!==false ? [cr(L.cleaningFee,
+      '<span style="display:inline-flex;align-items:center;gap:5px">'
+        +'<span>'+m.cleanStays+' stays × '+fmt(apt.cleaningFee)+'/stay</span>'
+        +'<span style="display:inline-flex;flex-direction:column;line-height:0;margin-left:2px">'
+          +'<button onclick="rptCleanStep(1)" title="Add a stay" style="border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px">▲</button>'
+          +'<button onclick="rptCleanStep(-1)" title="Remove a stay" style="border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px">▼</button>'
+        +'</span>'
+        +(m.cleanStays!==m.cleanStaysAuto?'<a onclick="rptCleanReset()" title="Reset to automatic count ('+m.cleanStaysAuto+')" style="cursor:pointer;text-decoration:underline;color:#C9A84C;font-size:10px;margin-left:2px">reset</a>':'')
+      +'</span>',
+      -cleanDeduct, hasVat ? -m.cleanVat : null)] : [])
     .concat(_apts.flatMap(a => (a.fixedCharges||[]).filter(f=>parseFloat(f.amount)>0).map(f => {
       const fa=parseFloat(f.amount);
       const lbl = _apts.length > 1 ? (f.label||'Software')+' — '+a.name : (f.label||'Software / Fixed charge');
@@ -3458,13 +3472,14 @@ function buildRptHTML(apt,bks,exps,getEA,selApts){
     +'</div>'
     +exps.map(e=>{
       const ea=getEA(e);
+      const eaVat=_geaVat(e);
       return '<div style="display:grid;grid-template-columns:90px 1fr'+(hasVat?' 100px 80px 100px':' 110px')+';padding:5px 14px;border-bottom:.5px solid var(--bdr);gap:8px;align-items:center">'
         +'<div style="font-size:11px;color:var(--tx3)">'+(e.date?fmtD(e.date)||e.date:'')+'</div>'
         +'<div style="font-size:12px;color:var(--tx)">'+(e.supp||e.desc||'Expense')+(e.aptId==='__spl'?' (split)':'')+'</div>'
         +(hasVat
           ?'<div style="font-family:var(--mono);font-size:12px;text-align:right">-'+fmt(ea)+'</div>'
-           +'<div style="font-family:var(--mono);font-size:12px;text-align:right;color:#D97706">-'+fmt(ea*0.24)+'</div>'
-           +'<div style="font-family:var(--mono);font-size:12px;text-align:right;color:var(--tx-err);font-weight:500">-'+fmt(ea*1.24)+'</div>'
+           +'<div style="font-family:var(--mono);font-size:12px;text-align:right;color:#D97706">-'+fmt(eaVat)+'</div>'
+           +'<div style="font-family:var(--mono);font-size:12px;text-align:right;color:var(--tx-err);font-weight:500">-'+fmt(ea+eaVat)+'</div>'
           :'<div style="font-family:var(--mono);font-size:12px;text-align:right;color:var(--tx-err)">-'+fmt(ea)+'</div>')
       +'</div>';
     }).join('')
@@ -3540,13 +3555,24 @@ function renderRpt(){
   });
   const gea=e=>{
     if(e.aptId==='__spl'){const s=e.splits?.find(x=>x.aptId===aptId);return parseFloat(s?.amt||0);}
-    // Use net (pre-VAT) amount when Elysian does not charge VAT on fees for this property
-    const aptObj=aptById(aptId);
-    return aptObj?.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0);
+    // Always use net (pre-VAT) as the charges basis — the REAL vat is added separately
+    // using the expense's own e.vat field (not a synthetic 24% recompute), so we never
+    // double-charge VAT that a supplier already applied on their invoice.
+    return parseFloat(e.net||e.total||0);
+  };
+  // Real VAT for an expense row: use the actual invoice VAT (e.vat), not a recalculated 24%.
+  // Splits don't track VAT separately, so fall back to a 24% estimate only for split rows.
+  const geaVat=e=>{
+    if(e.aptId==='__spl') return gea(e)*0.24;
+    return parseFloat(e.vat||0);
   };
   let panelHTML,payout,occ,nights,totalDays,m;
+  // Cleaning fee stay-count override (manual +/- adjustment), scoped to this property+period
+  const cleanKey = aptId + '::' + dates.from.toISOString().slice(0,10) + '::' + dates.to.toISOString().slice(0,10);
+  window._rptCleanKey = cleanKey; // exposed for the stepper buttons
+  const cleanOv = (S.cleanOverride && S.cleanOverride[cleanKey] !== undefined) ? S.cleanOverride[cleanKey] : null;
   try {
-    const _r=buildRptHTML(apt,bks,exps,gea,_selApts);
+    const _r=buildRptHTML(apt,bks,exps,gea,_selApts,geaVat,cleanOv);
     ({panelHTML,payout,occ,nights,totalDays,m}=_r);
   } catch(err) {
     panels.innerHTML='<div style="padding:20px;background:#fdecea;border:.5px solid #f44336;border-radius:var(--r);color:#b71c1c;font-size:12px">'
@@ -3622,28 +3648,33 @@ function validateReport(m, apt, bks) {
   if (apt.businessTax && (m.bt === 0 || m.bt === undefined))
                                             errors.push('Business tax enabled in config but not applied in report');
   if (!apt.businessTax && m.bt > 0)         errors.push('Business tax applied but not enabled in config');
-  const mf = m.base * (apt.mgmtFee/100);
-  if (Math.abs(mf - m.base*(apt.mgmtFee/100)) > 0.02)
-                                            errors.push('Management fee calculation mismatch');
+  const mf = Math.max(0, m.base) * (apt.mgmtFee/100);
+  if (isNaN(mf) || mf < 0)                  errors.push('Management fee is NaN or negative');
+  if (apt.deductCT === false)               errors.push('deductCT is OFF: Net Earnings deducts Climate Tax but Remittance does not — Net − MgmtFee will not equal Remittance on this report');
   const activeBks = bks.filter(b=>!b.cancelled);
-  const expectedClean = activeBks.length * (apt.cleaningFee||0);
+  // Expected cleaning respects a manual stay-count override if the user set one for this period
+  const cleanStaysExpected = (typeof m.cleanStays === 'number') ? m.cleanStays : activeBks.length;
+  const expectedClean = cleanStaysExpected * (apt.cleaningFee||0);
   if (Math.abs(m.configCl - expectedClean) > 0.01)
-                                            errors.push(`Cleaning fee: expected ${expectedClean} (${activeBks.length} stays × ${apt.cleaningFee}), got ${m.configCl}`);
+                                            errors.push(`Cleaning fee: expected ${expectedClean} (${cleanStaysExpected} stays × ${apt.cleaningFee}), got ${m.configCl}`);
   return errors;
 }
 
 function exportPDF() {
   if (!window._rpt) { toast('Generate a report first.', 'err'); return; }
-  const { apt, dates, payout, occ, nights, totalDays, bks, exps, gea, m } = window._rpt;
+  let { apt, dates, payout, occ, nights, totalDays, bks, exps, gea, m } = window._rpt;
+  bks = bks.filter(isRevenueBooking); // keep PDF booking table consistent with report totals
   const rate       = parseFloat(apt.mgmtFee || 0) / 100;
   const mf         = Math.max(0, m.base) * rate; // clamp: never charge mgmt fee on negative base
   const totExp     = exps.reduce((s,e) => s + gea(e), 0);
+  // Real per-expense VAT (from the actual supplier invoice), not a synthetic 24% recompute
+  const geaVat     = e => (e.aptId==='__spl' ? gea(e)*0.24 : (parseFloat(e.vat)||0));
   // For multi-property PDFs, sum fixed charges from all selected properties
   const _pdfApts = window._rpt?.selApts || [apt];
   const fixedCh  = _pdfApts.reduce((t,a)=>t+(a.fixedCharges||[]).reduce((s,f)=>s+(parseFloat(f.amount)||0),0),0);
   const cleanDeduct = (apt.deductCleaning !== false) ? m.configCl : 0;
   const elysianVat = apt.vatOnFees ? (mf + cleanDeduct + fixedCh) * 0.24 : 0;
-  const expVat     = apt.vatOnFees ? totExp * 0.24 : 0;
+  const expVat     = apt.vatOnFees ? exps.reduce((s,e)=>s+geaVat(e),0) : 0;
   const totExpIncl = totExp + expVat;
   // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
 
@@ -3657,7 +3688,7 @@ function exportPDF() {
 
   const feeItems = [
     { label: `Management fee (${apt.mgmtFee}%)`, sub: `${fmt(m.base)} × ${apt.mgmtFee}%`, amount: mf },
-    ...(cleanDeduct > 0 ? [{ label: 'Cleaning fee', sub: `${bks.length} stays × ${fmt(apt.cleaningFee)}/stay`, amount: cleanDeduct }] : []),
+    ...(cleanDeduct > 0 ? [{ label: 'Cleaning fee', sub: `${m.cleanStays} stays × ${fmt(apt.cleaningFee)}/stay`, amount: cleanDeduct }] : []),
     ...(apt.fixedCharges||[]).filter(f=>parseFloat(f.amount)>0).map(f=>({ label: f.label||'Fixed charge', sub:'', amount: parseFloat(f.amount)||0 })),
   ];
   const chanCounts = {};
@@ -3815,7 +3846,7 @@ function exportPDF() {
       ${m.ct>0?`<div class="frow sub warn"><span>- Climate / stayover tax</span><span class="mono">${fmt(m.ct)}</span></div>`:''}
       ${m.vat>0?`<div class="frow sub warn"><span>- VAT on accommodation</span><span class="mono">${fmt(m.vat)}</span></div>`:''}
       ${m.at>0?`<div class="frow sub warn"><span>- Accommodation tax</span><span class="mono">${fmt(m.at)}</span></div>`:''}
-      <div class="frow sub err"><span>- Cleaning fee (${bks.length} stays × ${fmt(apt.cleaningFee)}/stay)</span><span class="mono">${fmt(m.configCl)}</span></div>
+      <div class="frow sub err"><span>- Cleaning fee (${m.cleanStays} stays × ${fmt(apt.cleaningFee)}/stay)</span><span class="mono">${fmt(m.configCl)}</span></div>
       <div class="frow sub err"><span>- Service fee (host)</span><span class="mono">${fmt(m.svc)}</span></div>
       <div class="frow sub err"><span>- Payment charges</span><span class="mono">${fmt(m.pchg)}</span></div>
       <div class="frow total navy"><span>Management fee base</span><span class="mono">${fmt(m.base)}</span></div>
@@ -3895,10 +3926,10 @@ function exportPDF() {
           <th class="r">Ex-VAT</th>
           ${apt.vatOnFees?'<th class="r" style="color:#D97706">VAT 24%</th><th class="r" style="color:#c0392b">Total</th>':''}
         </tr></thead>
-        <tbody>${exps.map(e=>{const ea=gea(e);return`<tr>
+        <tbody>${exps.map(e=>{const ea=gea(e);const eaVat=geaVat(e);return`<tr>
           <td>${fmtD(e.date)}</td><td>${e.supp||'—'}</td><td>${e.desc||'—'}</td>
           <td style="text-align:right;color:#c0392b">-${fmt(ea)}</td>
-          ${apt.vatOnFees?`<td style="text-align:right;color:#D97706">-${fmt(ea*0.24)}</td><td style="text-align:right;font-weight:600;color:#c0392b">-${fmt(ea*1.24)}</td>`:''}
+          ${apt.vatOnFees?`<td style="text-align:right;color:#D97706">-${fmt(eaVat)}</td><td style="text-align:right;font-weight:600;color:#c0392b">-${fmt(ea+eaVat)}</td>`:''}
         </tr>`;}).join('')}</tbody>
         <tfoot><tr>
           <td colspan="3"><b>Total</b></td>
@@ -3970,7 +4001,8 @@ function exportPDF() {
 function emailRpt(){
   if(!window._rpt){toast('Generate a report first.','err');return;}
   const{apt,dates,payout,occ,nights,totalDays,m,exps,gea}=window._rpt;
-  const mf=m.base*(parseFloat(apt.mgmtFee||0)/100);
+  const _emailBks=(window._rpt.bks||[]).filter(isRevenueBooking);
+  const mf=Math.max(0,m.base)*(parseFloat(apt.mgmtFee||0)/100); // clamp: consistent with report/PDF
   const totExp=exps.reduce((s,e)=>s+gea(e),0);
   const subj=`${apt.name} – Clearing Report – ${dates.lbl}`;
   const body=`Dear ${apt.ownerName||'Owner'},
@@ -3978,7 +4010,7 @@ function emailRpt(){
 Please find below the key metrics for ${apt.name} for ${dates.lbl}.
 
 ━━━━ OCCUPANCY ━━━━━━━━━━━━━━━━━━━━━━━━
-Reservations:           ${window._rpt.bks.length}
+Reservations:           ${_emailBks.length}
 Nights occupied:        ${nights} / ${totalDays}
 Occupancy rate:         ${fmtPct(occ)}
 
@@ -4030,7 +4062,7 @@ function renderAnn(){
       const from=new Date(yr,mo,1),to=new Date(yr,mo+1,0);
       const bks=getRptBks(apt.id,from,to);
       const m=calcBase(bks,apt);
-      return{mo,n:bks.length,gross:m.gross,ct:m.ct,vat:m.vat,at:m.at,base:m.base,pay:m.totPay,ci:m.configCl,mf:m.base*rate};
+      return{mo,n:bks.length,gross:m.gross,ct:m.ct,vat:m.vat,at:m.at,base:m.base,pay:m.totPay,ci:m.configCl,mf:Math.max(0,m.base)*rate};
     });
     const tot=mos.reduce((s,m)=>({gross:s.gross+m.gross,ct:s.ct+m.ct,vat:s.vat+m.vat,at:s.at+m.at,pay:s.pay+m.pay,ci:s.ci+m.ci,mf:s.mf+m.mf}),{gross:0,ct:0,vat:0,at:0,pay:0,ci:0,mf:0});
     return`<div class="card" style="margin-bottom:16px;padding:0;overflow:hidden">
@@ -4903,6 +4935,28 @@ function rptClearSel() {
   renderRpt();
 }
 
+// ── Manual cleaning-fee stay-count override (per property + report period) ───
+function rptCleanStep(delta) {
+  const key = window._rptCleanKey;
+  const m = window._rpt?.m;
+  if (!key || !m) return;
+  S.cleanOverride = S.cleanOverride || {};
+  const current = (typeof m.cleanStays === 'number') ? m.cleanStays : m.cleanStaysAuto;
+  const next = Math.max(0, current + delta);
+  if (next === m.cleanStaysAuto) delete S.cleanOverride[key]; // back to automatic — keep storage clean
+  else S.cleanOverride[key] = next;
+  save();
+  renderRpt();
+}
+function rptCleanReset() {
+  const key = window._rptCleanKey;
+  if (!key) return;
+  S.cleanOverride = S.cleanOverride || {};
+  delete S.cleanOverride[key];
+  save();
+  renderRpt();
+}
+
 // ── Post-report reminder modal ────────────────────────────────────────────────
 
 function showPostReportReminders(apt) {
@@ -5196,9 +5250,12 @@ async function saveRevenueSnapshot() {
   const rate = parseFloat(apt.mgmtFee||0)/100;
   const entries = _apts.map(a => {
     const aptBks = bks.filter(b => b.aptId === a.id);
-    const m2 = calcBase(aptBks, a);
-    const mfAmt = m2.base * (parseFloat(a.mgmtFee||0)/100);
-    const cleanAmt = m2.configCl; // cleaning fee ex-VAT
+    // Respect manual cleaning stay-count override for this property + report period
+    const ovKey = a.id + '::' + (dates?.from?.toISOString?.().slice(0,10)||'') + '::' + (dates?.to?.toISOString?.().slice(0,10)||'');
+    const ov = (S.cleanOverride && S.cleanOverride[ovKey] !== undefined) ? S.cleanOverride[ovKey] : null;
+    const m2 = calcBase(aptBks, a, ov);
+    const mfAmt = Math.max(0, m2.base) * (parseFloat(a.mgmtFee||0)/100); // clamp: consistent with report
+    const cleanAmt = m2.configCl; // cleaning fee ex-VAT (override-aware)
     return { aptId: a.id, aptName: a.name, mo, yr, moLbl, mfAmt, cleanAmt };
   });
 
