@@ -6220,7 +6220,7 @@ function runFinancialTests() {
         const edS = ds(ed);
         return edS >= sFrom && edS <= sTo;
       });
-      const sTotExp = sExps.reduce(function(s,e){ return s + (skylineApt.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0)); }, 0);
+      const sTotExp = sExps.reduce(function(s,e){ return s + (e.aptId==='__spl' ? parseFloat((e.splits||[]).find(function(x){return x.aptId===skylineApt.id;})?.amt||0) : parseFloat(e.net||e.total||0)); }, 0);
       const sExpVat = sHasVat ? sTotExp*0.24 : 0;
       const sTotExpIncl = sTotExp + sExpVat;
       const sPayout = sM.gross - sM.svc - sM.pchg - sCtDeduct - sVatDeduct - sAtDeduct - sMf - sM.bt - sCleanDeduct - sElysianVat - sFixedCh - sTotExpIncl;
@@ -6280,7 +6280,7 @@ function runFinancialTests() {
         const edS = ds(ed);
         return edS >= czFrom && edS <= czTo;
       });
-      const czTotExp = czExps.reduce(function(s,e){ return s + (cozyApt.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0)); }, 0);
+      const czTotExp = czExps.reduce(function(s,e){ return s + (e.aptId==='__spl' ? parseFloat((e.splits||[]).find(function(x){return x.aptId===cozyApt.id;})?.amt||0) : parseFloat(e.net||e.total||0)); }, 0);
       const czExpVat = czExps.reduce(function(s,e){ return s + (e.aptId==='__spl' ? (parseFloat(e.net||e.total||0))*0.24 : (parseFloat(e.vat)||0)); }, 0);
       const czTotExpIncl = czTotExp + (czHasVat ? czExpVat : 0);
       const czPayout = czM.gross - czM.svc - czM.pchg - czCtDeduct - czVatDeduct - czAtDeduct - czMf - czM.bt - czCleanDeduct - czElysianVat - czFixedCh - czTotExpIncl;
