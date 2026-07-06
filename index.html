@@ -2434,6 +2434,22 @@ function isRevenueBooking(b) {
   return !BLOCK_NAMES.includes(n);
 }
 
+// Occupancy-only helper: counts nights a property was ACTUALLY occupied within [from,to],
+// correctly handling stays that span across the period boundary (e.g. check-in in June,
+// check-out in July) — unlike getRptBks (checkout-date filter, used for revenue attribution),
+// this uses true date-range overlap so occupancy is never undercounted for boundary stays.
+function getOverlapNights(aptId, from, to) {
+  return S.bks.filter(b => b.aptId===aptId && !b.cancelled && isRevenueBooking(b)).reduce((sum,b) => {
+    const ci = parseD(b.checkIn), co = parseD(b.checkOut);
+    if (!ci || !co || isNaN(ci) || isNaN(co)) return sum;
+    const s = ds(ci), e = ds(co);
+    const overlapStart = s > from ? s : from;
+    const overlapEnd   = e < to   ? e : to;
+    const n = Math.round((overlapEnd - overlapStart) / 86400000);
+    return sum + Math.max(0, n);
+  }, 0);
+}
+
 function calcBase(bks,apt,stayOverride){
   // Exclude maintenance/owner blocks from financial calculations
   bks = bks.filter(isRevenueBooking);
@@ -3276,9 +3292,16 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
   // Greek taxes are added back separately because owner receives them from platform to remit themselves
   // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
 
-  const nights=bks.filter(b=>!b.cancelled).reduce((s,b)=>s+(parseInt(b.nights)||0),0); // cancelled stays don't occupy nights
   const dates=getRptDates();
+  // Occupancy nights: count TRUE calendar-overlap within the report period for every selected
+  // property, so a stay that starts before/ends after the period boundary (e.g. check-in in
+  // June, check-out in July) is still correctly counted for the nights it actually occupied —
+  // unlike `bks` above (checkout-date filtered, used for revenue attribution), which would
+  // otherwise silently drop such a stay from this month's occupancy entirely.
   const _propCount = (_apts && _apts.length) ? _apts.length : 1;
+  const nights = dates
+    ? _apts.reduce((s,a) => s + getOverlapNights(a.id, dates.from, dates.to), 0)
+    : bks.filter(b=>!b.cancelled).reduce((s,b)=>s+(parseInt(b.nights)||0),0); // fallback if no date range
   const totalDays=(dates?Math.ceil((dates.to-dates.from)/(86400000))+1:30) * _propCount; // available nights = days × properties
   const occ=totalDays>0?(nights/totalDays*100):0;
   const ctPN=nights>0?m.ct/nights:0;
