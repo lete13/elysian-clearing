@@ -2329,8 +2329,12 @@ function applyDefaults(){
       if(apt.deductCT===undefined)  apt.deductCT = true;
       if(apt.isLeased===undefined)  apt.isLeased = def.isLeased;
       if(apt.b2b===undefined)       apt.b2b      = def.b2b;
-      if(!apt.municipalityTax && def.municipalityTax) apt.municipalityTax = def.municipalityTax;
-      if(!apt.businessTax    && def.businessTax)     apt.businessTax     = def.businessTax;
+      // Only apply these two on properties with NO profile assigned yet — a profile's explicit
+      // flags (even 'off') must never be silently overwritten by the static default sheet.
+      if(!apt.profile){
+        if(!apt.municipalityTax && def.municipalityTax) apt.municipalityTax = def.municipalityTax;
+        if(!apt.businessTax    && def.businessTax)     apt.businessTax     = def.businessTax;
+      }
     }
   });
 }
