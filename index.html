@@ -763,7 +763,7 @@ const GENERIC_AL={
   "ΠΛΥΝΤΗΡΙΑ ΘΕΣ":"Cleaning Material Thessaloniki"
 };
 
-let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]},cleanOverride:{}};
+let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]},cleanOverride:{},rptLocks:{}};
 let rptMode="mo";
 
 // ── Persistence ──────────────────────────────────────────
@@ -818,6 +818,7 @@ function load() {
       S.revenue = p.revenue || { cleaning: {}, mgmt: {} };
       S.daily   = p.daily   || { snapshots: {}, tasks: [] };
       S.cleanOverride = p.cleanOverride || {};
+      S.rptLocks = p.rptLocks || {};
     }
   } catch(e) {}
   // If localStorage had real data, mark as initialized
@@ -829,7 +830,7 @@ function load() {
 function save() {
   // Immediate local save
   try {
-    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, cleanOverride: S.cleanOverride || {} }));
+    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, cleanOverride: S.cleanOverride || {}, rptLocks: S.rptLocks || {} }));
   } catch(e) {}
   // Debounced DB save (2s after last change)
   if (_dbAvailable) {
@@ -852,7 +853,8 @@ async function saveToDb() {
       meta: S.meta || {},
       revenue: S.revenue || {cleaning:{},mgmt:{}},
       daily: S.daily || {snapshots:{},tasks:[]},
-      cleanOverride: S.cleanOverride || {}
+      cleanOverride: S.cleanOverride || {},
+      rptLocks: S.rptLocks || {}
     };
     const r = await fetch('/api/db/data', {
       method: 'POST',
@@ -891,12 +893,12 @@ async function loadFromDb() {
     S.bks     = data.bks     || S.bks;
     S.exps    = data.exps    || S.exps;
     S.meta    = data.meta    || S.meta    || {};
-    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};
+    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};S.rptLocks = data.rptLocks || S.rptLocks || {};
     _lastDbSave = data._savedAt;
     _dataInitialized = true;
     // Persist loaded state to localStorage
     try {
-      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily, cleanOverride: S.cleanOverride }));
+      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily, cleanOverride: S.cleanOverride, rptLocks: S.rptLocks }));
       // Sync the "Last synced" display with actual last sync from DB meta
       const lastSync = S.meta?.lastSync || S.meta?.lastAutoSync;
       if (lastSync) localStorage.setItem('hh_last_sync', lastSync);
@@ -3234,7 +3236,9 @@ function rrow(lbl,val,indent,color,bold,sub){
 }
 
 function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
+  const _rawBkCount = bks.length;
   bks = bks.filter(isRevenueBooking); // exclude maintenance/owner blocks
+  const _excludedBlocks = _rawBkCount - bks.length;
   const m=calcBase(bks,apt,cleanOverride);
   const rate=parseFloat(apt.mgmtFee||0)/100;
   const mf=Math.max(0,m.base)*rate;
@@ -3270,7 +3274,8 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
 
   const nights=bks.filter(b=>!b.cancelled).reduce((s,b)=>s+(parseInt(b.nights)||0),0); // cancelled stays don't occupy nights
   const dates=getRptDates();
-  const totalDays=dates?Math.ceil((dates.to-dates.from)/(86400000))+1:30;
+  const _propCount = (_apts && _apts.length) ? _apts.length : 1;
+  const totalDays=(dates?Math.ceil((dates.to-dates.from)/(86400000))+1:30) * _propCount; // available nights = days × properties
   const occ=totalDays>0?(nights/totalDays*100):0;
   const ctPN=nights>0?m.ct/nights:0;
 
@@ -3290,6 +3295,8 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
     netEarningsLbl: isGR?'Καθαρα Κερδη'                :'Net Earnings',
     mgmtFeeLbl:     isGR?'Αμοιβη Διαχειρισης'          :'Management fee',
     remittanceLbl:  isGR?'Ποσο Αποδοσης'               :'Remittance Amount',
+    b2bRemitLbl:    isGR?'Αποδοση Συνεργατη B2B'       :'B2B Partner Remittance',
+    ownerRemitLbl:  isGR?'Ποσο Αποδοσης Ιδιοκτητη'     :'Remittance to Owner',
     description:    isGR?'Περιγραφη'                    :'Description',
     charges:        isGR?'Χρεωσεις (€)'                :'Charges (€)',
     vat:            isGR?'ΦΠΑ (€)'                     :'VAT (€)',
@@ -3335,6 +3342,18 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
   // Section group header
   const cg = (label) => '<div style="padding:7px 14px 4px;background:var(--bg2);border-top:.5px solid var(--bdr);font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em">'+label+'</div>';
 
+  // Section subtotal row — visually lighter than a total, heavier than a line item
+  const csub = (label, charges, vatAmt) => {
+    const vat = (vatAmt && vatAmt !== 0) ? vatAmt : null;
+    const total = vat ? charges + vat : charges;
+    return '<div style="display:grid;grid-template-columns:'+C+';padding:6px 14px;background:var(--bg2);border-top:1px dashed var(--bdr2);gap:8px">'
+      +'<div style="font-size:11.5px;font-weight:600;color:var(--tx2);font-style:italic;text-align:right;padding-right:6px">'+label+'</div>'
+      +'<div style="font-family:var(--mono);font-size:12px;text-align:right;font-weight:600;color:var(--tx-err)">'+fmt(charges)+'</div>'
+      +'<div style="font-family:var(--mono);font-size:12px;text-align:right;font-weight:600;color:'+(vat?'#D97706':'var(--tx3)')+'">'+(vat?fmt(vat):'–')+'</div>'
+      +'<div style="font-family:var(--mono);font-size:12px;text-align:right;font-weight:700;color:var(--tx-err)">'+fmt(total)+'</div>'
+      +'</div>';
+  };
+
   // Thick separator
   const csep = '<div style="height:2px;background:var(--bdr2)"></div>';
 
@@ -3342,7 +3361,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
   const rows = []
     // ── Revenue ────────────────────────────────────────────────────────────────
     .concat([cg(L.revenue),
-      cr(L.bookingRevenue, bks.length+' bookings · '+nights+' nights', m.gross, null, {bold:true, pos:true}),
+      cr(L.bookingRevenue, bks.length+' bookings · '+nights+' nights'+(_excludedBlocks>0?(isGR?' · '+_excludedBlocks+' block/maintenance εξαιρέθηκαν':' · '+_excludedBlocks+' maintenance block'+(_excludedBlocks!==1?'s':'')+' excluded'):''), m.gross, null, {bold:true, pos:true}),
       csep
     ])
     // ── Tax deductions ──────────────────────────────────────────────────────────
@@ -3352,6 +3371,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
     .concat(atDeduct>0  ? [cr(L.accomTax, null, -atDeduct,  null)] : [])
     .concat(m.svc+m.pchg>0 ? [cr(L.platformFees, 'service fee + payment charges', -(m.svc+m.pchg), null)] : [])
     .concat(m.bt>0 ? [cr(isGR?'Επιτηδεύματος':'Business Tax (Επιτηδεύματος)', isGR?'Φόρος Επιτηδεύματος (μηνιαία χρέωση)':'Business activity tax (monthly)', -m.bt, null)] : [])
+    .concat(m.ct>0||vatDeduct>0||atDeduct>0||m.svc>0||m.bt>0 ? [csub(isGR?'Σύνολο φόρων & προμηθειών':'Subtotal — taxes & platform', -(m.ct+vatDeduct+atDeduct+m.svc+m.pchg+m.bt), null)] : [])
     .concat([csep])
     // ── Elysian service charges ─────────────────────────────────────────────────
     .concat([cg(L.elysianCharges + (hasVat ? ' *' : ''))])
@@ -3371,8 +3391,9 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
       return cr(lbl, null, -fa, hasVat ? -fa*0.24 : null);
     })))
     .concat(exps.length>0 ? [
-      cr('Expenses', exps.length+' item'+(exps.length!==1?'s':''), -totExp, hasVat ? -expVat : null, {bold:true})
+      cr(isGR?'Έξοδα':'Expenses', exps.length+' item'+(exps.length!==1?'s':''), -totExp, hasVat ? -expVat : null, {bold:true})
     ] : [])
+    .concat(cleanDeduct>0||fixedCh>0||exps.length>0 ? [csub(isGR?'Σύνολο χρεώσεων Elysian':'Subtotal — Elysian charges', -(cleanDeduct+fixedCh+totExp), hasVat ? -(m.cleanVat+fixedCh*0.24+expVat) : null)] : [])
     .concat([csep])
     // ── Net Earnings ────────────────────────────────────────────────────────────
     .concat([cr(L.netEarningsLbl, (isGR?'Ακαθάριστα κέρδη μετά φόρων & χρεώσεων':'Gross minus all taxes, platform fees & Elysian charges'), netEarnings, null, {bold:true, pos:netEarnings>=0, tot:true})])
@@ -3383,8 +3404,8 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
     .concat([csep])
     // ── Remittance amount ───────────────────────────────────────────────────────
     .concat(apt.b2b ? [
-      '<div style="display:grid;grid-template-columns:'+C+';padding:8px 14px;background:var(--bg2);border-top:.5px solid var(--bdr);gap:8px">'
-        +'<div style="font-size:13px;font-weight:600;color:var(--tx)">'+L.remittanceLbl
+      '<div style="display:grid;grid-template-columns:'+C+';padding:8px 14px;background:#7C3AED11;border-top:.5px solid #7C3AED55;gap:8px">'
+        +'<div style="font-size:13px;font-weight:600;color:#7C3AED">'+L.b2bRemitLbl
           +'<div style="font-size:10px;color:var(--tx3);margin-top:1px">'
             +(isGR?'Καθαρό ':'Net ')+fmt(payout)
             +(ctDeduct>0?' + ΤΑΚΚ '+fmt(ctDeduct):'')
@@ -3400,7 +3421,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
     // ── Owner payout (final highlighted row) ────────────────────────────────────
     .concat([
       '<div style="display:grid;grid-template-columns:'+C+';padding:12px 14px;background:#0F1E2E;border-radius:0 0 var(--r) var(--r);gap:8px">'
-        +'<div><div style="font-size:15px;font-weight:700;color:#C9A84C">'+L.remittanceLbl+'</div>'
+        +'<div><div style="font-size:15px;font-weight:700;color:#C9A84C">'+(apt.b2b?L.ownerRemitLbl:L.remittanceLbl)+'</div>'
           +(hasVat ? '<div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">'+L.vatNote+'</div>' : '')
         +'</div>'
         +'<div style="font-family:var(--mono);font-size:16px;font-weight:700;text-align:right;color:#C9A84C">'+fmt(payout)+'</div>'
@@ -3415,7 +3436,7 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
       {l:'Reservations', v:bks.length, s:null},
       {l:'Nights', v:nights, s:fmtN(occ,1)+'% occupancy'},
       {l:'Gross revenue', v:fmt(m.gross), s:null},
-      {l:'Platform payout', v:fmt(m.totPay), s:null},
+      {l:L.netEarningsLbl, v:fmt(netEarnings), s:isGR?'προ αμοιβής διαχείρισης':'before management fee'},
       {l:L.remittanceLbl, v:fmt(payout), s:null, gold:true},
     ].map((k,i,a) =>
       '<div style="flex:1;padding:10px 14px;'+(i<a.length-1?'border-right:.5px solid var(--bdr2);':'')+
@@ -3575,6 +3596,9 @@ function renderRpt(){
   let panelHTML,payout,occ,nights,totalDays,m;
   // Cleaning fee stay-count override (manual +/- adjustment), scoped to this property+period
   const cleanKey = aptId + '::' + dates.from.toISOString().slice(0,10) + '::' + dates.to.toISOString().slice(0,10);
+  // Report lock key: all selected properties + period (audit trail for sent reports)
+  const lockKey = _selIds.slice().sort().join('+') + '::' + dates.from.toISOString().slice(0,10) + '::' + dates.to.toISOString().slice(0,10);
+  window._rptLockKey = lockKey;
   window._rptCleanKey = cleanKey; // exposed for the stepper buttons
   const cleanOv = (S.cleanOverride && S.cleanOverride[cleanKey] !== undefined) ? S.cleanOverride[cleanKey] : null;
   try {
@@ -3590,6 +3614,16 @@ function renderRpt(){
   document.getElementById('r-pay').style.color=payout>=0?'#C9A84C':'#e57373';
   document.getElementById('r-occ').textContent=bks.length>0?`${fmtPct(occ)} occupancy · ${nights}/${totalDays} nights`:'';
   document.getElementById('r-lbl').textContent=`${dates.lbl} · ${apt.name}`;
+  // Drift check: if this report was already exported/sent, warn when numbers changed since
+  const _lock = S.rptLocks && S.rptLocks[window._rptLockKey];
+  if (_lock && (Math.abs((_lock.payout||0) - payout) > 0.01 || Math.abs((_lock.gross||0) - (m?.gross||0)) > 0.01)) {
+    panelHTML = '<div style="padding:12px 16px;background:#FEF3C7;border:1px solid #D97706;border-radius:var(--r);margin-bottom:12px;font-size:12.5px;color:#92400E">'
+      +'<b>⚠ Data changed since this report was sent.</b> Exported '+new Date(_lock.savedAt).toLocaleString('el-GR')
+      +' with Remittance <b>'+fmt(_lock.payout)+'</b> (Gross '+fmt(_lock.gross)+'). Current data computes Remittance <b>'+fmt(payout)+'</b> (Gross '+fmt(m.gross)+').'
+      +' The owner has the old version — review before re-sending.'
+      +' <a onclick="rptRelock()" style="cursor:pointer;text-decoration:underline;font-weight:600;margin-left:6px">Update lock to current numbers</a>'
+      +'</div>' + panelHTML;
+  }
   panels.innerHTML=panelHTML;
   window._rpt={apt,bks,exps,gea,dates,payout,occ,nights,totalDays,panelHTML,m,selApts:_selApts};
 }
@@ -3682,7 +3716,16 @@ function exportPDF() {
   const elysianVat = apt.vatOnFees ? (mf + cleanDeduct + fixedCh) * 0.24 : 0;
   const expVat     = apt.vatOnFees ? exps.reduce((s,e)=>s+geaVat(e),0) : 0;
   const totExpIncl = totExp + expVat;
-  // netEarnings: payout already has CT deducted (when deductCT=true), so only subtract remaining taxes
+  // Parity with buildRptHTML: flag-aware deductions + Net Earnings + subtotals
+  const _hasVat    = !!apt.vatOnFees;
+  const _vatDeduct = (apt.deductVAT !== false) ? m.vat : 0;
+  const _atDeduct  = apt.municipalityTax ? m.at : 0;
+  const _ctDeduct  = (apt.deductCT !== false) ? m.ct : 0;
+  const _dedSub    = m.ct + _vatDeduct + _atDeduct + m.svc + m.pchg + (m.bt||0);
+  const _elySubCh  = cleanDeduct + fixedCh + totExp;
+  const _elySubVat = _hasVat ? (m.cleanVat + fixedCh*0.24 + expVat) : 0;
+  const netEarnings = m.gross - _dedSub - _elySubCh - _elySubVat;
+  const _b2bRem    = apt.b2b ? payout + _ctDeduct + _vatDeduct + _atDeduct : 0;
 
   // feeItems mirrors the same array built in buildRptHTML
   // ── Validate before generating PDF ────────────────────────────────────────
@@ -3691,6 +3734,7 @@ function exportPDF() {
     const msg = '⚠️ Report validation warnings:\n\n' + _valErrors.join('\n') + '\n\nGenerate PDF anyway?';
     if (!confirm(msg)) return;
   }
+  _lockCurrentReport('pdf');
 
   const feeItems = [
     { label: `Management fee (${apt.mgmtFee}%)`, sub: `${fmt(m.base)} × ${apt.mgmtFee}%`, amount: mf },
@@ -3948,13 +3992,13 @@ function exportPDF() {
     <!-- Summary -->
     <div class="section box" style="background:#f9f9f7">
       <div class="sec-title">Summary</div>
-      <div class="frow ok"><span>Net payout from platform</span><span class="mono">${fmt(m.totPay)}</span></div>
-      <div class="frow err"><span>Management fee (${apt.mgmtFee}%)</span><span class="mono">${fmt(mf)}</span></div>
-      ${fixedCh>0?`<div class="frow err"><span>Fixed charges</span><span class="mono">${fmt(fixedCh)}</span></div>`:''}
-      ${apt.vatOnFees&&elysianVat>0?`<div class="frow warn" style="font-weight:600"><span>VAT on Elysian fees (24%)</span><span class="mono">${fmt(elysianVat)}</span></div>`:''}
-      <div class="frow err"><span>Expenses</span><span class="mono">${fmt(totExp)}</span></div>
+      <div class="frow err"><span>Subtotal — taxes &amp; platform</span><span class="mono">-${fmt(_dedSub)}</span></div>
+      <div class="frow err"><span>Subtotal — Elysian charges${_hasVat?' (incl. VAT)':''}</span><span class="mono">-${fmt(_elySubCh+_elySubVat)}</span></div>
+      <div class="frow total navy" style="margin-top:2px"><span>Net Earnings</span><span class="mono">${fmt(netEarnings)}</span></div>
+      <div class="frow err"><span>Management fee (${apt.mgmtFee}%)${_hasVat?' incl. 24% VAT':''}</span><span class="mono">-${fmt(_hasVat?mf*1.24:mf)}</span></div>
+      ${apt.b2b?`<div class="frow" style="color:#7C3AED;font-weight:600"><span>B2B Partner Remittance (net + ΤΑΚΚ ${fmt(_ctDeduct)}${_vatDeduct>0?' + ΦΠΑ '+fmt(_vatDeduct):''}${_atDeduct>0?' + Mun.tax '+fmt(_atDeduct):''})</span><span class="mono">${fmt(_b2bRem)}</span></div>`:''}
       <div class="frow total" style="font-size:11pt;border-top:1.5px solid #0F1E2E;margin-top:6px;padding-top:8px;color:${payout>=0?'#1a7a4a':'#c0392b'}">
-        <span>Remittance Amount</span><span class="mono">${fmt(payout)}</span>
+        <span>${apt.b2b?'Remittance to Owner':'Remittance Amount'}</span><span class="mono">${fmt(payout)}</span>
       </div>
     </div>
 
@@ -4006,6 +4050,7 @@ function exportPDF() {
 
 function emailRpt(){
   if(!window._rpt){toast('Generate a report first.','err');return;}
+  _lockCurrentReport('email');
   const{apt,dates,payout,occ,nights,totalDays,m,exps,gea}=window._rpt;
   const _emailBks=(window._rpt.bks||[]).filter(isRevenueBooking);
   const mf=Math.max(0,m.base)*(parseFloat(apt.mgmtFee||0)/100); // clamp: consistent with report/PDF
@@ -4954,6 +4999,16 @@ function rptCleanStep(delta) {
   save();
   renderRpt();
 }
+// Freeze the currently rendered report's key numbers (audit trail for sent reports)
+function _lockCurrentReport(via) {
+  const key = window._rptLockKey, rpt = window._rpt;
+  if (!key || !rpt || !rpt.m) return;
+  S.rptLocks = S.rptLocks || {};
+  S.rptLocks[key] = { savedAt: Date.now(), via: via||'pdf', gross: rpt.m.gross, payout: rpt.payout, base: rpt.m.base };
+  save();
+}
+function rptRelock() { _lockCurrentReport('manual'); renderRpt(); toast('Report lock updated to current numbers','ok'); }
+
 function rptCleanReset() {
   const key = window._rptCleanKey;
   if (!key) return;
