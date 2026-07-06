@@ -6215,6 +6215,70 @@ function runFinancialTests() {
     results.push({ name:'G13-G20 Skyline golden (apt not found)', pass:false, actual:'apt missing', expected:SKYLINE_JUNE.aptName });
   }
 
+  // ── TEST GROUP 4c: Golden Standard — Cozy Corner Zografou June 2026 (B2B) ────
+  // Verified reference: DO NOT change these values without accountant sign-off.
+  // Property: Cozy Corner Zografou | Period: June 2026 | Profile: B2B
+  // Elysian deducts CT + Accommodation VAT + Municipality tax and remits them
+  // to the B2B partner (deductVAT=true, municipalityTax=true for this profile).
+
+  const COZY_JUNE = {
+    aptName: 'Cozy Corner Zografou', mgmtFee: 17.5,
+    gross: 1264.67, ct: 120.00, vat: 131.68, at: 7.54,
+    svc: 148.41, pchg: 8.78, cleaning: 275.00,
+    base: 573.26, mfCharges: 100.32,
+    netEarnings: 265.46, ownerRemittance: 141.06, b2bPartnerLine: 400.28,
+  };
+
+  const cozyApt = S && S.apts ? S.apts.find(function(a){ return a.name === COZY_JUNE.aptName; }) : null;
+  if (cozyApt && typeof getRptBks === 'function') {
+    const czFrom = new Date(2026,5,1), czTo = new Date(2026,6,0);
+    if (typeof rptChanSel !== 'undefined') rptChanSel = null;
+    const czChanSel = typeof getSelChannels === 'function' ? getSelChannels(cozyApt.id) : new Set(['Airbnb','Booking.com','Direct']);
+    const czBksRaw = getRptBks(cozyApt.id, czFrom, czTo).filter(function(b){ return czChanSel.has(b.platform||b.channel); });
+    if (czBksRaw.length > 0) {
+      const czM = calcBase(czBksRaw, cozyApt); // calcBase filters maintenance blocks internally
+      const czMf = Math.max(0, czM.base) * (cozyApt.mgmtFee/100);
+      const czFixedCh = (cozyApt.fixedCharges||[]).reduce(function(s,f){ return s+(parseFloat(f.amount)||0); }, 0);
+      const czHasVat = cozyApt.vatOnFees;
+      const czCleanDeduct = czM.configCl;
+      const czCtDeduct = cozyApt.deductCT !== false ? czM.ct : 0;
+      const czVatDeduct = cozyApt.deductVAT !== false ? czM.vat : 0;
+      const czAtDeduct  = cozyApt.municipalityTax ? czM.at : 0;
+      const czElysianVat = czHasVat ? (czMf+czCleanDeduct+czFixedCh)*0.24 : 0;
+      const czExps = S.exps.filter(function(e){
+        if (e.aptId !== cozyApt.id || e.charge === false) return false;
+        if (!e.date) return true;
+        const ed = parseD(e.date);
+        if (!ed || isNaN(ed)) return true;
+        const edS = ds(ed);
+        return edS >= czFrom && edS <= czTo;
+      });
+      const czTotExp = czExps.reduce(function(s,e){ return s + (cozyApt.vatOnFees ? parseFloat(e.total||0) : parseFloat(e.net||e.total||0)); }, 0);
+      const czExpVat = czExps.reduce(function(s,e){ return s + (e.aptId==='__spl' ? (parseFloat(e.net||e.total||0))*0.24 : (parseFloat(e.vat)||0)); }, 0);
+      const czTotExpIncl = czTotExp + (czHasVat ? czExpVat : 0);
+      const czPayout = czM.gross - czM.svc - czM.pchg - czCtDeduct - czVatDeduct - czAtDeduct - czMf - czM.bt - czCleanDeduct - czElysianVat - czFixedCh - czTotExpIncl;
+      const czNetE = czM.gross - czM.ct - czVatDeduct - czAtDeduct - czM.svc - czM.pchg - czM.bt
+        - czCleanDeduct*(czHasVat?1.24:1) - czFixedCh*(czHasVat?1.24:1) - czTotExpIncl;
+      const czB2bRem = cozyApt.b2b ? czPayout + czCtDeduct + czVatDeduct + czAtDeduct : 0;
+
+      assert('G21 Cozy gross',           czM.gross, COZY_JUNE.gross);
+      assert('G22 Cozy CT',              czM.ct,    COZY_JUNE.ct);
+      assert('G23 Cozy accomm. VAT',     czM.vat,   COZY_JUNE.vat);
+      assert('G24 Cozy municipality tax',czM.at,    COZY_JUNE.at);
+      assert('G25 Cozy platform fees',   czM.svc,   COZY_JUNE.svc);
+      assert('G26 Cozy cleaning (11 stays)', czCleanDeduct, COZY_JUNE.cleaning);
+      assert('G27 Cozy base',            czM.base,  COZY_JUNE.base);
+      assert('G28 Cozy mgmt fee charges',czMf,      COZY_JUNE.mfCharges);
+      assert('G29 Cozy net earnings',    czNetE,    COZY_JUNE.netEarnings);
+      assert('G30 Cozy owner remittance',czPayout,  COZY_JUNE.ownerRemittance);
+      assert('G31 Cozy B2B partner line',czB2bRem,  COZY_JUNE.b2bPartnerLine);
+    } else {
+      results.push({ name:'G21-G31 Cozy golden (no bks found)', pass:false, actual:'0 bookings', expected:'11 bookings' });
+    }
+  } else {
+    results.push({ name:'G21-G31 Cozy golden (apt not found)', pass:false, actual:'apt missing', expected:COZY_JUNE.aptName });
+  }
+
   // ── TEST GROUP 5: Leased Profile invariants ───────────────────────────────
   // Any property with profile='leased' must have these flags set correctly
   if (typeof S !== 'undefined' && S.apts) {
