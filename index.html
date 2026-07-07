@@ -2315,6 +2315,8 @@ function applyDefaults(){
     let apt = findApt(def.name);
     if(!apt){
       apt = {id:gid(), ...def};
+      // Clone + assign real ids — never reuse the default sheet's array/objects by reference
+      apt.fixedCharges = (def.fixedCharges||[]).map(f=>({...f, id: f.id || gid()}));
       S.apts.push(apt);
     } else {
       // Only fill fields that are still at their blank/default values
@@ -2324,7 +2326,8 @@ function applyDefaults(){
       if(!apt.ownerEmail)     apt.ownerEmail    = def.ownerEmail;
       if(apt.mgmtFee===20||apt.mgmtFee===undefined)  apt.mgmtFee = def.mgmtFee;
       if(!apt.cleaningFee)    apt.cleaningFee   = def.cleaningFee;
-      if(!apt.fixedCharges?.length) apt.fixedCharges = def.fixedCharges;
+      // Clone (never reference the shared default array) + guarantee a real id on every charge
+      if(!apt.fixedCharges?.length) apt.fixedCharges = (def.fixedCharges||[]).map(f=>({...f, id: f.id || gid()}));
       if(apt.vatOnFees===false && def.vatOnFees) apt.vatOnFees = def.vatOnFees;
       if(apt.deductCT===undefined)  apt.deductCT = true;
       if(apt.isLeased===undefined)  apt.isLeased = def.isLeased;
@@ -2335,6 +2338,14 @@ function applyDefaults(){
         if(!apt.municipalityTax && def.municipalityTax) apt.municipalityTax = def.municipalityTax;
         if(!apt.businessTax    && def.businessTax)     apt.businessTax     = def.businessTax;
       }
+    }
+  });
+  // Self-heal: backfill a real id on ANY existing fixed charge that's missing one, across
+  // every property. Without this, that charge's edit/delete controls silently no-op forever
+  // (their onclick handlers reference an id that never matches undefined).
+  S.apts.forEach(apt => {
+    if (Array.isArray(apt.fixedCharges)) {
+      apt.fixedCharges.forEach(f => { if (!f.id) f.id = gid(); });
     }
   });
 }
@@ -6184,6 +6195,9 @@ function runFinancialTests() {
   // Verified reference: DO NOT change these values without accountant sign-off.
   // Property: Acropolis Skyline Sunset  |  Period: June 2026  |  Profile: Private
   // Note: excludes 1 "Maintenance" block booking (gross=8, ct=8) — not real revenue
+  // Updated: 2 real hardware expenses (keybox/lock cabinet, net 51.94 + vat 12.46 = total 64.40)
+  // were added to June after the original golden was locked — base/mgmt fee unaffected,
+  // only Net Earnings/Remittance shift by the expense amount (verified against live data).
 
   const SKYLINE_JUNE = {
     aptId: null, // resolved by name below (id may vary by environment)
@@ -6191,9 +6205,9 @@ function runFinancialTests() {
     gross: 2245.83, ct: 216.00, svc: 390.15,
     cleaning: 280.00, cleaningTotal: 347.20,
     software: 45.00, softwareTotal: 55.80,
-    expensesTotal: 79.86,
+    expensesTotal: 64.40,
     base: 1359.68, mfCharges: 203.95, mfTotal: 252.90,
-    netEarnings: 1156.82, remittance: 903.92,
+    netEarnings: 1172.28, remittance: 919.38,
   };
 
   const skylineApt = S && S.apts ? S.apts.find(function(a){ return a.name === SKYLINE_JUNE.aptName; }) : null;
