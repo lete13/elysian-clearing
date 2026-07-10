@@ -366,8 +366,15 @@ async function runSync(apiKey, onLog) {
     const t = (e.type || '').toLowerCase();
     if (t.includes('hold') || t.includes('block')) return false; // exclude holds/blocks
     if (e.is_visible !== false) return true;  // active booking — always include
-    // Cancelled booking: only include if there is financial value (owner keeps some payment)
-    const gross = parseFloat(e.total_price || e.guest_paid || e.total_reservation_price || 0);
+    // Cancelled booking: only include if there is financial value (owner keeps some payment).
+    // NOTE: Hosthub money fields are { cents, currency } objects — parseFloat() on them
+    // returns NaN, which silently dropped ALL cancelled bookings from this pipeline and
+    // forced the (now removed) separate cancelled-sync workarounds that stored taxes as 0.
+    const money = v => (v && typeof v === 'object') ? (v.cents || 0) / 100 : (parseFloat(v || 0) || 0);
+    // Require actual GUEST-payment evidence (not booking_value): cancelled manual/direct
+    // calendar entries (owner blocks, "extend" placeholders, offline bookings) carry a
+    // booking_value but guest_paid = 0 — those are not retained revenue and must be dropped.
+    const gross = money(e.total_price) || money(e.guest_paid) || money(e.total_reservation_price);
     return gross > 0;
   });
   log(`${allEvents.length} total events → ${bookingEvs.length} active bookings`, 'ok');
@@ -532,46 +539,14 @@ function scheduleAutoSync() {
       if (!result.error && pool) {
         const existing = await pool.query("SELECT data FROM app_data WHERE key = 'main'").catch(() => ({ rows: [] }));
         const current  = existing.rows[0]?.data || {};
-        // Also fetch cancelled-but-paid bookings and merge them in
-        const cancelledEvs = await fetchPages(`${BASE}/calendar-events?is_visible=false`, apiKey).catch(()=>[]);
-        const centsToEur = v => v && typeof v === 'object' ? (v.cents||0)/100 : parseFloat(v||0);
-        const existingIds = new Set(result.bookings.map(b=>b.id));
-        const currentApts = current.apts || [];
-        const aptByName = {};
-        currentApts.forEach(a => { if (a.name) aptByName[a.name.trim().toLowerCase()] = a; });
-        const fmtDate = iso => { if (!iso||iso.includes('/')) return iso; const p=iso.split('-'); return p.length===3?parseInt(p[2])+'/'+parseInt(p[1])+'/'+p[0]:iso; };
-        const CODE = {airbnb:'Airbnb',bookingcom:'Booking.com',booking:'Booking.com',expedia:'Expedia',vrbo:'VRBO',direct:'Direct',directbooking:'Direct',hosthub:'Direct'};
-        const cancelledBks = cancelledEvs
-          .filter(e => {
-            const t=(e.type||'').toLowerCase();
-            if (t.includes('hold')||t.includes('block')) return false;
-            const gross = centsToEur(e.guest_paid)||centsToEur(e.booking_value);
-            return gross > 0 && !existingIds.has(e.id);
-          })
-          .map(e => {
-            const aptName = e.rental_unit?.name||e.rental?.name||'';
-            const apt = aptByName[aptName.trim().toLowerCase()];
-            const d = e.date_from ? new Date(e.date_from+'T00:00:00') : new Date();
-            const gross  = (e.guest_paid?.cents  || 0) / 100;
-            const svc    = (e.service_fee_host?.cents  || 0) / 100;
-            const pchg   = (e.payment_charges?.cents   || 0) / 100;
-            const payout = (e.total_payout?.cents      || 0) / 100;
-            const bkv    = gross - svc - pchg;
-            const code = (e.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
-            const srcName = (e.source?.name||'').toLowerCase();
-            const CODE = {airbnb:'Airbnb',bookingcom:'Booking.com',booking:'Booking.com',expedia:'Expedia',vrbo:'VRBO',direct:'Direct',directbooking:'Direct',hosthub:'Direct'};
-            const platform = CODE[code]||(srcName.includes('airbnb')?'Airbnb':srcName.includes('booking')?'Booking.com':'Direct');
-            return { id:e.id, aptId:apt?.id||'', aptName, cancelled:true, cancelledAt:e.cancelled_at||null,
-              platform, guestName:e.guest_name||e.title||'',
-              guests:e.guest_number||null, checkIn:fmtDate(e.date_from), checkOut:fmtDate(e.date_to),
-              nights:e.nights||0, gross, mo:d.getMonth(), yr:d.getFullYear(),
-              bkv, svc, pchg, payout, ct:0, vat:0, at:0 };
-          });
-        if (cancelledBks.length) onLog(`  + ${cancelledBks.length} cancelled-but-paid booking(s) merged`);
+        // Cancelled-but-paid bookings now flow through runSync's main pipeline
+        // (with the full gr-taxes pass), so no separate cancelled merge is needed.
+        const cancelledCount = result.bookings.filter(b => b.cancelled).length;
+        if (cancelledCount) onLog(`  including ${cancelledCount} cancelled-but-paid booking(s) with tax data`);
 
         const merged   = {
           ...current,
-          bks:  [...result.bookings, ...cancelledBks],
+          bks:  result.bookings,
           apts: mergeApts(current.apts || [], result.rentals),
           exps: current.exps || [],
           meta: { ...(current.meta || {}), lastAutoSync: started.toISOString(), lastSync: started.toISOString() },
@@ -670,86 +645,13 @@ app.get('/', (req, res) => {
 });
 
 
-// ── Sync cancelled bookings (non-refundable) ────────────────────────────────
+// ── Sync cancelled bookings — DEPRECATED ────────────────────────────────────
+// Cancelled-but-paid bookings are now included in the main /api/sync pipeline,
+// where they receive full Greek tax data (VAT, accommodation tax, climate tax)
+// from the calendar-event-gr-taxes pass, exactly like active bookings.
+// This route is kept as a no-op so older cached frontends don't hit a 404.
 app.post('/api/sync-cancelled', async (req, res) => {
-  if (!pool) return res.status(503).json({ error: 'No database' });
-  const apiKey = SERVER_API_KEY || req.body?.apiKey;
-  if (!apiKey) return res.status(400).json({ error: 'No API key' });
-
-  try {
-    // Fetch only cancelled events from Hosthub
-    const evs = await fetchPages(`${BASE}/calendar-events?is_visible=false`, apiKey).catch(()=>[]);
-
-    // Keep only those with financial value (owner keeps the money)
-    // guest_paid is { cents: 6200, currency: "EUR" } format
-    const centsToEur = v => v && typeof v === 'object' ? (v.cents||0)/100 : parseFloat(v||0);
-    const paid = evs.filter(e => {
-      const t = (e.type||'').toLowerCase();
-      if (t.includes('hold') || t.includes('block')) return false;
-      const gross = centsToEur(e.guest_paid) || centsToEur(e.booking_value) ||
-                    centsToEur(e.total_booking_value) || parseFloat(e.total_price||0);
-      return gross > 0;
-    });
-
-    if (!paid.length) return res.json({ added: 0, message: 'No cancelled-but-paid bookings found' });
-
-    // Load existing data
-    const cur = await pool.query("SELECT data FROM app_data WHERE key='main'");
-    const current = cur.rows[0]?.data || {};
-    // Remove ALL existing cancelled bookings — replace with fresh real data from Hosthub
-    const nonCancelled = (current.bks||[]).filter(b => !b.cancelled);
-    const existingIds = new Set(); // empty — always re-add all paid cancelled bookings
-    const currentApts = current.apts || [];
-
-    // Build apt name lookup
-    const aptByName = {};
-    currentApts.forEach(a => { if (a.name) aptByName[a.name.trim().toLowerCase()] = a; });
-
-    const fmtDate = iso => {
-      if (!iso || iso.includes('/')) return iso;
-      const p = iso.split('-');
-      return p.length===3 ? parseInt(p[2])+'/'+parseInt(p[1])+'/'+p[0] : iso;
-    };
-
-    const CODE = {airbnb:'Airbnb',bookingcom:'Booking.com',booking:'Booking.com',
-      expedia:'Expedia',vrbo:'VRBO',direct:'Direct',directbooking:'Direct',hosthub:'Direct'};
-
-    const newBks = paid
-      .filter(e => !existingIds.has(e.id))
-      .map(e => {
-        const aptName = e.rental_unit?.name||e.rental?.name||'';
-        const apt = aptByName[aptName.trim().toLowerCase()];
-        const d = e.date_from ? new Date(e.date_from+'T00:00:00') : new Date();
-        const gross  = (e.guest_paid?.cents || 0) / 100;
-        const svc    = (e.service_fee_host?.cents  || 0) / 100;
-        const pchg   = (e.payment_charges?.cents   || 0) / 100;
-        const payout = (e.total_payout?.cents      || 0) / 100;
-        const bkv    = gross - svc - pchg;
-        const code = (e.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
-        const srcName = (e.source?.name||'').toLowerCase();
-        const CODE = {airbnb:'Airbnb',bookingcom:'Booking.com',booking:'Booking.com',expedia:'Expedia',vrbo:'VRBO',direct:'Direct',directbooking:'Direct',hosthub:'Direct'};
-        const platform = CODE[code]||(srcName.includes('airbnb')?'Airbnb':srcName.includes('booking')?'Booking.com':'Direct');
-        return { id:e.id, aptId:apt?.id||'', aptName, cancelled:true, cancelledAt:e.cancelled_at||null,
-          platform, guestName:e.guest_name||e.title||'',
-          guests:e.guest_number||null, checkIn:fmtDate(e.date_from), checkOut:fmtDate(e.date_to),
-          nights:e.nights||0, gross, mo:d.getMonth(), yr:d.getFullYear(),
-          bkv, svc, pchg, payout, ct:0, vat:0, at:0 };
-      });
-
-    if (!newBks.length) return res.json({ added: 0, message: 'All cancelled bookings already in DB' });
-
-    const merged = { ...current, bks: [...nonCancelled, ...newBks] };
-    await pool.query(
-      `INSERT INTO app_data (key,data) VALUES ($1,$2::jsonb)
-       ON CONFLICT (key) DO UPDATE SET data=$2::jsonb, updated_at=NOW()`,
-      ['main', JSON.stringify(merged)]
-    );
-
-    res.json({ added: newBks.length, bookings: newBks.map(b=>({ guest:b.guestName, apt:b.aptName, checkIn:b.checkIn, checkOut:b.checkOut, gross:b.gross })) });
-  } catch(e) {
-    console.error('[sync-cancelled]', e.message);
-    res.status(500).json({ error: e.message });
-  }
+  res.json({ added: 0, message: 'Cancelled bookings are now included in the main sync with full tax data — run a normal sync instead.' });
 });
 
 
