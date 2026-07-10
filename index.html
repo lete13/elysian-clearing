@@ -5068,9 +5068,10 @@ function renderRptAptPanel() {
 
   // Filter by search query
   const q = (rptAptSearch||'').toLowerCase().trim();
-  const visible = q
+  const visible = (q
     ? S.apts.filter(a => (a.name||'').toLowerCase().includes(q))
-    : S.apts;
+    : S.apts.slice() // copy — never sort S.apts in place (would shift the default primary)
+  ).sort((a,b) => (a.name||a.id).localeCompare(b.name||b.id, undefined, { numeric:true, sensitivity:'base' }));
 
   if (!visible.length) {
     panel.innerHTML = `<div style="padding:8px 12px;font-size:12px;color:var(--tx3)">No properties match "${rptAptSearch}"</div>`;
