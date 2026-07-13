@@ -830,7 +830,7 @@ function load() {
 function save() {
   // Immediate local save
   try {
-    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, cleanOverride: S.cleanOverride || {}, rptLocks: S.rptLocks || {} }));
+    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]}, cleanOverride: S.cleanOverride || {}, rptLocks: S.rptLocks || {} }));
   } catch(e) {}
   // Debounced DB save (2s after last change)
   if (_dbAvailable) {
@@ -5078,16 +5078,16 @@ function renderRptAptPanel() {
     return;
   }
 
-  let html = '';
+  let html = `<div style="padding:4px 10px;font-size:10px;color:var(--tx3);border-bottom:.5px solid var(--bdr);background:var(--bg2)">Click to select one · Ctrl/⌘-click to add more</div>`;
   visible.forEach(a => {
     const sel = rptSelectedApts.includes(a.id);
-    html += `<label style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;border-bottom:.5px solid var(--bdr);background:${sel?'var(--bg2)':'var(--bg)'};transition:background .1s" onmouseenter="this.style.background='var(--bg2)'" onmouseleave="this.style.background='${sel?'var(--bg2)':'var(--bg)'}'">
-      <input type="checkbox" ${sel?'checked':''} onchange="rptToggleApt('${a.id}',this.checked)" style="accent-color:#0F1E2E;width:14px;height:14px;flex-shrink:0">
+    html += `<div role="button" onclick="rptClickApt('${a.id}',event)" style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;border-bottom:.5px solid var(--bdr);background:${sel?'var(--bg2)':'var(--bg)'};transition:background .1s" onmouseenter="this.style.background='var(--bg2)'" onmouseleave="this.style.background='${sel?'var(--bg2)':'var(--bg)'}'">
+      <input type="checkbox" ${sel?'checked':''} tabindex="-1" style="accent-color:#0F1E2E;width:14px;height:14px;flex-shrink:0;pointer-events:none">
       <div>
         <div style="font-size:12px;font-weight:${sel?600:400};color:var(--tx)">${a.name||a.id}</div>
         <div style="font-size:10px;color:var(--tx3)">${a.mgmtFee||20}% mgmt${a.vatOnFees?' · VAT on fees':''}${a.b2b?' · B2B':''}</div>
       </div>
-    </label>`;
+    </div>`;
   });
   panel.innerHTML = html;
 
@@ -5125,6 +5125,27 @@ function rptToggleApt(id, checked) {
   if (checked && !rptSelectedApts.includes(id)) rptSelectedApts.push(id);
   else if (!checked) rptSelectedApts = rptSelectedApts.filter(x => x !== id);
   // Keep hidden select in sync (first selected apt)
+  const sel = document.getElementById('r-apt');
+  if (sel && rptSelectedApts.length) sel.value = rptSelectedApts[0];
+  rptChanSel = null;
+  renderRptAptPanel();
+  renderRpt();
+}
+
+// Row click handler: plain click selects ONLY this property (clears others);
+// Ctrl/⌘-click adds or removes it from a multi-property selection.
+function rptClickApt(id, ev) {
+  const additive = ev && (ev.ctrlKey || ev.metaKey);
+  if (additive) {
+    if (rptSelectedApts.includes(id)) {
+      const next = rptSelectedApts.filter(x => x !== id);
+      rptSelectedApts = next.length ? next : rptSelectedApts; // never ctrl-click down to zero
+    } else {
+      rptSelectedApts.push(id);
+    }
+  } else {
+    rptSelectedApts = [id]; // plain click = single selection
+  }
   const sel = document.getElementById('r-apt');
   if (sel && rptSelectedApts.length) sel.value = rptSelectedApts[0];
   rptChanSel = null;
@@ -5491,27 +5512,42 @@ async function saveRevenueSnapshot() {
     return { aptId: a.id, aptName: a.name, mo, yr, moLbl, mfAmt, cleanAmt };
   });
 
-  // Check for existing values — collect conflicts
-  const conflicts = entries.filter(e => {
-    const kc = revKey(e.aptId, e.mo, e.yr);
-    const km = revKey(e.aptId, e.mo, e.yr);
-    return S.revenue.cleaning[kc] || S.revenue.mgmt[km];
-  });
-
-  const doSave = () => {
-    entries.forEach(e => {
+  // Persist a list of entries to S.revenue, then flush to the DB immediately so the
+  // 60-second background poll cannot reload a stale snapshot over these writes.
+  const _persist = (list) => {
+    list.forEach(e => {
       const k = revKey(e.aptId, e.mo, e.yr);
       S.revenue.cleaning[k] = { aptId:e.aptId, aptName:e.aptName, mo:e.mo, yr:e.yr, amount:e.cleanAmt, savedAt:Date.now() };
       S.revenue.mgmt[k]     = { aptId:e.aptId, aptName:e.aptName, mo:e.mo, yr:e.yr, amount:e.mfAmt,   savedAt:Date.now() };
     });
     save();
+    if (typeof saveToDb === 'function' && _dbAvailable) saveToDb(); // immediate flush, not the 2s debounce
+  };
+
+  // Separate brand-new entries from ones that already have data for this month.
+  const conflicts = entries.filter(e => {
+    const k = revKey(e.aptId, e.mo, e.yr);
+    return S.revenue.cleaning[k] || S.revenue.mgmt[k];
+  });
+  const fresh = entries.filter(e => !conflicts.includes(e));
+
+  // Fresh properties ALWAYS save right away — they can never be lost by cancelling
+  // the overwrite prompt (previously a Cancel discarded these too, so a multi-property
+  // save silently dropped every property that hadn't been saved before).
+  if (fresh.length) _persist(fresh);
+
+  if (conflicts.length === 0) {
+    toast(`Saved ${fresh.length} propert${fresh.length===1?'y':'ies'} for ${moLbl} ✓`, 'ok');
+    return;
+  }
+
+  window._revConfirmedSave = () => {
+    _persist(conflicts);
     toast(`Saved ${entries.length} propert${entries.length===1?'y':'ies'} for ${moLbl} ✓`, 'ok');
   };
 
-  if (conflicts.length === 0) {
-    doSave();
-  } else {
-    // Show overwrite warning modal
+  {
+    // Only the already-existing properties need a decision.
     const conflictNames = conflicts.map(e=>e.aptName).join(', ');
     let modal = document.getElementById('rev-confirm-modal');
     if (!modal) {
@@ -5527,21 +5563,20 @@ async function saveRevenueSnapshot() {
           <div style="font-size:15px;font-weight:600;color:var(--tx)">Overwrite existing data?</div>
         </div>
         <div style="font-size:13px;color:var(--tx2);margin-bottom:8px">
-          Data already exists for <strong>${moLbl}</strong> in:
+          ${fresh.length ? `<strong>${fresh.length}</strong> new propert${fresh.length===1?'y was':'ies were'} saved. ` : ''}Data already exists for <strong>${moLbl}</strong> in:
         </div>
         <div style="font-size:12px;color:var(--tx3);background:var(--bg2);border-radius:var(--r);padding:10px 12px;margin-bottom:16px;max-height:120px;overflow-y:auto">
           ${conflictNames}
         </div>
         <div style="font-size:12px;color:var(--tx2);margin-bottom:20px">
-          ${entries.length - conflicts.length > 0 ? `${entries.length - conflicts.length} other properties will be saved without issue.` : 'All selected properties have existing data for this period.'}
+          Overwrite ${conflicts.length===1?'it':'these'} with the current figures, or keep the existing values?
         </div>
         <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button class="btn" onclick="document.getElementById('rev-confirm-modal').style.display='none'" style="padding:8px 18px">Cancel</button>
+          <button class="btn" onclick="document.getElementById('rev-confirm-modal').style.display='none'" style="padding:8px 18px">Keep existing</button>
           <button class="btn primary" onclick="document.getElementById('rev-confirm-modal').style.display='none';_revConfirmedSave()" style="padding:8px 18px">Yes, overwrite</button>
         </div>
       </div>`;
     modal.style.display = 'flex';
-    window._revConfirmedSave = doSave;
   }
 }
 
