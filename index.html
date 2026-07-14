@@ -3502,15 +3502,18 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
       L.cleaningFee + ' — ' + p.a.name,
       p.m.cleanStays + ' stays × ' + fmt(p.a.cleaningFee) + '/stay',
       -p.cleanDeduct, p.hasVat ? -p.m.cleanVat : null)) : [])
-    .concat(P.flatMap(p => (p.a.fixedCharges||[]).filter(f=>parseFloat(f.amount)>0).map(f => {
+    .concat(P.flatMap(p => (p.a.fixedCharges||[]).filter(f=>{const v=parseFloat(f.amount);return Number.isFinite(v)&&v!==0;}).map(f => {
+      // Negative amounts are CREDITS to the owner (e.g. balance carried forward).
+      // calcAptPacket already includes them in payout/net, so hiding them (old >0
+      // filter) made the itemized rows disagree with the report's own subtotals.
       const fa=parseFloat(f.amount);
       const lbl = _multi ? (f.label||'Software')+' — '+p.a.name : (f.label||'Software / Fixed charge');
-      return cr(lbl, null, -fa, p.hasVat ? -fa*0.24 : null);
+      return cr(lbl, fa<0 ? (isGR?'Πίστωση':'Credit') : null, -fa, p.hasVat ? -fa*0.24 : null);
     })))
     .concat(exps.length>0 ? [
       cr(isGR?'Έξοδα':'Expenses', exps.length+' item'+(exps.length!==1?'s':''), -totExp, hasVat ? -expVat : null, {bold:true})
     ] : [])
-    .concat(cleanDeduct>0||fixedCh>0||exps.length>0 ? [csub(isGR?'Σύνολο χρεώσεων Elysian':'Subtotal — Elysian charges', -(cleanDeduct+fixedCh+totExp), C_.elySubVat>0 ? -C_.elySubVat : null)] : [])
+    .concat(cleanDeduct>0||fixedCh!==0||exps.length>0 ? [csub(isGR?'Σύνολο χρεώσεων Elysian':'Subtotal — Elysian charges', -(cleanDeduct+fixedCh+totExp), C_.elySubVat>0 ? -C_.elySubVat : null)] : [])
     .concat([csep])
     // ── Net Earnings ────────────────────────────────────────────────────────────
     .concat([cr(L.netEarningsLbl, (isGR?'Ακαθάριστα κέρδη μετά φόρων & χρεώσεων':'Gross minus all taxes, platform fees & Elysian charges'), netEarnings, null, {bold:true, pos:netEarnings>=0, tot:true})])
@@ -3898,7 +3901,7 @@ function exportPDF() {
     return [
       ...(p.mf > 0 ? [{ label: `Management fee (${p.a.mgmtFee}%)${nm}`, sub: `${fmt(Math.max(0,p.m.base))} × ${p.a.mgmtFee}%`, amount: p.mf, hasVat: p.hasVat }] : []),
       ...(p.cleanDeduct > 0 ? [{ label: `Cleaning fee${nm}`, sub: `${p.m.cleanStays} stays × ${fmt(p.a.cleaningFee)}/stay`, amount: p.cleanDeduct, hasVat: p.hasVat }] : []),
-      ...(p.a.fixedCharges||[]).filter(f=>parseFloat(f.amount)>0).map(f=>({ label: (f.label||'Fixed charge')+nm, sub:'', amount: parseFloat(f.amount)||0, hasVat: p.hasVat })),
+      ...(p.a.fixedCharges||[]).filter(f=>{const v=parseFloat(f.amount);return Number.isFinite(v)&&v!==0;}).map(f=>({ label: (f.label||'Fixed charge')+nm, sub: parseFloat(f.amount)<0?'credit':'', amount: parseFloat(f.amount)||0, hasVat: p.hasVat })),
     ];
   });
   const chanCounts = {};
@@ -4102,26 +4105,26 @@ function exportPDF() {
             <th style="text-align:right;padding:4px 6px;background:#FEF3C7;color:#c0392b;font-size:7pt;text-transform:uppercase;border:.5px solid #D97706">Total</th>
           </tr></thead>
           <tbody>
-            ${feeItems.map(f=>{const fv=f.hasVat?f.amount*0.24:0;return`<tr>
+            ${feeItems.map(f=>{const fv=f.hasVat?f.amount*0.24:0;const cCol=f.amount<0?'#1a7a4a':'#c0392b';return`<tr>
               <td style="padding:4px 6px;border:.5px solid #FDE68A">
                 <div>${f.label}</div>
                 ${f.sub?`<div style="font-size:7pt;color:#888">${f.sub}</div>`:''}
               </td>
-              <td style="padding:4px 6px;text-align:right;font-family:monospace;color:#c0392b;border:.5px solid #FDE68A">-${fmt(f.amount)}</td>
-              <td style="padding:4px 6px;text-align:right;font-family:monospace;color:#D97706;border:.5px solid #FDE68A">${fv>0?'-'+fmt(fv):'—'}</td>
-              <td style="padding:4px 6px;text-align:right;font-family:monospace;color:#c0392b;font-weight:600;border:.5px solid #FDE68A">-${fmt(f.amount+fv)}</td>
+              <td style="padding:4px 6px;text-align:right;font-family:monospace;color:${cCol};border:.5px solid #FDE68A">${fmt(-f.amount)}</td>
+              <td style="padding:4px 6px;text-align:right;font-family:monospace;color:#D97706;border:.5px solid #FDE68A">${fv!==0?fmt(-fv):'—'}</td>
+              <td style="padding:4px 6px;text-align:right;font-family:monospace;color:${cCol};font-weight:600;border:.5px solid #FDE68A">${fmt(-(f.amount+fv))}</td>
             </tr>`;}).join('')}
           </tbody>
           <tfoot><tr>
             <td style="padding:5px 6px;background:#FEF3C7;font-weight:700;color:#92400E;border:.5px solid #D97706">Total</td>
-            <td style="padding:5px 6px;text-align:right;font-family:monospace;font-weight:700;color:#c0392b;background:#FEF3C7;border:.5px solid #D97706">-${fmt(feeItems.reduce((s,f)=>s+f.amount,0))}</td>
-            <td style="padding:5px 6px;text-align:right;font-family:monospace;font-weight:700;color:#D97706;background:#FEF3C7;border:.5px solid #D97706">-${fmt(elysianVat)}</td>
-            <td style="padding:5px 6px;text-align:right;font-family:monospace;font-weight:700;color:#c0392b;background:#FEF3C7;border:.5px solid #D97706">-${fmt(feeItems.reduce((s,f)=>s+f.amount,0)+elysianVat)}</td>
+            <td style="padding:5px 6px;text-align:right;font-family:monospace;font-weight:700;color:#c0392b;background:#FEF3C7;border:.5px solid #D97706">${fmt(-feeItems.reduce((s,f)=>s+f.amount,0)||0)}</td>
+            <td style="padding:5px 6px;text-align:right;font-family:monospace;font-weight:700;color:#D97706;background:#FEF3C7;border:.5px solid #D97706">${fmt(-elysianVat||0)}</td>
+            <td style="padding:5px 6px;text-align:right;font-family:monospace;font-weight:700;color:#c0392b;background:#FEF3C7;border:.5px solid #D97706">${fmt(-(feeItems.reduce((s,f)=>s+f.amount,0)+elysianVat)||0)}</td>
           </tfoot>
         </table>
       `:`
         ${feeItems.map((f,i)=>
-          `<div class="frow ${i===0?'':'sub '}err"><span>${f.label}${f.sub?` <span style="font-size:7pt;color:#888">(${f.sub})</span>`:''}</span><span class="mono">${fmt(f.amount)}</span></div>`
+          `<div class="frow ${i===0?'':'sub '}err"><span>${f.label}${f.sub?` <span style="font-size:7pt;color:#888">(${f.sub})</span>`:''}</span><span class="mono"${f.amount<0?' style="color:#1a7a4a"':''}>${fmt(f.amount)}</span></div>`
         ).join('')}
         ${feeItems.length===0?'<div style="font-size:8pt;color:#888;font-style:italic;padding:4px 0">No fees this period</div>':''}
       `}
@@ -5462,11 +5465,17 @@ function renderRevenue(){
   const yO=allY.map(y=>'<option value="'+y+'" '+(y===yr?'selected':'')+'>'+y+'</option>').join('');
   const tB=function(k,l){const a=_revTab===k;return '<button onclick="window._rST(\''+k+'\')" style="padding:7px 18px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:'+(a?'#0F1E2E':'var(--bg2)')+';color:'+(a?'#C9A84C':'var(--tx3)')+'">'+l+'</button>';};
   const bT=function(map,lbl,col){
-    const apts=S.apts.filter(a=>a.name),tots=Array(12).fill(0);
-    const rows=apts.map(function(a){
+    // Alphabetical row order (display only — figures are keyed by revKey(aptId,mo,yr)
+    // in S.revenue, so sorting this local copy cannot move or lose any data; S.apts
+    // itself is NOT sorted, keeping config/report/ops order unchanged). numeric:true
+    // sorts Votsala 3 < 6 < 8 (and 10 after 8, not after 1).
+    const apts=S.apts.filter(a=>a.name).sort((x,y)=>String(x.name).localeCompare(String(y.name),'el',{sensitivity:'base',numeric:true})),tots=Array(12).fill(0);
+    // Row numbers come from the ONE sorted list above and bT() renders every tab
+    // (cleaning / mgmt / combined), so a given apartment always shows the same number.
+    const rows=apts.map(function(a,ai){
       let cs='';REV_MONTHS.forEach(function(m,mi){const v=(map[revKey(a.id,mi,yr)]||{}).amount||0;if(v)tots[mi]+=v;cs+='<td style="text-align:right;padding:5px 8px;font-family:var(--mono);font-size:12px;color:'+(v?col:'var(--tx3)')+';white-space:nowrap">'+f2(v)+'</td>';});
       const rt=REV_MONTHS.reduce(function(s,m,mi){return s+((map[revKey(a.id,mi,yr)]||{}).amount||0);},0);
-      return '<tr><td style="padding:5px 12px;font-size:12px;font-weight:500;color:var(--tx);white-space:nowrap;position:sticky;left:0;background:var(--bg);border-right:.5px solid var(--bdr2)">'+a.name+'</td>'+cs+'<td style="text-align:right;padding:5px 8px;font-family:var(--mono);font-size:12px;font-weight:700;color:'+(rt?col:'var(--tx3)')+';border-left:.5px solid var(--bdr2)">'+f2(rt)+'</td></tr>';
+      return '<tr><td style="padding:5px 12px;font-size:12px;font-weight:500;color:var(--tx);white-space:nowrap;position:sticky;left:0;background:var(--bg);border-right:.5px solid var(--bdr2)"><span style="display:inline-block;min-width:24px;margin-right:6px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--tx3)">'+(ai+1)+'.</span>'+a.name+'</td>'+cs+'<td style="text-align:right;padding:5px 8px;font-family:var(--mono);font-size:12px;font-weight:700;color:'+(rt?col:'var(--tx3)')+';border-left:.5px solid var(--bdr2)">'+f2(rt)+'</td></tr>';
     }).join('');
     const g=tots.reduce(function(s,v){return s+v;},0);
     let fc='';tots.forEach(function(v){fc+='<td style="text-align:right;padding:6px 8px;font-family:var(--mono);font-size:12px;font-weight:700;color:'+col+'">'+f2(v)+'</td>';});
