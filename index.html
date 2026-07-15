@@ -6811,6 +6811,50 @@ loadFromDb()
   let _perfLastRun = null;
   let _perfHistory = [];   // rolling daily snapshots from /api/history
 
+  // ── Corrective-action acknowledgements ─────────────────────────────────────
+  // "Action taken" on a flagged property removes it from the vacancy alert list
+  // and KPIs for 48h. Stored in S.meta.perfAcks and saved through the app's own
+  // save() → persisted to the DB and shared with every browser via the poll.
+  // After 48h the alert is simply re-evaluated: still firing → it reappears
+  // (action didn't work); clear → it stays gone. An orange alert that escalates
+  // to red while acknowledged reappears immediately.
+  const PERF_ACK_TTL_MS = 48 * 60 * 60 * 1000;
+  function perfAcks() {
+    const _S = (typeof S !== 'undefined' && S) ? S : null;
+    if (!_S) return {};
+    _S.meta = _S.meta || {};
+    _S.meta.perfAcks = _S.meta.perfAcks || {};
+    return _S.meta.perfAcks;
+  }
+  function perfAckActive(aptId, curLevel) {
+    const a = perfAcks()[aptId];
+    if (!a || !a.at) return null;
+    if (Date.now() - a.at >= PERF_ACK_TTL_MS) return null;        // 48h over → re-check applies
+    if (curLevel === 'red' && a.level !== 'red') return null;     // escalated while hidden → resurface
+    return a;
+  }
+  function perfAckLeftH(a) {
+    return Math.max(1, Math.ceil((PERF_ACK_TTL_MS - (Date.now() - a.at)) / 3600000));
+  }
+  window.perfMarkDone = function (aptId, name, level) {
+    const note = prompt(`Corrective action for “${name}” — what was done? (optional, saved with the mark)`, '');
+    if (note === null) return; // cancelled
+    const acks = perfAcks();
+    const now = Date.now();
+    // housekeeping: expired marks are dead weight — drop them on every new mark
+    Object.keys(acks).forEach(k => { if (!acks[k] || !acks[k].at || now - acks[k].at >= PERF_ACK_TTL_MS) delete acks[k]; });
+    acks[aptId] = { at: now, note: String(note).trim(), level: level || null };
+    if (typeof save === 'function') save();
+    renderPerf();
+    if (typeof toast === 'function') toast(`“${name}” marked as handled — hidden from alerts, rechecks in 48h.`, 'ok');
+  };
+  window.perfUnmarkDone = function (aptId, name) {
+    if (!confirm(`Remove the corrective-action mark for “${name}”? The alert becomes visible again immediately.`)) return;
+    delete perfAcks()[aptId];
+    if (typeof save === 'function') save();
+    renderPerf();
+  };
+
   // ── DETERIORATION SIGNALS ───────────────────────────────────────────────────
   // Occupancy: TRUE PACE — forward occupancy now vs the same lead-time window as
   // it stood 2 weeks and 1 month ago (reconstructed from booking `created`
@@ -6837,7 +6881,7 @@ loadFromDb()
 
     if (a && a.level === 'red') {
       return { label: 'Vacant — act now', tone: 'critical',
-               action: `Only ${Math.round(a.occ*100)}% booked in the next ${a.window} days — promote or drop price to fill.` };
+               action: `Only ${Math.round((a.booked != null ? a.booked : a.occ)*100)}% booked${(a.blocked||0) > 0 ? ` (+${Math.round(a.blocked*100)}% blocked)` : ''} in the next ${a.window} days — promote or drop price to fill.` };
     }
     if (up) {
       return { label: 'Underpriced — raise rate', tone: 'opportunity',
@@ -7039,6 +7083,28 @@ loadFromDb()
     for (const b of bks) {
       if (b.cancelled) continue;
       if (isBlock(b)) continue;
+      const ci = pDate(b.checkIn), co = pDate(b.checkOut);
+      if (!ci || !co) continue;
+      let night = new Date(ci);
+      while (night < co) {
+        if (night >= start && night < end) {
+          nights.add(night.getFullYear() * 10000 + night.getMonth() * 100 + night.getDate());
+        }
+        night.setDate(night.getDate() + 1);
+      }
+    }
+    return nights.size;
+  }
+
+  // Count DISTINCT nights covered by owner/maintenance BLOCKS within [start, end).
+  // Blocked nights are not sellable inventory, so vacancy alerts must not read
+  // them as "empty" (e.g. Stylish Downtown Apartment, July 2026: a 6-night owner
+  // block made the property look 0% booked and fired a false red alert).
+  function blockedNights(bks, start, end) {
+    const isBlock = (typeof isRevenueBooking === 'function') ? (b) => !isRevenueBooking(b) : () => false;
+    const nights = new Set();
+    for (const b of bks) {
+      if (b.cancelled || !isBlock(b)) continue;
       const ci = pDate(b.checkIn), co = pDate(b.checkOut);
       if (!ci || !co) continue;
       let night = new Date(ci);
@@ -7318,30 +7384,36 @@ loadFromDb()
     const t = today0();
     const cat = categoryOf(apt);
     const rules = ALERT_RULES[cat] || ALERT_RULES.escape;
-    // occupancy in each configured window; the LOWEST fill decides severity
-    let worst = { occ: Infinity, window: null };
+    // Fill in each configured window decides severity. Fill = booked nights
+    // PLUS blocked nights (owner/maintenance): a blocked night can't be sold,
+    // so it is unavailable — not vacancy. Capped at 100% in case a night is
+    // both booked and blocked.
+    let worst = { fill: Infinity, occ: 0, blocked: 0, window: null };
     rules.windows.forEach(w => {
-      const occ = bookedNights(bks, t, daysAhead(w)) / w;
-      if (occ < worst.occ) worst = { occ, window: w };
+      const bn  = bookedNights(bks, t, daysAhead(w));
+      const blk = blockedNights(bks, t, daysAhead(w));
+      const fill = Math.min(1, (bn + blk) / w);
+      if (fill < worst.fill) worst = { fill, occ: bn / w, blocked: Math.min(1, blk / w), window: w };
     });
     // recent past occupancy for the grace check (applies to every category)
     const pastOcc = bookedNights(bks, daysAgo(GRACE_RULE.lookbackDays), t) / GRACE_RULE.lookbackDays;
     const graced = pastOcc >= GRACE_RULE.minOcc;
-    if (worst.occ < rules.red) {
+    if (worst.fill < rules.red) {
       const level = graced ? 'orange' : 'red';
-      return { level, mode: 'occupancy', occ: worst.occ, window: worst.window, graced, pastOcc, cat };
+      return { level, mode: 'occupancy', occ: worst.fill, booked: worst.occ, blocked: worst.blocked, window: worst.window, graced, pastOcc, cat };
     }
-    if (worst.occ < rules.orange) {
-      return { level: 'orange', mode: 'occupancy', occ: worst.occ, window: worst.window, pastOcc, cat };
+    if (worst.fill < rules.orange) {
+      return { level: 'orange', mode: 'occupancy', occ: worst.fill, booked: worst.occ, blocked: worst.blocked, window: worst.window, pastOcc, cat };
     }
-    return { level: null, mode: 'occupancy', occ: worst.occ, window: worst.window, pastOcc, cat };
+    return { level: null, mode: 'occupancy', occ: worst.fill, booked: worst.occ, blocked: worst.blocked, window: worst.window, pastOcc, cat };
   }
 
   // Human-readable description of an alert for banners/tooltips.
   function alertLabel(a) {
     if (!a || !a.level) return '';
     if (a.mode === 'occupancy') {
-      const base = `${Math.round(a.occ * 100)}% booked next ${a.window}d`;
+      const blk = (a.blocked || 0) > 0 ? ` + ${Math.round(a.blocked * 100)}% blocked` : '';
+      const base = `${Math.round((a.booked != null ? a.booked : a.occ) * 100)}% booked${blk} next ${a.window}d`;
       return a.graced ? `${base} · softened (recent ${Math.round(a.pastOcc*100)}% occ)` : base;
     }
     return `${a.nights} empty nights${a.from ? ' from ' + a.from.toLocaleDateString() : ''}`;
@@ -7496,6 +7568,7 @@ loadFromDb()
         price30,
         adrChange,
         alert,
+        ack: perfAckActive(apt.id, alert && alert.level),
         isAttiki: categoryOf(apt) !== 'escape',
         _set: set, // keep for heatmap
         bookings: set.length,
@@ -7508,6 +7581,11 @@ loadFromDb()
       r.trends = histSignals(r);
       r.trendLevel = trendWorst(r.trends);
       r.verdict = verdictOf(r);
+      // Corrective action logged → replace the alert-driven verdict until the 48h recheck
+      if (r.ack && r.alert && r.alert.level) {
+        r.verdict = { label: '✓ Action taken', tone: 'watch',
+                      action: (r.ack.note ? `Done: ${r.ack.note} · ` : '') + `was “${alertLabel(r.alert)}” · rechecks in ${perfAckLeftH(r.ack)}h` };
+      }
     });
 
     // (Pace now uses each rental's own history/previous-month baselines,
@@ -7635,8 +7713,9 @@ loadFromDb()
     const avgFwd = rows.length ? rows.reduce((a, r) => a + (r.occ30fwd || 0), 0) / rows.length : 0;
     const pacePortfolio = null; // portfolio vs itself is 0 by definition; show avg instead
     // Athens gap alerts
-    const redRows = rows.filter(r => r.alert && r.alert.level === 'red');
-    const orangeRows = rows.filter(r => r.alert && r.alert.level === 'orange');
+    const redRows = rows.filter(r => r.alert && r.alert.level === 'red' && !r.ack);
+    const orangeRows = rows.filter(r => r.alert && r.alert.level === 'orange' && !r.ack);
+    const ackedRows = rows.filter(r => r.alert && r.alert.level && r.ack);
     const alertRows = rows.filter(r => r.alert && r.alert.level);
     const trendRed = rows.filter(r => r.trendLevel === 'red');
     const trendOrange = rows.filter(r => r.trendLevel === 'orange');
@@ -7667,7 +7746,7 @@ loadFromDb()
           <div class="kpi"><div class="kpi-lbl">Avg Occupancy 30d</div><div class="kpi-val">${pct(avgOcc)}</div><div class="kpi-sub">portfolio</div></div>
           <div class="kpi"><div class="kpi-lbl">Avg Fwd Occupancy</div><div class="kpi-val">${pct(avgFwd)}</div><div class="kpi-sub">next 30 days booked</div></div>
           <div class="kpi"><div class="kpi-lbl">Avg Nightly Rate</div><div class="kpi-val">€${avgPrice.toFixed(0)}</div><div class="kpi-sub">past 30 days</div></div>
-          <div class="kpi" style="${redRows.length ? 'border-color:#c0392b' : orangeRows.length ? 'border-color:#d68910' : ''}"><div class="kpi-lbl">Vacancy Alerts</div><div class="kpi-val" style="color:${redRows.length ? '#c0392b' : orangeRows.length ? '#d68910' : 'inherit'}">${redRows.length}<span style="font-size:13px;color:#d68910"> / ${orangeRows.length}</span></div><div class="kpi-sub">red / orange</div></div>
+          <div class="kpi" style="${redRows.length ? 'border-color:#c0392b' : orangeRows.length ? 'border-color:#d68910' : ''}"><div class="kpi-lbl">Vacancy Alerts</div><div class="kpi-val" style="color:${redRows.length ? '#c0392b' : orangeRows.length ? '#d68910' : 'inherit'}">${redRows.length}<span style="font-size:13px;color:#d68910"> / ${orangeRows.length}</span></div><div class="kpi-sub">${ackedRows.length ? ackedRows.length + ' handled · ' : ''}red / orange</div></div>
           <div class="kpi" style="${underpriced.length ? 'border-color:#3898ec' : ''}"><div class="kpi-lbl">Underpriced</div><div class="kpi-val" style="color:${underpriced.length ? '#3898ec' : 'inherit'}">${underpriced.length}</div><div class="kpi-sub">full but below norm</div></div>
           <div class="kpi" style="${trendRed.length ? 'border-color:#c0392b' : trendOrange.length ? 'border-color:#d68910' : ''}"><div class="kpi-lbl">Below Norm</div><div class="kpi-val" style="color:${trendRed.length ? '#c0392b' : trendOrange.length ? '#d68910' : 'inherit'}">${trendRed.length}<span style="font-size:13px;color:#d68910"> / ${trendOrange.length}</span></div><div class="kpi-sub">underperforming history</div></div>
         </div>
@@ -7681,6 +7760,7 @@ loadFromDb()
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               ${redRows.map(r => `<span onclick="perfGoTo('${String(r.aptId||'').replace(/'/g,'')}')" style="cursor:pointer;font-size:11px;background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.35);border-radius:12px;padding:3px 10px">
                 <strong>${r.name}</strong> · ${alertLabel(r.alert)}
+                <a onclick="event.stopPropagation();perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','red')" title="Mark corrective action taken — removes it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;font-weight:700;margin-left:5px">✓ done</a>
               </span>`).join('')}
             </div>
           </div>` : ''}
@@ -7690,6 +7770,17 @@ loadFromDb()
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               ${orangeRows.map(r => `<span onclick="perfGoTo('${String(r.aptId||'').replace(/'/g,'')}')" style="cursor:pointer;font-size:11px;background:rgba(214,137,16,.12);border:1px solid rgba(214,137,16,.35);border-radius:12px;padding:3px 10px">
                 <strong>${r.name}</strong> · ${alertLabel(r.alert)}
+                <a onclick="event.stopPropagation();perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','orange')" title="Mark corrective action taken — removes it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;font-weight:700;margin-left:5px">✓ done</a>
+              </span>`).join('')}
+            </div>
+          </div>` : ''}
+          ${ackedRows.length ? `
+          <div style="margin-top:${(redRows.length || orangeRows.length) ? '10px' : '0'};${(redRows.length || orangeRows.length) ? 'padding-top:8px;border-top:1px dashed var(--bdr)' : ''}">
+            <div style="font-size:11px;font-weight:600;color:#3ecf8e;margin-bottom:4px">✓ UNDER CORRECTIVE ACTION — hidden from alerts, rechecked after 48h</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              ${ackedRows.map(r => `<span style="font-size:11px;background:rgba(62,207,142,.10);border:1px solid rgba(62,207,142,.30);border-radius:12px;padding:3px 10px;color:var(--tx2)">
+                <strong>${r.name}</strong> · ${alertLabel(r.alert)} · rechecks in ${perfAckLeftH(r.ack)}h${r.ack.note ? ` · <em>${String(r.ack.note).replace(/</g,'&lt;')}</em>` : ''}
+                <a onclick="perfUnmarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}')" title="Unmark — the alert becomes visible again now" style="cursor:pointer;color:#e0776f;font-weight:700;margin-left:5px">×</a>
               </span>`).join('')}
             </div>
           </div>` : ''}
@@ -7740,7 +7831,7 @@ loadFromDb()
                       : '';
                     html += `
                   <tr id="perf-row-${String(r.aptId||'').replace(/[^a-zA-Z0-9_-]/g,'')}" style="${rowBg}">
-                    <td style="font-weight:500">${r.isAttiki ? '<span title="city apartment (Attiki/Thessaloniki)" style="color:#C9A84C">◆</span> ' : ''}${r.name}${r.categoryHow === 'default' ? ' <span title="No location data from Hosthub — defaulted to Attiki. Add it to a category list to override." style="font-size:10px;color:#8890a8;border:1px dashed #5a627a;border-radius:8px;padding:0 5px">uncategorized</span>' : ''}${r.alert && r.alert.level ? ` <span title="${alertLabel(r.alert)}" style="color:${r.alert.level === 'red' ? '#c0392b' : '#d68910'};font-size:11px;font-weight:600">${alertBadge(r.alert)}</span>` : ''}${upBadge} <button onclick="perfShowCourse('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}')" title="3-month occupancy & ADR chart" style="background:none;border:none;cursor:pointer;color:#8890a8;font-size:13px;padding:0 2px;vertical-align:middle">📈</button>${r.lastBookingDays != null ? `<div style="font-size:10px;color:var(--tx3);margin-top:1px" title="Days since the most recent reservation was made (any dates)">last booking ${r.lastBookingDays === 0 ? 'today' : r.lastBookingDays + 'd ago'}</div>` : ''}</td>
+                    <td style="font-weight:500">${r.isAttiki ? '<span title="city apartment (Attiki/Thessaloniki)" style="color:#C9A84C">◆</span> ' : ''}${r.name}${r.categoryHow === 'default' ? ' <span title="No location data from Hosthub — defaulted to Attiki. Add it to a category list to override." style="font-size:10px;color:#8890a8;border:1px dashed #5a627a;border-radius:8px;padding:0 5px">uncategorized</span>' : ''}${r.alert && r.alert.level ? (r.ack ? ` <span onclick="perfUnmarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}')" title="Corrective action taken${r.ack.note ? ': ' + String(r.ack.note).replace(/"/g,'&quot;') : ''} — was ${alertLabel(r.alert)} · rechecks in ${perfAckLeftH(r.ack)}h · click to unmark" style="cursor:pointer;color:#3ecf8e;font-size:11px;font-weight:600">✓ ${perfAckLeftH(r.ack)}h</span>` : ` <span onclick="perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','${r.alert.level}')" title="${alertLabel(r.alert)} — click to mark corrective action taken (hidden for 48h, then rechecked)" style="cursor:pointer;color:${r.alert.level === 'red' ? '#c0392b' : '#d68910'};font-size:11px;font-weight:600">${alertBadge(r.alert)}</span>`) : ''}${upBadge} <button onclick="perfShowCourse('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}')" title="3-month occupancy & ADR chart" style="background:none;border:none;cursor:pointer;color:#8890a8;font-size:13px;padding:0 2px;vertical-align:middle">📈</button>${r.lastBookingDays != null ? `<div style="font-size:10px;color:var(--tx3);margin-top:1px" title="Days since the most recent reservation was made (any dates)">last booking ${r.lastBookingDays === 0 ? 'today' : r.lastBookingDays + 'd ago'}</div>` : ''}</td>
                     <td>${verdictBadge(r.verdict)}</td>
                     <td class="r">${occBar(r.occ15)}</td>
                     <td class="r">${occBar(r.occ30)}</td>
@@ -7766,7 +7857,7 @@ loadFromDb()
           <strong>Pace 30d</strong> = next-30-day forward occupancy vs this rental's own full-history monthly average ("hist") and its last completed month ("last mo"), in points.
           <strong>ADR Pace</strong> = current 30d ADR vs the rental's own full-history average ADR and last month, in % (baseline € shown).
           <strong>ADR</strong> arrow (30d) = current vs prior 30-day avg price (≥3 bookings each side).
-          <br><strong>Vacancy alerts</strong> — every category judged on upcoming fill (badge shows % booked): Attiki & Thessaloniki next 3 days (<40% <span style="color:#d68910">orange</span>, <20% <span style="color:#c0392b">red</span>); City Escapes next 21 days (<35% <span style="color:#d68910">orange</span>, <15% <span style="color:#c0392b">red</span>). A property ≥80% occupied over the past 7 days has red softened to orange.
+          <br><strong>Vacancy alerts</strong> — every category judged on upcoming fill (badge shows % booked): Attiki & Thessaloniki next 3 days (<40% <span style="color:#d68910">orange</span>, <20% <span style="color:#c0392b">red</span>); City Escapes next 21 days (<35% <span style="color:#d68910">orange</span>, <15% <span style="color:#c0392b">red</span>). A property ≥80% occupied over the past 7 days has red softened to orange. Owner/maintenance blocks count as <em>unavailable</em>, not empty — a blocked calendar is not vacancy.
           Click any header to sort. Auto-syncs every 2h.
         </div>`}
       </div>`;
@@ -7788,13 +7879,24 @@ loadFromDb()
   function dayKey(d) { return d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate(); }
 
   // For one property's bookings, return a map dayKey -> state
-  // 2 = check-in/out edge, 1 = booked (middle night), 0 = empty
+  // 2 = check-in/out edge, 1 = booked (middle night), 3 = blocked, 0 = empty
   function nightStates(bks, start, end) {
     const booked = new Set();
     const edges = new Set();
+    const blocked = new Set();
     const isBlock = (typeof isRevenueBooking === 'function') ? (b) => !isRevenueBooking(b) : () => false;
     for (const b of bks) {
-      if (b.cancelled || isBlock(b)) continue;
+      if (b.cancelled) continue;
+      if (isBlock(b)) {
+        const ci = pDate(b.checkIn), co = pDate(b.checkOut);
+        if (!ci || !co) continue;
+        let night = new Date(ci);
+        while (night < co) {
+          if (night >= start && night < end) blocked.add(dayKey(night));
+          night.setDate(night.getDate() + 1);
+        }
+        continue;
+      }
       const ci = pDate(b.checkIn), co = pDate(b.checkOut);
       if (!ci || !co) continue;
       let night = new Date(ci);
@@ -7806,7 +7908,7 @@ loadFromDb()
       const lastNight = new Date(co); lastNight.setDate(lastNight.getDate() - 1);
       if (lastNight >= start && lastNight < end) edges.add(dayKey(lastNight));
     }
-    return { booked, edges };
+    return { booked, edges, blocked };
   }
 
   function renderHeatmap(rows) {
@@ -7836,6 +7938,7 @@ loadFromDb()
         const k = dayKey(d);
         if (st.edges.has(k)) return 2;
         if (st.booked.has(k)) return 1;
+        if (st.blocked.has(k)) return 3;
         return 0;
       });
       // Highlight empty runs that meet this property's alert thresholds.
@@ -7844,13 +7947,13 @@ loadFromDb()
       // Unified occupancy alerts: the row name is tinted by level; gaps stay
       // visible as dark cells (the heatmap itself shows where the holes are).
       const alertColor = null;
-      const nameColor = (r.alert && r.alert.level)
+      const nameColor = (r.alert && r.alert.level && !r.ack)
         ? (r.alert.level === 'red' ? '#e0776f' : '#e0a341') : '#c8ccd8';
       body += `<div style="font-size:11px;color:${nameColor};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:6px">${r.isAttiki ? '<span style="color:#C9A84C">◆</span> ' : ''}${r.name}</div>`;
       stateArr.forEach((s, i) => {
-        let bg = s === 1 ? '#1a7a4a' : s === 2 ? '#C9A84C' : '#242c3f';
+        let bg = s === 1 ? '#1a7a4a' : s === 2 ? '#C9A84C' : s === 3 ? '#4a5470' : '#242c3f';
         if (alertIdx.has(i) && alertColor) bg = alertColor;
-        body += `<div style="height:16px;border-radius:2px;background:${bg}" title="${r.name} · ${days[i].toLocaleDateString()}"></div>`;
+        body += `<div style="height:16px;border-radius:2px;background:${bg}" title="${r.name} · ${days[i].toLocaleDateString()}${s === 3 ? ' · blocked (owner/maintenance)' : ''}"></div>`;
       });
     });
 
@@ -7864,6 +7967,7 @@ loadFromDb()
         <div style="display:flex;gap:16px;margin-top:10px;font-size:11px;color:var(--tx3);align-items:center;flex-wrap:wrap">
           <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:13px;border-radius:3px;background:#1a7a4a;display:inline-block"></span>Booked</span>
           <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:13px;border-radius:3px;background:#C9A84C;display:inline-block"></span>Check-in / out</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:13px;border-radius:3px;background:#4a5470;display:inline-block"></span>Blocked (owner/maintenance)</span>
           <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:13px;border-radius:3px;background:#242c3f;display:inline-block"></span>Empty</span>
           <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:13px;border-radius:3px;background:transparent;border:1px solid #e0776f;display:inline-block"></span>Row name tinted = vacancy alert</span>
         </div>`;
@@ -8053,7 +8157,8 @@ loadFromDb()
           Properties are grouped into <strong>Attiki</strong>, <strong>Thessaloniki</strong>, and <strong>City Escapes</strong> — automatically. Priority: (1) the manual name lists in the config (always win, preserving your judgment calls), (2) the rental's coordinates from Hosthub (within 35km of Athens → Attiki, 25km of Thessaloniki → Thessaloniki, otherwise Escape), (3) its city name, (4) if nothing is known it defaults to Attiki with an "uncategorized" marker so you can spot and override it. New listings categorize themselves the moment they sync.
 
           <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Vacancy alerts</div>
-          Every category is judged on <strong>upcoming fill</strong> — same mechanism, different rhythm. <strong>Attiki & Thessaloniki</strong>: next ${ar.attiki.windows.join(' & ')} days — below ${P(ar.attiki.orange)} booked = orange, below ${P(ar.attiki.red)} = red. <strong>City Escapes</strong>: next ${ar.escape.windows.join(' & ')} days — below ${P(ar.escape.orange)} = orange, below ${P(ar.escape.red)} = red. The badge shows the % booked.<br>
+          Every category is judged on <strong>upcoming fill</strong> — same mechanism, different rhythm. <strong>Attiki & Thessaloniki</strong>: next ${ar.attiki.windows.join(' & ')} days — below ${P(ar.attiki.orange)} booked = orange, below ${P(ar.attiki.red)} = red. <strong>City Escapes</strong>: next ${ar.escape.windows.join(' & ')} days — below ${P(ar.escape.orange)} = orange, below ${P(ar.escape.red)} = red. The badge shows the % filled. Nights covered by owner/maintenance blocks count as unavailable (they cannot be sold), so a blocked calendar never fires a vacancy alert.<br>
+          <strong>Corrective action:</strong> click an alert badge (or “✓ done” in the alert list) once you've acted on a flagged property. It leaves the alert list and KPIs for <strong>48 hours</strong>, then is re-evaluated — if it still alerts it reappears automatically; if the action worked it stays clear. An orange alert that escalates to red while hidden reappears immediately. Marks are saved to the database, so the whole team sees the same state.<br>
           <strong>Recent-strength grace:</strong> if an occupancy-based property was ≥${P(gr.minOcc)} occupied over the past ${gr.lookbackDays} days, a red alert is softened to orange — a proven performer with a short-term dip isn't treated as critical.
 
           <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Underpricing alert (light-blue)</div>

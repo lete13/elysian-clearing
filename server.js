@@ -342,10 +342,15 @@ function snapParseD(v) {
   return isNaN(d) ? null : d;
 }
 
+// Owner/maintenance blocks are excluded from snapshots (same rule as the
+// Performance tab client math) so trend baselines stay comparable.
+const SNAP_BLOCK_NAMES = ['maintenance','owner block','block','owner stay','ιδιοκτητης','ιδιοχρηση'];
+function snapIsBlock(b) { return SNAP_BLOCK_NAMES.includes(String(b.guestName||'').toLowerCase().trim()); }
+
 function snapBookedNights(bks, start, end) {
   const nights = new Set();
   for (const b of bks) {
-    if (b.cancelled) continue;
+    if (b.cancelled || snapIsBlock(b)) continue;
     const ci = snapParseD(b.checkIn), co = snapParseD(b.checkOut);
     if (!ci || !co) continue;
     let night = new Date(ci);
@@ -362,7 +367,7 @@ function snapBookedNights(bks, start, end) {
 function snapAvgAdr(bks, start, end) {
   const vals = [];
   for (const b of bks) {
-    if (b.cancelled) continue;
+    if (b.cancelled || snapIsBlock(b)) continue;
     const ci = snapParseD(b.checkIn);
     if (!ci || ci < start || ci >= end) continue;
     const nights = parseInt(b.nights) || 1;
