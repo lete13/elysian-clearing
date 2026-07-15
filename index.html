@@ -6810,6 +6810,9 @@ loadFromDb()
   let _perfTimer = null;
   let _perfLastRun = null;
   let _perfHistory = [];   // rolling daily snapshots from /api/history
+  let _perfRows = [];      // last rendered rows — onclick handlers reference rows
+                           // by index so names with quotes (e.g. "Irakli's
+                           // Retreat") can never break the inline JS.
 
   // ── Corrective-action acknowledgements ─────────────────────────────────────
   // "Action taken" on a flagged property removes it from the vacancy alert list
@@ -6833,6 +6836,12 @@ loadFromDb()
     if (curLevel === 'red' && a.level !== 'red') return null;     // escalated while hidden → resurface
     return a;
   }
+  function perfUpAckActive(aptId) {
+    const a = perfAcks()['up:' + aptId];
+    if (!a || !a.at) return null;
+    if (Date.now() - a.at >= PERF_ACK_TTL_MS) return null;        // 48h over → re-check applies
+    return a;
+  }
   function perfAckLeftH(a) {
     return Math.max(1, Math.ceil((PERF_ACK_TTL_MS - (Date.now() - a.at)) / 3600000));
   }
@@ -6843,14 +6852,18 @@ loadFromDb()
     const now = Date.now();
     // housekeeping: expired marks are dead weight — drop them on every new mark
     Object.keys(acks).forEach(k => { if (!acks[k] || !acks[k].at || now - acks[k].at >= PERF_ACK_TTL_MS) delete acks[k]; });
-    acks[aptId] = { at: now, note: String(note).trim(), level: level || null };
+    acks[(level === 'underpriced' ? 'up:' : '') + aptId] = { at: now, note: String(note).trim(), level: level || null };
     if (typeof save === 'function') save();
     renderPerf();
     if (typeof toast === 'function') toast(`“${name}” marked as handled — hidden from alerts, rechecks in 48h.`, 'ok');
   };
-  window.perfUnmarkDone = function (aptId, name) {
-    if (!confirm(`Remove the corrective-action mark for “${name}”? The alert becomes visible again immediately.`)) return;
-    delete perfAcks()[aptId];
+  window.perfMarkDoneIdx = function (i, level) { const r = _perfRows[i]; if (r) window.perfMarkDone(r.aptId, r.name, level); };
+  window.perfUnmarkDoneIdx = function (i, kind) { const r = _perfRows[i]; if (r) window.perfUnmarkDone(r.aptId, r.name, kind); };
+  window.perfGoToIdx = function (i) { const r = _perfRows[i]; if (r && typeof window.perfGoTo === 'function') window.perfGoTo(String(r.aptId || '')); };
+  window.perfCourseIdx = function (i) { const r = _perfRows[i]; if (r && typeof window.perfShowCourse === 'function') window.perfShowCourse(String(r.aptId || ''), r.name); };
+  window.perfUnmarkDone = function (aptId, name, kind) {
+    if (!confirm(`Remove the corrective-action mark for “${name}”? The flag becomes visible again immediately.`)) return;
+    delete perfAcks()[(kind === 'up' ? 'up:' : '') + aptId];
     if (typeof save === 'function') save();
     renderPerf();
   };
@@ -7569,6 +7582,7 @@ loadFromDb()
         adrChange,
         alert,
         ack: perfAckActive(apt.id, alert && alert.level),
+        upAck: perfUpAckActive(apt.id),
         isAttiki: categoryOf(apt) !== 'escape',
         _set: set, // keep for heatmap
         bookings: set.length,
@@ -7585,6 +7599,9 @@ loadFromDb()
       if (r.ack && r.alert && r.alert.level) {
         r.verdict = { label: '✓ Action taken', tone: 'watch',
                       action: (r.ack.note ? `Done: ${r.ack.note} · ` : '') + `was “${alertLabel(r.alert)}” · rechecks in ${perfAckLeftH(r.ack)}h` };
+      } else if (r.upAck && r.underprice && r.underprice.flag && r.verdict && r.verdict.tone === 'opportunity') {
+        r.verdict = { label: '✓ Action taken', tone: 'watch',
+                      action: (r.upAck.note ? `Done: ${r.upAck.note} · ` : '') + `was “underpriced €${Math.round(r.underprice.cur)} vs norm €${Math.round(r.underprice.base)}” · rechecks in ${perfAckLeftH(r.upAck)}h` };
       }
     });
 
@@ -7703,6 +7720,8 @@ loadFromDb()
     const panel = document.getElementById('tab-perf');
     if (!panel) return;
     const rows = buildPerfRows();
+    _perfRows = rows;
+    rows.forEach((r, i) => { r._i = i; });
     _perfLastRun = new Date();
 
     const avgOcc = rows.length ? rows.reduce((a, r) => a + (r.occ30 || 0), 0) / rows.length : 0;
@@ -7719,7 +7738,9 @@ loadFromDb()
     const alertRows = rows.filter(r => r.alert && r.alert.level);
     const trendRed = rows.filter(r => r.trendLevel === 'red');
     const trendOrange = rows.filter(r => r.trendLevel === 'orange');
-    const underpriced = rows.filter(r => r.underprice && r.underprice.flag);
+    const underpricedAll = rows.filter(r => r.underprice && r.underprice.flag);
+    const underpriced = underpricedAll.filter(r => !r.upAck);
+    const upAcked = underpricedAll.filter(r => r.upAck);
     const histDays = _perfHistory.length;
 
     const nextRun = new Date(_perfLastRun.getTime() + PERF_REFRESH_MS);
@@ -7747,20 +7768,20 @@ loadFromDb()
           <div class="kpi"><div class="kpi-lbl">Avg Fwd Occupancy</div><div class="kpi-val">${pct(avgFwd)}</div><div class="kpi-sub">next 30 days booked</div></div>
           <div class="kpi"><div class="kpi-lbl">Avg Nightly Rate</div><div class="kpi-val">€${avgPrice.toFixed(0)}</div><div class="kpi-sub">past 30 days</div></div>
           <div class="kpi" style="${redRows.length ? 'border-color:#c0392b' : orangeRows.length ? 'border-color:#d68910' : ''}"><div class="kpi-lbl">Vacancy Alerts</div><div class="kpi-val" style="color:${redRows.length ? '#c0392b' : orangeRows.length ? '#d68910' : 'inherit'}">${redRows.length}<span style="font-size:13px;color:#d68910"> / ${orangeRows.length}</span></div><div class="kpi-sub">${ackedRows.length ? ackedRows.length + ' handled · ' : ''}red / orange</div></div>
-          <div class="kpi" style="${underpriced.length ? 'border-color:#3898ec' : ''}"><div class="kpi-lbl">Underpriced</div><div class="kpi-val" style="color:${underpriced.length ? '#3898ec' : 'inherit'}">${underpriced.length}</div><div class="kpi-sub">full but below norm</div></div>
+          <div class="kpi" style="${underpriced.length ? 'border-color:#3898ec' : ''}"><div class="kpi-lbl">Underpriced</div><div class="kpi-val" style="color:${underpriced.length ? '#3898ec' : 'inherit'}">${underpriced.length}</div><div class="kpi-sub">${upAcked.length ? upAcked.length + ' handled · ' : ''}full but below norm</div></div>
           <div class="kpi" style="${trendRed.length ? 'border-color:#c0392b' : trendOrange.length ? 'border-color:#d68910' : ''}"><div class="kpi-lbl">Below Norm</div><div class="kpi-val" style="color:${trendRed.length ? '#c0392b' : trendOrange.length ? '#d68910' : 'inherit'}">${trendRed.length}<span style="font-size:13px;color:#d68910"> / ${trendOrange.length}</span></div><div class="kpi-sub">underperforming history</div></div>
         </div>
 
-        ${alertRows.length ? `
-        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid ${redRows.length ? '#c0392b' : '#d68910'};background:${redRows.length ? 'rgba(192,57,43,.06)' : 'rgba(214,137,16,.06)'}">
-          <div style="font-size:12px;font-weight:600;margin-bottom:8px">⚠ Vacancy alerts — properties with an upcoming empty gap</div>
+        ${(alertRows.length || underpricedAll.length) ? `
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid ${redRows.length ? '#c0392b' : (orangeRows.length ? '#d68910' : '#3898ec')};background:${redRows.length ? 'rgba(192,57,43,.06)' : (orangeRows.length ? 'rgba(214,137,16,.06)' : 'rgba(56,152,236,.05)')}">
+          <div style="font-size:12px;font-weight:600;margin-bottom:8px">⚠ Attention — upcoming vacancy & pricing opportunities</div>
           ${redRows.length ? `
           <div style="margin-bottom:${orangeRows.length ? '8px' : '0'}">
             <div style="font-size:11px;font-weight:600;color:#c0392b;margin-bottom:4px">RED — critical</div>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
-              ${redRows.map(r => `<span onclick="perfGoTo('${String(r.aptId||'').replace(/'/g,'')}')" style="cursor:pointer;font-size:11px;background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.35);border-radius:12px;padding:3px 10px">
+              ${redRows.map(r => `<span onclick="perfGoToIdx(${r._i})" style="cursor:pointer;font-size:11px;background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.35);border-radius:12px;padding:3px 10px">
                 <strong>${r.name}</strong> · ${alertLabel(r.alert)}
-                <a onclick="event.stopPropagation();perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','red')" title="Click when you've acted on this property — hides it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;border:1px solid rgba(62,207,142,.5);border-radius:9px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;white-space:nowrap;background:rgba(62,207,142,.08)">mark done</a>
+                <a onclick="event.stopPropagation();perfMarkDoneIdx(${r._i},'red')" title="Click when you've acted on this property — hides it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;border:1px solid rgba(62,207,142,.5);border-radius:9px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;white-space:nowrap;background:rgba(62,207,142,.08)">mark done</a>
               </span>`).join('')}
             </div>
           </div>` : ''}
@@ -7768,19 +7789,33 @@ loadFromDb()
           <div>
             <div style="font-size:11px;font-weight:600;color:#d68910;margin-bottom:4px">ORANGE — watch</div>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
-              ${orangeRows.map(r => `<span onclick="perfGoTo('${String(r.aptId||'').replace(/'/g,'')}')" style="cursor:pointer;font-size:11px;background:rgba(214,137,16,.12);border:1px solid rgba(214,137,16,.35);border-radius:12px;padding:3px 10px">
+              ${orangeRows.map(r => `<span onclick="perfGoToIdx(${r._i})" style="cursor:pointer;font-size:11px;background:rgba(214,137,16,.12);border:1px solid rgba(214,137,16,.35);border-radius:12px;padding:3px 10px">
                 <strong>${r.name}</strong> · ${alertLabel(r.alert)}
-                <a onclick="event.stopPropagation();perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','orange')" title="Click when you've acted on this property — hides it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;border:1px solid rgba(62,207,142,.5);border-radius:9px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;white-space:nowrap;background:rgba(62,207,142,.08)">mark done</a>
+                <a onclick="event.stopPropagation();perfMarkDoneIdx(${r._i},'orange')" title="Click when you've acted on this property — hides it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;border:1px solid rgba(62,207,142,.5);border-radius:9px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;white-space:nowrap;background:rgba(62,207,142,.08)">mark done</a>
               </span>`).join('')}
             </div>
           </div>` : ''}
-          ${ackedRows.length ? `
-          <div style="margin-top:${(redRows.length || orangeRows.length) ? '10px' : '0'};${(redRows.length || orangeRows.length) ? 'padding-top:8px;border-top:1px dashed var(--bdr)' : ''}">
-            <div style="font-size:11px;font-weight:600;color:#3ecf8e;margin-bottom:4px">✓ UNDER CORRECTIVE ACTION — hidden from alerts, rechecked after 48h</div>
+          ${underpriced.length ? `
+          <div style="margin-top:${(redRows.length || orangeRows.length) ? '8px' : '0'}">
+            <div style="font-size:11px;font-weight:600;color:#3898ec;margin-bottom:4px">UNDERPRICED — full but selling below its usual rate</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              ${underpriced.map(r => `<span onclick="perfGoToIdx(${r._i})" style="cursor:pointer;font-size:11px;background:rgba(56,152,236,.10);border:1px solid rgba(56,152,236,.35);border-radius:12px;padding:3px 10px">
+                <strong>${r.name}</strong> · past 7d ${Math.round(r.underprice.occ*100)}% full · €${Math.round(r.underprice.cur)} → aim €${Math.round(r.underprice.base)}
+                <a onclick="event.stopPropagation();perfMarkDoneIdx(${r._i},'underpriced')" title="Click when you've adjusted the rate — hides it from this list for 48h, then rechecks" ${PILL}
+              </span>`).join('')}
+            </div>
+          </div>` : ''}
+          ${(ackedRows.length || upAcked.length) ? `
+          <div style="margin-top:${(redRows.length || orangeRows.length || underpriced.length) ? '10px' : '0'};${(redRows.length || orangeRows.length || underpriced.length) ? 'padding-top:8px;border-top:1px dashed var(--bdr)' : ''}">
+            <div style="font-size:11px;font-weight:600;color:#3ecf8e;margin-bottom:4px">✓ UNDER CORRECTIVE ACTION — hidden, rechecked after 48h</div>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               ${ackedRows.map(r => `<span style="font-size:11px;background:rgba(62,207,142,.10);border:1px solid rgba(62,207,142,.30);border-radius:12px;padding:3px 10px;color:var(--tx2)">
                 <strong>${r.name}</strong> · ${alertLabel(r.alert)} · rechecks in ${perfAckLeftH(r.ack)}h${r.ack.note ? ` · <em>${String(r.ack.note).replace(/</g,'&lt;')}</em>` : ''}
-                <a onclick="perfUnmarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}')" title="Unmark — the alert becomes visible again now" style="cursor:pointer;color:#e0776f;font-weight:700;margin-left:5px">×</a>
+                <a onclick="perfUnmarkDoneIdx(${r._i})" title="Unmark — the alert becomes visible again now" style="cursor:pointer;color:#e0776f;font-weight:700;margin-left:5px">×</a>
+              </span>`).join('')}
+              ${upAcked.map(r => `<span style="font-size:11px;background:rgba(62,207,142,.10);border:1px solid rgba(62,207,142,.30);border-radius:12px;padding:3px 10px;color:var(--tx2)">
+                <strong>${r.name}</strong> · was underpriced €${Math.round(r.underprice.cur)} → aim €${Math.round(r.underprice.base)} · rechecks in ${perfAckLeftH(r.upAck)}h${r.upAck.note ? ` · <em>${String(r.upAck.note).replace(/</g,'&lt;')}</em>` : ''}
+                <a onclick="perfUnmarkDoneIdx(${r._i},'up')" title="Unmark — the pricing flag becomes visible again now" style="cursor:pointer;color:#e0776f;font-weight:700;margin-left:5px">×</a>
               </span>`).join('')}
             </div>
           </div>` : ''}
@@ -7823,15 +7858,17 @@ loadFromDb()
                     ).join('');
                     const rowBg = r.alert && r.alert.level === 'red' ? 'background:rgba(192,57,43,.09)'
                                 : r.alert && r.alert.level === 'orange' ? 'background:rgba(214,137,16,.09)'
-                                : (r.underprice && r.underprice.flag) ? 'background:rgba(56,152,236,.10)'
+                                : (r.underprice && r.underprice.flag && !r.upAck) ? 'background:rgba(56,152,236,.10)'
                                 : r.trendLevel === 'red' ? 'background:rgba(192,57,43,.05)'
                                 : r.trendLevel === 'orange' ? 'background:rgba(214,137,16,.05)' : '';
                     const upBadge = (r.underprice && r.underprice.flag)
-                      ? ` <span title="High demand (past 7d ${Math.round(r.underprice.occ*100)}% occ) but ADR €${Math.round(r.underprice.cur)} is below its norm €${Math.round(r.underprice.base)} — consider raising the rate" style="color:#3898ec;font-size:11px;font-weight:600">▲ raise €${Math.round(r.underprice.cur)}→€${Math.round(r.underprice.base)}</span>`
+                      ? (r.upAck
+                        ? ` <span onclick="perfUnmarkDoneIdx(${r._i},'up')" title="Pricing action taken${r.upAck.note ? ': ' + String(r.upAck.note).replace(/"/g,'&quot;') : ''} — was €${Math.round(r.underprice.cur)} vs norm €${Math.round(r.underprice.base)} · rechecks in ${perfAckLeftH(r.upAck)}h · click to unmark" style="cursor:pointer;color:#3ecf8e;font-size:11px;font-weight:600">✓ ${perfAckLeftH(r.upAck)}h</span>`
+                        : ` <span onclick="perfMarkDoneIdx(${r._i},'underpriced')" title="High demand (past 7d ${Math.round(r.underprice.occ*100)}% occ) but ADR €${Math.round(r.underprice.cur)} is below its norm €${Math.round(r.underprice.base)} — click to mark corrective action taken (hidden for 48h, then rechecked)" style="cursor:pointer;color:#3898ec;font-size:11px;font-weight:600">▲ raise €${Math.round(r.underprice.cur)}→€${Math.round(r.underprice.base)}</span>`)
                       : '';
                     html += `
                   <tr id="perf-row-${String(r.aptId||'').replace(/[^a-zA-Z0-9_-]/g,'')}" style="${rowBg}">
-                    <td style="font-weight:500">${r.isAttiki ? '<span title="city apartment (Attiki/Thessaloniki)" style="color:#C9A84C">◆</span> ' : ''}${r.name}${r.categoryHow === 'default' ? ' <span title="No location data from Hosthub — defaulted to Attiki. Add it to a category list to override." style="font-size:10px;color:#8890a8;border:1px dashed #5a627a;border-radius:8px;padding:0 5px">uncategorized</span>' : ''}${r.alert && r.alert.level ? (r.ack ? ` <span onclick="perfUnmarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}')" title="Corrective action taken${r.ack.note ? ': ' + String(r.ack.note).replace(/"/g,'&quot;') : ''} — was ${alertLabel(r.alert)} · rechecks in ${perfAckLeftH(r.ack)}h · click to unmark" style="cursor:pointer;color:#3ecf8e;font-size:11px;font-weight:600">✓ ${perfAckLeftH(r.ack)}h</span>` : ` <span onclick="perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','${r.alert.level}')" title="${alertLabel(r.alert)} — click to mark corrective action taken (hidden for 48h, then rechecked)" style="cursor:pointer;color:${r.alert.level === 'red' ? '#c0392b' : '#d68910'};font-size:11px;font-weight:600">${alertBadge(r.alert)}</span>`) : ''}${upBadge} <button onclick="perfShowCourse('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}')" title="3-month occupancy & ADR chart" style="background:none;border:none;cursor:pointer;color:#8890a8;font-size:13px;padding:0 2px;vertical-align:middle">📈</button>${r.lastBookingDays != null ? `<div style="font-size:10px;color:var(--tx3);margin-top:1px" title="Days since the most recent reservation was made (any dates)">last booking ${r.lastBookingDays === 0 ? 'today' : r.lastBookingDays + 'd ago'}</div>` : ''}</td>
+                    <td style="font-weight:500">${r.isAttiki ? '<span title="city apartment (Attiki/Thessaloniki)" style="color:#C9A84C">◆</span> ' : ''}${r.name}${r.categoryHow === 'default' ? ' <span title="No location data from Hosthub — defaulted to Attiki. Add it to a category list to override." style="font-size:10px;color:#8890a8;border:1px dashed #5a627a;border-radius:8px;padding:0 5px">uncategorized</span>' : ''}${r.alert && r.alert.level ? (r.ack ? ` <span onclick="perfUnmarkDoneIdx(${r._i})" title="Corrective action taken${r.ack.note ? ': ' + String(r.ack.note).replace(/"/g,'&quot;') : ''} — was ${alertLabel(r.alert)} · rechecks in ${perfAckLeftH(r.ack)}h · click to unmark" style="cursor:pointer;color:#3ecf8e;font-size:11px;font-weight:600">✓ ${perfAckLeftH(r.ack)}h</span>` : ` <span onclick="perfMarkDoneIdx(${r._i},'${r.alert.level}')" title="${alertLabel(r.alert)} — click to mark corrective action taken (hidden for 48h, then rechecked)" style="cursor:pointer;color:${r.alert.level === 'red' ? '#c0392b' : '#d68910'};font-size:11px;font-weight:600">${alertBadge(r.alert)}</span>`) : ''}${upBadge} <button onclick="perfCourseIdx(${r._i})" title="3-month occupancy & ADR chart" style="background:none;border:none;cursor:pointer;color:#8890a8;font-size:13px;padding:0 2px;vertical-align:middle">📈</button>${r.lastBookingDays != null ? `<div style="font-size:10px;color:var(--tx3);margin-top:1px" title="Days since the most recent reservation was made (any dates)">last booking ${r.lastBookingDays === 0 ? 'today' : r.lastBookingDays + 'd ago'}</div>` : ''}</td>
                     <td>${verdictBadge(r.verdict)}</td>
                     <td class="r">${occBar(r.occ15)}</td>
                     <td class="r">${occBar(r.occ30)}</td>
@@ -8057,12 +8094,20 @@ loadFromDb()
       }
     });
 
+    const CHART_BG = '#131a28';   // must match the modal card background
+    const label = (x, y, txt, color) =>
+      `<text x="${x}" y="${y}" text-anchor="middle" font-size="9" font-weight="600" fill="${color}" stroke="${CHART_BG}" stroke-width="3" paint-order="stroke" stroke-linejoin="round">${txt}</text>`;
+
     // ── Occupancy line: solid across weeks WITH data; dotted across no-data gaps ──
-    let occSolid = '', occDotted = '', occDots = '';
+    let occSolid = '', occDotted = '', occDots = '', occLabels = '';
     for (let i = 0; i < n; i++) {
       const p = points[i];
       if (!noData(p)) {
-        occDots += `<circle cx="${xAt(i).toFixed(1)}" cy="${yOcc(p.occ).toFixed(1)}" r="2.5" fill="#C9A84C"/>`;
+        const cx = xAt(i).toFixed(1), cy = yOcc(p.occ);
+        occDots += `<circle cx="${cx}" cy="${cy.toFixed(1)}" r="2.5" fill="#C9A84C"/>`;
+        // % label above the dot (below when the dot touches the top edge)
+        const ly = (cy - 8 > padT + 6) ? cy - 7 : cy + 14;
+        occLabels += label(cx, ly.toFixed(1), `${Math.round(p.occ * 100)}%`, '#C9A84C');
       }
       if (i === 0) continue;
       const prev = points[i - 1];
@@ -8079,11 +8124,15 @@ loadFromDb()
     }
 
     // ── ADR line: same treatment (dotted across weeks with no ADR) ──
-    let adrSolid = '', adrDotted = '', adrDots = '';
+    let adrSolid = '', adrDotted = '', adrDots = '', adrLabels = '';
     for (let i = 0; i < n; i++) {
       const p = points[i];
       if (p.adr != null) {
-        adrDots += `<circle cx="${xAt(i).toFixed(1)}" cy="${yAdr(p.adr).toFixed(1)}" r="2.5" fill="#3ecf8e"/>`;
+        const cx = xAt(i).toFixed(1), cy = yAdr(p.adr);
+        adrDots += `<circle cx="${cx}" cy="${cy.toFixed(1)}" r="2.5" fill="#3ecf8e"/>`;
+        // € label below the dot (above when the dot touches the bottom edge)
+        const ly = (cy + 14 < padT + plotH - 2) ? cy + 13 : cy - 7;
+        adrLabels += label(cx, ly.toFixed(1), `€${Math.round(p.adr)}`, '#3ecf8e');
       }
       if (i === 0) continue;
       const prev = points[i - 1];
@@ -8101,6 +8150,8 @@ loadFromDb()
       ${occDots}
       <path d="${adrSolid}" fill="none" stroke="#3ecf8e" stroke-width="2"/>
       ${adrDots}
+      ${occLabels}
+      ${adrLabels}
       ${xlabels}
     </svg>`;
   }
@@ -8158,7 +8209,7 @@ loadFromDb()
 
           <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Vacancy alerts</div>
           Every category is judged on <strong>upcoming fill</strong> — same mechanism, different rhythm. <strong>Attiki & Thessaloniki</strong>: next ${ar.attiki.windows.join(' & ')} days — below ${P(ar.attiki.orange)} booked = orange, below ${P(ar.attiki.red)} = red. <strong>City Escapes</strong>: next ${ar.escape.windows.join(' & ')} days — below ${P(ar.escape.orange)} = orange, below ${P(ar.escape.red)} = red. The badge shows the % filled. Nights covered by owner/maintenance blocks count as unavailable (they cannot be sold), so a blocked calendar never fires a vacancy alert.<br>
-          <strong>Corrective action:</strong> click an alert badge (or “✓ done” in the alert list) once you've acted on a flagged property. It leaves the alert list and KPIs for <strong>48 hours</strong>, then is re-evaluated — if it still alerts it reappears automatically; if the action worked it stays clear. An orange alert that escalates to red while hidden reappears immediately. Marks are saved to the database, so the whole team sees the same state.<br>
+          <strong>Corrective action:</strong> click an alert badge, an underpriced badge, or “mark done” in the attention list once you've acted on a flagged property. It leaves the alert list and KPIs for <strong>48 hours</strong>, then is re-evaluated — if it still alerts it reappears automatically; if the action worked it stays clear. An orange alert that escalates to red while hidden reappears immediately. Marks are saved to the database, so the whole team sees the same state.<br>
           <strong>Recent-strength grace:</strong> if an occupancy-based property was ≥${P(gr.minOcc)} occupied over the past ${gr.lookbackDays} days, a red alert is softened to orange — a proven performer with a short-term dip isn't treated as critical.
 
           <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Underpricing alert (light-blue)</div>
