@@ -43,7 +43,7 @@
     .mono{font-family:var(--mono)}.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:500}
     .tbl{width:100%;border-collapse:collapse;font-size:12px}
     .tbl th{padding:8px 10px;text-align:left;font-size:11px;font-weight:500;color:#C9A84C;text-transform:uppercase;letter-spacing:.04em;background:#0F1E2E;white-space:nowrap}
-    .tbl th.r{text-align:right}.tbl td{padding:7px 10px;border-bottom:.5px solid var(--bdr);vertical-align:middle}
+    .tbl th.r{text-align:right}.tbl td.r{text-align:right}.tbl td{padding:7px 10px;border-bottom:.5px solid var(--bdr);vertical-align:middle}
     .tbl tr:hover td{background:var(--bg2)}.tbl tfoot td{background:var(--bg2);font-weight:500;padding:8px 10px}
     /* Misc */
     .shdr{font-size:11px;font-weight:500;color:var(--tx2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
@@ -130,6 +130,8 @@
     <button class="nav-btn" onclick="showTab('imports',this)" id="nav-imports">📥 Imports</button>
     <button class="nav-btn" onclick="showTab('rev',this)" id="nav-rev">💰 Elysian Revenue</button>
     <button class="nav-btn" onclick="showTab('ops',this)" id="nav-ops">🗓 Daily Ops</button>
+    <button class="nav-btn" onclick="showTab('perf',this)" id="nav-perf">📊 Performance</button>
+    <button class="nav-btn" onclick="showTab('co',this)" id="nav-co">🧳 Checkout Tracker</button>
   </nav>
   <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
     <button class="btn sm" onclick="clearAll()" style="border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.6);background:transparent"><i class="ti ti-trash"></i> Clear data</button>
@@ -626,6 +628,10 @@
 
 <!-- ELYSIAN REVENUE TAB -->
 <div id="tab-rev" class="tab-panel" style="background:var(--bg)"></div>
+
+<div id="tab-perf" class="tab-panel" style="background:var(--bg)"></div>
+
+<div id="tab-co" class="tab-panel" style="background:var(--bg)"></div>
 
 
  -->
@@ -3766,8 +3772,53 @@ function renderRpt(){
       +' <a onclick="rptRelock()" style="cursor:pointer;text-decoration:underline;font-weight:600;margin-left:6px">Update lock to current numbers</a>'
       +'</div>' + panelHTML;
   }
+  // ── OTA fee integrity banner (display-only — changes no report math) ──────
+  // Hosthub occasionally delivers Booking.com/Airbnb reservations with the
+  // platform fee and/or payment charges missing (e.g. Joel's reservation,
+  // July 2026). Surface them BEFORE the report is generated/sent.
+  const _feeIssues = feeCheckIssues(bks);
+  if (_feeIssues.length) {
+    const _feeRows = _feeIssues.map(({b, missing}) => {
+      const aptNm = (S.apts.find(a=>a.id===b.aptId)||{}).name || b.aptName || '?';
+      return '<tr>'
+        +'<td style="padding:3px 8px;border-bottom:.5px solid #FCA5A5">'+String(b.guestName||'?').replace(/</g,'&lt;')+'</td>'
+        +'<td style="padding:3px 8px;border-bottom:.5px solid #FCA5A5">'+String(aptNm).replace(/</g,'&lt;')+'</td>'
+        +'<td style="padding:3px 8px;border-bottom:.5px solid #FCA5A5">'+String(b.platform||b.channel||'')+'</td>'
+        +'<td style="padding:3px 8px;border-bottom:.5px solid #FCA5A5;font-family:var(--mono)">'+(b.checkIn||'?')+' → '+(b.checkOut||'?')+'</td>'
+        +'<td style="padding:3px 8px;border-bottom:.5px solid #FCA5A5;text-align:right;font-family:var(--mono)">'+fmt(b.gross||0)+'</td>'
+        +'<td style="padding:3px 8px;border-bottom:.5px solid #FCA5A5;font-weight:600">'+missing.join(' + ')+'</td></tr>';
+    }).join('');
+    panelHTML = '<div style="padding:12px 16px;background:#FEE2E2;border:1px solid #DC2626;border-radius:var(--r);margin-bottom:12px;font-size:12.5px;color:#7F1D1D">'
+      +'<b>🚨 Fee check — '+_feeIssues.length+' OTA reservation'+(_feeIssues.length>1?'s':'')+' with missing charges.</b> '
+      +'Booking.com/Airbnb always charge commission — a missing platform fee or payment charge is usually a Hosthub sync error. '
+      +'Verify these in Hosthub (and re-sync or fetch taxes) before generating this report, otherwise the owner payout will be overstated.'
+      +'<table style="width:100%;margin-top:8px;font-size:11.5px;border-collapse:collapse">'
+      +'<tr style="text-align:left"><th style="padding:3px 8px">Guest</th><th style="padding:3px 8px">Property</th><th style="padding:3px 8px">Channel</th><th style="padding:3px 8px">Dates</th><th style="padding:3px 8px;text-align:right">Gross</th><th style="padding:3px 8px">Missing</th></tr>'
+      +_feeRows+'</table></div>' + panelHTML;
+  }
   panels.innerHTML=panelHTML;
   window._rpt={apt,bks,exps,gea,geaVat,dates,payout,occ,nights,totalDays,panelHTML,m,selApts:_selApts,packets,cmb};
+}
+
+// ── OTA fee integrity check (Booking.com / Airbnb) ──────────────────────────
+// Flags non-cancelled revenue reservations from Booking.com/Airbnb that carry
+// no platform fee (svc) or no payment charges (pchg) — both are always charged
+// by these channels, so a zero means Hosthub delivered incomplete data.
+// Used by the Reports banner and by validateReport (pre-PDF confirm).
+function feeCheckIssues(bks) {
+  const out = [];
+  (bks || []).forEach(b => {
+    if (!b || b.cancelled) return;
+    if (typeof isRevenueBooking === 'function' && !isRevenueBooking(b)) return;
+    const ch = String(b.platform || b.channel || '').toLowerCase();
+    if (!(ch.includes('airbnb') || ch.includes('booking'))) return;
+    if (!((b.gross || 0) > 0)) return;   // zero-value entries carry no fee expectation
+    const missing = [];
+    if (!((b.svc  || 0) > 0)) missing.push('platform fee');
+    if (!((b.pchg || 0) > 0)) missing.push('payment charges');
+    if (missing.length) out.push({ b, missing });
+  });
+  return out;
 }
 
 // ── Fetch Greek taxes for current report period ────────────────────────────
@@ -3847,6 +3898,12 @@ function validateReport(packets, cmb, bks) {
     const expectedClean = staysExpected * (parseFloat(a.cleaningFee)||0);
     if (Math.abs(p.m.configCl - expectedClean) > 0.01)
       errors.push(`Cleaning fee: expected ${expectedClean.toFixed(2)} (${staysExpected} stays × ${a.cleaningFee})${tag}, got ${p.m.configCl.toFixed(2)}`);
+  });
+  // OTA fee integrity: Booking.com/Airbnb reservations must carry a platform fee
+  // and payment charges — a zero is usually a Hosthub sync error (see Joel's
+  // reservation, July 2026) and would overstate the owner payout.
+  feeCheckIssues(bks).forEach(({b, missing}) => {
+    errors.push(`Fee check: ${b.platform||b.channel} reservation "${b.guestName||'?'}" (${b.checkIn} → ${b.checkOut}, gross ${fmt(b.gross||0)}) has no ${missing.join(' and no ')} — verify in Hosthub before sending`);
   });
   return errors;
 }
@@ -4576,6 +4633,25 @@ async function startSync() {
       syncLog('\n⚠ Property name auto-mappings (add as aliases in Configuration to fix):','warn');
       _mismatches.forEach(([hosthub,local])=>syncLog('  "'+hosthub+'" → "'+local+'"','warn'));
     }
+
+    // Backfill location data (city / lat / lng) from the Hosthub rentals in the
+    // sync stream. This powers auto-categorization (Attiki / Thessaloniki /
+    // City Escapes) and prevents manual syncs from wiping coordinates the
+    // server-side auto-sync backfilled.
+    if (Array.isArray(finalData.rentals)) {
+      let _locFilled = 0;
+      for (const r of finalData.rentals) {
+        if (!r || !r.name) continue;
+        const apt = findApt(r.name);
+        if (!apt) continue;
+        if (r.city && !apt.city) apt.city = r.city;
+        const _la = parseFloat(r.latitude), _ln = parseFloat(r.longitude);
+        if (isFinite(_la) && (apt.lat == null || apt.lat === '')) { apt.lat = _la; _locFilled++; }
+        if (isFinite(_ln) && (apt.lng == null || apt.lng === '')) { apt.lng = _ln; }
+      }
+      if (_locFilled) syncLog(`Location data added for ${_locFilled} properties (auto-categorization).`, 'ok');
+    }
+
 
     const nNew = S.apts.length - prevApts;
     localStorage.setItem('hh_last_sync', new Date().toISOString());
@@ -6722,6 +6798,1683 @@ _showLoadingSpinner(true);
 loadFromDb()
   .then(() => { _showLoadingSpinner(false); startDbPoll(); })
   .catch(() => { _showLoadingSpinner(false); });
+
+
+/* ===== PERFORMANCE REPORT TAB (auto-installed) ===== */
+
+
+(function () {
+  'use strict';
+
+  const PERF_REFRESH_MS = 2 * 60 * 60 * 1000; // 2 hours
+  let _perfTimer = null;
+  let _perfLastRun = null;
+  let _perfHistory = [];   // rolling daily snapshots from /api/history
+
+  // ── DETERIORATION SIGNALS ───────────────────────────────────────────────────
+  // Occupancy: TRUE PACE — forward occupancy now vs the same lead-time window as
+  // it stood 2 weeks and 1 month ago (reconstructed from booking `created`
+  // dates). A drop means bookings for upcoming dates are coming in slower than
+  // before — real deceleration, not the forward-vs-completed artifact.
+  // ADR: still "below own norm" (that comparison is fair — realized vs realized).
+  const SIGNAL_RULES = {
+    paceDrop: { orange: 0.10, red: 0.20 },   // forward occ points below its own earlier level
+    adrBelow: { orange: 0.05, red: 0.12 },   // fraction below baseline ADR
+    paceWindow: 30,                          // forward window (days) for pace
+  };
+
+  // ── VERDICT ─────────────────────────────────────────────────────────────────
+  // Translates the signals a property already carries into ONE plain-language
+  // conclusion an analyst or marketer can act on. Ordered by urgency: the most
+  // actionable conclusion wins. tone: critical | opportunity | watch | healthy
+  function verdictOf(r) {
+    const a = r.alert;
+    const up = r.underprice && r.underprice.flag;
+    const trendRed = r.trendLevel === 'red';
+    const trendOrange = r.trendLevel === 'orange';
+    const paceDrop = (r.trends || []).some(t => t.key === 'pace-1m' || t.key === 'pace-2w');
+    const adrDrop = (r.trends || []).some(t => t.key === 'adr-hist' || t.key === 'adr-prev');
+
+    if (a && a.level === 'red') {
+      return { label: 'Vacant — act now', tone: 'critical',
+               action: `Only ${Math.round(a.occ*100)}% booked in the next ${a.window} days — promote or drop price to fill.` };
+    }
+    if (up) {
+      return { label: 'Underpriced — raise rate', tone: 'opportunity',
+               action: `Near-full (past 7d ${Math.round(r.underprice.occ*100)}%) but ADR €${Math.round(r.underprice.cur)} is below its norm €${Math.round(r.underprice.base)}. Raise the nightly rate.` };
+    }
+    if (trendRed || (a && a.level === 'orange')) {
+      let why = [];
+      if (paceDrop) why.push('bookings for upcoming dates are slowing');
+      if (adrDrop) why.push('the rate is below its usual level');
+      if (a && a.level === 'orange') why.push('near-term availability is opening up');
+      return { label: 'Softening — review', tone: 'watch',
+               action: (why.length ? why.join('; ') : 'underperforming its own recent norm') + '. Review pricing/visibility.' };
+    }
+    if (trendOrange) {
+      return { label: 'Watch', tone: 'watch',
+               action: 'A mild dip vs its own history — keep an eye on it, no action needed yet.' };
+    }
+    return { label: 'Healthy', tone: 'healthy',
+             action: 'Pacing and pricing in line with its own track record. No action needed.' };
+  }
+
+  function verdictBadge(v) {
+    if (!v) return '';
+    const c = v.tone === 'critical' ? { bg: 'rgba(192,57,43,.15)', bd: 'rgba(192,57,43,.4)', fg: '#e0776f' }
+            : v.tone === 'opportunity' ? { bg: 'rgba(56,152,236,.15)', bd: 'rgba(56,152,236,.4)', fg: '#3898ec' }
+            : v.tone === 'watch' ? { bg: 'rgba(214,137,16,.15)', bd: 'rgba(214,137,16,.4)', fg: '#e0a341' }
+            : { bg: 'rgba(26,122,74,.12)', bd: 'rgba(26,122,74,.3)', fg: '#3ecf8e' };
+    return `<span title="${(v.action || '').replace(/"/g, '&quot;')}" style="display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:10px;background:${c.bg};border:1px solid ${c.bd};color:${c.fg};white-space:nowrap">${v.label}</span>`;
+  }
+
+  function histSignals(row) {
+    const out = [];
+    const adrRule = SIGNAL_RULES.adrBelow;
+    const grade = (belowBy, rule) => belowBy >= rule.red ? 'red' : belowBy >= rule.orange ? 'orange' : null;
+
+    // True pace vs 2 weeks ago
+    if (row.pace2w && row.pace2w.delta != null && row.pace2w.delta < 0) {
+      const lvl = grade(-row.pace2w.delta, SIGNAL_RULES.paceDrop);
+      if (lvl) out.push({ key: 'pace-2w', level: lvl, label: `pace ${Math.round(-row.pace2w.delta*100)}pts < 2wk ago` });
+    }
+    // True pace vs 1 month ago
+    if (row.pace1m && row.pace1m.delta != null && row.pace1m.delta < 0) {
+      const lvl = grade(-row.pace1m.delta, SIGNAL_RULES.paceDrop);
+      if (lvl) out.push({ key: 'pace-1m', level: lvl, label: `pace ${Math.round(-row.pace1m.delta*100)}pts < 1mo ago` });
+    }
+    // ADR vs full history
+    if (row.adrPaceHist != null && row.adrPaceHist < 0) {
+      const lvl = grade(-row.adrPaceHist, adrRule);
+      if (lvl) out.push({ key: 'adr-hist', level: lvl, label: `ADR ${Math.round(-row.adrPaceHist*100)}% < hist` });
+    }
+    // ADR vs previous month
+    if (row.adrPacePrev != null && row.adrPacePrev < 0) {
+      const lvl = grade(-row.adrPacePrev, adrRule);
+      if (lvl) out.push({ key: 'adr-prev', level: lvl, label: `ADR ${Math.round(-row.adrPacePrev*100)}% < last mo` });
+    }
+    return out;
+  }
+
+
+  // ── CONFIG: property categories ─────────────────────────────────────────────
+  // THESSALONIKI: short-stay city apartments in Thessaloniki. Use the SAME
+  //   near-term occupancy alert as Attiki (they churn day-to-day too).
+  // CITY_ESCAPES: islands / villas / getaways (longer stays). Keep the
+  //   gap-based alert.
+  // Everything NOT in either list = ATTIKI (Athens/Piraeus day-to-day).
+  // Matching is "contains" (case-insensitive, whitespace-normalised).
+  const THESSALONIKI_APARTMENTS = [
+    "elysian cornerstone",
+    "elysian hightower",
+    "le alex",
+    "le floor",
+    "le grace",
+    "le plaza",
+    "the skarlatos residence",
+  ];
+  const CITY_ESCAPE_APARTMENTS = [
+    "ariti 7",
+    "ariti7",
+    "eclectic",
+    "seaside lavrio",
+    "sunset nest in fiskardo",
+    "villa liberty",
+    "p & g apartment",
+  ];
+  const _norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const _thessFrags = THESSALONIKI_APARTMENTS.map(_norm).filter(Boolean);
+  const _escapeFrags = CITY_ESCAPE_APARTMENTS.map(_norm).filter(Boolean);
+
+  // ── Auto-categorization (hybrid) ─────────────────────────────────────────────
+  // Priority: 1) your manual lists above (overrides — always win, so existing
+  // judgments like "Lavrio = escape despite being in Attiki" are preserved),
+  // 2) geo-distance from rental lat/lng (new listings categorize themselves),
+  // 3) city-name match, 4) if nothing is known: default 'attiki' (original
+  // behavior) with a visible "uncategorized" marker so you notice and can
+  // override via the lists.
+  const GEO_REGIONS = [
+    { cat: 'attiki',       lat: 37.9838, lng: 23.7275, radiusKm: 35 },  // Athens center
+    { cat: 'thessaloniki', lat: 40.6401, lng: 22.9444, radiusKm: 25 },  // Thessaloniki center
+  ];
+  const CITY_HINTS = {
+    attiki: ['athens', 'athina', 'piraeus', 'pireas', 'peiraias', 'zografou', 'kallithea', 'glyfada', 'marousi', 'nea smyrni', 'koukaki'],
+    thessaloniki: ['thessaloniki', 'salonika', 'kalamaria'],
+  };
+  function _distKm(lat1, lng1, lat2, lng2) {
+    const R = 6371, toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+  // apt may be an object {name, lat, lng, city} or just a name string (back-compat)
+  function categoryInfo(apt) {
+    const name = (typeof apt === 'string') ? apt : (apt && apt.name) || '';
+    const n = _norm(name);
+    // 1) manual override lists — always win
+    if (_thessFrags.some(f => n.includes(f))) return { cat: 'thessaloniki', how: 'list' };
+    if (_escapeFrags.some(f => n.includes(f))) return { cat: 'escape', how: 'list' };
+    if (typeof apt === 'object' && apt) {
+      // 2) geo-distance
+      const lat = parseFloat(apt.lat), lng = parseFloat(apt.lng);
+      if (isFinite(lat) && isFinite(lng)) {
+        for (const rgn of GEO_REGIONS) {
+          if (_distKm(lat, lng, rgn.lat, rgn.lng) <= rgn.radiusKm) return { cat: rgn.cat, how: 'geo' };
+        }
+        return { cat: 'escape', how: 'geo' };  // has coords, outside both cities → escape
+      }
+      // 3) city-name hint
+      const city = _norm(apt.city);
+      if (city) {
+        if (CITY_HINTS.attiki.some(c => city.includes(c))) return { cat: 'attiki', how: 'city' };
+        if (CITY_HINTS.thessaloniki.some(c => city.includes(c))) return { cat: 'thessaloniki', how: 'city' };
+        return { cat: 'escape', how: 'city' };
+      }
+    }
+    // 4) nothing known (no coords, no city yet — e.g. before the new server has
+    //    synced and backfilled location data) — default to ATTIKI (the original
+    //    behavior) and mark it so the table shows an "uncategorized" badge.
+    //    Geo/city take over automatically once location data arrives.
+    return { cat: 'attiki', how: 'default' };
+  }
+  function categoryOf(apt) { return categoryInfo(apt).cat; }
+  // Occupancy-mode is now ALL categories (unified alert system).
+  function usesOccupancy(apt) { return true; }
+  // Back-compat: isAttiki() means "uses the occupancy rule" for alert logic.
+  function isAttiki(apt) { return usesOccupancy(apt); }
+
+  const CATEGORY_LABELS = { attiki: 'Attiki', thessaloniki: 'Thessaloniki', escape: 'City Escapes' };
+  const CATEGORY_ORDER = ['attiki', 'thessaloniki', 'escape'];
+
+  // Alert rules.
+  //  • Attiki (day-to-day, short-stay): judged on NEAR-TERM OCCUPANCY, not gaps.
+  //    A healthy churn unit always has scattered 1–2 night holes, so a gap check
+  //    mis-flags them. Instead: is enough of the next few days booked?
+  //    Checks both a 3-day and 7-day window; the worse result decides.
+  //    (occ below `red` %  → red;  below `orange` %  → orange)
+  //  • Non-Attiki (longer stays): judged on CONSECUTIVE EMPTY NIGHTS (gaps),
+  //    because a real multi-night hole is the meaningful signal there.
+  // UNIFIED alert system: every category is judged on NEAR-TERM OCCUPANCY —
+  // "is enough of the upcoming window booked?" — with per-category windows and
+  // thresholds that respect each type's booking rhythm. (The old gap-based
+  // check was removed: for longer-stay escapes, scattered 3–4 night gaps are
+  // normal calendar texture and it over-flagged healthy properties. The heatmap
+  // still shows every gap visually.)
+  const ALERT_RULES = {
+    attiki:       { windows: [3],  orange: 0.40, red: 0.20 },  // day-to-day churn: next 3 days
+    thessaloniki: { windows: [3],  orange: 0.40, red: 0.20 },  // same rhythm as Attiki
+    escape:       { windows: [21], orange: 0.35, red: 0.15 },  // longer lead: next 3 weeks, lower bar
+  };
+
+  // ── Sort state (default: name A→Z) ──────────────────────────────────────────
+  let _sortKey = 'name';
+  let _sortDir = 1; // 1 = asc, -1 = desc
+
+  // ── Date helpers ───────────────────────────────────────────────────────────
+  function pDate(s) {
+    if (!s) return null;
+    // The app stores dates as D/M/YYYY (e.g. "11/7/2026"). Use the app's own
+    // parseD() which handles that format correctly. Falling back to new Date()
+    // would misread "11/7/2026" as Nov 7 (US M/D/Y) and corrupt every window.
+    if (typeof parseD === 'function') {
+      const d = parseD(s);
+      return (d && !isNaN(d)) ? d : null;
+    }
+    const d = new Date(String(s).slice(0, 10));
+    return isNaN(d) ? null : d;
+  }
+  function daysAgo(n) { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - n); return d; }
+  function daysAhead(n) { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + n); return d; }
+  function today0() { const d = new Date(); d.setHours(0,0,0,0); return d; }
+
+  // Count DISTINCT booked nights within [start, end) for a set of bookings.
+  // Uses a Set keyed by day so overlapping or duplicate bookings can never
+  // push occupancy above 100% (a night is either booked or it isn't).
+  // Excludes cancelled bookings and maintenance/owner blocks.
+  function bookedNights(bks, start, end) {
+    const nights = new Set();
+    const isBlock = (typeof isRevenueBooking === 'function')
+      ? (b) => !isRevenueBooking(b)
+      : () => false;
+    for (const b of bks) {
+      if (b.cancelled) continue;
+      if (isBlock(b)) continue;
+      const ci = pDate(b.checkIn), co = pDate(b.checkOut);
+      if (!ci || !co) continue;
+      let night = new Date(ci);
+      while (night < co) {
+        if (night >= start && night < end) {
+          nights.add(night.getFullYear() * 10000 + night.getMonth() * 100 + night.getDate());
+        }
+        night.setDate(night.getDate() + 1);
+      }
+    }
+    return nights.size;
+  }
+
+  // Average nightly price for bookings whose check-in falls within [start, end)
+  // Returns { avg, count } so callers can gate on sample size.
+  function avgNightlyPriceInfo(bks, start, end) {
+    const vals = [];
+    for (const b of bks) {
+      if (b.cancelled) continue;
+      if (typeof isRevenueBooking === 'function' && !isRevenueBooking(b)) continue;
+      const ci = pDate(b.checkIn);
+      if (!ci || ci < start || ci >= end) continue;
+      const nights = parseInt(b.nights) || nightsBetween(b.checkIn, b.checkOut) || 1;
+      const total = (typeof b.payout === 'number' && b.payout) ? b.payout
+                  : (typeof b.gross === 'number' ? b.gross : null);
+      if (total != null && nights) vals.push(total / nights);
+    }
+    if (!vals.length) return { avg: null, count: 0 };
+    return { avg: vals.reduce((a, v) => a + v, 0) / vals.length, count: vals.length };
+  }
+  function avgNightlyPrice(bks, start, end) {
+    return avgNightlyPriceInfo(bks, start, end).avg;
+  }
+
+  function nightsBetween(ci, co) {
+    const a = pDate(ci), b = pDate(co);
+    if (!a || !b) return 0;
+    return Math.max(0, Math.round((b - a) / 86400000));
+  }
+
+  // Find the longest run of consecutive UNBOOKED nights within [start, end).
+  // Returns { maxGap, firstGapStart } — used for the Athens empty-gap alert.
+  function longestGap(bks, start, end) {
+    // Build a set of booked day-keys
+    const booked = new Set();
+    const isBlock = (typeof isRevenueBooking === 'function') ? (b) => !isRevenueBooking(b) : () => false;
+    for (const b of bks) {
+      if (b.cancelled || isBlock(b)) continue;
+      const ci = pDate(b.checkIn), co = pDate(b.checkOut);
+      if (!ci || !co) continue;
+      let night = new Date(ci);
+      while (night < co) {
+        if (night >= start && night < end) {
+          booked.add(night.getFullYear() * 10000 + night.getMonth() * 100 + night.getDate());
+        }
+        night.setDate(night.getDate() + 1);
+      }
+    }
+    let maxGap = 0, cur = 0, firstGapStart = null, curStart = null;
+    const day = new Date(start);
+    while (day < end) {
+      const key = day.getFullYear() * 10000 + day.getMonth() * 100 + day.getDate();
+      if (!booked.has(key)) {
+        if (cur === 0) curStart = new Date(day);
+        cur++;
+        if (cur > maxGap) { maxGap = cur; firstGapStart = curStart; }
+      } else {
+        cur = 0;
+      }
+      day.setDate(day.getDate() + 1);
+    }
+    return { maxGap, firstGapStart };
+  }
+
+  // Evaluate a property's alert level.
+  // Attiki → near-term occupancy thresholds. Non-Attiki → consecutive-gap.
+  // Returns { level, mode, detail } where detail carries the triggering info.
+  // Recent-strength grace: a proven strong performer (past 7 days >80% occupied)
+  // with a temporary forward dip shouldn't be flagged "critical". We downgrade
+  // its red to orange. Tunable.
+  const GRACE_RULE = { lookbackDays: 7, minOcc: 0.80 };
+
+  // ── Underpricing alert (light-blue) ─────────────────────────────────────────
+  // Fires when a property is in clear high demand (past-7-day occupancy above
+  // minOcc) BUT its current ADR is below its own baseline (full-history avg or
+  // previous-month ADR). Meaning: nearly always full yet priced below its norm —
+  // a likely opportunity to raise the nightly rate. Tunable.
+  // minOcc 0.90 over a 7-night window effectively means 7/7 nights booked
+  // (intentional: only flag when truly full). minDrop requires a meaningful
+  // gap below the norm — not a cent — before suggesting a raise.
+  const UNDERPRICE_RULE = { lookbackDays: 7, minOcc: 0.90, minDrop: 0.05 };
+
+  // Returns { flag, occ, base, dropPct } or { flag:false }.
+  function evalUnderprice(bks) {
+    const t = today0();
+    const occ = bookedNights(bks, daysAgo(UNDERPRICE_RULE.lookbackDays), t) / UNDERPRICE_RULE.lookbackDays;
+    if (occ <= UNDERPRICE_RULE.minOcc) return { flag: false };
+    const cur = avgNightlyPriceInfo(bks, daysAgo(30), t);
+    if (cur.avg == null || cur.avg < 15) return { flag: false };
+    const hist = fullHistoryAdr(bks);
+    const prev = previousMonthAdr(bks);
+    // the higher of the two baselines is the "norm" we compare against
+    const base = Math.max(hist != null ? hist : 0, prev != null ? prev : 0);
+    if (!base) return { flag: false };
+    const dropPct = (base - cur.avg) / base;
+    if (dropPct > UNDERPRICE_RULE.minDrop) {
+      return { flag: true, occ, base, cur: cur.avg, dropPct };
+    }
+    return { flag: false };
+  }
+
+  // ── Monthly occupancy baselines (from the rental's own booking course) ──────
+  // Full-history = mean of monthly achieved occupancy from the rental's first
+  // booking to now (current month prorated, months before first booking excluded).
+  // Previous-month = achieved occupancy of the last completed calendar month.
+  function monthKey(d) { return d.getFullYear() * 12 + d.getMonth(); }
+  function daysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+
+  // Days since the most recent booking LANDED (by `created` timestamp — when
+  // the reservation was made, not its check-in). Passive momentum metric, no
+  // alert. Returns null until bookings carry `created` (post server-redeploy).
+  function daysSinceLastBooking(bks) {
+    let latest = null;
+    for (const b of bks) {
+      if (b.cancelled) continue;
+      const ts = (b.created != null) ? b.created * 1000
+               : (b.createdOnChannel != null ? b.createdOnChannel * 1000 : null);
+      if (ts != null && (latest == null || ts > latest)) latest = ts;
+    }
+    if (latest == null) return null;
+    return Math.max(0, Math.floor((Date.now() - latest) / 86400000));
+  }
+
+  function firstBookingDate(bks) {
+    let min = null;
+    for (const b of bks) {
+      if (b.cancelled) continue;
+      const ci = pDate(b.checkIn);
+      if (ci && (!min || ci < min)) min = ci;
+    }
+    return min;
+  }
+
+  // occupancy for a specific calendar month (achieved). For the current month,
+  // prorate by days elapsed so far.
+  function monthOccupancy(bks, y, m) {
+    const start = new Date(y, m, 1);
+    const t = today0();
+    const isCurrent = (y === t.getFullYear() && m === t.getMonth());
+    const full = daysInMonth(y, m);
+    const elapsed = isCurrent ? Math.round((t - start) / 86400000) : full;
+    if (elapsed <= 0) return null;   // 1st of the month: nothing elapsed yet — no spurious 0%
+    const endEx = isCurrent ? t : new Date(y, m + 1, 1);   // exclusive end for bookedNights
+    const booked = bookedNights(bks, start, endEx);
+    return booked / elapsed;
+  }
+
+  // Mean monthly occupancy across the rental's operating life.
+  // ── True forward pace via as-of reconstruction ──────────────────────────────
+  // Using each booking's `created` timestamp (when it hit Hosthub) and
+  // `cancelledAt`, we can rebuild what the calendar looked like on any past date:
+  // a booking "existed as of date D" if it was created on/before D and was not
+  // already cancelled by D. This lets us compare forward occupancy at EQUAL lead
+  // time ("next 30 days as booked today" vs "next 30 days as booked a month ago")
+  // — an honest apples-to-apples pace, unlike forward-vs-completed-past.
+  function _asOfMs(ref) { return ref.getTime(); }
+  function bookingExistedAsOf(b, refMs) {
+    // created is Unix seconds; fall back to check-in if missing (best effort)
+    const createdMs = (b.created != null) ? b.created * 1000
+                    : (b.createdOnChannel != null ? b.createdOnChannel * 1000 : null);
+    if (createdMs == null) return null;                 // unknown → can't reconstruct
+    if (createdMs > refMs) return false;                // not booked yet as of ref
+    const canc = (b.cancelledAt != null) ? b.cancelledAt * 1000 : null;
+    if (canc != null && canc <= refMs) return false;    // already cancelled by ref
+    return true;
+  }
+
+  // Forward-window occupancy AS OF a reference date: count distinct booked nights
+  // in [ref, ref+windowDays) using only bookings that existed as of ref.
+  function asOfForwardOcc(bks, ref, windowDays) {
+    const refMs = _asOfMs(ref);
+    const start = new Date(ref); start.setHours(0, 0, 0, 0);
+    const end = new Date(start); end.setDate(end.getDate() + windowDays);
+    const nights = new Set();
+    let anyKnown = false;
+    for (const b of bks) {
+      const existed = bookingExistedAsOf(b, refMs);
+      if (existed === null) continue;      // no timestamp → skip (don't corrupt)
+      anyKnown = true;
+      if (!existed) continue;
+      const ci = pDate(b.checkIn), co = pDate(b.checkOut);
+      if (!ci || !co) continue;
+      let night = new Date(ci);
+      while (night < co) {
+        if (night >= start && night < end) {
+          nights.add(night.getFullYear() * 10000 + night.getMonth() * 100 + night.getDate());
+        }
+        night.setDate(night.getDate() + 1);
+      }
+    }
+    return anyKnown ? nights.size / windowDays : null;   // null if we have no timestamps
+  }
+
+  // True pace: today's forward-30d occ vs the same lead-time window as it stood
+  // `daysBack` ago. Returns delta in occupancy points (positive = ahead of then).
+  function truePace(bks, daysBack, windowDays) {
+    const t = today0();
+    const nowOcc = asOfForwardOcc(bks, t, windowDays);   // = current forward occ
+    const ref = new Date(t); ref.setDate(ref.getDate() - daysBack);
+    const thenOcc = asOfForwardOcc(bks, ref, windowDays);
+    if (nowOcc == null || thenOcc == null) return null;
+    return { now: nowOcc, then: thenOcc, delta: nowOcc - thenOcc };
+  }
+
+  function fullHistoryOcc(bks) {
+    const first = firstBookingDate(bks);
+    if (!first) return null;
+    const t = today0();
+    const startK = monthKey(first);
+    const endK = monthKey(t);
+    const occs = [];
+    for (let k = startK; k <= endK; k++) {
+      const y = Math.floor(k / 12), m = k % 12;
+      const o = monthOccupancy(bks, y, m);
+      if (o != null) occs.push(o);
+    }
+    if (!occs.length) return null;
+    return occs.reduce((a, v) => a + v, 0) / occs.length;
+  }
+
+  // Achieved occupancy of the last completed calendar month.
+  function previousMonthOcc(bks) {
+    const t = today0();
+    let y = t.getFullYear(), m = t.getMonth() - 1;
+    if (m < 0) { m = 11; y -= 1; }
+    // only if the rental existed then
+    const first = firstBookingDate(bks);
+    if (first && monthKey(first) > (y * 12 + m)) return null;
+    return monthOccupancy(bks, y, m);
+  }
+
+  // ── ADR baselines (per rental's own booking course) ─────────────────────────
+  // ADR for a specific calendar month = avg per-night rate of bookings CHECKING
+  // IN that month. Returns { adr, count } so callers can gate on sample size.
+  function monthAdrInfo(bks, y, m) {
+    const start = new Date(y, m, 1);
+    const end = new Date(y, m + 1, 1);
+    return avgNightlyPriceInfo(bks, start, end);
+  }
+  // Full-history average ADR = mean of qualifying monthly ADRs across the
+  // rental's operating life. Only months with >=3 bookings and a plausible
+  // (>=€15) rate count, so thin/noisy months don't distort the baseline.
+  function fullHistoryAdr(bks) {
+    const first = firstBookingDate(bks);
+    if (!first) return null;
+    const t = today0();
+    const startK = monthKey(first), endK = monthKey(t);
+    const adrs = [];
+    for (let k = startK; k <= endK; k++) {
+      const y = Math.floor(k / 12), m = k % 12;
+      const info = monthAdrInfo(bks, y, m);
+      if (info.avg != null && info.avg >= 15 && info.count >= 3) adrs.push(info.avg);
+    }
+    if (!adrs.length) return null;
+    return adrs.reduce((a, v) => a + v, 0) / adrs.length;
+  }
+  function previousMonthAdr(bks) {
+    const t = today0();
+    let y = t.getFullYear(), m = t.getMonth() - 1;
+    if (m < 0) { m = 11; y -= 1; }
+    const info = monthAdrInfo(bks, y, m);
+    if (info.avg != null && info.avg >= 15 && info.count >= 3) return info.avg;
+    return null;
+  }
+
+  function evalAlert(bks, apt) {
+    const t = today0();
+    const cat = categoryOf(apt);
+    const rules = ALERT_RULES[cat] || ALERT_RULES.escape;
+    // occupancy in each configured window; the LOWEST fill decides severity
+    let worst = { occ: Infinity, window: null };
+    rules.windows.forEach(w => {
+      const occ = bookedNights(bks, t, daysAhead(w)) / w;
+      if (occ < worst.occ) worst = { occ, window: w };
+    });
+    // recent past occupancy for the grace check (applies to every category)
+    const pastOcc = bookedNights(bks, daysAgo(GRACE_RULE.lookbackDays), t) / GRACE_RULE.lookbackDays;
+    const graced = pastOcc >= GRACE_RULE.minOcc;
+    if (worst.occ < rules.red) {
+      const level = graced ? 'orange' : 'red';
+      return { level, mode: 'occupancy', occ: worst.occ, window: worst.window, graced, pastOcc, cat };
+    }
+    if (worst.occ < rules.orange) {
+      return { level: 'orange', mode: 'occupancy', occ: worst.occ, window: worst.window, pastOcc, cat };
+    }
+    return { level: null, mode: 'occupancy', occ: worst.occ, window: worst.window, pastOcc, cat };
+  }
+
+  // Human-readable description of an alert for banners/tooltips.
+  function alertLabel(a) {
+    if (!a || !a.level) return '';
+    if (a.mode === 'occupancy') {
+      const base = `${Math.round(a.occ * 100)}% booked next ${a.window}d`;
+      return a.graced ? `${base} · softened (recent ${Math.round(a.pastOcc*100)}% occ)` : base;
+    }
+    return `${a.nights} empty nights${a.from ? ' from ' + a.from.toLocaleDateString() : ''}`;
+  }
+  // Short badge text next to the property name.
+  function alertBadge(a) {
+    if (!a || !a.level) return '';
+    if (a.mode === 'occupancy') return `${Math.round(a.occ * 100)}%`;
+    return `⚠${a.nights}`;
+  }
+
+  // ── Load rolling snapshot history from the server ───────────────────────────
+  async function loadPerfHistory() {
+    try {
+      const r = await fetch('/api/history');
+      const h = await r.json();
+      _perfHistory = Array.isArray(h) ? h : [];
+    } catch (e) {
+      _perfHistory = [];
+    }
+  }
+
+  // Find the snapshot closest to `daysBack` days ago (within a tolerance).
+  function snapshotNear(daysBack) {
+    if (!_perfHistory.length) return null;
+    const target = new Date(); target.setHours(0, 0, 0, 0);
+    target.setDate(target.getDate() - daysBack);
+    const targetStr = target.toISOString().slice(0, 10);
+    // exact match preferred, else the nearest older snapshot
+    let exact = _perfHistory.find(s => s.date === targetStr);
+    if (exact) return exact;
+    const older = _perfHistory.filter(s => s.date <= targetStr).sort((a, b) => b.date.localeCompare(a.date));
+    return older[0] || null;
+  }
+  function latestSnapshot() {
+    if (!_perfHistory.length) return null;
+    return [..._perfHistory].sort((a, b) => b.date.localeCompare(a.date))[0];
+  }
+  function snapProp(snap, aptId) {
+    if (!snap || !snap.props) return null;
+    return snap.props.find(p => p.id === aptId) || null;
+  }
+
+  // Evaluate deterioration signals for one property. Returns an array of
+  // { key, level, label } for whichever signals fire. Empty until enough history.
+  function evalTrends(aptId) {
+    // Superseded by histSignals() (historical-norm signals). Kept as a no-op
+    // so any lingering references stay safe.
+    return [];
+  }
+  function trendWorst(trends) {
+    if (trends.some(t => t.level === 'red')) return 'red';
+    if (trends.some(t => t.level === 'orange')) return 'orange';
+    return null;
+  }
+
+  // ── Build the report rows from S.bks / S.apts ──────────────────────────────
+  function buildPerfRows() {
+    // S is declared with `let` at top-level, so it is NOT on window.
+    // Reference it directly via closure; guard in case it's not ready yet.
+    const _S = (typeof S !== 'undefined' && S) ? S : {};
+    const apts = _S.apts ? _S.apts : [];
+    const bks  = _S.bks  ? _S.bks  : [];
+    const t = today0();
+    const w15 = daysAgo(15), w30 = daysAgo(30), f7 = daysAhead(7), f30 = daysAhead(30);
+    // prior-period windows (for ADR change + booking pace "expected")
+    const w60 = daysAgo(60); // days 31–60 ago = [w60, w30)
+
+    // group bookings by apartment id
+    const byApt = {};
+    for (const b of bks) {
+      const key = b.aptId || b.aptName || '—';
+      (byApt[key] = byApt[key] || []).push(b);
+    }
+
+    const rows = [];
+    const list = apts.length ? apts.map(a => ({ id: a.id, name: a.name, lat: a.lat, lng: a.lng, city: a.city })) : [];
+    // include apt groups that exist in bookings but not in apts
+    Object.keys(byApt).forEach(k => {
+      if (!list.find(a => a.id === k || a.name === k)) list.push({ id: k, name: k });
+    });
+
+    for (const apt of list) {
+      // Merge bookings keyed by id AND by name (a booking lands in exactly one
+      // group depending on which field it carried — using || would drop one).
+      const _byId = byApt[apt.id] || [], _byName = (apt.name && apt.name !== apt.id) ? (byApt[apt.name] || []) : [];
+      const set = _byId.concat(_byName);
+      const name = apt.name || apt.id;
+
+      // Forward occupancy
+      const occ7fwd  = bookedNights(set, t, f7) / 7;
+      const occ30fwd = bookedNights(set, t, f30) / 30;
+      // Backward 7-day occupancy (its own column)
+      const occ7past = bookedNights(set, daysAgo(7), t) / 7;
+
+      // Pace baselines from the rental's own booking course:
+      //  • full history = mean monthly achieved occupancy over its operating life
+      //  • previous month = achieved occupancy of the last completed month
+      const histOcc = fullHistoryOcc(set);
+      const prevMoOcc = previousMonthOcc(set);
+      // ADR baselines (current 30d ADR vs its own history / previous month)
+      const histAdr = fullHistoryAdr(set);
+      const prevMoAdr = previousMonthAdr(set);
+      // Underpricing (light-blue): high recent demand but priced below own norm
+      const underprice = evalUnderprice(set);
+      // True forward pace (as-of reconstruction) vs 2 weeks and 1 month ago
+      const pace2w = truePace(set, 14, SIGNAL_RULES.paceWindow);
+      const pace1m = truePace(set, 30, SIGNAL_RULES.paceWindow);
+      const lastBookingDays = daysSinceLastBooking(set);
+
+      // ADR: current 30d vs prior 30d, gated on sample size (>=3 each side)
+      // and on plausibility (ignore sub-€15 nightly averages that signal a
+      // broken payout/nights value rather than a real rate).
+      const cur = avgNightlyPriceInfo(set, w30, t);
+      const prev = avgNightlyPriceInfo(set, w60, w30);
+      const price30 = cur.avg;
+      const plausible = (v) => v != null && v >= 15;
+      const adrChange = (plausible(cur.avg) && plausible(prev.avg)
+                          && cur.count >= 3 && prev.count >= 3)
+        ? (cur.avg - prev.avg) / prev.avg : null;
+
+      // Vacancy alert (Attiki/Thess occupancy vs Escape gap; red wins over orange)
+      const alert = evalAlert(set, apt);
+
+      rows.push({
+        name,
+        aptId: apt.id,
+        category: categoryOf(apt),
+        categoryHow: categoryInfo(apt).how,
+        occ15:   bookedNights(set, w15, t) / 15,
+        occ30:   bookedNights(set, w30, t) / 30,
+        occ7past,
+        occ7fwd,
+        occ30fwd,
+        histOcc,
+        prevMoOcc,
+        // pace = current forward occ minus each baseline (points)
+        pace7Hist:  (histOcc   != null) ? (occ7fwd  - histOcc)   : null,
+        pace30Hist: (histOcc   != null) ? (occ30fwd - histOcc)   : null,
+        pace7Prev:  (prevMoOcc != null) ? (occ7fwd  - prevMoOcc) : null,
+        pace30Prev: (prevMoOcc != null) ? (occ30fwd - prevMoOcc) : null,
+        // ADR baselines + % deltas vs current 30d ADR
+        histAdr,
+        prevMoAdr,
+        underprice,
+        pace2w,
+        pace1m,
+        lastBookingDays,
+        adrPaceHist: (histAdr   != null && price30 != null && histAdr   > 0) ? (price30 - histAdr)   / histAdr   : null,
+        adrPacePrev: (prevMoAdr != null && price30 != null && prevMoAdr > 0) ? (price30 - prevMoAdr) / prevMoAdr : null,
+        price15: avgNightlyPrice(set, w15, t),
+        price30,
+        adrChange,
+        alert,
+        isAttiki: categoryOf(apt) !== 'escape',
+        _set: set, // keep for heatmap
+        bookings: set.length,
+      });
+    }
+
+    // Deterioration signals: judge each apartment vs its OWN history (works
+    // immediately from the deltas computed above — no snapshot warmup).
+    rows.forEach(r => {
+      r.trends = histSignals(r);
+      r.trendLevel = trendWorst(r.trends);
+      r.verdict = verdictOf(r);
+    });
+
+    // (Pace now uses each rental's own history/previous-month baselines,
+    //  computed per-row above — no portfolio averaging needed.)
+
+    // ── Sort: category groups first, then the chosen column within each ──
+    const dir = _sortDir;
+    const catRank = (c) => { const i = CATEGORY_ORDER.indexOf(c); return i < 0 ? 99 : i; };
+    rows.sort((a, b) => {
+      // primary: category order (Attiki → Thessaloniki → City Escapes)
+      const c = catRank(a.category) - catRank(b.category);
+      if (c !== 0) return c;
+      // secondary: the active sort column
+      if (_sortKey === 'name') {
+        return dir * String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
+      }
+      let av = a[_sortKey], bv = b[_sortKey];
+      if (av == null) av = -Infinity;
+      if (bv == null) bv = -Infinity;
+      return dir * (av - bv);
+    });
+    return rows;
+  }
+
+  // Toggle sort when a header is clicked
+  window.perfSort = function (key) {
+    if (_sortKey === key) _sortDir *= -1;
+    else { _sortKey = key; _sortDir = (key === 'name') ? 1 : -1; }
+    renderPerf();
+  };
+  function sortArrow(key) {
+    if (_sortKey !== key) return '';
+    return _sortDir === 1 ? ' ▲' : ' ▼';
+  }
+
+  // ── Rendering ──────────────────────────────────────────────────────────────
+  function pct(v) { return v == null ? '—' : Math.round(v * 100) + '%'; }
+  function eur(v) { return v == null ? '—' : '€' + v.toFixed(2); }
+
+  // A small ↑/↓ delta chip (green up / red down)
+  function deltaChip(frac, opts) {
+    opts = opts || {};
+    if (frac == null || isNaN(frac)) return '';
+    const p = Math.round(frac * 100);
+    if (p === 0) return `<span style="font-size:11px;color:var(--tx3)">→0%</span>`;
+    const up = p > 0;
+    const col = up ? '#1a7a4a' : '#c0392b';
+    const arrow = up ? '↑' : '↓';
+    return `<span style="font-size:11px;font-weight:600;color:${col}">${arrow}${Math.abs(p)}%</span>`;
+  }
+
+  // Price cell with ADR-change arrow underneath (right-aligned to match header)
+  function priceCell(price, change) {
+    if (price == null) return '<span style="color:var(--tx3)">—</span>';
+    const chip = deltaChip(change);
+    return `<div style="line-height:1.3;text-align:right">
+      <div class="mono">€${price.toFixed(2)}</div>
+      ${chip ? `<div style="margin-top:1px">${chip}</div>` : ''}
+    </div>`;
+  }
+
+  // Booking-pace cell: forward occupancy vs the PORTFOLIO AVERAGE forward
+  // occupancy (right now). ↑ = this property is pacing ahead of the portfolio,
+  // ↓ = behind. This is an honest like-for-like (both are "today's forward
+  // bookings"), unlike comparing future-still-filling against a completed past.
+  function paceChip(fwdOcc, portfolioAvg) {
+    if (fwdOcc == null || portfolioAvg == null) return '<span style="color:var(--tx3)">—</span>';
+    const delta = fwdOcc - portfolioAvg;
+    const p = Math.round(delta * 100);
+    const up = p >= 0;
+    const col = up ? '#1a7a4a' : '#c0392b';
+    const arrow = up ? '↑' : '↓';
+    return `<div style="line-height:1.3;text-align:right">
+      <div class="mono" style="font-weight:600;color:${col}">${arrow}${Math.abs(p)}pts</div>
+      <div style="font-size:10px;color:var(--tx3)">vs ${pct(portfolioAvg)} avg</div>
+    </div>`;
+  }
+
+  // Two-baseline pace: forward occ vs full-history avg AND vs previous month.
+  function paceDual(histDelta, histBase, prevDelta, prevBase) {
+    const line = (delta, base, tag) => {
+      if (delta == null || base == null) return `<div style="font-size:10px;color:var(--tx3)">${tag} —</div>`;
+      const p = Math.round(delta * 100);
+      const up = p >= 0;
+      const col = up ? '#1a7a4a' : '#c0392b';
+      const arrow = up ? '↑' : '↓';
+      return `<div style="font-size:11px"><span style="color:var(--tx3)">${tag}</span> <span class="mono" style="font-weight:600;color:${col}">${arrow}${Math.abs(p)}</span> <span style="font-size:9px;color:var(--tx3)">/${pct(base)}</span></div>`;
+    };
+    if (histDelta == null && prevDelta == null) return '<span style="color:var(--tx3)">—</span>';
+    return `<div style="line-height:1.35;text-align:right">
+      ${line(histDelta, histBase, 'hist')}
+      ${line(prevDelta, prevBase, 'last mo')}
+    </div>`;
+  }
+
+  // Two-baseline ADR pace: current ADR vs full-history avg AND previous month.
+  // Shows % change with the € baseline underneath each.
+  function adrPaceDual(histDelta, histBase, prevDelta, prevBase) {
+    const line = (delta, base, tag) => {
+      if (delta == null || base == null) return `<div style="font-size:10px;color:var(--tx3)">${tag} —</div>`;
+      const p = Math.round(delta * 100);
+      const up = p >= 0;
+      const col = up ? '#1a7a4a' : '#c0392b';
+      const arrow = up ? '↑' : '↓';
+      return `<div style="font-size:11px"><span style="color:var(--tx3)">${tag}</span> <span class="mono" style="font-weight:600;color:${col}">${arrow}${Math.abs(p)}%</span> <span style="font-size:9px;color:var(--tx3)">/€${Math.round(base)}</span></div>`;
+    };
+    if (histDelta == null && prevDelta == null) return '<span style="color:var(--tx3)">—</span>';
+    return `<div style="line-height:1.35;text-align:right">
+      ${line(histDelta, histBase, 'hist')}
+      ${line(prevDelta, prevBase, 'last mo')}
+    </div>`;
+  }
+
+  function renderPerf() {
+    const panel = document.getElementById('tab-perf');
+    if (!panel) return;
+    const rows = buildPerfRows();
+    _perfLastRun = new Date();
+
+    const avgOcc = rows.length ? rows.reduce((a, r) => a + (r.occ30 || 0), 0) / rows.length : 0;
+    const priced = rows.filter(r => r.price30 != null);
+    const avgPrice = priced.length ? priced.reduce((a, r) => a + r.price30, 0) / priced.length : 0;
+    const highOcc = rows.filter(r => (r.occ30 || 0) >= 0.8).length;
+    // Portfolio booking pace KPI: how full the next 30 days are on average
+    const avgFwd = rows.length ? rows.reduce((a, r) => a + (r.occ30fwd || 0), 0) / rows.length : 0;
+    const pacePortfolio = null; // portfolio vs itself is 0 by definition; show avg instead
+    // Athens gap alerts
+    const redRows = rows.filter(r => r.alert && r.alert.level === 'red');
+    const orangeRows = rows.filter(r => r.alert && r.alert.level === 'orange');
+    const alertRows = rows.filter(r => r.alert && r.alert.level);
+    const trendRed = rows.filter(r => r.trendLevel === 'red');
+    const trendOrange = rows.filter(r => r.trendLevel === 'orange');
+    const underpriced = rows.filter(r => r.underprice && r.underprice.flag);
+    const histDays = _perfHistory.length;
+
+    const nextRun = new Date(_perfLastRun.getTime() + PERF_REFRESH_MS);
+
+    panel.innerHTML = `
+      <div style="padding:4px 0 20px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:18px">
+          <div>
+            <div style="font-size:11px;font-weight:600;letter-spacing:.1em;color:#C9A84C;text-transform:uppercase;margin-bottom:4px">Portfolio · Live</div>
+            <div style="font-size:20px;font-weight:600">Property Performance</div>
+            <div style="font-size:12px;color:var(--tx3);margin-top:3px">
+              Updated ${_perfLastRun.toLocaleString()} · auto-refreshes every 2h (next ~${nextRun.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})})
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn sm" onclick="perfShowReadme()" title="How every metric is calculated"><i class="ti ti-info-circle"></i> How it works</button>
+            <button class="btn sm" onclick="perfExportExcel()"><i class="ti ti-download"></i> Excel</button>
+            <button class="btn primary sm" onclick="perfRefresh(true)"><i class="ti ti-refresh"></i> Refresh now</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:18px">
+          <div class="kpi"><div class="kpi-lbl">Properties</div><div class="kpi-val">${rows.length}</div><div class="kpi-sub">tracked</div></div>
+          <div class="kpi"><div class="kpi-lbl">Avg Occupancy 30d</div><div class="kpi-val">${pct(avgOcc)}</div><div class="kpi-sub">portfolio</div></div>
+          <div class="kpi"><div class="kpi-lbl">Avg Fwd Occupancy</div><div class="kpi-val">${pct(avgFwd)}</div><div class="kpi-sub">next 30 days booked</div></div>
+          <div class="kpi"><div class="kpi-lbl">Avg Nightly Rate</div><div class="kpi-val">€${avgPrice.toFixed(0)}</div><div class="kpi-sub">past 30 days</div></div>
+          <div class="kpi" style="${redRows.length ? 'border-color:#c0392b' : orangeRows.length ? 'border-color:#d68910' : ''}"><div class="kpi-lbl">Vacancy Alerts</div><div class="kpi-val" style="color:${redRows.length ? '#c0392b' : orangeRows.length ? '#d68910' : 'inherit'}">${redRows.length}<span style="font-size:13px;color:#d68910"> / ${orangeRows.length}</span></div><div class="kpi-sub">red / orange</div></div>
+          <div class="kpi" style="${underpriced.length ? 'border-color:#3898ec' : ''}"><div class="kpi-lbl">Underpriced</div><div class="kpi-val" style="color:${underpriced.length ? '#3898ec' : 'inherit'}">${underpriced.length}</div><div class="kpi-sub">full but below norm</div></div>
+          <div class="kpi" style="${trendRed.length ? 'border-color:#c0392b' : trendOrange.length ? 'border-color:#d68910' : ''}"><div class="kpi-lbl">Below Norm</div><div class="kpi-val" style="color:${trendRed.length ? '#c0392b' : trendOrange.length ? '#d68910' : 'inherit'}">${trendRed.length}<span style="font-size:13px;color:#d68910"> / ${trendOrange.length}</span></div><div class="kpi-sub">underperforming history</div></div>
+        </div>
+
+        ${alertRows.length ? `
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid ${redRows.length ? '#c0392b' : '#d68910'};background:${redRows.length ? 'rgba(192,57,43,.06)' : 'rgba(214,137,16,.06)'}">
+          <div style="font-size:12px;font-weight:600;margin-bottom:8px">⚠ Vacancy alerts — properties with an upcoming empty gap</div>
+          ${redRows.length ? `
+          <div style="margin-bottom:${orangeRows.length ? '8px' : '0'}">
+            <div style="font-size:11px;font-weight:600;color:#c0392b;margin-bottom:4px">RED — critical</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              ${redRows.map(r => `<span onclick="perfGoTo('${String(r.aptId||'').replace(/'/g,'')}')" style="cursor:pointer;font-size:11px;background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.35);border-radius:12px;padding:3px 10px">
+                <strong>${r.name}</strong> · ${alertLabel(r.alert)}
+              </span>`).join('')}
+            </div>
+          </div>` : ''}
+          ${orangeRows.length ? `
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#d68910;margin-bottom:4px">ORANGE — watch</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              ${orangeRows.map(r => `<span onclick="perfGoTo('${String(r.aptId||'').replace(/'/g,'')}')" style="cursor:pointer;font-size:11px;background:rgba(214,137,16,.12);border:1px solid rgba(214,137,16,.35);border-radius:12px;padding:3px 10px">
+                <strong>${r.name}</strong> · ${alertLabel(r.alert)}
+              </span>`).join('')}
+            </div>
+          </div>` : ''}
+        </div>` : ''}
+
+        ${!rows.length ? `
+          <div class="card" style="text-align:center;padding:40px;color:var(--tx3)">
+            No bookings loaded yet. Fetch/sync from the <strong>Hosthub API</strong> tab first, then come back here.
+          </div>` : `
+        ${renderHeatmap(rows)}
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="overflow-x:auto">
+            <table class="tbl">
+              <thead><tr>
+                <th style="cursor:pointer;user-select:none" onclick="perfSort('name')">Property${sortArrow('name')}</th>
+                <th title="Plain-language conclusion from all signals">Verdict</th>
+                <th class="r" style="cursor:pointer;user-select:none" onclick="perfSort('occ15')">Occ 15d${sortArrow('occ15')}</th>
+                <th class="r" style="cursor:pointer;user-select:none" onclick="perfSort('occ30')">Occ 30d${sortArrow('occ30')}</th>
+                <th class="r" style="cursor:pointer;user-select:none" onclick="perfSort('occ7past')" title="Occupancy over the past 7 days">Past 7d${sortArrow('occ7past')}</th>
+                <th class="r" style="cursor:pointer;user-select:none" onclick="perfSort('occ7fwd')">Occ 7d fwd${sortArrow('occ7fwd')}</th>
+                <th class="r" style="cursor:pointer;user-select:none" onclick="perfSort('occ30fwd')">Occ 30d fwd${sortArrow('occ30fwd')}</th>
+                <th class="r" style="cursor:pointer;user-select:none" onclick="perfSort('pace30Hist')" title="Next 30d forward occupancy vs this rental's full-history monthly average, and vs last completed month">Pace 30d${sortArrow('pace30Hist')}</th>
+                <th class="r" style="cursor:pointer;user-select:none" onclick="perfSort('price15')">ADR 15d${sortArrow('price15')}</th>
+                <th class="r" style="cursor:pointer;user-select:none" onclick="perfSort('price30')">ADR 30d${sortArrow('price30')}</th>
+                <th class="r" style="cursor:pointer;user-select:none" onclick="perfSort('adrPaceHist')" title="Current 30d ADR vs this rental's full-history average ADR and its last completed month">ADR Pace${sortArrow('adrPaceHist')}</th>
+                <th title="Deterioration signals from snapshot history">Signals</th>
+              </tr></thead>
+              <tbody>
+                ${(() => {
+                  let html = '';
+                  let lastCat = null;
+                  rows.forEach(r => {
+                    if (r.category !== lastCat) {
+                      lastCat = r.category;
+                      const count = rows.filter(x => x.category === r.category).length;
+                      html += `<tr><td colspan="12" style="background:#0f1e2e;padding:7px 10px;font-size:11px;font-weight:600;color:#C9A84C;letter-spacing:.04em;text-transform:uppercase;border-top:2px solid var(--bdr)">${CATEGORY_LABELS[r.category] || r.category} · ${count}</td></tr>`;
+                    }
+                    const trendBadges = (r.trends || []).map(tr =>
+                      `<span title="${tr.label}" style="display:inline-block;font-size:10px;font-weight:600;padding:1px 6px;border-radius:8px;margin:1px;background:${tr.level==='red'?'rgba(192,57,43,.15)':'rgba(214,137,16,.15)'};color:${tr.level==='red'?'#e0776f':'#e0a341'};border:1px solid ${tr.level==='red'?'rgba(192,57,43,.35)':'rgba(214,137,16,.35)'}">${tr.label}</span>`
+                    ).join('');
+                    const rowBg = r.alert && r.alert.level === 'red' ? 'background:rgba(192,57,43,.09)'
+                                : r.alert && r.alert.level === 'orange' ? 'background:rgba(214,137,16,.09)'
+                                : (r.underprice && r.underprice.flag) ? 'background:rgba(56,152,236,.10)'
+                                : r.trendLevel === 'red' ? 'background:rgba(192,57,43,.05)'
+                                : r.trendLevel === 'orange' ? 'background:rgba(214,137,16,.05)' : '';
+                    const upBadge = (r.underprice && r.underprice.flag)
+                      ? ` <span title="High demand (past 7d ${Math.round(r.underprice.occ*100)}% occ) but ADR €${Math.round(r.underprice.cur)} is below its norm €${Math.round(r.underprice.base)} — consider raising the rate" style="color:#3898ec;font-size:11px;font-weight:600">▲ raise €${Math.round(r.underprice.cur)}→€${Math.round(r.underprice.base)}</span>`
+                      : '';
+                    html += `
+                  <tr id="perf-row-${String(r.aptId||'').replace(/[^a-zA-Z0-9_-]/g,'')}" style="${rowBg}">
+                    <td style="font-weight:500">${r.isAttiki ? '<span title="city apartment (Attiki/Thessaloniki)" style="color:#C9A84C">◆</span> ' : ''}${r.name}${r.categoryHow === 'default' ? ' <span title="No location data from Hosthub — defaulted to Attiki. Add it to a category list to override." style="font-size:10px;color:#8890a8;border:1px dashed #5a627a;border-radius:8px;padding:0 5px">uncategorized</span>' : ''}${r.alert && r.alert.level ? ` <span title="${alertLabel(r.alert)}" style="color:${r.alert.level === 'red' ? '#c0392b' : '#d68910'};font-size:11px;font-weight:600">${alertBadge(r.alert)}</span>` : ''}${upBadge} <button onclick="perfShowCourse('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}')" title="3-month occupancy & ADR chart" style="background:none;border:none;cursor:pointer;color:#8890a8;font-size:13px;padding:0 2px;vertical-align:middle">📈</button>${r.lastBookingDays != null ? `<div style="font-size:10px;color:var(--tx3);margin-top:1px" title="Days since the most recent reservation was made (any dates)">last booking ${r.lastBookingDays === 0 ? 'today' : r.lastBookingDays + 'd ago'}</div>` : ''}</td>
+                    <td>${verdictBadge(r.verdict)}</td>
+                    <td class="r">${occBar(r.occ15)}</td>
+                    <td class="r">${occBar(r.occ30)}</td>
+                    <td class="r">${occBar(r.occ7past)}</td>
+                    <td class="r">${occBar(r.occ7fwd)}</td>
+                    <td class="r">${occBar(r.occ30fwd)}</td>
+                    <td class="r">${paceDual(r.pace30Hist, r.histOcc, r.pace30Prev, r.prevMoOcc)}</td>
+                    <td class="r">${priceCell(r.price15, null)}</td>
+                    <td class="r">${priceCell(r.price30, r.adrChange)}</td>
+                    <td class="r">${adrPaceDual(r.adrPaceHist, r.histAdr, r.adrPacePrev, r.prevMoAdr)}</td>
+                    <td>${trendBadges || '<span style="color:var(--tx3);font-size:11px">—</span>'}</td>
+                  </tr>`;
+                  });
+                  return html;
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:10px;line-height:1.6">
+          <strong>Heatmap</strong> shows each property's next 30 nights (booked / check-in-out / empty; empty gaps that trigger an alert are shaded orange/red).
+          <strong>Past 7d / Occ 7d-30d fwd</strong> = occupancy over the last 7 days, and share of the next 7 / 30 nights booked.
+          <strong>Pace 30d</strong> = next-30-day forward occupancy vs this rental's own full-history monthly average ("hist") and its last completed month ("last mo"), in points.
+          <strong>ADR Pace</strong> = current 30d ADR vs the rental's own full-history average ADR and last month, in % (baseline € shown).
+          <strong>ADR</strong> arrow (30d) = current vs prior 30-day avg price (≥3 bookings each side).
+          <br><strong>Vacancy alerts</strong> — every category judged on upcoming fill (badge shows % booked): Attiki & Thessaloniki next 3 days (<40% <span style="color:#d68910">orange</span>, <20% <span style="color:#c0392b">red</span>); City Escapes next 21 days (<35% <span style="color:#d68910">orange</span>, <15% <span style="color:#c0392b">red</span>). A property ≥80% occupied over the past 7 days has red softened to orange.
+          Click any header to sort. Auto-syncs every 2h.
+        </div>`}
+      </div>`;
+  }
+
+  function occBar(v) {
+    const w = Math.round((v || 0) * 100);
+    const col = w >= 80 ? '#1a7a4a' : w >= 50 ? '#C9A84C' : '#c0392b';
+    return `<span style="display:inline-flex;align-items:center;gap:7px;justify-content:flex-end">
+      <span style="width:52px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;display:inline-block">
+        <span style="display:block;height:100%;width:${w}%;background:${col};border-radius:3px"></span>
+      </span>
+      <span class="mono" style="min-width:34px;display:inline-block">${pct(v)}</span>
+    </span>`;
+  }
+
+  // ── Heatmap: properties × next N days, colored by booked / check-in-out / empty
+  const HEATMAP_DAYS = 30;
+  function dayKey(d) { return d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate(); }
+
+  // For one property's bookings, return a map dayKey -> state
+  // 2 = check-in/out edge, 1 = booked (middle night), 0 = empty
+  function nightStates(bks, start, end) {
+    const booked = new Set();
+    const edges = new Set();
+    const isBlock = (typeof isRevenueBooking === 'function') ? (b) => !isRevenueBooking(b) : () => false;
+    for (const b of bks) {
+      if (b.cancelled || isBlock(b)) continue;
+      const ci = pDate(b.checkIn), co = pDate(b.checkOut);
+      if (!ci || !co) continue;
+      let night = new Date(ci);
+      while (night < co) {
+        if (night >= start && night < end) booked.add(dayKey(night));
+        night.setDate(night.getDate() + 1);
+      }
+      if (ci >= start && ci < end) edges.add(dayKey(ci));
+      const lastNight = new Date(co); lastNight.setDate(lastNight.getDate() - 1);
+      if (lastNight >= start && lastNight < end) edges.add(dayKey(lastNight));
+    }
+    return { booked, edges };
+  }
+
+  function renderHeatmap(rows) {
+    const t = today0();
+    const start = t;
+    const end = daysAhead(HEATMAP_DAYS);
+    // day header labels
+    const days = [];
+    for (let i = 0; i < HEATMAP_DAYS; i++) {
+      const d = new Date(t); d.setDate(d.getDate() + i);
+      days.push(d);
+    }
+    const colTmpl = `170px repeat(${HEATMAP_DAYS}, 1fr)`;
+    const minW = 170 + HEATMAP_DAYS * 16;
+
+    let head = `<div style="display:grid;grid-template-columns:${colTmpl};gap:2px;align-items:center;min-width:${minW}px">`;
+    head += `<div></div>`;
+    days.forEach((d, i) => {
+      const isMonday = d.getDay() === 1;
+      head += `<div style="text-align:center;font-size:9px;color:${isMonday ? '#C9A84C' : '#5a627a'}">${d.getDate()}</div>`;
+    });
+
+    let body = '';
+    rows.forEach(r => {
+      const st = nightStates(r._set || [], start, end);
+      const stateArr = days.map(d => {
+        const k = dayKey(d);
+        if (st.edges.has(k)) return 2;
+        if (st.booked.has(k)) return 1;
+        return 0;
+      });
+      // Highlight empty runs that meet this property's alert thresholds.
+      // Colour matches the property's overall alert level (red/orange).
+      const alertIdx = new Set();
+      // Unified occupancy alerts: the row name is tinted by level; gaps stay
+      // visible as dark cells (the heatmap itself shows where the holes are).
+      const alertColor = null;
+      const nameColor = (r.alert && r.alert.level)
+        ? (r.alert.level === 'red' ? '#e0776f' : '#e0a341') : '#c8ccd8';
+      body += `<div style="font-size:11px;color:${nameColor};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:6px">${r.isAttiki ? '<span style="color:#C9A84C">◆</span> ' : ''}${r.name}</div>`;
+      stateArr.forEach((s, i) => {
+        let bg = s === 1 ? '#1a7a4a' : s === 2 ? '#C9A84C' : '#242c3f';
+        if (alertIdx.has(i) && alertColor) bg = alertColor;
+        body += `<div style="height:16px;border-radius:2px;background:${bg}" title="${r.name} · ${days[i].toLocaleDateString()}"></div>`;
+      });
+    });
+
+    return `
+      <div class="card" style="padding:14px 16px;margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:600">Utilization Heatmap · next ${HEATMAP_DAYS} days</div>
+          <div style="font-size:11px;color:var(--tx3)">Mondays in gold</div>
+        </div>
+        <div style="overflow-x:auto">${head}${body}</div></div>
+        <div style="display:flex;gap:16px;margin-top:10px;font-size:11px;color:var(--tx3);align-items:center;flex-wrap:wrap">
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:13px;border-radius:3px;background:#1a7a4a;display:inline-block"></span>Booked</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:13px;border-radius:3px;background:#C9A84C;display:inline-block"></span>Check-in / out</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:13px;border-radius:3px;background:#242c3f;display:inline-block"></span>Empty</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:13px;border-radius:3px;background:transparent;border:1px solid #e0776f;display:inline-block"></span>Row name tinted = vacancy alert</span>
+        </div>`;
+  }
+
+  // ── Refresh logic ──────────────────────────────────────────────────────────
+  // The server already auto-syncs Hosthub every 2h into Postgres. "Refresh now"
+  // pulls the latest synced data from the DB (and can trigger a fresh sync).
+  window.perfRefresh = async function (manual) {
+    if (manual) {
+      // Use the app's OWN sync routine — it calls /api/sync, reads the streamed
+      // result, saves it to the DB, and updates S.bks. (Calling /api/sync
+      // directly here would re-pull from Hosthub but discard the stream, leaving
+      // the DB — and this tab — on stale data.)
+      if (typeof window.startSync === 'function') {
+        try { await window.startSync(); } catch (e) { /* fall through to DB reload */ }
+      } else if (typeof window.loadFromDb === 'function') {
+        try { await window.loadFromDb(); } catch (e) {}
+      }
+    } else {
+      // Non-manual: just pull the freshest data the server already has.
+      if (typeof window.loadFromDb === 'function') {
+        try { await window.loadFromDb(); } catch (e) {}
+      }
+    }
+    await loadPerfHistory();
+    renderPerf();
+    if (manual && typeof toast === 'function') toast('Performance report refreshed.', 'ok');
+  };
+
+  // ── Excel export (uses the app's bundled XLSX / SheetJS) ────────────────────
+  // ── Per-property 3-month course chart (weekly occupancy + ADR) ─────────────
+  function weeklyCourse(aptId, aptName) {
+    const _S = (typeof S !== 'undefined' && S) ? S : {};
+    const bks = (_S.bks || []).filter(b => (b.aptId === aptId || b.aptName === aptName));
+    const WEEKS = 13;
+    const t = today0();
+    const first = firstBookingDate(bks);   // operating life starts here
+    const points = [];
+    for (let w = WEEKS; w >= 1; w--) {
+      const start = new Date(t); start.setDate(start.getDate() - w * 7);
+      const end = new Date(start); end.setDate(end.getDate() + 7);
+      points.push({
+        label: `${start.getDate()}/${start.getMonth() + 1}`,
+        occ: bookedNights(bks, start, end) / 7,
+        adr: avgNightlyPrice(bks, start, end),
+        // Only weeks ENTIRELY before the first-ever booking are "no data".
+        // After that, an empty week is a genuine 0% — and should show as one.
+        preStart: (first == null) || (end <= first),
+      });
+    }
+    return points;
+  }
+
+  function courseSVG(points) {
+    const W = 720, H = 340, padL = 46, padR = 58, padT = 24, padB = 40;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const n = points.length;
+    const xAt = (i) => padL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+    const yOcc = (v) => padT + plotH - (Math.max(0, Math.min(1, v)) * plotH);
+    const adrs = points.map(p => p.adr).filter(v => v != null);
+    const adrMax = adrs.length ? Math.max(...adrs) * 1.15 : 100;
+    const yAdr = (v) => padT + plotH - (v / (adrMax || 1)) * plotH;
+
+    // "No data" = the week predates the rental's first-ever booking. An empty
+    // week AFTER that is a genuine 0% vacancy and is plotted as such.
+    const noData = (p) => !!p.preStart;
+
+    // ── Gridlines: occupancy every 25% (left), ADR denser every ~1/6 (right) ──
+    let grid = '';
+    for (let g = 0; g <= 20; g++) {          // occupancy axis (left) every 5%
+      const yv = g / 20;
+      const y = yOcc(yv);
+      grid += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#2a3245" stroke-width="1"/>`;
+      grid += `<text x="${padL - 8}" y="${y + 3}" text-anchor="end" font-size="9" fill="#8890a8">${Math.round(yv * 100)}%</text>`;
+    }
+    for (let g = 0; g <= 6; g++) {          // ADR axis (right) — denser, 7 labels
+      const yv = g / 6;
+      const y = padT + plotH - yv * plotH;
+      grid += `<text x="${W - padR + 8}" y="${y + 3}" text-anchor="start" font-size="9.5" fill="#6fcf9a">€${Math.round(adrMax * yv)}</text>`;
+    }
+
+    let xlabels = '';
+    points.forEach((p, i) => {
+      if (i % 2 === 0 || i === n - 1) {
+        xlabels += `<text x="${xAt(i)}" y="${H - padB + 16}" text-anchor="middle" font-size="9" fill="#8890a8">${p.label}</text>`;
+      }
+    });
+
+    // ── Occupancy line: solid across weeks WITH data; dotted across no-data gaps ──
+    let occSolid = '', occDotted = '', occDots = '';
+    for (let i = 0; i < n; i++) {
+      const p = points[i];
+      if (!noData(p)) {
+        occDots += `<circle cx="${xAt(i).toFixed(1)}" cy="${yOcc(p.occ).toFixed(1)}" r="2.5" fill="#C9A84C"/>`;
+      }
+      if (i === 0) continue;
+      const prev = points[i - 1];
+      const x1 = xAt(i - 1).toFixed(1), x2 = xAt(i).toFixed(1);
+      // Only draw a real segment between two data-bearing weeks. If either end
+      // is a no-data week, draw a faint dotted connector at mid-height instead.
+      if (!noData(prev) && !noData(p)) {
+        occSolid += `M${x1},${yOcc(prev.occ).toFixed(1)} L${x2},${yOcc(p.occ).toFixed(1)} `;
+      } else {
+        const y1 = noData(prev) ? padT + plotH - plotH * 0.5 : yOcc(prev.occ);
+        const y2 = noData(p)   ? padT + plotH - plotH * 0.5 : yOcc(p.occ);
+        occDotted += `M${x1},${y1.toFixed(1)} L${x2},${y2.toFixed(1)} `;
+      }
+    }
+
+    // ── ADR line: same treatment (dotted across weeks with no ADR) ──
+    let adrSolid = '', adrDotted = '', adrDots = '';
+    for (let i = 0; i < n; i++) {
+      const p = points[i];
+      if (p.adr != null) {
+        adrDots += `<circle cx="${xAt(i).toFixed(1)}" cy="${yAdr(p.adr).toFixed(1)}" r="2.5" fill="#3ecf8e"/>`;
+      }
+      if (i === 0) continue;
+      const prev = points[i - 1];
+      const x1 = xAt(i - 1).toFixed(1), x2 = xAt(i).toFixed(1);
+      if (prev.adr != null && p.adr != null) {
+        adrSolid += `M${x1},${yAdr(prev.adr).toFixed(1)} L${x2},${yAdr(p.adr).toFixed(1)} `;
+      }
+      // if either end lacks ADR, we simply don't connect (dots still show)
+    }
+
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px">
+      ${grid}
+      <path d="${occDotted}" fill="none" stroke="#C9A84C" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.5"/>
+      <path d="${occSolid}" fill="none" stroke="#C9A84C" stroke-width="2"/>
+      ${occDots}
+      <path d="${adrSolid}" fill="none" stroke="#3ecf8e" stroke-width="2"/>
+      ${adrDots}
+      ${xlabels}
+    </svg>`;
+  }
+
+  // Scroll to a property's row (from an alert-banner pill) and flash it.
+  window.perfGoTo = function (aptId) {
+    const el = document.getElementById('perf-row-' + String(aptId || '').replace(/[^a-zA-Z0-9_-]/g, ''));
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const prev = el.style.outline;
+    el.style.outline = '2px solid #C9A84C';
+    el.style.transition = 'outline .3s';
+    setTimeout(() => { el.style.outline = prev || 'none'; }, 1800);
+  };
+
+  window.perfShowReadme = function () {
+    let modal = document.getElementById('perf-readme-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'perf-readme-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+      modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+      document.body.appendChild(modal);
+    }
+    const rt = SIGNAL_RULES, ar = ALERT_RULES, gr = GRACE_RULE;
+    const P = (v) => Math.round(v * 100) + '%';
+    modal.innerHTML = `
+      <div style="background:#131a28;border:1px solid var(--bdr);border-radius:12px;padding:22px 26px;max-width:760px;width:100%;max-height:86vh;overflow:auto">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+          <div style="font-size:17px;font-weight:600;color:#C9A84C">How the Performance tab is calculated</div>
+          <button class="btn sm" onclick="document.getElementById('perf-readme-modal').remove()">Close</button>
+        </div>
+        <div style="font-size:12.5px;line-height:1.7;color:#c8ccd8">
+
+          <div style="font-weight:600;color:#e8eaf0;margin:6px 0 4px">Verdict (the plain-language column)</div>
+          The Verdict column reads all the signals for you and gives one conclusion per property: <strong style="color:#e0776f">Vacant — act now</strong> (empty soon, fill it), <strong style="color:#3898ec">Underpriced — raise rate</strong> (full but cheap), <strong style="color:#e0a341">Softening — review</strong> (demand or price sliding vs its own past), <strong style="color:#e0a341">Watch</strong> (mild dip), or <strong style="color:#3ecf8e">Healthy</strong>. Hover any verdict for the specific reason and suggested action. Start here, then use the columns to the right for the detail behind it.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Data source</div>
+          Every number comes from your bookings synced from Hosthub. The server auto-syncs every 2 hours and stores the result; this tab reads that data. Dates are stored as D/M/YYYY. Cancelled bookings and maintenance/owner blocks are excluded from all calculations.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Occupancy</div>
+          Occupancy = <em>distinct booked nights ÷ nights in the window</em>. Each calendar night counts once, so overlapping or duplicate bookings can never exceed 100%. Past windows (15d, 30d) look backward from today; forward windows (7d, 30d) look ahead.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">ADR (Average Daily Rate)</div>
+          For each booking checking in within the window, we take payout ÷ nights (a per-night rate), then average those across bookings. The <strong>ADR arrow</strong> compares the current 30-day ADR to the prior 30 days (days 31–60 ago) and only appears when both periods have at least 3 bookings and a plausible (≥€15) rate — this suppresses noise from one-off bookings.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Booking Pace</div>
+          Pace 30d compares this property's next-30-day forward occupancy against two baselines drawn from its <strong>own booking course</strong>: its <strong>full-history monthly average</strong> (mean occupancy across every month it's operated, current month prorated) and its <strong>last completed month</strong>. Shown as two deltas in points. ↑ ahead of that baseline, ↓ behind. Note: forward occupancy is still filling, so it naturally reads a little low against completed-month baselines — read the two together for direction.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">ADR Pace</div>
+          The same idea applied to price: current 30-day ADR vs the rental's <strong>full-history average ADR</strong> and its <strong>last completed month's ADR</strong>, shown as % changes with the € baseline. Months with fewer than 3 bookings or an implausibly low rate are excluded from the baselines, so thin months don't distort it. Useful for spotting a property priced below (or above) its own track record.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Categories</div>
+          Properties are grouped into <strong>Attiki</strong>, <strong>Thessaloniki</strong>, and <strong>City Escapes</strong> — automatically. Priority: (1) the manual name lists in the config (always win, preserving your judgment calls), (2) the rental's coordinates from Hosthub (within 35km of Athens → Attiki, 25km of Thessaloniki → Thessaloniki, otherwise Escape), (3) its city name, (4) if nothing is known it defaults to Attiki with an "uncategorized" marker so you can spot and override it. New listings categorize themselves the moment they sync.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Vacancy alerts</div>
+          Every category is judged on <strong>upcoming fill</strong> — same mechanism, different rhythm. <strong>Attiki & Thessaloniki</strong>: next ${ar.attiki.windows.join(' & ')} days — below ${P(ar.attiki.orange)} booked = orange, below ${P(ar.attiki.red)} = red. <strong>City Escapes</strong>: next ${ar.escape.windows.join(' & ')} days — below ${P(ar.escape.orange)} = orange, below ${P(ar.escape.red)} = red. The badge shows the % booked.<br>
+          <strong>Recent-strength grace:</strong> if an occupancy-based property was ≥${P(gr.minOcc)} occupied over the past ${gr.lookbackDays} days, a red alert is softened to orange — a proven performer with a short-term dip isn't treated as critical.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Underpricing alert (light-blue)</div>
+          A property is flagged light-blue when its <strong>past-7-day occupancy is above ${Math.round(UNDERPRICE_RULE.minOcc*100)}%</strong> (clear high demand) <strong>and</strong> its current 30-day ADR is <strong>below its own norm</strong> (the higher of its full-history average ADR and last month's ADR). Meaning: nearly always full yet priced below where it has sold before — a likely opportunity to raise the nightly rate. The badge shows the current rate and the norm to aim for.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Deterioration signals (Signals column)</div>
+          Two kinds of signal, both judged against the apartment's own past — and both work today:
+          <div style="margin:4px 0 0 8px">
+            • <strong>Pace (occupancy)</strong> — forward-30-day occupancy <em>now</em> vs the same next-30-day window as it stood 2 weeks and 1 month ago, reconstructed from each booking's creation date. A drop of ≥${P(rt.paceDrop.orange)} (orange) / ${P(rt.paceDrop.red)} (red) points means upcoming dates are booking <em>slower</em> than before — real deceleration, an honest same-lead-time comparison.<br>
+            • <strong>ADR below norm</strong> — current ADR ≥${P(rt.adrBelow.orange)} (orange) / ${P(rt.adrBelow.red)} (red) below its full-history or last-month ADR.
+          </div>
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">Heatmap</div>
+          Each property's next 30 nights: green = booked, gold = check-in/out day, dark = empty (every gap stays visible here). A property with a vacancy alert has its name tinted orange/red. Mondays are labelled in gold.
+
+          <div style="font-weight:600;color:#e8eaf0;margin:14px 0 4px">3-month course chart (📈)</div>
+          Weekly actual occupancy (gold, left axis) and ADR (teal, right axis) over the last 13 weeks. Weeks with no bookings at all are shown as dotted "no data" segments rather than a misleading drop to zero.
+
+          <div style="font-size:11px;color:var(--tx3);margin-top:16px;padding-top:12px;border-top:1px solid var(--bdr)">
+            All thresholds shown above are configurable in the code (ALERT_RULES, SIGNAL_RULES, GRACE_RULE, UNDERPRICE_RULE). Data auto-refreshes every 2 hours; “Refresh now” triggers an immediate Hosthub sync.
+          </div>
+        </div>
+      </div>`;
+  };
+
+  window.perfShowCourse = function (aptId, aptName) {
+    const points = weeklyCourse(aptId, aptName);
+    const hasData = points.some(p => p.occ > 0 || p.adr != null);
+    let modal = document.getElementById('perf-course-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'perf-course-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+      modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+      <div style="background:#131a28;border:1px solid var(--bdr);border-radius:12px;padding:20px 22px;max-width:780px;width:100%">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <div style="font-size:16px;font-weight:600">${aptName}</div>
+          <button class="btn sm" onclick="document.getElementById('perf-course-modal').remove()">Close</button>
+        </div>
+        <div style="font-size:12px;color:var(--tx3);margin-bottom:14px">Last 3 months · weekly actuals</div>
+        <div style="display:flex;gap:16px;margin-bottom:10px;font-size:12px">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:16px;height:3px;background:#C9A84C;display:inline-block;border-radius:2px"></span>Occupancy (left)</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:16px;height:3px;background:#3ecf8e;display:inline-block;border-radius:2px"></span>ADR (right)</span>
+        </div>
+        ${hasData ? courseSVG(points) : '<div style="padding:50px;text-align:center;color:var(--tx3)">No booking history in the last 3 months for this property.</div>'}
+      </div>`;
+  };
+
+  window.perfExportExcel = function () {
+    if (typeof XLSX === 'undefined') { if (typeof toast==='function') toast('XLSX library not loaded.','err'); return; }
+    const rows = buildPerfRows();
+    const aoa = [
+      ['Property', 'Verdict', 'Action', 'Category', 'Last booking (days ago)', 'Occ 15d', 'Occ 30d', 'Past 7d', 'Occ 7d fwd', 'Occ 30d fwd', 'Hist avg occ', 'Pace30 vs hist', 'Prev mo occ', 'Pace30 vs prev', 'ADR 15d', 'ADR 30d', 'ADR Δ', 'Hist avg ADR', 'ADR vs hist', 'Prev mo ADR', 'ADR vs prev', 'Alert', 'Alert detail'],
+      ...rows.map(r => [
+        r.name,
+        r.verdict ? r.verdict.label : '',
+        r.verdict ? r.verdict.action : '',
+        CATEGORY_LABELS[r.category] || r.category || '',
+        r.lastBookingDays != null ? r.lastBookingDays : '',
+        r.occ15 != null ? +(r.occ15).toFixed(4) : '',
+        r.occ30 != null ? +(r.occ30).toFixed(4) : '',
+        r.occ7past != null ? +(r.occ7past).toFixed(4) : '',
+        r.occ7fwd != null ? +(r.occ7fwd).toFixed(4) : '',
+        r.occ30fwd != null ? +(r.occ30fwd).toFixed(4) : '',
+        r.histOcc != null ? +(r.histOcc).toFixed(4) : '',
+        r.pace30Hist != null ? +(r.pace30Hist).toFixed(4) : '',
+        r.prevMoOcc != null ? +(r.prevMoOcc).toFixed(4) : '',
+        r.pace30Prev != null ? +(r.pace30Prev).toFixed(4) : '',
+        r.price15 != null ? +(r.price15).toFixed(2) : '',
+        r.price30 != null ? +(r.price30).toFixed(2) : '',
+        r.adrChange != null ? +(r.adrChange).toFixed(4) : '',
+        r.histAdr != null ? +(r.histAdr).toFixed(2) : '',
+        r.adrPaceHist != null ? +(r.adrPaceHist).toFixed(4) : '',
+        r.prevMoAdr != null ? +(r.prevMoAdr).toFixed(2) : '',
+        r.adrPacePrev != null ? +(r.adrPacePrev).toFixed(4) : '',
+        (r.alert && r.alert.level) ? r.alert.level.toUpperCase() : '',
+        (r.alert && r.alert.level) ? alertLabel(r.alert) : '',
+      ])
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const pctCols = [5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 18, 20];   // occupancy + pace + adr % deltas
+    const eurCols = [14, 15, 17, 19];                               // ADR prices + ADR baselines
+    for (let R = 1; R <= range.e.r; R++) {
+      pctCols.forEach(C => { const c = ws[XLSX.utils.encode_cell({ r: R, c: C })]; if (c && typeof c.v === 'number') c.z = '0%'; });
+      eurCols.forEach(C => { const c = ws[XLSX.utils.encode_cell({ r: R, c: C })]; if (c && typeof c.v === 'number') c.z = '€#,##0.00'; });
+    }
+    ws['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 48 }, { wch: 13 }, { wch: 10 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 12 }, { wch: 13 }, { wch: 11 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 9 }, { wch: 12 }, { wch: 11 }, { wch: 12 }, { wch: 11 }, { wch: 8 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Performance');
+    const d = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `performance_report_${d}.xlsx`);
+  };
+
+  // ── Auto-refresh timer (every 2 hours) ──────────────────────────────────────
+  // The SERVER already re-syncs Hosthub every 2h into Postgres. This timer just
+  // pulls that fresh data into the page so the tab stays current without a manual
+  // reload. We offset slightly past the even hour so the server sync finishes first.
+  function startPerfTimer() {
+    if (_perfTimer) clearInterval(_perfTimer);
+    _perfTimer = setInterval(async () => {
+      if (typeof window.loadFromDb === 'function') {
+        try { await window.loadFromDb(); } catch (e) { /* ignore */ }
+      }
+      renderPerfIfVisible();
+    }, PERF_REFRESH_MS);
+  }
+  function renderPerfIfVisible() {
+    const panel = document.getElementById('tab-perf');
+    if (panel && panel.classList.contains('active')) renderPerf();
+    else _perfLastRun = null; // force recompute next open
+  }
+
+  // ── Hook into showTab so opening the tab renders it ─────────────────────────
+  const _prevShowTab = window.showTab;
+  window.showTab = function (name, btn) {
+    if (name === 'perf') {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-perf').classList.add('active');
+      if (btn) btn.classList.add('active');
+      renderPerf();
+      // pull snapshot history in the background, then re-render with trend signals
+      loadPerfHistory().then(() => {
+        const panel = document.getElementById('tab-perf');
+        if (panel && panel.classList.contains('active')) renderPerf();
+      });
+      return;
+    }
+    return _prevShowTab.apply(this, arguments);
+  };
+
+
+  // Expose categorization to other tabs (Checkout Tracker) — read-only reuse.
+  window._perfCategoryInfo = categoryInfo;
+  window._perfCategoryLabels = CATEGORY_LABELS;
+
+  // Start the 2-hour timer once the page is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startPerfTimer);
+  } else {
+    startPerfTimer();
+  }
+})();
+
+
+
+/* ===== CHECKOUT TRACKER TAB ===== */
+// Counts guest checkouts per month, split by region (same categorization as the
+// Performance tab), with a property include/exclude selector. Reads S.bks /
+// S.apts — the data the Hosthub sync + DB poll keep fresh — so it updates
+// together with regular database updates. Display-only: no report/clearing math.
+(function () {
+  'use strict';
+
+  const CO_LS_EXCL = 'co_excluded_apts_v1';           // excluded apt ids (new properties default to included)
+  const CO_REGIONS = ['attiki', 'thessaloniki', 'escape'];
+  let _coYear = new Date().getFullYear();
+  let _coExcl = null;                                  // Set of excluded apt ids
+  let _coSelOpen = false;
+
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  function coLabels() {
+    return window._perfCategoryLabels || { attiki: 'Attiki', thessaloniki: 'Thessaloniki', escape: 'City Escapes' };
+  }
+  const _catCache = {};
+  function coCatOf(apt) {
+    if (!apt) return 'attiki';
+    const k = apt.id || apt.name || '?';
+    if (_catCache[k]) return _catCache[k];
+    let c = 'attiki';
+    try { if (window._perfCategoryInfo) c = window._perfCategoryInfo(apt).cat || 'attiki'; } catch (e) {}
+    return (_catCache[k] = c);
+  }
+  function coExcl() {
+    if (_coExcl) return _coExcl;
+    try { _coExcl = new Set(JSON.parse(localStorage.getItem(CO_LS_EXCL) || '[]')); }
+    catch (e) { _coExcl = new Set(); }
+    return _coExcl;
+  }
+  function coSaveExcl() {
+    try { localStorage.setItem(CO_LS_EXCL, JSON.stringify(Array.from(coExcl()))); } catch (e) {}
+  }
+
+  // ── Core: checkouts of the selected year, per month × region ───────────────
+  function coCompute() {
+    const _S = (typeof S !== 'undefined' && S) ? S : {};
+    const apts = _S.apts || [], bks = _S.bks || [];
+    const excl = coExcl();
+    const aptMap = {};
+    apts.forEach(a => { aptMap[a.id] = a; });
+    const months = Array.from({ length: 12 }, () => ({ attiki: 0, thessaloniki: 0, escape: 0, total: 0, items: [] }));
+    let unlinked = 0;
+    for (const b of bks) {
+      if (!b || b.cancelled) continue;
+      if (typeof isRevenueBooking === 'function' && !isRevenueBooking(b)) continue; // skip maintenance/owner blocks
+      const co = parseD(b.checkOut);
+      if (!co || isNaN(co) || co.getFullYear() !== _coYear) continue;
+      let apt = b.aptId ? aptMap[b.aptId] : null;
+      if (!apt && typeof findApt === 'function') apt = findApt(b.aptName || '');
+      if (!apt) { unlinked++; continue; }                // not linked to any configured property
+      if (excl.has(apt.id)) continue;                    // excluded via the property selector
+      const cat = CO_REGIONS.indexOf(coCatOf(apt)) >= 0 ? coCatOf(apt) : 'attiki';
+      const m = months[co.getMonth()];
+      m[cat]++; m.total++;
+      m.items.push({ t: co.getTime(), day: co.getDate(), apt: apt.name, cat,
+                     guest: b.guestName || '', chan: b.platform || b.channel || '', nights: b.nights || '' });
+    }
+    months.forEach(m => m.items.sort((a, b) => a.t - b.t));
+    return { months, apts, excl, unlinked };
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+  function renderCo() {
+    const panel = document.getElementById('tab-co');
+    if (!panel) return;
+    const { months, apts, excl, unlinked } = coCompute();
+    const L = coLabels();
+    const now = new Date();
+    const curMo = now.getFullYear() === _coYear ? now.getMonth() : -1;
+    const yrTot = months.reduce((s, m) => s + m.total, 0);
+    const regTot = {}; CO_REGIONS.forEach(r => { regTot[r] = months.reduce((s, m) => s + m[r], 0); });
+    const peakIdx = months.reduce((best, m, i) => (m.total > months[best].total ? i : best), 0);
+    const included = apts.filter(a => !excl.has(a.id));
+
+    const kpi = (label, val, sub) => `<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:13px 18px;min-width:140px;flex:1">
+        <div style="font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em">${label}</div>
+        <div style="font-size:23px;font-weight:700;color:#C9A84C;margin-top:2px">${val}</div>
+        ${sub ? `<div style="font-size:11px;color:var(--tx3);margin-top:2px">${sub}</div>` : ''}</div>`;
+
+    const regCell = (n, strong) => `<td class="r" style="font-family:var(--mono);${strong ? 'font-weight:700' : ''};color:${n ? 'var(--tx)' : 'var(--tx3)'}">${n || '–'}</td>`;
+
+    let rows = '';
+    months.forEach((m, i) => {
+      const cur = i === curMo;
+      rows += `<tr style="${cur ? 'background:rgba(201,168,76,.10)' : ''};cursor:pointer" onclick="coShowMonth(${i})" title="Click for the day-by-day list">
+        <td style="font-weight:${cur ? '700' : '500'};color:${cur ? '#C9A84C' : 'var(--tx)'}">${MONTHS[i]}${cur ? ' ·' : ''}</td>
+        ${regCell(m.attiki)}${regCell(m.thessaloniki)}${regCell(m.escape)}
+        <td class="r" style="font-family:var(--mono);font-weight:700;color:${m.total ? '#C9A84C' : 'var(--tx3)'}">${m.total || '–'}</td></tr>`;
+    });
+    rows += `<tr style="border-top:2px solid var(--bdr)"><td style="font-weight:700">Total ${_coYear}</td>
+      ${regCell(regTot.attiki, 1)}${regCell(regTot.thessaloniki, 1)}${regCell(regTot.escape, 1)}
+      <td class="r" style="font-family:var(--mono);font-weight:700;color:#C9A84C">${yrTot || '–'}</td></tr>`;
+
+    // Property selector — grouped by region, checkbox = included
+    let selHTML = '';
+    if (_coSelOpen) {
+      const byCat = { attiki: [], thessaloniki: [], escape: [] };
+      apts.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(a => {
+        (byCat[coCatOf(a)] = byCat[coCatOf(a)] || []).push(a);
+      });
+      selHTML = `<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <div style="font-size:12.5px;font-weight:600">Properties in the calculation</div>
+          <button class="btn sm" onclick="coSelAll(true)">All</button>
+          <button class="btn sm" onclick="coSelAll(false)">None</button>
+          <div style="font-size:11px;color:var(--tx3)">${included.length} of ${apts.length} included · new properties are included automatically</div>
+        </div>`;
+      CO_REGIONS.forEach(cat => {
+        const list = byCat[cat] || [];
+        if (!list.length) return;
+        const inc = list.filter(a => !excl.has(a.id)).length;
+        selHTML += `<div style="margin:8px 0 4px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.04em">${L[cat] || cat}</span>
+            <a onclick="coSelRegion('${cat}',true)" style="font-size:10.5px;color:var(--tx3);cursor:pointer;text-decoration:underline">all</a>
+            <a onclick="coSelRegion('${cat}',false)" style="font-size:10.5px;color:var(--tx3);cursor:pointer;text-decoration:underline">none</a>
+            <span style="font-size:10.5px;color:var(--tx3)">${inc}/${list.length}</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 10px">`;
+        list.forEach(a => {
+          const on = !excl.has(a.id);
+          selHTML += `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${on ? 'var(--tx)' : 'var(--tx3)'};cursor:pointer;padding:2px 4px">
+            <input type="checkbox" ${on ? 'checked' : ''} onchange="coToggleApt('${esc(a.id)}')" style="accent-color:#C9A84C">${esc(a.name)}</label>`;
+        });
+        selHTML += `</div>`;
+      });
+      selHTML += `</div>`;
+    }
+
+    panel.innerHTML = `<div style="padding:20px 22px;max-width:1050px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div>
+          <div style="font-size:20px;font-weight:600">Checkout Tracker</div>
+          <div style="font-size:11.5px;color:var(--tx3)">Guest checkouts per month · cancelled bookings and owner/maintenance blocks excluded · updates with every Hosthub/database sync</div>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:4px 8px">
+          <button class="btn sm" onclick="coYear(-1)" style="padding:3px 9px">◀</button>
+          <span style="font-size:14px;font-weight:700;min-width:48px;text-align:center">${_coYear}</span>
+          <button class="btn sm" onclick="coYear(1)" style="padding:3px 9px">▶</button>
+        </div>
+        <button class="btn sm" onclick="coToggleSel()">${_coSelOpen ? 'Hide properties' : `Select properties (${included.length}/${apts.length})`}</button>
+        <button class="btn sm" onclick="coExport()">⬇ Excel</button>
+        <button class="btn sm primary" onclick="coRefresh()">↻ Refresh now</button>
+      </div>
+      ${selHTML}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        ${curMo >= 0 ? kpi('This month', months[curMo].total, MONTHS[curMo] + ' ' + _coYear) : ''}
+        ${curMo >= 0 && curMo < 11 ? kpi('Next month', months[curMo + 1].total, MONTHS[curMo + 1] + ' ' + _coYear) : ''}
+        ${kpi('Year total', yrTot, _coYear + ' · ' + included.length + ' properties')}
+        ${kpi('Peak month', yrTot ? MONTHS[peakIdx].slice(0, 3) + ' · ' + months[peakIdx].total : '–', 'most checkouts in ' + _coYear)}
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden">
+        <table class="tbl" style="width:100%">
+          <thead><tr><th style="width:26%">Month</th><th class="r">${L.attiki}</th><th class="r">${L.thessaloniki}</th><th class="r">${L.escape}</th><th class="r">Total</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${unlinked ? `<div style="margin-top:10px;font-size:11.5px;color:#d68910">⚠ ${unlinked} checkout${unlinked > 1 ? 's' : ''} in ${_coYear} belong to bookings not linked to any configured property — fix the property names/aliases in Configuration to include them.</div>` : ''}
+      <div style="margin-top:8px;font-size:11px;color:var(--tx3)">A checkout is counted in the month the guest checks out (regions via the Performance tab categorization). Click a month for the day-by-day list.</div>
+    </div>`;
+  }
+
+  // ── Month detail modal ──────────────────────────────────────────────────────
+  window.coShowMonth = function (mi) {
+    const { months } = coCompute();
+    const L = coLabels();
+    const m = months[mi];
+    let old = document.getElementById('co-modal'); if (old) old.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'co-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;display:flex;align-items:center;justify-content:center;padding:24px';
+    let rows = m.items.map(it => `<tr>
+        <td style="font-family:var(--mono)">${it.day}/${mi + 1}</td>
+        <td>${esc(it.apt)}</td>
+        <td><span style="font-size:10.5px;color:#C9A84C">${esc(L[it.cat] || it.cat)}</span></td>
+        <td>${esc(it.guest)}</td><td style="color:var(--tx3)">${esc(it.chan)}</td>
+        <td class="r" style="font-family:var(--mono)">${esc(it.nights)}</td></tr>`).join('');
+    if (!rows) rows = `<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:22px">No checkouts in ${MONTHS[mi]} ${_coYear} for the selected properties.</td></tr>`;
+    wrap.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);max-width:760px;width:100%;max-height:82vh;overflow:auto;padding:18px 20px">
+      <div style="display:flex;align-items:center;margin-bottom:10px">
+        <div style="font-size:15px;font-weight:600">${MONTHS[mi]} ${_coYear} — ${m.total} checkout${m.total === 1 ? '' : 's'}</div>
+        <div style="flex:1"></div>
+        <div style="font-size:11px;color:var(--tx3);margin-right:14px">${CO_REGIONS.map(r => m[r] ? `${L[r] || r}: ${m[r]}` : '').filter(Boolean).join(' · ')}</div>
+        <button class="btn sm" onclick="document.getElementById('co-modal').remove()">✕</button>
+      </div>
+      <table class="tbl" style="width:100%">
+        <thead><tr><th>Date</th><th>Property</th><th>Region</th><th>Guest</th><th>Channel</th><th class="r">Nights</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+    wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
+    document.body.appendChild(wrap);
+  };
+
+  // ── Controls ────────────────────────────────────────────────────────────────
+  window.coYear = function (d) { _coYear += d; renderCo(); };
+  window.coToggleSel = function () { _coSelOpen = !_coSelOpen; renderCo(); };
+  window.coToggleApt = function (id) {
+    const e = coExcl();
+    if (e.has(id)) e.delete(id); else e.add(id);
+    coSaveExcl(); renderCo();
+  };
+  window.coSelAll = function (on) {
+    const _S = (typeof S !== 'undefined' && S) ? S : {};
+    _coExcl = on ? new Set() : new Set((_S.apts || []).map(a => a.id));
+    coSaveExcl(); renderCo();
+  };
+  window.coSelRegion = function (cat, on) {
+    const _S = (typeof S !== 'undefined' && S) ? S : {};
+    const e = coExcl();
+    (_S.apts || []).forEach(a => { if (coCatOf(a) === cat) { if (on) e.delete(a.id); else e.add(a.id); } });
+    coSaveExcl(); renderCo();
+  };
+  window.coRefresh = async function () {
+    // Same path the Performance tab uses: the app's own sync routine pulls from
+    // Hosthub, saves to the DB and updates S.bks — then we just re-render.
+    if (typeof window.startSync === 'function') {
+      try { await window.startSync(); } catch (e) {}
+    } else if (typeof window.loadFromDb === 'function') {
+      try { await window.loadFromDb(); } catch (e) {}
+    }
+    Object.keys(_catCache).forEach(k => delete _catCache[k]);
+    renderCo();
+    if (typeof toast === 'function') toast('Checkout tracker refreshed.', 'ok');
+  };
+
+  // ── Excel export ────────────────────────────────────────────────────────────
+  window.coExport = function () {
+    try {
+      const { months } = coCompute();
+      const L = coLabels();
+      const wb = XLSX.utils.book_new();
+      const matrix = months.map((m, i) => ({ Month: MONTHS[i], [L.attiki]: m.attiki, [L.thessaloniki]: m.thessaloniki, [L.escape]: m.escape, Total: m.total }));
+      matrix.push({ Month: 'Total ' + _coYear,
+        [L.attiki]: months.reduce((s, m) => s + m.attiki, 0),
+        [L.thessaloniki]: months.reduce((s, m) => s + m.thessaloniki, 0),
+        [L.escape]: months.reduce((s, m) => s + m.escape, 0),
+        Total: months.reduce((s, m) => s + m.total, 0) });
+      const detail = months.flatMap((m, i) => m.items.map(it => ({
+        Date: it.day + '/' + (i + 1) + '/' + _coYear, Property: it.apt, Region: L[it.cat] || it.cat,
+        Guest: it.guest, Channel: it.chan, Nights: it.nights })));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matrix), 'Checkouts by month');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail.length ? detail : [{ Date: '', Property: '', Region: '', Guest: '', Channel: '', Nights: '' }]), 'Detail');
+      XLSX.writeFile(wb, 'checkout-tracker-' + _coYear + '.xlsx');
+    } catch (e) { if (typeof toast === 'function') toast('Export failed: ' + e.message, 'err'); }
+  };
+
+  // ── Wiring: tab switch + keep fresh with regular DB updates ────────────────
+  const _prevShowTabCo = window.showTab;
+  window.showTab = function (name, btn) {
+    if (name === 'co') {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-co').classList.add('active');
+      if (btn) btn.classList.add('active');
+      Object.keys(_catCache).forEach(k => delete _catCache[k]);
+      renderCo();
+      return;
+    }
+    return _prevShowTabCo.apply(this, arguments);
+  };
+  // The app's DB poll refreshes S in the background — recompute while visible
+  // so the tab always reflects the latest synced data.
+  setInterval(() => {
+    const p = document.getElementById('tab-co');
+    if (p && p.classList.contains('active')) { Object.keys(_catCache).forEach(k => delete _catCache[k]); renderCo(); }
+  }, 60000);
+})();
+
 </script>
 </body>
 </html>
