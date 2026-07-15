@@ -7760,7 +7760,7 @@ loadFromDb()
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               ${redRows.map(r => `<span onclick="perfGoTo('${String(r.aptId||'').replace(/'/g,'')}')" style="cursor:pointer;font-size:11px;background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.35);border-radius:12px;padding:3px 10px">
                 <strong>${r.name}</strong> · ${alertLabel(r.alert)}
-                <a onclick="event.stopPropagation();perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','red')" title="Mark corrective action taken — removes it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;font-weight:700;margin-left:5px">✓ done</a>
+                <a onclick="event.stopPropagation();perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','red')" title="Click when you've acted on this property — hides it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;border:1px solid rgba(62,207,142,.5);border-radius:9px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;white-space:nowrap;background:rgba(62,207,142,.08)">mark done</a>
               </span>`).join('')}
             </div>
           </div>` : ''}
@@ -7770,7 +7770,7 @@ loadFromDb()
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               ${orangeRows.map(r => `<span onclick="perfGoTo('${String(r.aptId||'').replace(/'/g,'')}')" style="cursor:pointer;font-size:11px;background:rgba(214,137,16,.12);border:1px solid rgba(214,137,16,.35);border-radius:12px;padding:3px 10px">
                 <strong>${r.name}</strong> · ${alertLabel(r.alert)}
-                <a onclick="event.stopPropagation();perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','orange')" title="Mark corrective action taken — removes it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;font-weight:700;margin-left:5px">✓ done</a>
+                <a onclick="event.stopPropagation();perfMarkDone('${String(r.aptId||'').replace(/'/g,'')}','${r.name.replace(/'/g,'&#39;')}','orange')" title="Click when you've acted on this property — hides it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;border:1px solid rgba(62,207,142,.5);border-radius:9px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;white-space:nowrap;background:rgba(62,207,142,.08)">mark done</a>
               </span>`).join('')}
             </div>
           </div>` : ''}
