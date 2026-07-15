@@ -7801,7 +7801,7 @@ loadFromDb()
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               ${underpriced.map(r => `<span onclick="perfGoToIdx(${r._i})" style="cursor:pointer;font-size:11px;background:rgba(56,152,236,.10);border:1px solid rgba(56,152,236,.35);border-radius:12px;padding:3px 10px">
                 <strong>${r.name}</strong> · past 7d ${Math.round(r.underprice.occ*100)}% full · €${Math.round(r.underprice.cur)} → aim €${Math.round(r.underprice.base)}
-                <a onclick="event.stopPropagation();perfMarkDoneIdx(${r._i},'underpriced')" title="Click when you've adjusted the rate — hides it from this list for 48h, then rechecks" ${PILL}
+                <a onclick="event.stopPropagation();perfMarkDoneIdx(${r._i},'underpriced')" title="Click when you've adjusted the rate — hides it from this list for 48h, then rechecks" style="cursor:pointer;color:#3ecf8e;border:1px solid rgba(62,207,142,.5);border-radius:9px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;white-space:nowrap;background:rgba(62,207,142,.08)">mark done</a>
               </span>`).join('')}
             </div>
           </div>` : ''}
