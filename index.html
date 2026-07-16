@@ -3790,7 +3790,7 @@ function renderRpt(){
     }).join('');
     panelHTML = '<div style="padding:12px 16px;background:#FEE2E2;border:1px solid #DC2626;border-radius:var(--r);margin-bottom:12px;font-size:12.5px;color:#7F1D1D">'
       +'<b>🚨 Fee check — '+_feeIssues.length+' OTA reservation'+(_feeIssues.length>1?'s':'')+' with missing charges.</b> '
-      +'Booking.com/Airbnb always charge commission — a missing platform fee or payment charge is usually a Hosthub sync error. '
+      +'Booking.com/Airbnb always charge commission (and Booking.com adds a payment charge when it collects the payment) — a missing fee is usually a Hosthub sync error. '
       +'Verify these in Hosthub (and re-sync or fetch taxes) before generating this report, otherwise the owner payout will be overstated.'
       +'<table style="width:100%;margin-top:8px;font-size:11.5px;border-collapse:collapse">'
       +'<tr style="text-align:left"><th style="padding:3px 8px">Guest</th><th style="padding:3px 8px">Property</th><th style="padding:3px 8px">Channel</th><th style="padding:3px 8px">Dates</th><th style="padding:3px 8px;text-align:right">Gross</th><th style="padding:3px 8px">Missing</th></tr>'
@@ -3801,9 +3801,14 @@ function renderRpt(){
 }
 
 // ── OTA fee integrity check (Booking.com / Airbnb) ──────────────────────────
-// Flags non-cancelled revenue reservations from Booking.com/Airbnb that carry
-// no platform fee (svc) or no payment charges (pchg) — both are always charged
-// by these channels, so a zero means Hosthub delivered incomplete data.
+// Flags non-cancelled revenue reservations from Booking.com/Airbnb that are
+// missing a fee the channel ALWAYS charges — a zero means Hosthub delivered
+// incomplete data. Which fees are expected differs by channel:
+//   • Booking.com — commission (svc) AND a payment charge (pchg) when the
+//     reservation is collected via Payments by Booking.com.
+//   • Airbnb      — host service fee (svc) ONLY. Airbnb bundles payment
+//     processing into the host service fee and never bills a separate payment
+//     charge, so pchg=0 is CORRECT for Airbnb and must not be flagged.
 // Used by the Reports banner and by validateReport (pre-PDF confirm).
 function feeCheckIssues(bks) {
   const out = [];
@@ -3811,11 +3816,14 @@ function feeCheckIssues(bks) {
     if (!b || b.cancelled) return;
     if (typeof isRevenueBooking === 'function' && !isRevenueBooking(b)) return;
     const ch = String(b.platform || b.channel || '').toLowerCase();
-    if (!(ch.includes('airbnb') || ch.includes('booking'))) return;
+    const isAirbnb  = ch.includes('airbnb');
+    const isBooking = ch.includes('booking');
+    if (!(isAirbnb || isBooking)) return;
     if (!((b.gross || 0) > 0)) return;   // zero-value entries carry no fee expectation
     const missing = [];
     if (!((b.svc  || 0) > 0)) missing.push('platform fee');
-    if (!((b.pchg || 0) > 0)) missing.push('payment charges');
+    // Payment charge is a Booking.com-only expectation — never flag it on Airbnb.
+    if (isBooking && !((b.pchg || 0) > 0)) missing.push('payment charges');
     if (missing.length) out.push({ b, missing });
   });
   return out;
@@ -3899,9 +3907,10 @@ function validateReport(packets, cmb, bks) {
     if (Math.abs(p.m.configCl - expectedClean) > 0.01)
       errors.push(`Cleaning fee: expected ${expectedClean.toFixed(2)} (${staysExpected} stays × ${a.cleaningFee})${tag}, got ${p.m.configCl.toFixed(2)}`);
   });
-  // OTA fee integrity: Booking.com/Airbnb reservations must carry a platform fee
-  // and payment charges — a zero is usually a Hosthub sync error (see Joel's
-  // reservation, July 2026) and would overstate the owner payout.
+  // OTA fee integrity: Booking.com/Airbnb reservations must carry a platform fee,
+  // and Booking.com reservations a payment charge too — a zero is usually a
+  // Hosthub sync error (see Joel's reservation, July 2026) and would overstate
+  // the owner payout. Airbnb has no separate payment charge, so it isn't checked.
   feeCheckIssues(bks).forEach(({b, missing}) => {
     errors.push(`Fee check: ${b.platform||b.channel} reservation "${b.guestName||'?'}" (${b.checkIn} → ${b.checkOut}, gross ${fmt(b.gross||0)}) has no ${missing.join(' and no ')} — verify in Hosthub before sending`);
   });
