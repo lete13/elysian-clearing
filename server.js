@@ -45,14 +45,31 @@ if (connStr) {
     ssl: connStr.includes('localhost') ? false : { rejectUnauthorized: false },
   });
 
-  // Create table on first run
+  // Create tables on first run
   pool.query(`
     CREATE TABLE IF NOT EXISTS app_data (
       key         VARCHAR(50) PRIMARY KEY,
       data        JSONB       NOT NULL,
       updated_at  TIMESTAMPTZ DEFAULT NOW()
     );
-  `).then(() => {
+  `).then(() => pool.query(`
+    CREATE TABLE IF NOT EXISTS proof_files (
+      id          SERIAL PRIMARY KEY,
+      month       VARCHAR(7)  NOT NULL,
+      task_key    VARCHAR(60) NOT NULL,
+      apt_id      TEXT        NOT NULL,
+      apt_name    TEXT,
+      filename    TEXT,
+      mime        TEXT,
+      size        INTEGER,
+      uploaded_by TEXT,
+      uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+      data        TEXT        NOT NULL
+    );
+  `)).then(() => pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_proofs_month ON proof_files (month);`
+  )).then(() => {
+    _proofTableReady = true;
     console.log('  ✓  PostgreSQL ready');
   }).catch(e => {
     console.error('  ✗  PostgreSQL init error:', e.message);
@@ -272,6 +289,16 @@ app.post('/api/db/data', async (req, res) => {
       // Fallback merges
       if (dbExps > 0 && inExps === 0) payload.exps = existing.exps;
       if (dbBks  > 0 && inBks  === 0) payload.bks  = existing.bks;
+
+      // ANTI-WIPE MONTHLY TASKS (proof-of-completion audit trail must survive
+      // "Clear data" and stale clients that don't know about these keys)
+      const dbMt = existing.monthlyTasks && typeof existing.monthlyTasks === 'object' ? Object.keys(existing.monthlyTasks).length : 0;
+      const inMt = payload.monthlyTasks  && typeof payload.monthlyTasks  === 'object' ? Object.keys(payload.monthlyTasks).length  : 0;
+      if (dbMt > 0 && inMt === 0) payload.monthlyTasks = existing.monthlyTasks;
+      // Custom task definitions: restore only when the key is missing entirely
+      // (stale client). An explicit empty array is a deliberate deletion.
+      if (payload.monthlyTaskDefs === undefined && Array.isArray(existing.monthlyTaskDefs) && existing.monthlyTaskDefs.length)
+        payload.monthlyTaskDefs = existing.monthlyTaskDefs;
     }
 
     await pool.query(
@@ -309,6 +336,122 @@ app.get('/api/db/status', async (req, res) => {
   } catch(e) {
     res.json({ db: false, error: e.message });
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MONTHLY-TASK PROOF ATTACHMENTS
+// Evidence files (PDF / images) for the Monthly Accounting Tasks tab, stored in
+// PostgreSQL so the manager can open them from any browser. Falls back to
+// in-memory storage when no database is configured (lost on restart).
+// ─────────────────────────────────────────────────────────────────────────────
+const _memProofs = new Map();   // no-DB fallback
+let   _memProofSeq = 1;
+const PROOF_MAX_B64 = 30 * 1024 * 1024; // ~22 MB raw file
+
+// Self-healing table creation: if the server booted before the database was
+// reachable (fresh deploy, DB add-on restart), the startup DDL never ran.
+// Each proofs endpoint re-ensures the table exists (no-op after first success).
+let _proofTableReady = false;
+async function ensureProofTable() {
+  if (_proofTableReady || !pool) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS proof_files (
+      id          SERIAL PRIMARY KEY,
+      month       VARCHAR(7)  NOT NULL,
+      task_key    VARCHAR(60) NOT NULL,
+      apt_id      TEXT        NOT NULL,
+      apt_name    TEXT,
+      filename    TEXT,
+      mime        TEXT,
+      size        INTEGER,
+      uploaded_by TEXT,
+      uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+      data        TEXT        NOT NULL
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_proofs_month ON proof_files (month);`);
+  _proofTableReady = true;
+}
+
+// POST /api/proofs — upload one proof {month, task, aptId, aptName, name, mime, size, by, dataB64}
+app.post('/api/proofs', async (req, res) => {
+  const b = req.body || {};
+  if (!/^\d{4}-\d{2}$/.test(b.month || ''))      return res.status(400).json({ error: 'Invalid month (YYYY-MM expected)' });
+  if (!b.task || !b.aptId)                       return res.status(400).json({ error: 'Missing task / aptId' });
+  if (!b.dataB64 || typeof b.dataB64 !== 'string') return res.status(400).json({ error: 'Missing file data' });
+  if (b.dataB64.length > PROOF_MAX_B64)          return res.status(413).json({ error: 'File too large' });
+  const meta = {
+    month: b.month, task_key: String(b.task).slice(0, 60), apt_id: String(b.aptId),
+    apt_name: b.aptName || '', filename: b.name || 'proof', mime: b.mime || 'application/octet-stream',
+    size: parseInt(b.size) || null, uploaded_by: b.by || '',
+  };
+  if (pool) {
+    try {
+      await ensureProofTable();
+      const r = await pool.query(
+        `INSERT INTO proof_files (month, task_key, apt_id, apt_name, filename, mime, size, uploaded_by, data)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, uploaded_at`,
+        [meta.month, meta.task_key, meta.apt_id, meta.apt_name, meta.filename, meta.mime, meta.size, meta.uploaded_by, b.dataB64]
+      );
+      return res.json({ ok: true, db: true, id: r.rows[0].id, uploadedAt: r.rows[0].uploaded_at });
+    } catch (e) {
+      console.error('[proofs] write error:', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+  const id = 'm' + _memProofSeq++;
+  _memProofs.set(id, { ...meta, id, uploaded_at: new Date().toISOString(), data: b.dataB64 });
+  res.json({ ok: true, db: false, id });
+});
+
+// GET /api/proofs?month=YYYY-MM — list proof metadata (no file data)
+app.get('/api/proofs', async (req, res) => {
+  const month = req.query.month || '';
+  if (pool) {
+    try {
+      await ensureProofTable();
+      const r = month
+        ? await pool.query(`SELECT id, month, task_key, apt_id, apt_name, filename, mime, size, uploaded_by, uploaded_at FROM proof_files WHERE month = $1 ORDER BY uploaded_at`, [month])
+        : await pool.query(`SELECT id, month, task_key, apt_id, apt_name, filename, mime, size, uploaded_by, uploaded_at FROM proof_files ORDER BY uploaded_at`);
+      return res.json({ db: true, proofs: r.rows });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  const list = [..._memProofs.values()].filter(p => !month || p.month === month)
+    .map(({ data, ...m }) => m);
+  res.json({ db: false, proofs: list });
+});
+
+// GET /api/proofs/:id — stream the file for viewing / download
+app.get('/api/proofs/:id', async (req, res) => {
+  const id = req.params.id;
+  let row = null;
+  if (pool && /^\d+$/.test(id)) {
+    try {
+      await ensureProofTable();
+      const r = await pool.query(`SELECT filename, mime, data FROM proof_files WHERE id = $1`, [parseInt(id)]);
+      row = r.rows[0] || null;
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  if (!row && _memProofs.has(id)) row = _memProofs.get(id);
+  if (!row) return res.status(404).send('Proof not found — it may have been deleted.');
+  try {
+    const buf = Buffer.from(row.data, 'base64');
+    const safeName = encodeURIComponent(row.filename || 'proof');
+    res.set('Content-Type', row.mime || 'application/octet-stream');
+    res.set('Content-Disposition', `inline; filename*=UTF-8''${safeName}`);
+    res.send(buf);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/proofs/:id
+app.delete('/api/proofs/:id', async (req, res) => {
+  const id = req.params.id;
+  if (pool && /^\d+$/.test(id)) {
+    try { await ensureProofTable(); await pool.query(`DELETE FROM proof_files WHERE id = $1`, [parseInt(id)]); return res.json({ ok: true }); }
+    catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  _memProofs.delete(id);
+  res.json({ ok: true });
 });
 
 // ── Hosthub Proxy ─────────────────────────────────────────────────────────────

@@ -28,6 +28,16 @@
     /* Nav */
     .nav-btn{background:transparent;border:none;border-bottom:2px solid transparent;color:rgba(255,255,255,.78);padding:12px 16px 10px;font-size:13px;cursor:pointer;white-space:nowrap;position:relative;transition:all .12s}
     .nav-btn:hover{color:#fff}.nav-btn.active{border-bottom-color:#C9A84C;color:#C9A84C;font-weight:500}
+    /* Nav dropdown (Tools menu) */
+    .nav-dd{position:relative;display:flex;align-items:stretch}
+    .nav-dd-menu{display:none;position:absolute;top:100%;right:0;background:#0F1E2E;border:1px solid #C9A84C44;border-top:2px solid #C9A84C;border-radius:0 0 10px 10px;min-width:200px;z-index:300;box-shadow:0 12px 28px rgba(0,0,0,.4);padding:5px 0}
+    .nav-dd.open .nav-dd-menu{display:block}
+    .nav-dd.open>.nav-btn{color:#fff}
+    .nav-dd-item{display:flex;align-items:center;gap:9px;width:100%;background:transparent;border:none;color:rgba(255,255,255,.82);padding:10px 16px;font-size:13px;cursor:pointer;text-align:left;white-space:nowrap}
+    .nav-dd-item:hover{background:#ffffff14;color:#fff}
+    .nav-dd-item.on{color:#C9A84C;font-weight:500}
+    .nav-dd-caret{font-size:8px;margin-left:6px;opacity:.65;transition:transform .12s;display:inline-block}
+    .nav-dd.open .nav-dd-caret{transform:rotate(180deg)}
     /* Cards / inputs / buttons */
     .card{background:var(--bg);border:.5px solid var(--bdr);border-radius:var(--rl);padding:16px}
     .lbl{font-size:11px;font-weight:500;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block}
@@ -126,12 +136,18 @@
     <button class="nav-btn" onclick="showTab('cfg',this)">Configuration</button>
     <button class="nav-btn" onclick="showTab('rpt',this)">Reports</button>
     <button class="nav-btn" onclick="showTab('ann',this)">Annual Tracker</button>
-    <button class="nav-btn" onclick="showTab('hhapi',this)" id="nav-hhapi">🔌 Hosthub API</button>
-    <button class="nav-btn" onclick="showTab('imports',this)" id="nav-imports">📥 Imports</button>
+    <button class="nav-btn" onclick="showTab('mt',this)" id="nav-mt">📋 Monthly Tasks</button>
     <button class="nav-btn" onclick="showTab('rev',this)" id="nav-rev">💰 Elysian Revenue</button>
     <button class="nav-btn" onclick="showTab('ops',this)" id="nav-ops">🗓 Daily Ops</button>
     <button class="nav-btn" onclick="showTab('perf',this)" id="nav-perf">📊 Performance</button>
-    <button class="nav-btn" onclick="showTab('co',this)" id="nav-co">🧳 Checkout Tracker</button>
+    <div class="nav-dd" id="nav-dd">
+      <button class="nav-btn" id="nav-tools" onclick="navDdToggle(event)">🧰 Tools<span class="nav-dd-caret">▼</span></button>
+      <div class="nav-dd-menu">
+        <button class="nav-dd-item" id="nav-hhapi" data-tab="hhapi" onclick="navDdGo('hhapi')">🔌 Hosthub API</button>
+        <button class="nav-dd-item" id="nav-imports" data-tab="imports" onclick="navDdGo('imports')">📥 Imports</button>
+        <button class="nav-dd-item" id="nav-co" data-tab="co" onclick="navDdGo('co')">🧳 Checkout Tracker</button>
+      </div>
+    </div>
   </nav>
   <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
     <button class="btn sm" onclick="clearAll()" style="border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.6);background:transparent"><i class="ti ti-trash"></i> Clear data</button>
@@ -281,7 +297,7 @@
       <div class="card" style="padding:14px">
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);margin-bottom:10px">Quick actions</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <button class="btn primary" onclick="showTab('imports',document.querySelector('[onclick*=imports]'))" style="justify-content:flex-start"><i class="ti ti-upload"></i> Import data</button>
+          <button class="btn primary" onclick="navDdGo('imports')" style="justify-content:flex-start"><i class="ti ti-upload"></i> Import data</button>
           <button class="btn" onclick="startSync()" style="justify-content:flex-start"><i class="ti ti-refresh"></i> Sync Hosthub</button>
           <button class="btn" onclick="openTestSuite()" style="justify-content:flex-start;border-color:#7C3AED;color:#7C3AED"><i class="ti ti-flask"></i> Run Financial Tests</button>
           <button class="btn" onclick="syncCancelled()" style="justify-content:flex-start;border-color:#F59E0B;color:#92400E"><i class="ti ti-ban"></i> Sync Cancelled Bookings</button>
@@ -633,8 +649,9 @@
 
 <div id="tab-co" class="tab-panel" style="background:var(--bg)"></div>
 
+<!-- MONTHLY ACCOUNTING TASKS TAB -->
+<div id="tab-mt" class="tab-panel"></div>
 
- -->
 <div id="tab-ann" class="tab-panel">
   <div style="display:flex;gap:14px;align-items:center;margin-bottom:18px">
     <div style="font-size:22px;font-weight:500">Annual Revenue Tracker</div>
@@ -769,7 +786,7 @@ const GENERIC_AL={
   "ΠΛΥΝΤΗΡΙΑ ΘΕΣ":"Cleaning Material Thessaloniki"
 };
 
-let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]},cleanOverride:{},rptLocks:{}};
+let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]},cleanOverride:{},rptLocks:{},monthlyTasks:{},monthlyTaskDefs:[]};
 let rptMode="mo";
 
 // ── Persistence ──────────────────────────────────────────
@@ -825,6 +842,8 @@ function load() {
       S.daily   = p.daily   || { snapshots: {}, tasks: [] };
       S.cleanOverride = p.cleanOverride || {};
       S.rptLocks = p.rptLocks || {};
+      S.monthlyTasks = p.monthlyTasks || {};
+      S.monthlyTaskDefs = p.monthlyTaskDefs || [];
     }
   } catch(e) {}
   // If localStorage had real data, mark as initialized
@@ -836,7 +855,7 @@ function load() {
 function save() {
   // Immediate local save
   try {
-    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]}, cleanOverride: S.cleanOverride || {}, rptLocks: S.rptLocks || {} }));
+    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]}, cleanOverride: S.cleanOverride || {}, rptLocks: S.rptLocks || {}, monthlyTasks: S.monthlyTasks || {}, monthlyTaskDefs: S.monthlyTaskDefs || [] }));
   } catch(e) {}
   // Debounced DB save (2s after last change)
   if (_dbAvailable) {
@@ -860,7 +879,9 @@ async function saveToDb() {
       revenue: S.revenue || {cleaning:{},mgmt:{}},
       daily: S.daily || {snapshots:{},tasks:[]},
       cleanOverride: S.cleanOverride || {},
-      rptLocks: S.rptLocks || {}
+      rptLocks: S.rptLocks || {},
+      monthlyTasks: S.monthlyTasks || {},
+      monthlyTaskDefs: S.monthlyTaskDefs || []
     };
     const r = await fetch('/api/db/data', {
       method: 'POST',
@@ -899,12 +920,12 @@ async function loadFromDb() {
     S.bks     = data.bks     || S.bks;
     S.exps    = data.exps    || S.exps;
     S.meta    = data.meta    || S.meta    || {};
-    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};S.rptLocks = data.rptLocks || S.rptLocks || {};
+    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};S.rptLocks = data.rptLocks || S.rptLocks || {};S.monthlyTasks = data.monthlyTasks || S.monthlyTasks || {};S.monthlyTaskDefs = data.monthlyTaskDefs || S.monthlyTaskDefs || [];
     _lastDbSave = data._savedAt;
     _dataInitialized = true;
     // Persist loaded state to localStorage
     try {
-      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily, cleanOverride: S.cleanOverride, rptLocks: S.rptLocks }));
+      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily, cleanOverride: S.cleanOverride, rptLocks: S.rptLocks, monthlyTasks: S.monthlyTasks, monthlyTaskDefs: S.monthlyTaskDefs }));
       // Sync the "Last synced" display with actual last sync from DB meta
       const lastSync = S.meta?.lastSync || S.meta?.lastAutoSync;
       if (lastSync) localStorage.setItem('hh_last_sync', lastSync);
@@ -932,6 +953,7 @@ async function loadFromDb() {
     if (_activeTab === 'tab-cfg')  renderCfg();
     if (_activeTab === 'tab-ops')  renderOps();
     if (_activeTab === 'tab-rev')  renderRevenue();
+    if (_activeTab === 'tab-mt' && typeof renderMt === 'function') renderMt();
     renderDash();
     updateDbBadge();
     console.log('[db] Loaded from shared database, savedAt:', data._savedAt);
@@ -2629,6 +2651,25 @@ function showTab(name,btn){
     else if(name==='ops'){if(!_opsDate)_opsDate=_opsTodayStr();renderOps();}
   });
 }
+
+// ── Tools dropdown (Hosthub API · Imports · Checkout Tracker) ────────────────
+function navDdToggle(e){
+  if(e)e.stopPropagation();
+  const dd=document.getElementById('nav-dd');if(!dd)return;
+  const open=dd.classList.toggle('open');
+  if(open){
+    const act=document.querySelector('.tab-panel.active')?.id||'';
+    dd.querySelectorAll('.nav-dd-item').forEach(it=>it.classList.toggle('on','tab-'+(it.dataset.tab||'')===act));
+  }
+}
+function navDdGo(name){
+  const dd=document.getElementById('nav-dd');if(dd)dd.classList.remove('open');
+  showTab(name,document.getElementById('nav-tools'));
+}
+document.addEventListener('click',e=>{
+  const dd=document.getElementById('nav-dd');
+  if(dd&&dd.classList.contains('open')&&!dd.contains(e.target))dd.classList.remove('open');
+});
 
 function renderHealth(){
   const panel = document.getElementById('health-panel');
@@ -8637,6 +8678,359 @@ loadFromDb()
   setInterval(() => {
     const p = document.getElementById('tab-co');
     if (p && p.classList.contains('active')) { Object.keys(_catCache).forEach(k => delete _catCache[k]); renderCo(); }
+  }, 60000);
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MONTHLY ACCOUNTING TASKS TAB
+   Recurring monthly checklist for apartment & company accounting.
+   Every task line requires a proof attachment (stored in the shared database
+   via /api/proofs) so the manager can verify completion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const enc = s => encodeURIComponent(String(s));
+
+  // ── Task definitions ────────────────────────────────────────────────────────
+  const MT_BUILTIN = [
+    { key:'clearing',   label:'Monthly Clearing Report', icon:'📄', color:'#0F1E2E',
+      scope:'all',        desc:'Clearing report generated & sent for every apartment' },
+    { key:'takk_issue', label:'TAKK Issuance',           icon:'🧾', color:'#059669',
+      scope:'private',    desc:'Climate resilience fee (ΤΑΚΚ) issued — private apartments' },
+    { key:'takk_pay',   label:'TAKK Payment',            icon:'💳', color:'#D97706',
+      scope:'private',    desc:'Climate resilience fee (ΤΑΚΚ) paid — private apartments' },
+    { key:'ota_inv',    label:'Airbnb & Booking.com Invoices to Accountants', icon:'📨', color:'#7C3AED',
+      scope:'b2b_leased', desc:'Channel invoices downloaded & forwarded to the accountants — B2B & Elysian-leased apartments' },
+  ];
+  const MT_SCOPES = {
+    all:        { label:'All apartments',        test:a=>true },
+    private:    { label:'Private apartments',    test:a=>a.profile==='private' },
+    b2b:        { label:'B2B apartments',        test:a=>a.profile==='b2b' },
+    leased:     { label:'Elysian leased',        test:a=>a.profile==='leased' },
+    b2b_leased: { label:'B2B & Elysian leased',  test:a=>a.profile==='b2b'||a.profile==='leased' },
+    company:    { label:'Company-level',         test:null },
+  };
+  const MAX_PROOF_MB = 15;
+
+  // ── Month being processed (defaults to previous calendar month) ─────────────
+  let mtMonth = (function(){ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); })();
+
+  // ── State helpers ───────────────────────────────────────────────────────────
+  function mtDefs()  { if(!Array.isArray(S.monthlyTaskDefs)) S.monthlyTaskDefs=[]; return MT_BUILTIN.concat(S.monthlyTaskDefs); }
+  function mtState() { if(!S.monthlyTasks||typeof S.monthlyTasks!=='object') S.monthlyTasks={};
+    if(!S.monthlyTasks[mtMonth]) S.monthlyTasks[mtMonth]={}; return S.monthlyTasks[mtMonth]; }
+  function mtEntry(k, create) { const st=mtState();
+    if(!st[k] && create) st[k]={done:false,na:false,proofs:[]};
+    if(st[k] && !Array.isArray(st[k].proofs)) st[k].proofs=[];
+    return st[k]||null; }
+  function mtRows(def) {
+    if (def.scope==='company') return [{ id:'company', name:'Elysian — Company' }];
+    const sc = MT_SCOPES[def.scope] || MT_SCOPES.all;
+    return (S.apts||[]).filter(a=>a && a.name && sc.test(a))
+      .map(a=>({ id:String(a.id||a.name), name:a.name, profile:a.profile }))
+      .sort((a,b)=>a.name.localeCompare(b.name));
+  }
+  function mtMonthLabel(m) { const p=(m||'').split('-');
+    return (MONTHS[(parseInt(p[1],10)||1)-1]||'')+' '+(p[0]||''); }
+  function mtShiftMonth(d) { const p=mtMonth.split('-');
+    const dt=new Date(parseInt(p[0],10), parseInt(p[1],10)-1+d, 1);
+    mtMonth=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0'); renderMt(); }
+  window.mtShiftMonth = mtShiftMonth;
+  window.mtSetMonth = function(v){ if(/^\d{4}-\d{2}$/.test(v)){ mtMonth=v; renderMt(); } };
+
+  // ── Team-member identity (shown to the manager next to completed tasks) ────
+  function mtUser(force) {
+    let n = localStorage.getItem('elysian_user_name') || '';
+    if (!n || force) {
+      n = (prompt('Your name — shown next to the tasks you complete:', n) || '').trim();
+      if (n) localStorage.setItem('elysian_user_name', n);
+    }
+    return n || 'Team member';
+  }
+  window.mtChangeUser = function(){ mtUser(true); renderMt(); };
+
+  const mtWhen = iso => { if(!iso) return ''; const d=new Date(iso);
+    return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); };
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+  window.mtToggle = function (kEnc) {
+    const k = decodeURIComponent(kEnc);
+    const e = mtEntry(k, true);
+    if (e.na) { e.na=false; e.naReason=''; }
+    else if (e.done) { e.done=false; }
+    else {
+      if (!e.proofs.length) { toast('Proof required — attach a file first (or mark the line N/A).','err'); return; }
+      e.done=true; e.by=mtUser(); e.at=new Date().toISOString();
+    }
+    save(); renderMt();
+  };
+
+  window.mtNa = function (kEnc) {
+    const k = decodeURIComponent(kEnc);
+    const e = mtEntry(k, true);
+    if (e.na) { e.na=false; e.naReason=''; }
+    else {
+      const reason=(prompt('Mark as N/A — why is this task not applicable this month? (e.g. no bookings)','')||'').trim();
+      e.na=true; e.naReason=reason; e.done=false; e.by=mtUser(); e.at=new Date().toISOString();
+    }
+    save(); renderMt();
+  };
+
+  window.mtUpload = function (kEnc, aptNameEnc) {
+    const k = decodeURIComponent(kEnc), aptName = decodeURIComponent(aptNameEnc);
+    const input=document.createElement('input');
+    input.type='file'; input.multiple=true;
+    input.accept='.pdf,.png,.jpg,.jpeg,.webp,.heic,image/*,application/pdf';
+    input.onchange=async ()=>{
+      const files=[...input.files]; if(!files.length) return;
+      const by=mtUser();
+      for (const f of files) {
+        if (f.size > MAX_PROOF_MB*1024*1024) { toast(esc(f.name)+' is over '+MAX_PROOF_MB+' MB — not uploaded.','err'); continue; }
+        toast('Uploading '+esc(f.name)+'…');
+        try {
+          const dataB64 = await new Promise((res,rej)=>{ const r=new FileReader();
+            r.onload=()=>res(String(r.result).split(',')[1]||''); r.onerror=rej; r.readAsDataURL(f); });
+          const parts=k.split('|');
+          const resp = await fetch('/api/proofs', { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ month:mtMonth, task:parts[0], aptId:parts.slice(1).join('|'), aptName,
+              name:f.name, mime:f.type||'application/octet-stream', size:f.size, by, dataB64 }) });
+          const out = await resp.json().catch(()=>({}));
+          if (!resp.ok || !out.ok) { toast('Upload failed: '+esc(out.error||('HTTP '+resp.status)),'err'); continue; }
+          const e = mtEntry(k, true);
+          e.proofs.push({ id:out.id, name:f.name, mime:f.type, size:f.size, by, at:new Date().toISOString() });
+          if (!e.na) { e.done=true; e.by=by; e.at=new Date().toISOString(); }
+          save();
+          toast(out.db===false
+            ? 'Proof stored in server memory only — add the PostgreSQL database for permanent storage.'
+            : '✓ Proof uploaded — task marked completed');
+        } catch(err) { toast('Could not reach the server — proof not uploaded.','err'); }
+      }
+      renderMt();
+    };
+    input.click();
+  };
+
+  window.mtViewProof = function (id) { window.open('/api/proofs/'+id, '_blank'); };
+
+  window.mtDelProof = function (kEnc, id, ev) {
+    if (ev) ev.stopPropagation();
+    if (!confirm('Delete this proof attachment?')) return;
+    const k = decodeURIComponent(kEnc);
+    fetch('/api/proofs/'+id, { method:'DELETE' }).catch(()=>{});
+    const e = mtEntry(k, true);
+    e.proofs = e.proofs.filter(p=>String(p.id)!==String(id));
+    if (!e.proofs.length && e.done) e.done=false;   // proof-required rule
+    save(); renderMt();
+  };
+
+  // ── Custom recurring tasks ─────────────────────────────────────────────────
+  window.mtAddDef = function () {
+    const nameEl=document.getElementById('mt-new-name'), scEl=document.getElementById('mt-new-scope');
+    const label=(nameEl.value||'').trim();
+    if (!label) { toast('Give the task a name first.','err'); return; }
+    if (!Array.isArray(S.monthlyTaskDefs)) S.monthlyTaskDefs=[];
+    S.monthlyTaskDefs.push({ key:'c'+Date.now(), label, icon:'📌', color:'#64748B', scope:scEl.value, custom:true,
+      desc:'Custom recurring task — repeats every month' });
+    nameEl.value='';
+    save(); renderMt(); toast('Task added — it will appear every month.');
+  };
+  window.mtDelDef = function (key) {
+    const def=(S.monthlyTaskDefs||[]).find(d=>d.key===key); if(!def) return;
+    if (!confirm('Remove the recurring task “'+def.label+'”?\nPast completion records stay in the database.')) return;
+    S.monthlyTaskDefs=S.monthlyTaskDefs.filter(d=>d.key!==key);
+    save(); renderMt();
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  window.renderMt = function () {
+    const panel=document.getElementById('tab-mt'); if(!panel) return;
+    const st=mtState(), defs=mtDefs();
+    const userName=localStorage.getItem('elysian_user_name')||'';
+
+    // Aggregate stats
+    let total=0, done=0, na=0, proofCount=0;
+    const sections=defs.map(def=>{
+      const rows=mtRows(def).map(r=>{ const k=def.key+'|'+r.id; const e=st[k]||null; return {...r,k,e}; });
+      const sDone=rows.filter(r=>r.e&&r.e.done).length;
+      const sNa=rows.filter(r=>r.e&&r.e.na).length;
+      total+=rows.length; done+=sDone; na+=sNa;
+      rows.forEach(r=>{ proofCount+=(r.e&&r.e.proofs?r.e.proofs.length:0); });
+      return { def, rows, sDone, sNa };
+    });
+    const applicable=Math.max(0,total-na);
+    const pct=applicable?Math.round(done/applicable*100):0;
+    const allDone=applicable>0&&done>=applicable;
+    const noProfile=(S.apts||[]).filter(a=>a&&a.name&&!a.profile).length;
+
+    let h='';
+
+    // Header
+    h+='<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:6px">'
+      +'<div><div style="font-size:22px;font-weight:500">Monthly Accounting Tasks</div>'
+      +'<div style="font-size:12px;color:var(--tx3);margin-top:2px">Recurring apartment &amp; company accounting checklist — every line needs a proof attachment so the manager can verify it.</div></div>'
+      +'<div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+      +'<button class="btn sm" onclick="mtChangeUser()" title="Shown next to tasks you complete">👤 '+(userName?esc(userName):'Set your name')+'</button>'
+      +'<button class="btn sm" onclick="loadFromDb().then(()=>{renderMt();toast(\'Refreshed from database\')})"><i class="ti ti-refresh"></i></button>'
+      +'</div></div>';
+
+    // Month navigation
+    h+='<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">'
+      +'<button class="btn sm" onclick="mtShiftMonth(-1)"><i class="ti ti-chevron-left"></i></button>'
+      +'<div style="font-size:16px;font-weight:600;min-width:150px;text-align:center">'+esc(mtMonthLabel(mtMonth))+'</div>'
+      +'<button class="btn sm" onclick="mtShiftMonth(1)"><i class="ti ti-chevron-right"></i></button>'
+      +'<input type="month" value="'+esc(mtMonth)+'" onchange="mtSetMonth(this.value)" style="width:160px;font-size:12px">'
+      +'<span style="font-size:11px;color:var(--tx3)">← month the accounting refers to</span>'
+      +'</div>';
+
+    // KPI row
+    h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">'
+      +'<div class="kpi"><div class="kpi-lbl">Progress — '+esc(mtMonthLabel(mtMonth))+'</div>'
+      +'<div class="kpi-val" style="color:'+(allDone?'#1a7a4a':'inherit')+'">'+pct+'%</div>'
+      +'<div style="height:5px;background:var(--bg3);border-radius:3px;margin-top:8px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(allDone?'#1a7a4a':'#C9A84C')+';border-radius:3px"></div></div></div>'
+      +'<div class="kpi"><div class="kpi-lbl">Completed</div><div class="kpi-val" style="color:#1a7a4a">'+done+'<span style="font-size:13px;color:var(--tx3)"> / '+applicable+'</span></div><div class="kpi-sub">tasks with proof</div></div>'
+      +'<div class="kpi"><div class="kpi-lbl">Pending</div><div class="kpi-val" style="color:'+(applicable-done>0?'#d97706':'inherit')+'">'+(applicable-done)+'</div><div class="kpi-sub">'+na+' marked N/A</div></div>'
+      +'<div class="kpi"><div class="kpi-lbl">Proof files</div><div class="kpi-val">'+proofCount+'</div><div class="kpi-sub">stored for this month</div></div>'
+      +'</div>';
+
+    if (allDone) h+='<div style="background:var(--bg-ok);border:.5px solid var(--bdr-ok);border-radius:var(--rl);padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--tx-ok)">✓ All accounting tasks for '+esc(mtMonthLabel(mtMonth))+' are completed with proof attached.</div>';
+
+    if (!(S.apts||[]).length) {
+      h+='<div class="card" style="text-align:center;padding:40px;color:var(--tx3)">No properties loaded yet — sync from Hosthub (Tools → Hosthub API) or import data first.</div>';
+      panel.innerHTML=h; return;
+    }
+    if (noProfile>0)
+      h+='<div style="background:var(--bg-warn);border:.5px solid var(--bdr-warn);border-radius:var(--r);padding:9px 14px;margin-bottom:16px;font-size:12px;color:var(--tx-warn)">⚠ '+noProfile+' apartment'+(noProfile>1?'s have':' has')+' no profile (Private / B2B / Leased) — set profiles in <a href="#" onclick="showTab(\'cfg\',document.querySelector(\'[onclick*=cfg]\'));return false" style="color:inherit;font-weight:600">Configuration</a> so they appear in the TAKK and invoice checklists.</div>';
+
+    // Shared row-part builders (used by the pending sections and the completed list)
+    const pillHtml=(r)=>{ const e=r.e, kE=enc(r.k);
+      return (e&&e.na)
+        ? '<span class="tag" style="background:var(--bg2);color:var(--tx3);cursor:pointer" onclick="mtToggle(\''+kE+'\')" title="'+esc(e.naReason||'Not applicable this month')+' — click to restore">— N/A</span>'
+        : (e&&e.done)
+          ? '<span class="tag" style="background:var(--bg-ok);color:var(--tx-ok);cursor:pointer" onclick="mtToggle(\''+kE+'\')" title="Click to send back to pending">✓ Completed</span>'
+          : '<span class="tag" style="background:var(--bg-warn);color:var(--tx-warn);cursor:pointer" onclick="mtToggle(\''+kE+'\')" title="Attach a proof, then click to complete">○ Pending</span>'; };
+    const chipsHtml=(r)=>{ const e=r.e, kE=enc(r.k), proofs=(e&&e.proofs)||[], isNa=e&&e.na;
+      return proofs.map(p=>
+        '<span class="tag" style="background:var(--bg2);border:.5px solid var(--bdr2);cursor:pointer;margin:1px 3px 1px 0;max-width:190px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle" '
+        +'onclick="mtViewProof(\''+esc(String(p.id))+'\')" title="'+esc(p.name)+' — uploaded by '+esc(p.by||'?')+' '+esc(mtWhen(p.at))+'. Click to view.">📎 '+esc(p.name)
+        +' <b style="color:var(--tx-err);padding:0 2px" onclick="mtDelProof(\''+kE+'\',\''+esc(String(p.id))+'\',event)" title="Delete proof">✕</b></span>').join('')
+        || '<span style="font-size:11px;color:'+(isNa?'var(--tx3)':'var(--tx-warn)')+'">'+(isNa?'—':'none yet')+'</span>'; };
+    const byHtml=(r)=>{ const e=r.e;
+      return (e&&(e.done||e.na)&&e.by) ? '<span style="font-size:11px;color:var(--tx2)">'+esc(e.by)+'</span><div style="font-size:10px;color:var(--tx3)">'+esc(mtWhen(e.at))+'</div>' : '<span style="font-size:11px;color:var(--tx3)">—</span>'; };
+
+    // Sections — only lines still to be done stay up here; finished ones move
+    // to the "Completed" list at the bottom of the page.
+    sections.forEach(({def,rows,sDone,sNa})=>{
+      const sc=MT_SCOPES[def.scope]||MT_SCOPES.all;
+      const applicableRows=rows.length-sNa;
+      const sectionDone=applicableRows>0&&sDone>=applicableRows;
+      const vis=rows.filter(r=>!(r.e&&(r.e.done||r.e.na)));
+      h+='<div class="card" style="margin-bottom:14px;padding:0;overflow:hidden;border-left:3px solid '+def.color+'">'
+        +'<div style="display:flex;align-items:center;gap:10px;padding:13px 16px;flex-wrap:wrap">'
+        +'<span style="font-size:17px">'+def.icon+'</span>'
+        +'<div style="min-width:0"><div style="font-size:14px;font-weight:600">'+esc(def.label)
+        +' <span class="tag" style="background:'+def.color+'18;color:'+def.color+';margin-left:6px">'+esc(sc.label)+'</span>'
+        +(def.custom?' <span class="tag" style="background:var(--bg2);color:var(--tx3);margin-left:2px">custom</span>':'')
+        +'</div><div style="font-size:11px;color:var(--tx3);margin-top:1px">'+esc(def.desc||'')+'</div></div>'
+        +'<div style="margin-left:auto;display:flex;align-items:center;gap:10px">'
+        +(def.custom?'<button class="btn sm danger" onclick="mtDelDef(\''+def.key+'\')" title="Remove this recurring task"><i class="ti ti-trash"></i></button>':'')
+        +'<div style="text-align:right"><span class="mono" style="font-size:13px;font-weight:600;color:'+(sectionDone?'#1a7a4a':'var(--tx)')+'">'+sDone+'/'+applicableRows+'</span>'
+        +(sNa?'<span style="font-size:11px;color:var(--tx3)"> · '+sNa+' N/A</span>':'')
+        +'<div style="width:90px;height:4px;background:var(--bg3);border-radius:2px;margin-top:4px;overflow:hidden"><div style="height:100%;width:'+(applicableRows?Math.round(sDone/applicableRows*100):0)+'%;background:'+(sectionDone?'#1a7a4a':def.color)+'"></div></div></div>'
+        +'</div></div>';
+      if (!rows.length) {
+        h+='<div style="padding:14px 16px;font-size:12px;color:var(--tx3);border-top:.5px solid var(--bdr)">No apartments in scope — '
+          +(def.scope==='company'?'':'assign the <b>'+esc(sc.label)+'</b> profile in Configuration.')+'</div>';
+      } else if (!vis.length) {
+        h+='<div style="padding:12px 16px;font-size:12px;color:var(--tx-ok);border-top:.5px solid var(--bdr);background:var(--bg-ok)">✓ Nothing left here — '
+          +sDone+' done'+(sNa?', '+sNa+' N/A':'')+' in the completed list below.</div>';
+      } else {
+        h+='<table class="tbl"><thead><tr><th style="width:26%">'+(def.scope==='company'?'Task for':'Property')+'</th>'
+          +'<th style="width:13%">Status</th><th>Proof attachments</th><th style="width:17%">Completed</th><th style="width:15%;text-align:right">Actions</th></tr></thead><tbody>';
+        vis.forEach(r=>{
+          const kE=enc(r.k);
+          h+='<tr><td><b style="font-size:12px">'+esc(r.name)+'</b></td>'
+            +'<td>'+pillHtml(r)+'</td><td>'+chipsHtml(r)+'</td><td>'+byHtml(r)+'</td>'
+            +'<td style="text-align:right;white-space:nowrap">'
+            +'<button class="btn sm" onclick="mtUpload(\''+kE+'\',\''+enc(r.name)+'\')" title="Attach proof (PDF or image)">📎 Proof</button> '
+            +'<button class="btn sm" style="color:var(--tx3)" onclick="mtNa(\''+kE+'\')" title="Not applicable this month">N/A</button>'
+            +'</td></tr>';
+        });
+        h+='</tbody></table>';
+      }
+      h+='</div>';
+    });
+
+    // ── Completed list — finished & N/A lines collect down here ──────────────
+    const doneRows=[];
+    sections.forEach(({def,rows})=>rows.forEach(r=>{ if(r.e&&(r.e.done||r.e.na)) doneRows.push({def,r}); }));
+    doneRows.sort((a,b)=>String(b.r.e.at||'').localeCompare(String(a.r.e.at||'')));
+    if (doneRows.length) {
+      const remaining=applicable-done;
+      h+='<div class="card" id="mt-done-card" style="margin-bottom:14px;padding:0;overflow:hidden;border-left:3px solid #1a7a4a">'
+        +'<div style="display:flex;align-items:center;gap:10px;padding:13px 16px;background:var(--bg-ok);flex-wrap:wrap">'
+        +'<span style="font-size:17px">✅</span>'
+        +'<div><div style="font-size:14px;font-weight:600;color:var(--tx-ok)">Completed — '+esc(mtMonthLabel(mtMonth))+'</div>'
+        +'<div style="font-size:11px;color:var(--tx2)">'+done+' of '+applicable+' tasks done'+(na?' · '+na+' marked N/A':'')+' — click a status pill to send a line back up.</div></div>'
+        +'<div style="margin-left:auto;text-align:right">'
+        +(remaining>0
+          ?'<span class="mono" style="font-size:18px;font-weight:600;color:var(--tx-warn)">'+remaining+'</span><div style="font-size:10px;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em">left to do</div>'
+          :'<span style="font-size:13px;font-weight:600;color:var(--tx-ok)">✓ All done</span>')
+        +'</div></div>'
+        +'<table class="tbl"><thead><tr><th style="width:27%">Task</th><th style="width:19%">Property</th>'
+        +'<th style="width:12%">Status</th><th>Proof attachments</th><th style="width:14%">Completed</th><th style="width:9%;text-align:right">Actions</th></tr></thead><tbody>';
+      doneRows.forEach(({def,r})=>{
+        const kE=enc(r.k), isNa=r.e&&r.e.na;
+        h+='<tr'+(isNa?' style="opacity:.55"':'')+'>'
+          +'<td><span style="font-size:12px">'+def.icon+' '+esc(def.label)+'</span></td>'
+          +'<td><b style="font-size:12px">'+esc(r.name)+'</b>'
+          +(isNa&&r.e.naReason?'<div style="font-size:10px;color:var(--tx3)">N/A: '+esc(r.e.naReason)+'</div>':'')+'</td>'
+          +'<td>'+pillHtml(r)+'</td><td>'+chipsHtml(r)+'</td><td>'+byHtml(r)+'</td>'
+          +'<td style="text-align:right;white-space:nowrap">'
+          +'<button class="btn sm" onclick="mtUpload(\''+kE+'\',\''+enc(r.name)+'\')" title="Attach another proof">📎 Proof</button>'
+          +'</td></tr>';
+      });
+      h+='</tbody></table></div>';
+    }
+
+    // Add-custom-task card
+    h+='<div class="card" style="margin-bottom:14px"><div class="shdr">Add a recurring task</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+      +'<input type="text" id="mt-new-name" placeholder="e.g. VAT return (F2) submission" style="flex:1;min-width:220px" onkeydown="if(event.key===\'Enter\')mtAddDef()">'
+      +'<select id="mt-new-scope" style="width:auto">'
+      +'<option value="company">Company-level (one line)</option>'
+      +'<option value="all">Per apartment — all</option>'
+      +'<option value="private">Per apartment — private</option>'
+      +'<option value="b2b">Per apartment — B2B</option>'
+      +'<option value="leased">Per apartment — Elysian leased</option>'
+      +'<option value="b2b_leased">Per apartment — B2B + leased</option>'
+      +'</select>'
+      +'<button class="btn gold" onclick="mtAddDef()"><i class="ti ti-plus"></i> Add task</button>'
+      +'</div><div style="font-size:11px;color:var(--tx3);margin-top:6px">Custom tasks repeat every month, just like the built-in ones.</div></div>';
+
+    panel.innerHTML=h;
+  };
+
+  // ── Tab wiring ─────────────────────────────────────────────────────────────
+  const _prevShowTabMt = window.showTab;
+  window.showTab = function (name, btn) {
+    if (name === 'mt') {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-mt').classList.add('active');
+      if (btn) btn.classList.add('active');
+      renderMt();
+      return;
+    }
+    return _prevShowTabMt.apply(this, arguments);
+  };
+
+  // Keep fresh while visible (the app's 60 s DB poll refreshes S in background)
+  setInterval(() => {
+    const p = document.getElementById('tab-mt');
+    if (p && p.classList.contains('active')) renderMt();
   }, 60000);
 })();
 
