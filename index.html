@@ -786,7 +786,7 @@ const GENERIC_AL={
   "ΠΛΥΝΤΗΡΙΑ ΘΕΣ":"Cleaning Material Thessaloniki"
 };
 
-let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]},cleanOverride:{},rptLocks:{},monthlyTasks:{},monthlyTaskDefs:[]};
+let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]},cleanOverride:{},rptLocks:{},moOverride:{},monthlyTasks:{},monthlyTaskDefs:[]};
 let rptMode="mo";
 
 // ── Persistence ──────────────────────────────────────────
@@ -842,6 +842,7 @@ function load() {
       S.daily   = p.daily   || { snapshots: {}, tasks: [] };
       S.cleanOverride = p.cleanOverride || {};
       S.rptLocks = p.rptLocks || {};
+      S.moOverride = p.moOverride || {};
       S.monthlyTasks = p.monthlyTasks || {};
       S.monthlyTaskDefs = p.monthlyTaskDefs || [];
     }
@@ -855,7 +856,7 @@ function load() {
 function save() {
   // Immediate local save
   try {
-    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]}, cleanOverride: S.cleanOverride || {}, rptLocks: S.rptLocks || {}, monthlyTasks: S.monthlyTasks || {}, monthlyTaskDefs: S.monthlyTaskDefs || [] }));
+    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]}, cleanOverride: S.cleanOverride || {}, rptLocks: S.rptLocks || {}, moOverride: S.moOverride || {}, monthlyTasks: S.monthlyTasks || {}, monthlyTaskDefs: S.monthlyTaskDefs || [] }));
   } catch(e) {}
   // Debounced DB save (2s after last change)
   if (_dbAvailable) {
@@ -880,6 +881,7 @@ async function saveToDb() {
       daily: S.daily || {snapshots:{},tasks:[]},
       cleanOverride: S.cleanOverride || {},
       rptLocks: S.rptLocks || {},
+      moOverride: S.moOverride || {},
       monthlyTasks: S.monthlyTasks || {},
       monthlyTaskDefs: S.monthlyTaskDefs || []
     };
@@ -920,12 +922,12 @@ async function loadFromDb() {
     S.bks     = data.bks     || S.bks;
     S.exps    = data.exps    || S.exps;
     S.meta    = data.meta    || S.meta    || {};
-    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};S.rptLocks = data.rptLocks || S.rptLocks || {};S.monthlyTasks = data.monthlyTasks || S.monthlyTasks || {};S.monthlyTaskDefs = data.monthlyTaskDefs || S.monthlyTaskDefs || [];
+    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};S.rptLocks = data.rptLocks || S.rptLocks || {};S.moOverride = data.moOverride || S.moOverride || {};S.monthlyTasks = data.monthlyTasks || S.monthlyTasks || {};S.monthlyTaskDefs = data.monthlyTaskDefs || S.monthlyTaskDefs || [];
     _lastDbSave = data._savedAt;
     _dataInitialized = true;
     // Persist loaded state to localStorage
     try {
-      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily, cleanOverride: S.cleanOverride, rptLocks: S.rptLocks, monthlyTasks: S.monthlyTasks, monthlyTaskDefs: S.monthlyTaskDefs }));
+      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily, cleanOverride: S.cleanOverride, rptLocks: S.rptLocks, moOverride: S.moOverride, monthlyTasks: S.monthlyTasks, monthlyTaskDefs: S.monthlyTaskDefs }));
       // Sync the "Last synced" display with actual last sync from DB meta
       const lastSync = S.meta?.lastSync || S.meta?.lastAutoSync;
       if (lastSync) localStorage.setItem('hh_last_sync', lastSync);
@@ -2489,7 +2491,11 @@ function getOverlapNights(aptId, from, to) {
   }, 0);
 }
 
-function calcBase(bks,apt,stayOverride){
+// months = number of calendar months the report period touches (default 1).
+// Fixed MONTHLY amounts (business tax, fixed charges) are charged once per month
+// covered, so a custom range crossing two months counts them twice.
+function calcBase(bks,apt,stayOverride,months){
+  const _nMo = Math.max(1, parseInt(months)||1);
   // Exclude maintenance/owner blocks from financial calculations
   bks = bks.filter(isRevenueBooking);
   const gross    =bks.reduce((s,b)=>s+(b.gross||0),0);
@@ -2521,7 +2527,8 @@ function calcBase(bks,apt,stayOverride){
   // Management base: pre-VAT booking value minus accommodation tax, cleaning (ex-VAT only), platform fees
   // Cleaning VAT is NOT deducted from base — it is an Elysian service charge, not a base deduction
   // Business tax (Επιτηδεύματος): fixed monthly amount — computed first as it reduces the mgmt fee base
-  const bt = apt?.businessTax ? (parseFloat(apt?.businessTaxAmt)||50) : 0;
+  // Charged once per calendar month the report period covers (×_nMo)
+  const bt = apt?.businessTax ? (parseFloat(apt?.businessTaxAmt)||50) * _nMo : 0;
   // Management fee base = Revenue - Taxes (per profile flags) - Platform Fees - Business Tax - Cleaning
   const vatForBase = (apt?.deductVAT !== false) ? vat : 0;
   const atForBase  = apt?.municipalityTax ? at : 0;
@@ -2540,12 +2547,14 @@ function calcBase(bks,apt,stayOverride){
 //   getEA    : (expense, aptId) => net amount attributable to aptId
 //   getEAVat : (expense, aptId) => real invoice VAT attributable to aptId
 //   cleanOv  : manual stay-count override (single-property mode only; pass null for multi)
-function calcAptPacket(a, aBks, aExps, getEA, getEAVat, cleanOv) {
-  const m    = calcBase(aBks, a, cleanOv);
+function calcAptPacket(a, aBks, aExps, getEA, getEAVat, cleanOv, months) {
+  const _nMo = Math.max(1, parseInt(months)||1);
+  const m    = calcBase(aBks, a, cleanOv, _nMo);
   const rate = parseFloat(a.mgmtFee||0)/100;
   const mf   = Math.max(0, m.base) * rate;             // clamp per apartment
   const hasVat = !!a.vatOnFees;
-  const fixedCh = (a.fixedCharges||[]).reduce((s,f)=>s+(parseFloat(f.amount)||0),0);
+  // Fixed charges are monthly amounts — charged once per month the period covers
+  const fixedCh = (a.fixedCharges||[]).reduce((s,f)=>s+(parseFloat(f.amount)||0),0) * _nMo;
   const cleanDeduct = (a.deductCleaning !== false) ? m.configCl : 0;
   const elysianVat  = hasVat ? (mf + cleanDeduct + fixedCh) * 0.24 : 0;
   const totExp = aExps.reduce((s,e)=>s+getEA(e, a.id),0);
@@ -2563,7 +2572,15 @@ function calcAptPacket(a, aBks, aExps, getEA, getEAVat, cleanOv) {
     - totExpIncl;
   return { a, m, rate, mf, hasVat, fixedCh, cleanDeduct, elysianVat,
            totExp, expVat, totExpIncl, ctDeduct, vatDeduct, atDeduct,
-           payout, b2bRem, netEarnings, exps: aExps };
+           payout, b2bRem, netEarnings, exps: aExps, months: _nMo };
+}
+
+// Number of calendar months a report period touches (June 15 – July 15 → 2).
+// Monthly mode always returns 1; used to charge fixed monthly amounts per month.
+function rptMonthsSpanned(dates){
+  if (!dates || !dates.from || !dates.to) return 1;
+  const f = dates.from, t = dates.to;
+  return Math.max(1, (t.getFullYear()*12 + t.getMonth()) - (f.getFullYear()*12 + f.getMonth()) + 1);
 }
 
 // Sum packets into the combined figures used for rendering/PDF/email.
@@ -3389,7 +3406,7 @@ function rrow(lbl,val,indent,color,bold,sub){
   </div>`;
 }
 
-function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
+function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride,moOverride){
   const _rawBkCount = bks.length;
   bks = bks.filter(isRevenueBooking); // exclude maintenance/owner blocks
   const _excludedBlocks = _rawBkCount - bks.length;
@@ -3405,13 +3422,21 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
   const _expsForApt = (a) => exps.filter(e =>
     e.aptId === a.id ||
     (e.aptId === '__spl' && e.splits?.some(s => s.aptId === a.id && parseFloat(s.amt) > 0)));
+  // Months covered by the active report period: fixed monthly amounts (business
+  // tax, fixed charges) are billed once per month, so a range crossing two
+  // months charges them twice. A manual ▲▼ override (single-property mode, like
+  // the cleaning stay-count stepper) can force a different month count.
+  const _nMoAuto = rptMonthsSpanned(getRptDates());
+  const _nMoRpt  = (!_multi && moOverride != null) ? Math.max(1, parseInt(moOverride)||1) : _nMoAuto;
+  window._rptMoAuto = _nMoAuto;
   const P = _apts.map(a => calcAptPacket(
     a,
     _multi ? bks.filter(b => b.aptId === a.id) : bks,
     _expsForApt(a),
     getEA,
     _geaVat,
-    _multi ? null : cleanOverride   // manual stay-count stepper is single-property only
+    _multi ? null : cleanOverride,  // manual stay-count stepper is single-property only
+    _nMoRpt
   ));
   const C_ = sumPackets(P);
   const m = C_.m;
@@ -3444,6 +3469,17 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
 
   // ── Unified clearance table ─────────────────────────────────────────────────
   const isGR = (apt.language||'EN') === 'GR';
+
+  // ▲▼ stepper for the fixed-monthly-charges month count — same control as the
+  // cleaning stay-count stepper. Single-property mode only (like cleaning).
+  const _moWord = (n) => isGR ? (n===1?'μήνας':'μήνες') : (n===1?'month':'months');
+  const moStepHtml = () => _multi ? '' :
+    '<span style="display:inline-flex;flex-direction:column;line-height:0;margin-left:2px;vertical-align:middle">'
+      +'<button onclick="rptMoStep(1)" title="Charge one more month" style="border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px">\u25B2</button>'
+      +'<button onclick="rptMoStep(-1)" title="Charge one month less" style="border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px">\u25BC</button>'
+    +'</span>'
+    +(_nMoRpt!==_nMoAuto?'<a onclick="rptMoReset()" title="Reset to automatic ('+_nMoAuto+' '+_moWord(_nMoAuto)+')" style="cursor:pointer;text-decoration:underline;color:#C9A84C;font-size:10px;margin-left:2px">reset</a>':'');
+  const moSubHtml = (text) => '<span style="display:inline-flex;align-items:center;gap:3px"><span>'+text+'</span>'+moStepHtml()+'</span>';
   const L = {
     bookingRevenue: isGR?'Εσοδα Κρατησεων'             :'Booking Revenue',
     revenue:        isGR?'Εσοδα'                        :'Revenue',
@@ -3525,10 +3561,14 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
     .concat(vatDeduct>0 ? [cr(L.accomVAT, null, -vatDeduct, null)] : [])
     .concat(atDeduct>0  ? [cr(L.accomTax, null, -atDeduct,  null)] : [])
     .concat(m.svc+m.pchg>0 ? [cr(L.platformFees, 'service fee + payment charges', -(m.svc+m.pchg), null)] : [])
-    .concat(P.filter(p=>p.m.bt>0).map(p => cr(
-      (isGR?'Επιτηδεύματος':'Business Tax (Επιτηδεύματος)') + (_multi ? ' — '+p.a.name : ''),
-      isGR?'Φόρος Επιτηδεύματος (μηνιαία χρέωση)':'Business activity tax (monthly)',
-      -p.m.bt, null)))
+    .concat(P.filter(p=>p.m.bt>0).map(p => {
+      const _pMo = p.months||1;
+      const txt = isGR ? 'Μηνιαία χρέωση × '+_pMo+' '+_moWord(_pMo) : 'Monthly charge × '+_pMo+' '+_moWord(_pMo);
+      return cr(
+        (isGR?'Επιτηδεύματος':'Business Tax (Επιτηδεύματος)') + (_multi ? ' — '+p.a.name : ''),
+        _multi ? txt : moSubHtml(txt),
+        -p.m.bt, null);
+    }))
     .concat(m.ct>0||vatDeduct>0||atDeduct>0||m.svc>0||m.bt>0 ? [csub(isGR?'Σύνολο φόρων & προμηθειών':'Subtotal — taxes & platform', -(m.ct+vatDeduct+atDeduct+m.svc+m.pchg+m.bt), null)] : [])
     .concat([csep])
     // ── Elysian service charges ─────────────────────────────────────────────────
@@ -3553,9 +3593,16 @@ function buildRptHTML(apt,bks,exps,getEA,selApts,getEAVat,cleanOverride){
       // Negative amounts are CREDITS to the owner (e.g. balance carried forward).
       // calcAptPacket already includes them in payout/net, so hiding them (old >0
       // filter) made the itemized rows disagree with the report's own subtotals.
-      const fa=parseFloat(f.amount);
+      // Monthly amount × months covered by the period (matches packet fixedCh).
+      const _pMo=p.months||1;
+      const fa=parseFloat(f.amount)*_pMo;
       const lbl = _multi ? (f.label||'Software')+' — '+p.a.name : (f.label||'Software / Fixed charge');
-      return cr(lbl, fa<0 ? (isGR?'Πίστωση':'Credit') : null, -fa, p.hasVat ? -fa*0.24 : null);
+      const txt = [
+        fmt(parseFloat(f.amount))+' × '+_pMo+' '+_moWord(_pMo),
+        fa<0 ? (isGR?'Πίστωση':'Credit') : null,
+      ].filter(Boolean).join(' · ');
+      const sub = _multi ? (_pMo>1||fa<0 ? txt : null) : moSubHtml(txt);
+      return cr(lbl, sub, -fa, p.hasVat ? -fa*0.24 : null);
     })))
     .concat(exps.length>0 ? [
       cr(isGR?'Έξοδα':'Expenses', exps.length+' item'+(exps.length!==1?'s':''), -totExp, hasVat ? -expVat : null, {bold:true})
@@ -3790,8 +3837,11 @@ function renderRpt(){
   window._rptLockKey = lockKey;
   window._rptCleanKey = cleanKey; // exposed for the stepper buttons
   const cleanOv = (S.cleanOverride && S.cleanOverride[cleanKey] !== undefined) ? S.cleanOverride[cleanKey] : null;
+  // Manual months override for fixed monthly charges (same key scope as cleaning)
+  window._rptMoKey = cleanKey;
+  const moOv = (S.moOverride && S.moOverride[cleanKey] !== undefined) ? S.moOverride[cleanKey] : null;
   try {
-    const _r=buildRptHTML(apt,bks,exps,gea,_selApts,geaVat,cleanOv);
+    const _r=buildRptHTML(apt,bks,exps,gea,_selApts,geaVat,cleanOv,moOv);
     ({panelHTML,payout,occ,nights,totalDays,m,packets,cmb}=_r);
   } catch(err) {
     panels.innerHTML='<div style="padding:20px;background:#fdecea;border:.5px solid #f44336;border-radius:var(--r);color:#b71c1c;font-size:12px">'
@@ -4008,7 +4058,7 @@ function exportPDF() {
     return [
       ...(p.mf > 0 ? [{ label: `Management fee (${p.a.mgmtFee}%)${nm}`, sub: `${fmt(Math.max(0,p.m.base))} × ${p.a.mgmtFee}%`, amount: p.mf, hasVat: p.hasVat }] : []),
       ...(p.cleanDeduct > 0 ? [{ label: `Cleaning fee${nm}`, sub: `${p.m.cleanStays} stays × ${fmt(p.a.cleaningFee)}/stay`, amount: p.cleanDeduct, hasVat: p.hasVat }] : []),
-      ...(p.a.fixedCharges||[]).filter(f=>{const v=parseFloat(f.amount);return Number.isFinite(v)&&v!==0;}).map(f=>({ label: (f.label||'Fixed charge')+nm, sub: parseFloat(f.amount)<0?'credit':'', amount: parseFloat(f.amount)||0, hasVat: p.hasVat })),
+      ...(p.a.fixedCharges||[]).filter(f=>{const v=parseFloat(f.amount);return Number.isFinite(v)&&v!==0;}).map(f=>({ label: (f.label||'Fixed charge')+nm, sub: [(p.months||1)>1?`${fmt(parseFloat(f.amount))} × ${p.months} months`:'', parseFloat(f.amount)<0?'credit':''].filter(Boolean).join(' · '), amount: (parseFloat(f.amount)||0)*(p.months||1), hasVat: p.hasVat })),
     ];
   });
   const chanCounts = {};
@@ -5320,6 +5370,26 @@ function rptCleanStep(delta) {
   save();
   renderRpt();
 }
+
+// ▲▼ months stepper for fixed monthly charges (business tax + fixed charges).
+// Same pattern as the cleaning stay-count stepper: override stored per
+// property + period, automatic value = calendar months the period touches.
+function rptMoStep(delta) {
+  const key = window._rptMoKey;
+  if (!key) return;
+  S.moOverride = S.moOverride || {};
+  const auto = window._rptMoAuto || 1;
+  const current = (S.moOverride[key] !== undefined) ? S.moOverride[key] : auto;
+  const next = Math.max(1, current + delta);
+  if (next === auto) delete S.moOverride[key]; // back to automatic — keep storage clean
+  else S.moOverride[key] = next;
+  save();
+  renderRpt();
+}
+function rptMoReset() {
+  const key = window._rptMoKey;
+  if (key && S.moOverride) { delete S.moOverride[key]; save(); renderRpt(); }
+}
 // Freeze the currently rendered report's key numbers (audit trail for sent reports)
 function _lockCurrentReport(via) {
   const key = window._rptLockKey, rpt = window._rpt;
@@ -5641,7 +5711,7 @@ async function saveRevenueSnapshot() {
     // Respect manual cleaning stay-count override for this property + report period
     const ovKey = a.id + '::' + (dates?.from?.toISOString?.().slice(0,10)||'') + '::' + (dates?.to?.toISOString?.().slice(0,10)||'');
     const ov = (S.cleanOverride && S.cleanOverride[ovKey] !== undefined) ? S.cleanOverride[ovKey] : null;
-    const m2 = calcBase(aptBks, a, ov);
+    const m2 = calcBase(aptBks, a, ov, (rpt.packets && rpt.packets[0] && rpt.packets[0].months) || rptMonthsSpanned(dates)); // months-aware (honors the ▲▼ override): bt reduces base once per month covered
     const mfAmt = Math.max(0, m2.base) * (parseFloat(a.mgmtFee||0)/100); // clamp: consistent with report
     const cleanAmt = m2.configCl; // cleaning fee ex-VAT (override-aware)
     return { aptId: a.id, aptName: a.name, mo, yr, moLbl, mfAmt, cleanAmt };
@@ -6721,6 +6791,14 @@ function runFinancialTests() {
     assert('M3 combined cleaning = Σ own-rate cleanings', C3.cleanDeduct, 105);
     assert('M3b apt A cleaning (2 stays × 20)', pA.cleanDeduct, 40);
     assert('M3c apt B cleaning (3 stays × 15)', pB.cleanDeduct, 45);
+    // M-months: fixed MONTHLY amounts are charged once per calendar month the
+    // report period covers — a range crossing two months charges them twice.
+    const pA2mo = calcAptPacket(mA, bksA, expsFor('mA'), mGea, mGeaVat, null, 2);
+    assert('Mm1 business tax ×2 when period spans 2 months', pA2mo.m.bt, 100);
+    assert('Mm2 fixed charges ×2 when period spans 2 months (45×2)', pA2mo.fixedCh, 90);
+    assert('Mm3 default (no months arg) charges once', pA.fixedCh + pA.m.bt, 45 + 50);
+    assert('Mm4 payout drops by exactly the extra month of fixed amounts (bt reduces mgmt base)',
+      +(pA.payout - pA2mo.payout).toFixed(2), +(50 + 45 - 50*(parseFloat(mA.mgmtFee||0)/100) + (mA.vatOnFees ? 45*0.24 : 0)).toFixed(2));
     // M4: multi totals ≡ Σ single-property packets (the core invariant)
     assert('M4 combined payout = Σ single payouts', C3.payout, pA.payout + pB.payout + pC.payout);
     assert('M4b combined netEarnings = Σ singles', C3.netEarnings, pA.netEarnings + pB.netEarnings + pC.netEarnings);
