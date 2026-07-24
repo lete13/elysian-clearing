@@ -1128,6 +1128,10 @@ async function vivaPersonCandidates() {
   try {
     const claims = vivaDecodeJwt(await vivaBearer(''));
     console.log('[viva] token claim keys: ' + Object.keys(claims).join(','));
+    if (claims.scope) console.log('[viva] token scope: ' + JSON.stringify(claims.scope));
+    // any claim whose KEY mentions "person" wins, whatever shape its value has —
+    // Viva puts it in urn:viva:payments:client_person_id
+    Object.keys(claims).forEach(k => { if (/person/i.test(k)) (Array.isArray(claims[k]) ? claims[k] : [claims[k]]).forEach(push); });
     ['personId', 'PersonId', 'person_id', 'viva_person_id', 'sub', 'client_sub', 'merchantId', 'merchant_id'].forEach(k => { if (claims[k]) push(claims[k]); });
     Object.values(claims).forEach(v => { if (typeof v === 'string' && GUID_RE.test(v)) push(v); });
   } catch (e) { console.log('[viva] no token for claim mining: ' + e.message); }
