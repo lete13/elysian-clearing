@@ -1040,7 +1040,7 @@ const VIVA_BASE     = VIVA_HOSTS[0];   // kept for the probe endpoint
 const VIVA_ACCOUNTS = process.env.VIVA_ACCOUNTS_URL || (VIVA_ENV === 'demo' ? 'https://demo-accounts.vivapayments.com' : 'https://accounts.vivapayments.com');
 const VIVA_HTTP_TIMEOUT = 20000;   // per-request; a hung connection can never freeze the check
 const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
-const VIVA_BUILD = 'v5';           // shown in /api/viva/status + error diags so we know which build is live
+const VIVA_BUILD = 'v6';           // shown in /api/viva/status + error diags so we know which build is live
 let _vivaWorking = null;           // { base, authMode } — locked in after first success
 const _vivaDiag = { scope: '', claims: '', persons: 0, aud: '' };
 
@@ -1157,11 +1157,11 @@ async function vivaPersonCandidates() {
 }
 
 async function vivaFetchTransactions(fromISO, toISO) {
-  // Strategy 1: the WALLETS API — the one this credential's scopes actually allow.
+  // Strategy 1: merchants/v1/wallets + dataservices v2 Search (scope-correct).
   const wFailures = [];
-  const viaWallets = await vivaWalletStrategy(fromISO, toISO, wFailures);
-  if (viaWallets) return viaWallets;
-  console.log('[viva] wallet strategy failed (' + wFailures.length + ' attempts) — falling back to dataservices');
+  const viaMerchants = await vivaMerchantsStrategy(fromISO, toISO, wFailures);
+  if (viaMerchants) return viaMerchants;
+  console.log('[viva] merchants strategy failed — falling back to dataservices v1');
 
   // Strategy 2: the documented /dataservices Search (needs the biservices scope).
   const body = { DateFrom: fromISO, DateTo: toISO, AmountFrom: 0.01 };   // credits only — debits can never match a payout
@@ -1203,9 +1203,13 @@ async function vivaFetchTransactions(fromISO, toISO) {
   }
   if (!combo) {
     _vivaWorking = null;
-    throw new Error('No Viva combination worked — WALLETS: ' + wFailures.slice(0, 12).join(' · ') +
-      ' — DATASERVICES: ' + failures.join(' · ') +
-      ` [diag ${VIVA_BUILD}: personCandidates=${_vivaDiag.persons}, tokenScope="${_vivaDiag.scope || 'NONE'}", aud="${_vivaDiag.aud || '?'}"]`);
+    const walletsOk = wFailures.includes('WALLETS_OK');
+    const wList = wFailures.filter(f => f !== 'WALLETS_OK').slice(0, 10).join(' · ');
+    throw new Error((walletsOk
+      ? 'Your credentials ARE valid — the wallets endpoint works — but Viva has not enabled the Account Transactions data API for them. Viva\'s docs gate that API behind "specific access credentials — speak to your sales representative" (OAuth scope biservices/datafileapi). ASK YOUR VIVA ACCOUNT MANAGER to enable the Account Transactions API for these credentials; nothing further can be fixed in code. — '
+      : 'No Viva combination worked — ')
+      + 'MERCHANTS: ' + wList + ' — DATASERVICES v1: ' + failures.join(' · ')
+      + ` [diag ${VIVA_BUILD}: tokenScope="${_vivaDiag.scope || 'NONE'}", aud="${_vivaDiag.aud || '?'}"]`);
   }
   if (!_vivaWorking) {
     console.log(`[viva] LOCKED IN: ${combo.base} + ${combo.authMode}${combo.scope ? ' (scope ' + combo.scope + ')' : ''}${combo.personId ? ' + PersonId header' : ''}`);
@@ -1249,17 +1253,76 @@ function vivaNormalizeCredits(raw) {
     id: String(t.accountTransactionId || t.AccountTransactionId || t.TransactionId || t.transactionId || t.Id || t.id || ''),
     date: new Date(t.created || t.Created || t.InsDate || t.insDate || t.dateCreated || t.Date || t.date || 0),
     amount: Math.round(((t.amount != null ? +t.amount : +t.Amount) || 0) * 100) / 100,
-    counterpart: String(t.counterPart || t.CounterPart || t.counterpart || t.Description || t.description || ''),
+    counterpart: String(t.counterPart || t.CounterPart || t.counterpart || t.userDescription || t.Description || t.description || ''),
     typeId: t.typeId != null ? t.typeId : t.TypeId, subTypeId: t.subTypeId != null ? t.subTypeId : t.SubTypeId,
     walletId: t.walletId != null ? t.walletId : t.WalletId,
   })).filter(t => t.id && t.amount > 0 && !isNaN(t.date));
 }
 
-// ── Wallets-API strategy ──────────────────────────────────────────────────────
-// The self-serve Account Transactions credentials carry the scopes
-// core:api:merchants:wallets + core:api:banktransfers (verified from the token),
-// which unlock the WALLETS endpoints instead of /dataservices. Flow: list the
-// wallets, then pull each wallet's transactions for the date range.
+// ── Merchants/wallets strategy (matches the token's actual scopes) ────────────
+// Verified against the live Payment API reference (Retrieve Wallets and
+// Transactions): GET /merchants/v1/wallets requires exactly the scopes these
+// credentials carry (core:api:merchants + core:api:merchants:wallets), while
+// POST /dataservices/v2/accounttransactions/Search is documented to need
+// urn:viva:payments:biservices:datafileapi ("specific access credentials …
+// speak to your sales representative"). We list wallets first (proves the
+// credentials), then attempt the v2 Search with every token we can mint.
+async function vivaMerchantsStrategy(fromISO, toISO, failures) {
+  let bearerH;
+  try { bearerH = 'Bearer ' + await vivaBearer(''); } catch (e) { failures.push('token: ' + e.message); return null; }
+  const base = VIVA_HOSTS[0];
+
+  // 1) Wallets — the endpoint our scopes unlock
+  let wallets;
+  {
+    const r = await vivaHttp(base + '/merchants/v1/wallets', { method: 'GET', headers: { Authorization: bearerH } });
+    if (!r.ok) {
+      const bt = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 140);
+      failures.push(`merchants/v1/wallets: HTTP ${r.status}${bt ? ' — ' + bt : ''}`);
+      return null;
+    }
+    const d = await r.json().catch(() => null);
+    wallets = Array.isArray(d) ? d : (d && (d.wallets || d.items || d.data)) || [];
+    if (!wallets.length) { failures.push('merchants/v1/wallets: empty wallet list'); return null; }
+  }
+  const ids = wallets.map(w => w.walletId != null ? w.walletId : w.WalletId).filter(x => x != null);
+  console.log(`[viva] ✓ merchants/v1/wallets — ${ids.length} wallet(s): ` + wallets.map(w => (w.friendlyName || w.walletId) + ' (' + (w.iban || 'no iban') + ')').join(', '));
+  failures.push('WALLETS_OK');
+
+  // 2) Transactions — v2 Search, paged until HTTP 204 per the reference
+  const fmtV = v => new Date(v).toISOString().replace('T', ' ').replace('Z', ' +00:00');
+  const body0 = { DateFrom: fmtV(fromISO), DateTo: fmtV(toISO) };
+  const tokens = [{ tag: '', h: bearerH }];
+  try { tokens.push({ tag: '+datafileapi', h: 'Bearer ' + await vivaBearer('urn:viva:payments:biservices:datafileapi') }); }
+  catch (e) { failures.push('datafileapi scope: ' + e.message); }
+  for (const tk of tokens) {
+    const all = [];
+    let ok = true;
+    for (const id of ids) {
+      for (let page = 1; page <= 40; page++) {
+        const url = `${base}/dataservices/v2/accounttransactions/Search?PageSize=500&Page=${page}&OrderBy=Ascending`;
+        const r = await vivaHttp(url, { method: 'POST', headers: { Authorization: tk.h, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body0, WalletId: id }) });
+        if (r.status === 204) break;
+        if (!r.ok) {
+          const bt = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 140);
+          failures.push(`v2 Search${tk.tag} (wallet ${id}): HTTP ${r.status}${bt ? ' — ' + bt : ''}`);
+          ok = false; break;
+        }
+        const d = await r.json().catch(() => null);
+        const items = Array.isArray(d) ? d : (d && (d.items || d.data || d.results || d.transactions)) || [];
+        if (!items.length) break;
+        all.push(...items);
+        console.log(`[viva] v2 Search${tk.tag} wallet ${id} page ${page}: ${items.length} tx`);
+        if (items.length < 500) break;
+      }
+      if (!ok) break;
+    }
+    if (ok) { console.log(`[viva] ✓ v2 Search${tk.tag} — ${all.length} transactions from ${ids.length} wallet(s)`); return all; }
+  }
+  return null;
+}
+
+// ── (kept as historical fallback) old wallets-path prober ─────────────────────
 async function vivaWalletStrategy(fromISO, toISO, failures) {
   const dFrom = String(fromISO).slice(0, 10), dTo = String(toISO).slice(0, 10);
   let bearer = null;
