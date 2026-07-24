@@ -1040,9 +1040,9 @@ const VIVA_BASE     = VIVA_HOSTS[0];   // kept for the probe endpoint
 const VIVA_ACCOUNTS = process.env.VIVA_ACCOUNTS_URL || (VIVA_ENV === 'demo' ? 'https://demo-accounts.vivapayments.com' : 'https://accounts.vivapayments.com');
 const VIVA_HTTP_TIMEOUT = 20000;   // per-request; a hung connection can never freeze the check
 const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
-const VIVA_BUILD = 'v4';           // shown in /api/viva/status + error diags so we know which build is live
+const VIVA_BUILD = 'v5';           // shown in /api/viva/status + error diags so we know which build is live
 let _vivaWorking = null;           // { base, authMode } — locked in after first success
-const _vivaDiag = { scope: '', claims: '', persons: 0 };
+const _vivaDiag = { scope: '', claims: '', persons: 0, aud: '' };
 
 // ── Viva API client ───────────────────────────────────────────────────────────
 // Every request is logged ([viva] lines in the Railway deploy logs) and hard-
@@ -1131,6 +1131,7 @@ async function vivaPersonCandidates() {
     const claims = vivaDecodeJwt(await vivaBearer(''));
     _vivaDiag.claims = Object.keys(claims).join(',');
     _vivaDiag.scope = Array.isArray(claims.scope) ? claims.scope.join(' ') : String(claims.scope || '');
+    _vivaDiag.aud = Array.isArray(claims.aud) ? claims.aud.join(' ') : String(claims.aud || '');
     console.log('[viva] token claim keys: ' + _vivaDiag.claims);
     if (claims.scope) console.log('[viva] token scope: ' + JSON.stringify(claims.scope));
     // any claim whose KEY mentions "person" wins, whatever shape its value has —
@@ -1204,7 +1205,7 @@ async function vivaFetchTransactions(fromISO, toISO) {
     _vivaWorking = null;
     throw new Error('No Viva combination worked — WALLETS: ' + wFailures.slice(0, 12).join(' · ') +
       ' — DATASERVICES: ' + failures.join(' · ') +
-      ` [diag ${VIVA_BUILD}: personCandidates=${_vivaDiag.persons}, tokenScope="${_vivaDiag.scope || 'NONE'}"]`);
+      ` [diag ${VIVA_BUILD}: personCandidates=${_vivaDiag.persons}, tokenScope="${_vivaDiag.scope || 'NONE'}", aud="${_vivaDiag.aud || '?'}"]`);
   }
   if (!_vivaWorking) {
     console.log(`[viva] LOCKED IN: ${combo.base} + ${combo.authMode}${combo.scope ? ' (scope ' + combo.scope + ')' : ''}${combo.personId ? ' + PersonId header' : ''}`);
@@ -1261,43 +1262,55 @@ function vivaNormalizeCredits(raw) {
 // wallets, then pull each wallet's transactions for the date range.
 async function vivaWalletStrategy(fromISO, toISO, failures) {
   const dFrom = String(fromISO).slice(0, 10), dTo = String(toISO).slice(0, 10);
-  const auths = [];
-  try { auths.push({ mode: 'bearer', h: 'Bearer ' + await vivaBearer('') }); } catch (e) { failures.push('token: ' + e.message); }
-  auths.push({ mode: 'basic', h: 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64') });
-  const listPaths = ['/api/wallets', '/walletaccounts/v1/wallets'];
-  for (const base of VIVA_HOSTS) {
-    for (const a of auths) {
-      for (const lp of listPaths) {
-        const tag = `${base.replace('https://', '')}${lp} (${a.mode})`;
-        let wallets;
-        try {
-          const r = await vivaHttp(base + lp, { method: 'GET', headers: { Authorization: a.h } });
-          if (!r.ok) { failures.push(`${tag}: HTTP ${r.status}`); continue; }
-          const d = await r.json().catch(() => null);
-          wallets = Array.isArray(d) ? d : (d && (d.wallets || d.Wallets || d.items || d.data)) || null;
-          if (!wallets || !wallets.length) { failures.push(`${tag}: no wallets in response`); continue; }
-        } catch (e) { failures.push(`${tag}: ${e.message}`); continue; }
-        const ids = wallets.map(w => w.walletId != null ? w.walletId : (w.WalletId != null ? w.WalletId : (w.Id != null ? w.Id : w.id))).filter(x => x != null);
-        console.log(`[viva] ${ids.length} wallet(s) found via ${tag}`);
-        const txUrls = [
-          id => `${base}/api/wallets/${id}/transactions?datefrom=${dFrom}&dateto=${dTo}`,
-          id => `${base}${lp}/${id}/transactions?DateFrom=${dFrom}&DateTo=${dTo}`,
-        ];
-        for (const mk of txUrls) {
-          const all = [];
-          let ok = true;
-          for (const id of ids) {
-            try {
-              const r2 = await vivaHttp(mk(id), { method: 'GET', headers: { Authorization: a.h } });
-              if (!r2.ok) { failures.push(`walletTx ${mk(id).split('?')[0].replace(base, '')}: HTTP ${r2.status}`); ok = false; break; }
-              const d2 = await r2.json().catch(() => null);
-              const items = Array.isArray(d2) ? d2 : (d2 && (d2.transactions || d2.Transactions || d2.items || d2.data)) || [];
-              all.push(...items);
-            } catch (e) { failures.push('walletTx: ' + e.message); ok = false; break; }
-          }
-          if (ok) { console.log(`[viva] WALLET STRATEGY OK — ${all.length} transactions from ${ids.length} wallet(s)`); return all; }
-        }
+  let bearer = null;
+  try { bearer = { mode: 'bearer', h: 'Bearer ' + await vivaBearer('') }; } catch (e) { failures.push('token: ' + e.message); }
+  const basic = { mode: 'basic', h: 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64') };
+  const persons = await vivaPersonCandidates();
+
+  // Attempt list, most promising first: the 403 on walletaccounts+bearer showed
+  // the token authenticates there — PersonId-header variants lead the queue.
+  const attempts = [];
+  if (bearer) persons.forEach(p => attempts.push({ base: VIVA_HOSTS[0], a: bearer, lp: '/walletaccounts/v1/wallets', extra: { PersonId: p }, xtag: '+PersonId' }));
+  for (const base of VIVA_HOSTS) for (const a of [bearer, basic].filter(Boolean)) for (const lp of ['/walletaccounts/v1/wallets', '/api/wallets'])
+    attempts.push({ base, a, lp, extra: {}, xtag: '' });
+
+  for (const at of attempts) {
+    const tag = `${at.base.replace('https://', '')}${at.lp} (${at.a.mode}${at.xtag})`;
+    let wallets;
+    try {
+      const r = await vivaHttp(at.base + at.lp, { method: 'GET', headers: { Authorization: at.a.h, ...at.extra } });
+      if (!r.ok) {
+        const bt = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 140);
+        failures.push(`${tag}: HTTP ${r.status}${bt ? ' — ' + bt : ''}`);
+        continue;
       }
+      const d = await r.json().catch(() => null);
+      wallets = Array.isArray(d) ? d : (d && (d.wallets || d.Wallets || d.items || d.data)) || null;
+      if (!wallets || !wallets.length) { failures.push(`${tag}: no wallets in response`); continue; }
+    } catch (e) { failures.push(`${tag}: ${e.message}`); continue; }
+    const ids = wallets.map(w => w.walletId != null ? w.walletId : (w.WalletId != null ? w.WalletId : (w.Id != null ? w.Id : w.id))).filter(x => x != null);
+    console.log(`[viva] ${ids.length} wallet(s) found via ${tag}`);
+    const txUrls = [
+      id => `${at.base}${at.lp}/${id}/transactions?DateFrom=${dFrom}&DateTo=${dTo}`,
+      id => `${at.base}/api/wallets/${id}/transactions?datefrom=${dFrom}&dateto=${dTo}`,
+    ];
+    for (const mk of txUrls) {
+      const all = [];
+      let ok = true;
+      for (const id of ids) {
+        try {
+          const r2 = await vivaHttp(mk(id), { method: 'GET', headers: { Authorization: at.a.h, ...at.extra } });
+          if (!r2.ok) {
+            const bt2 = (await r2.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 140);
+            failures.push(`walletTx ${mk(id).split('?')[0].replace(at.base, '')}: HTTP ${r2.status}${bt2 ? ' — ' + bt2 : ''}`);
+            ok = false; break;
+          }
+          const d2 = await r2.json().catch(() => null);
+          const items = Array.isArray(d2) ? d2 : (d2 && (d2.transactions || d2.Transactions || d2.items || d2.data)) || [];
+          all.push(...items);
+        } catch (e) { failures.push('walletTx: ' + e.message); ok = false; break; }
+      }
+      if (ok) { console.log(`[viva] WALLET STRATEGY OK — ${all.length} transactions from ${ids.length} wallet(s)`); return all; }
     }
   }
   return null;
