@@ -9411,6 +9411,26 @@ loadFromDb()
   window.pcToggleSet = function () { _pcSetOpen = !_pcSetOpen; renderPay(); };
   window.pcToggleHide = function () { _pcHideRcvd = !_pcHideRcvd; localStorage.setItem('pc_hide_rcvd', _pcHideRcvd ? '1' : '0'); renderPay(); };
 
+  // ── Viva bank bridge (server-side; see /api/viva/*) ────────────────────────
+  let _pcVivaSt = null;   // null → not asked yet · {loading:true} · {configured, env}
+  function pcVivaEnsure() {
+    if (_pcVivaSt) return;
+    _pcVivaSt = { loading: true };
+    fetch('/api/viva/status').then(r => r.json())
+      .then(s => { _pcVivaSt = s || { configured: false }; renderPay(); })
+      .catch(() => { _pcVivaSt = { configured: false, unreachable: true }; renderPay(); });
+  }
+  window.pcVivaCheckNow = async function (btn) {
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Checking Viva…'; }
+    try {
+      const r = await fetch('/api/viva/check-now', { method: 'POST' }).then(x => x.json());
+      if (r && r.ok) toast('Viva check: ' + r.matched + ' auto-ticked · ' + r.unmatchedCredits + ' unmatched credit' + (r.unmatchedCredits === 1 ? '' : 's') + ' · ' + r.missingExpected + ' expected missing', 'ok');
+      else toast('Viva check failed: ' + ((r && r.error) || 'unknown error'), 'err');
+      if (typeof loadFromDb === 'function') await loadFromDb();
+    } catch (e) { toast('Viva check failed: ' + e.message, 'err'); }
+    renderPay();
+  };
+
   // ── Rendering ───────────────────────────────────────────────────────────────
   const PC_ST = {
     rcvd:     { lbl: '✓ Received', bg: '#D1FAE5',    fg: '#065F46',    bd: '#A7F3D0' },
@@ -9495,6 +9515,51 @@ loadFromDb()
         kpiCard('Received this month', fmt(C.kpi.moRcvd), C.kpi.moN + ' ticked off', 'var(--tx-ok)') +
       '</div>';
 
+    // ── Viva bank feed strip ──
+    pcVivaEnsure();
+    const bank = pcState().bank || {};
+    const lr = bank.lastResult || null;
+    const vHas = lr && ((lr.unmatchedCredits || []).length || (lr.missingExpected || []).length);
+    const vOpen = pcEffOpen('bankrep', !!vHas);
+    const vWhen = iso => { try { return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return iso || ''; } };
+    if (_pcVivaSt && _pcVivaSt.loading) {
+      html += '<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:9px 16px;margin-bottom:16px;font-size:12px;color:var(--tx3)">🏦 Checking Viva bridge status…</div>';
+    } else if (_pcVivaSt && !_pcVivaSt.configured) {
+      html += '<div style="background:var(--bg-warn);border:.5px solid var(--bdr-warn);border-radius:var(--r);padding:11px 16px;margin-bottom:16px;font-size:12px;color:var(--tx-warn);line-height:1.55">🏦 <b>Viva bridge not connected.</b> Generate <b>Account Transactions Credentials</b> in your Viva account (Settings → API Access), then in Railway → your service → <b>Variables</b> add <span style="font-family:var(--mono)">VIVA_TX_USER</span> and <span style="font-family:var(--mono)">VIVA_TX_PASS</span> and redeploy. The Saturday 08:00 auto-check switches on by itself once the variables are set — credentials stay in Railway, never in the app.</div>';
+    } else if (_pcVivaSt) {
+      html += '<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);margin-bottom:16px;overflow:hidden">' +
+        '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;flex-wrap:wrap">' +
+          '<span style="font-size:13px;font-weight:700">🏦 Viva bank feed</span>' +
+          '<span style="width:8px;height:8px;border-radius:50%;background:var(--tx-ok);display:inline-block"></span>' +
+          '<span style="font-size:11.5px;color:var(--tx3)">auto-check every Saturday 08:00 (Athens)' + (_pcVivaSt.env === 'demo' ? ' · <b style="color:var(--tx-warn)">demo env</b>' : '') + '</span>' +
+          (lr ? '<span style="font-size:11.5px;color:var(--tx3)">· last run ' + vWhen(lr.ranAt) + (lr.trigger === 'saturday-auto' ? ' (auto)' : ' (manual)') + ': <b style="color:var(--tx-ok)">' + (lr.matched || 0) + ' auto-ticked</b>' +
+            ((lr.unmatchedCredits || []).length ? ' · <b style="color:var(--tx-warn)">' + lr.unmatchedCredits.length + ' unmatched</b>' : '') +
+            ((lr.missingExpected || []).length ? ' · <b style="color:var(--tx-err)">' + lr.missingExpected.length + ' missing</b>' : '') + '</span>'
+            : '<span style="font-size:11.5px;color:var(--tx3)">· no run yet</span>') +
+          '<span style="flex:1"></span>' +
+          (lr && vHas ? '<button class="btn sm" onclick="pcToggle(\'bankrep\',' + !!vHas + ')">' + (vOpen ? 'Hide report' : 'Show report') + '</button>' : '') +
+          '<button class="btn sm primary" onclick="pcVivaCheckNow(this)">✓ Check now</button>' +
+        '</div>';
+      if (lr && vOpen) {
+        html += '<div style="border-top:1px solid var(--bdr);padding:10px 16px;font-size:12px">';
+        if ((lr.autoTicked || []).length) {
+          html += '<div style="font-weight:700;margin-bottom:4px;color:var(--tx-ok)">✓ Auto-ticked (' + lr.autoTicked.length + ')</div>';
+          lr.autoTicked.slice(0, 15).forEach(x => { html += '<div style="color:var(--tx2);padding:1px 0">' + esc(x.label) + ' — received ' + fmt(x.amt) + (Math.abs(x.diff) > 0.011 ? ' <span style="color:var(--tx-warn)">(Δ ' + (x.diff > 0 ? '+' : '−') + fmt(Math.abs(x.diff)) + ' vs expected)</span>' : '') + '</div>'; });
+        }
+        if ((lr.unmatchedCredits || []).length) {
+          html += '<div style="font-weight:700;margin:8px 0 4px;color:var(--tx-warn)">⚠ Channel credits with no clean match (' + lr.unmatchedCredits.length + ') — tick manually</div>';
+          lr.unmatchedCredits.forEach(x => { html += '<div style="color:var(--tx2);padding:1px 0;font-family:var(--mono);font-size:11.5px">' + esc(x.date) + ' · ' + esc(x.counterpart) + ' · ' + fmt(x.amount) + (x.candidates > 1 ? ' <span style="color:var(--tx-warn)">(' + x.candidates + ' possible batches — ambiguous)</span>' : ' (nothing expected at this amount)') + '</div>'; });
+        }
+        if ((lr.missingExpected || []).length) {
+          html += '<div style="font-weight:700;margin:8px 0 4px;color:var(--tx-err)">⚠ Expected but not found in the bank (' + lr.missingExpected.length + ') — chase these</div>';
+          lr.missingExpected.forEach(x => { html += '<div style="color:var(--tx2);padding:1px 0">' + esc(x.label) + ' — ' + fmt(x.exp) + '</div>'; });
+        }
+        html += '<div style="color:var(--tx3);font-size:10.5px;margin-top:8px">A credit auto-ticks a payout only when exactly one expected amount fits its date window (±' + fmt(cfg.tol) + ' tolerance, exact first). Unknown counterparties (card settlements, transfers) are never touched. Bank window: last 35 days.</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
     // ── Booking.com section ──
     if (_pcView !== 'abb') {
       html += '<div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 10px"><div style="font-size:15px;font-weight:700">Booking.com — Thursday payout batches</div>' +
@@ -9530,7 +9595,7 @@ loadFromDb()
               (l.feeMiss ? feeBadge(l.feeMiss) : '') +
               (l.drift ? driftBadge(l.mark) : '') +
               '<span style="flex:1"></span>' +
-              (l.mark ? '<span style="font-size:10.5px;color:var(--tx3)">' + esc(l.mark.by || '') + '</span>' : '') +
+              (l.mark ? '<span style="font-size:10.5px;color:var(--tx3)">' + (l.mark.auto ? '🤖 ' : '') + esc(l.mark.by || '') + '</span>' : '') +
               amtInput(l.key, l.mark) + diffBadge(l.diff, cfg.tol) +
               '<span style="font-family:var(--mono);font-weight:700;font-size:12.5px;min-width:88px;text-align:right">' + fmt(l.exp) + '</span>' +
             '</div>';
@@ -9581,7 +9646,7 @@ loadFromDb()
               (r.feeMiss ? feeBadge(1) : '') +
               (r.drift ? driftBadge(r.mark) : '') +
               '<span style="flex:1"></span>' +
-              (r.mark ? '<span style="font-size:10.5px;color:var(--tx3)">' + esc(r.mark.by || '') + '</span>' : '') +
+              (r.mark ? '<span style="font-size:10.5px;color:var(--tx3)">' + (r.mark.auto ? '🤖 ' : '') + esc(r.mark.by || '') + '</span>' : '') +
               amtInput(r.key, r.mark) + diffBadge(r.diff, cfg.tol) +
               '<span style="font-family:var(--mono);font-weight:700;font-size:12.5px;min-width:88px;text-align:right">' + fmt(r.exp) + '</span>' +
             '</div>';

@@ -1007,6 +1007,340 @@ app.post('/api/debug-cancelled', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🏦 VIVA BANK BRIDGE — automatic payout reconciliation for the Payments Check tab
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pulls real account movements from the Viva Account Transactions API
+// (POST /dataservices/v1/accounttransactions/Search, self-serve credentials from
+// Viva → Settings → API Access → Account Transactions Credentials) and matches
+// incoming Booking.com / Airbnb credits against the expected payouts computed by
+// the Payments Check tab. Clean single-candidate matches are auto-ticked as
+// received (by: "Viva auto-check"); everything ambiguous is left for a human.
+// Runs automatically every SATURDAY 08:00 Europe/Athens, and on demand via the
+// tab's "Check now" button (POST /api/viva/check-now).
+//
+// Credentials live ONLY in Railway environment variables:
+//   VIVA_TX_USER / VIVA_TX_PASS   Account Transactions credentials
+//   VIVA_ENV                      'live' (default) or 'demo'
+
+const VIVA_TX_USER = process.env.VIVA_TX_USER || '';
+const VIVA_TX_PASS = process.env.VIVA_TX_PASS || '';
+const VIVA_ENV     = (process.env.VIVA_ENV || 'live').toLowerCase();
+const VIVA_BASE    = VIVA_ENV === 'demo' ? 'https://demo.vivapayments.com' : 'https://www.vivapayments.com';
+const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
+
+// ── Viva API client ───────────────────────────────────────────────────────────
+async function vivaFetchTransactions(fromISO, toISO) {
+  const auth = 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64');
+  const all = [];
+  const pageSize = 100;
+  for (let page = 1; page <= 50; page++) {
+    const url = `${VIVA_BASE}/dataservices/v1/accounttransactions/Search?PageSize=${pageSize}&Page=${page}&OrderBy=Ascending`;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ DateFrom: fromISO, DateTo: toISO }),
+    });
+    if (!r.ok) {
+      const body = (await r.text().catch(() => '')).slice(0, 300);
+      throw new Error(`Viva API ${r.status}${r.status === 401 ? ' (check VIVA_TX_USER / VIVA_TX_PASS — Account Transactions credentials)' : ''}: ${body}`);
+    }
+    const d = await r.json().catch(() => null);
+    const items = Array.isArray(d) ? d : (d && (d.items || d.data || d.results || d.transactions)) || [];
+    all.push(...items);
+    if (items.length < pageSize) break;
+  }
+  return all;
+}
+
+// Normalize to incoming credits only (amount > 0)
+function vivaNormalizeCredits(raw) {
+  return (raw || []).map(t => ({
+    id: String(t.accountTransactionId || t.id || ''),
+    date: new Date(t.created || t.dateCreated || t.date || 0),
+    amount: Math.round((+t.amount || 0) * 100) / 100,
+    counterpart: String(t.counterPart || t.counterpart || t.description || ''),
+    typeId: t.typeId, subTypeId: t.subTypeId, walletId: t.walletId,
+  })).filter(t => t.id && t.amount > 0 && !isNaN(t.date));
+}
+
+// ── Expectation engine (MUST mirror the client's Payments Check tab exactly —
+//    mark keys are shared, so key construction must byte-match index.html) ─────
+const VIVA_BLOCK_NAMES = ['maintenance', 'owner block', 'block', 'owner stay', 'ιδιοκτητης', 'ιδιοχρηση'];
+const pcvDay0  = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const pcvISO   = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const pcvAdd   = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const pcvNormApt = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const pcvNormG   = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+function pcvParseDMY(v) {
+  const m = String(v || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  const d = new Date(v); return isNaN(d) ? null : pcvDay0(d);
+}
+function pcvThursday(d) { let delta = (4 - d.getDay() + 7) % 7; if (!delta) delta = 7; return pcvAdd(pcvDay0(d), delta); }
+function pcvChan(b) {
+  const ch = String(b.platform || b.channel || '').toLowerCase();
+  if (ch.includes('airbnb')) return 'abb';
+  if (ch.includes('booking')) return 'bdc';
+  return null;
+}
+function pcvAmt(b) {
+  const tc = Math.max(0, +b.trChan || 0);
+  const p = +b.payout;
+  const base = (isFinite(p) && p > 0) ? p : Math.max(0, (+b.gross || 0) - (+b.svc || 0) - (+b.pchg || 0));
+  return Math.max(0, base - tc);
+}
+
+// Build the pool of UNMARKED expected credits up to `today` (never future ones).
+function vivaExpectedUnits(data, today) {
+  const t = pcvDay0(today || new Date());
+  const payChk = (data && data.payChk) || {};
+  const marks  = payChk.marks || {};
+  const cfg    = payChk.cfg || {};
+  const from   = /^\d{4}-\d{2}-\d{2}$/.test(cfg.from || '') ? new Date(cfg.from) : new Date(2026, 0, 1);
+  const bdc = {};
+  const units = [];
+  for (const b of (data && data.bks) || []) {
+    if (!b || b.cancelled) continue;
+    if (VIVA_BLOCK_NAMES.includes(String(b.guestName || '').toLowerCase().trim())) continue;
+    const chan = pcvChan(b);
+    if (!chan) continue;
+    const amt = pcvAmt(b);
+    if (!(amt > 0)) continue;
+    if (chan === 'bdc') {
+      const co = pcvParseDMY(b.checkOut); if (!co) continue;
+      const thu = pcvThursday(co);
+      if (thu < from || thu > t) continue;
+      const aptKey = pcvNormApt(b.aptName) || b.aptId || '?';
+      const key = 'bdc|' + pcvISO(thu) + '|' + aptKey;
+      const u = bdc[key] || (bdc[key] = { key, chan: 'bdc', date: thu, exp: 0, label: (b.aptName || '?') + ' — Thu ' + pcvISO(thu) });
+      u.exp += amt;
+    } else {
+      const ci = pcvParseDMY(b.checkIn); if (!ci) continue;
+      const rel = pcvAdd(ci, 1);
+      if (rel < from || rel > t) continue;
+      const aptKey = pcvNormApt(b.aptName) || b.aptId || '?';
+      const key = 'abb|' + aptKey + '|' + pcvISO(ci) + '|' + pcvNormG(b.guestName);
+      units.push({ key, chan: 'abb', date: rel, exp: amt, label: (b.aptName || '?') + ' — ' + (b.guestName || '—') + ' (release ' + pcvISO(rel) + ')' });
+    }
+  }
+  Object.values(bdc).forEach(u => units.push(u));
+  units.forEach(u => { u.exp = Math.round(u.exp * 100) / 100; });
+  return units.filter(u => !marks[u.key]);
+}
+
+// ── Credit classification & matching ─────────────────────────────────────────
+function vivaClassify(counterpart) {
+  const c = String(counterpart || '').toLowerCase();
+  if (/airbnb/.test(c)) return 'abb';
+  if (/booking/.test(c)) return 'bdc';
+  return null;   // unknown counterparties (card settlements, transfers…) are NEVER matched
+}
+
+// Single-candidate rule: a credit auto-matches only when exactly ONE unmatched
+// expected unit of the same channel fits the date window and amount. Exact
+// amounts (≤ €0.011) win over tolerance matches. Anything ambiguous is skipped.
+function vivaMatch(units, credits, tol) {
+  const pool = units.slice();
+  const matches = [], unmatchedCredits = [];
+  const sorted = credits.slice().sort((a, b) => a.date - b.date);
+  for (const cr of sorted) {
+    const chan = vivaClassify(cr.counterpart);
+    if (!chan) continue;
+    const cd = pcvDay0(cr.date);
+    const inWindow = u => u.chan === chan && cd >= pcvAdd(u.date, -1) && cd <= pcvAdd(u.date, 10);
+    const exact = pool.filter(u => inWindow(u) && Math.abs(u.exp - cr.amount) <= 0.011);
+    const close = pool.filter(u => inWindow(u) && Math.abs(u.exp - cr.amount) <= tol);
+    let pick = null, kind = '';
+    if (exact.length === 1) { pick = exact[0]; kind = 'exact'; }
+    else if (exact.length === 0 && close.length === 1) { pick = close[0]; kind = 'tolerance'; }
+    if (pick) {
+      pool.splice(pool.indexOf(pick), 1);
+      matches.push({ unit: pick, credit: cr, kind, diff: Math.round((cr.amount - pick.exp) * 100) / 100 });
+    } else {
+      unmatchedCredits.push({ credit: cr, candidates: close.length });
+    }
+  }
+  return { matches, unmatchedCredits, leftover: pool };
+}
+
+// ── The check itself (used by the Saturday cron AND the Check-now button) ─────
+const VIVA_LOOKBACK_DAYS = 35;
+async function vivaRunCheck(trigger) {
+  if (!vivaConfigured()) throw new Error('Viva credentials not configured (VIVA_TX_USER / VIVA_TX_PASS).');
+  if (!pool) throw new Error('No database configured.');
+  const cur = await pool.query("SELECT data FROM app_data WHERE key = 'main'");
+  const data = cur.rows[0] && cur.rows[0].data;
+  if (!data || !Array.isArray(data.bks) || !data.bks.length) throw new Error('No bookings in the database yet.');
+
+  const now = new Date();
+  const today = pcvDay0(now);
+  const from = pcvAdd(today, -VIVA_LOOKBACK_DAYS);
+  const tol = (() => { const v = parseFloat((data.payChk && data.payChk.cfg && data.payChk.cfg.tol) ?? 1); return isFinite(v) && v >= 0 ? v : 1; })();
+
+  const raw = await vivaFetchTransactions(from.toISOString(), now.toISOString());
+  const creditsAll = vivaNormalizeCredits(raw);
+  // never reuse a bank transaction that already ticked something
+  const usedTx = new Set(Object.values((data.payChk && data.payChk.marks) || {}).map(m => m && m.txId).filter(Boolean));
+  const credits = creditsAll.filter(c => !usedTx.has(c.id));
+  const classified = credits.filter(c => vivaClassify(c.counterpart));
+
+  const units = vivaExpectedUnits(data, today);
+  const { matches, unmatchedCredits, leftover } = vivaMatch(units, credits, tol);
+
+  // Auto-tick the clean matches
+  const nowIso = now.toISOString();
+  const newMarks = {};
+  for (const m of matches) {
+    newMarks[m.unit.key] = {
+      at: nowIso, by: 'Viva auto-check', auto: true,
+      exp: Math.round(m.unit.exp * 100) / 100,
+      amt: Math.round(m.credit.amount * 100) / 100,
+      txId: m.credit.id, txAt: m.credit.date.toISOString(),
+    };
+  }
+  const missingExpected = leftover
+    .filter(u => u.date <= pcvAdd(today, -3))
+    .sort((a, b) => a.date - b.date)
+    .slice(0, 25)
+    .map(u => ({ key: u.key, label: u.label, date: pcvISO(u.date), exp: u.exp }));
+
+  const report = {
+    ranAt: nowIso, trigger, env: VIVA_ENV,
+    window: { from: pcvISO(from), to: pcvISO(today) },
+    creditsSeen: creditsAll.length, creditsChannel: classified.length,
+    matched: matches.length,
+    autoTicked: matches.map(m => ({ key: m.unit.key, label: m.unit.label, exp: m.unit.exp, amt: m.credit.amount, diff: m.diff, kind: m.kind, txAt: pcvISO(pcvDay0(m.credit.date)), counterpart: m.credit.counterpart.slice(0, 60) })),
+    unmatchedCredits: unmatchedCredits.slice(0, 25).map(x => ({ date: pcvISO(pcvDay0(x.credit.date)), counterpart: x.credit.counterpart.slice(0, 60), amount: x.credit.amount, candidates: x.candidates })),
+    missingExpected,
+  };
+
+  // Merge-safe write: re-read fresh state, touch ONLY payChk.marks + payChk.bank
+  const fresh = await pool.query("SELECT data FROM app_data WHERE key = 'main'");
+  const fdata = (fresh.rows[0] && fresh.rows[0].data) || data;
+  fdata.payChk = fdata.payChk && typeof fdata.payChk === 'object' ? fdata.payChk : { marks: {}, cfg: {} };
+  fdata.payChk.marks = Object.assign({}, fdata.payChk.marks || {}, newMarks);
+  fdata.payChk.bank = Object.assign({}, fdata.payChk.bank || {}, { lastResult: report });
+  await pool.query(
+    `INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb)
+     ON CONFLICT (key) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`,
+    ['main', JSON.stringify(fdata)]
+  );
+  console.log(`[viva] ${trigger} check: ${creditsAll.length} credits seen, ${matches.length} auto-ticked, ${report.unmatchedCredits.length} unmatched, ${missingExpected.length} expected-missing`);
+  return report;
+}
+
+// ── Endpoints (behind the same APP_PASSWORD protection as the whole app) ──────
+app.get('/api/viva/status', (req, res) => {
+  res.json({ configured: vivaConfigured(), env: VIVA_ENV, schedule: 'Saturday 08:00 Europe/Athens' });
+});
+app.post('/api/viva/check-now', async (req, res) => {
+  try {
+    const report = await vivaRunCheck('manual');
+    res.json({ ok: true, matched: report.matched, unmatchedCredits: report.unmatchedCredits.length, missingExpected: report.missingExpected.length, creditsSeen: report.creditsSeen });
+  } catch (e) {
+    console.error('[viva] check-now error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Saturday 08:00 Europe/Athens scheduler ────────────────────────────────────
+function vivaAthensNow() {
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Athens', weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).formatToParts(new Date());
+  const g = t => (p.find(x => x.type === t) || {}).value;
+  return { day: g('weekday'), date: `${g('year')}-${g('month')}-${g('day')}`, hour: parseInt(g('hour'), 10) };
+}
+async function vivaCronTick() {
+  try {
+    if (!vivaConfigured() || !pool) return;
+    const a = vivaAthensNow();
+    if (a.day !== 'Sat' || a.hour !== 8) return;
+    const cur = await pool.query("SELECT data FROM app_data WHERE key = 'main'");
+    const data = cur.rows[0] && cur.rows[0].data;
+    if (!data) return;
+    const bank = (data.payChk && data.payChk.bank) || {};
+    if (bank.lastCronDate === a.date) return;   // already ran this Saturday
+    // claim the date first so a crash can't loop-fire
+    data.payChk = data.payChk || { marks: {}, cfg: {} };
+    data.payChk.bank = Object.assign({}, bank, { lastCronDate: a.date });
+    await pool.query(`INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`, ['main', JSON.stringify(data)]);
+    await vivaRunCheck('saturday-auto');
+  } catch (e) {
+    console.error('[viva] cron error:', e.message);
+  }
+}
+setInterval(vivaCronTick, 10 * 60 * 1000);   // checks every 10 min; fires once each Saturday 08:00–08:59 Athens
+
+// ── Offline self-test: node server.js --viva-selftest ─────────────────────────
+function vivaSelfTest() {
+  const D = (y, m, d) => new Date(y, m - 1, d);
+  let n = 0, fail = 0;
+  const ok = (name, cond) => { n++; if (!cond) { fail++; console.log('  ✗', name); } else console.log('  ✓', name); };
+
+  ok('classify booking', vivaClassify('BOOKING.COM B.V.') === 'bdc');
+  ok('classify airbnb', vivaClassify('Airbnb Payments Luxembourg S.A.') === 'abb');
+  ok('classify unknown → never matched', vivaClassify('CARD SETTLEMENT 1234') === null);
+
+  const data = {
+    payChk: { marks: {}, cfg: { from: '2026-07-01', tol: 1 } },
+    bks: [
+      { platform: 'Booking.com', aptName: 'Birdhouse Apartment', guestName: 'A', checkIn: '15/7/2026', checkOut: '16/7/2026', gross: 81.71, svc: 11.01, pchg: 1.30, payout: 69.40 },
+      { platform: 'Booking.com', aptName: 'Birdhouse Apartment', guestName: 'B', checkIn: '21/7/2026', checkOut: '22/7/2026', gross: 58.26, svc: 7.51, pchg: 0.93, payout: 49.82 },
+      { platform: 'Booking.com', aptName: 'Skyline Loft', guestName: 'C', checkIn: '19/7/2026', checkOut: '21/7/2026', gross: 300, svc: 45, pchg: 5, payout: 250 },
+      { platform: 'Airbnb', aptName: 'Skyline Loft', guestName: 'Georgia Pap', checkIn: '20/7/2026', checkOut: '24/7/2026', gross: 700, svc: 21, pchg: 0, payout: 679 },
+      { platform: 'Direct', aptName: 'Skyline Loft', guestName: 'D', checkIn: '20/7/2026', checkOut: '22/7/2026', gross: 999, payout: 999 },
+    ],
+  };
+  const today = D(2026, 7, 25); // Saturday after the 23 Jul payout Thursday
+  const units = vivaExpectedUnits(data, today);
+  ok('3 units built (2 BDC batches merged per property+Thursday, 1 ABB)', units.length === 3);
+  const bird = units.find(u => u.key === 'bdc|2026-07-23|birdhouse apartment');
+  ok('Birdhouse Thu-23 batch = 69.40+49.82 = 119.22, key matches client format', !!bird && Math.abs(bird.exp - 119.22) < 0.001);
+  ok('Airbnb key matches client format', units.some(u => u.key === 'abb|skyline loft|2026-07-20|georgia pap'));
+
+  const credits = [
+    { id: 't1', date: D(2026, 7, 23), amount: 119.18, counterpart: 'BOOKING.COM B.V.' },          // Birdhouse, 4c rounding → tolerance match
+    { id: 't2', date: D(2026, 7, 23), amount: 250.00, counterpart: 'Booking.com BV' },            // Skyline exact
+    { id: 't3', date: D(2026, 7, 22), amount: 679.00, counterpart: 'AIRBNB PAYMENTS LUX' },       // Airbnb exact (release 21/7 + 1 day)
+    { id: 't4', date: D(2026, 7, 23), amount: 500.00, counterpart: 'CARD SETTLEMENT' },           // unknown → ignored
+    { id: 't5', date: D(2026, 7, 23), amount: 33.33,  counterpart: 'BOOKING.COM B.V.' },          // no candidate → unmatched
+  ];
+  const { matches, unmatchedCredits, leftover } = vivaMatch(units, credits, 1);
+  ok('3 matches (incl. tolerance match on 4-cent rounding)', matches.length === 3);
+  ok('rounding diff recorded (−0.04)', Math.abs(matches.find(m => m.unit.key.includes('birdhouse')).diff - (-0.04)) < 0.001);
+  ok('unknown counterpart ignored, odd credit unmatched', unmatchedCredits.length === 1 && unmatchedCredits[0].credit.id === 't5');
+  ok('nothing left expected', leftover.length === 0);
+
+  // Ambiguity: two identical expected amounts in the same window → NO auto-tick
+  const twin = [
+    { key: 'bdc|2026-07-23|apt one', chan: 'bdc', date: D(2026, 7, 23), exp: 100, label: 'one' },
+    { key: 'bdc|2026-07-23|apt two', chan: 'bdc', date: D(2026, 7, 23), exp: 100, label: 'two' },
+  ];
+  const amb = vivaMatch(twin, [{ id: 'x1', date: D(2026, 7, 23), amount: 100, counterpart: 'Booking.com' }], 1);
+  ok('ambiguous twin amounts are NOT auto-matched', amb.matches.length === 0 && amb.unmatchedCredits[0].candidates === 2);
+  // …but two credits for the two twins DO both match (one leaves the pool after the first match)
+  const amb2 = vivaMatch(twin, [
+    { id: 'x1', date: D(2026, 7, 23), amount: 100, counterpart: 'Booking.com' },
+    { id: 'x2', date: D(2026, 7, 24), amount: 100, counterpart: 'Booking.com' },
+  ], 1);
+  ok('twin credits: still skipped while ambiguous (2 candidates each)', amb2.matches.length === 0);
+
+  // Date window: credit far outside the window never matches
+  const far = vivaMatch(
+    [{ key: 'k', chan: 'bdc', date: D(2026, 7, 9), exp: 200, label: 'old' }],
+    [{ id: 'y', date: D(2026, 7, 24), amount: 200, counterpart: 'Booking.com' }], 1);
+  ok('credit 15 days after the Thursday does not match (window +10d)', far.matches.length === 0);
+
+  // Marked units are excluded from the pool
+  const dataMarked = JSON.parse(JSON.stringify(data));
+  dataMarked.payChk.marks['bdc|2026-07-23|birdhouse apartment'] = { at: 'x', by: 'Lefteris' };
+  ok('already-ticked units excluded', vivaExpectedUnits(dataMarked, today).length === 2);
+
+  console.log(fail ? `\n✗ ${fail}/${n} VIVA SELF-TESTS FAILED` : `\n✓ ALL ${n} VIVA SELF-TESTS PASSED`);
+  process.exit(fail ? 1 : 0);
+}
+if (process.argv.includes('--viva-selftest')) vivaSelfTest();
+
 app.listen(PORT, () => {
   console.log(`\n  ✓  Elysian Clearing  →  http://localhost:${PORT}`);
   console.log(`  ✓  Hosthub base URL  →  ${BASE}`);
