@@ -1026,31 +1026,97 @@ app.post('/api/debug-cancelled', async (req, res) => {
 const VIVA_TX_USER = process.env.VIVA_TX_USER || '';
 const VIVA_TX_PASS = process.env.VIVA_TX_PASS || '';
 const VIVA_ENV     = (process.env.VIVA_ENV || 'live').toLowerCase();
-const VIVA_BASE    = VIVA_ENV === 'demo' ? 'https://demo.vivapayments.com' : 'https://www.vivapayments.com';
+const VIVA_BASE     = process.env.VIVA_BASE_URL     || (VIVA_ENV === 'demo' ? 'https://demo.vivapayments.com' : 'https://www.vivapayments.com');
+const VIVA_ACCOUNTS = process.env.VIVA_ACCOUNTS_URL || (VIVA_ENV === 'demo' ? 'https://demo-accounts.vivapayments.com' : 'https://accounts.vivapayments.com');
+const VIVA_HTTP_TIMEOUT = 20000;   // per-request; a hung connection can never freeze the check
 const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
 
 // ── Viva API client ───────────────────────────────────────────────────────────
-async function vivaFetchTransactions(fromISO, toISO) {
-  const auth = 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64');
-  const all = [];
-  const pageSize = 100;
-  for (let page = 1; page <= 50; page++) {
-    const url = `${VIVA_BASE}/dataservices/v1/accounttransactions/Search?PageSize=${pageSize}&Page=${page}&OrderBy=Ascending`;
+// Every request is logged ([viva] lines in the Railway deploy logs) and hard-
+// capped at 20 s. Auth: tries Basic (as documented for Account Transactions
+// credentials); on 401/403 falls back to an OAuth2 client-credentials bearer
+// token from accounts.vivapayments.com — Viva's docs are ambiguous between the
+// two, so we support both.
+async function vivaHttp(url, opts) {
+  const t0 = Date.now();
+  const method = (opts && opts.method) || 'GET';
+  try {
     const r = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: auth, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ DateFrom: fromISO, DateTo: toISO }),
+      timeout: VIVA_HTTP_TIMEOUT,
+      ...opts,
+      headers: { 'User-Agent': 'ElysianClearing/1.0', Accept: 'application/json', ...((opts && opts.headers) || {}) },
     });
+    console.log(`[viva] ${method} ${url.split('?')[0]} → ${r.status} in ${Date.now() - t0}ms`);
+    return r;
+  } catch (e) {
+    const timedOut = e.type === 'request-timeout' || /timeout/i.test(e.message || '');
+    console.error(`[viva] ${method} ${url.split('?')[0]} FAILED after ${Date.now() - t0}ms: ${e.message}`);
+    throw new Error(timedOut
+      ? `Viva did not respond within ${VIVA_HTTP_TIMEOUT / 1000}s (${url.split('?')[0]}) — endpoint unreachable or blocking the request.`
+      : `Viva request failed: ${e.message}`);
+  }
+}
+
+let _vivaToken = null;   // { token, exp }
+async function vivaBearer() {
+  if (_vivaToken && _vivaToken.exp > Date.now()) return _vivaToken.token;
+  const r = await vivaHttp(VIVA_ACCOUNTS + '/connect/token', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64'),
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials',
+  });
+  if (!r.ok) throw new Error('Viva rejected the credentials on both auth methods (Basic and OAuth token, HTTP ' + r.status + '). Regenerate the Account Transactions Credentials in Viva → Settings → API Access and update the Railway variables.');
+  const d = await r.json().catch(() => ({}));
+  if (!d.access_token) throw new Error('Viva OAuth token response contained no access_token.');
+  _vivaToken = { token: d.access_token, exp: Date.now() + Math.max(60, (+d.expires_in || 3600) - 120) * 1000 };
+  console.log('[viva] OAuth bearer token obtained (expires in ' + (d.expires_in || 3600) + 's)');
+  return _vivaToken.token;
+}
+
+function vivaSearchPage(auth, page, pageSize, body) {
+  const url = `${VIVA_BASE}/dataservices/v1/accounttransactions/Search?PageSize=${pageSize}&Page=${page}&OrderBy=Ascending`;
+  return vivaHttp(url, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
+async function vivaFetchTransactions(fromISO, toISO) {
+  const body = { DateFrom: fromISO, DateTo: toISO, AmountFrom: 0.01 };   // credits only — debits can never match a payout
+  const pageSize = 100;
+  let auth = 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64');
+  let r = await vivaSearchPage(auth, 1, pageSize, body);
+  if (r.status === 401 || r.status === 403) {
+    console.log(`[viva] Basic auth rejected (${r.status}) — retrying with OAuth bearer token`);
+    auth = 'Bearer ' + await vivaBearer();
+    r = await vivaSearchPage(auth, 1, pageSize, body);
+  }
+  const all = [];
+  for (let page = 1; page <= 50; page++) {
+    if (page > 1) r = await vivaSearchPage(auth, page, pageSize, body);
     if (!r.ok) {
-      const body = (await r.text().catch(() => '')).slice(0, 300);
-      throw new Error(`Viva API ${r.status}${r.status === 401 ? ' (check VIVA_TX_USER / VIVA_TX_PASS — Account Transactions credentials)' : ''}: ${body}`);
+      const t = (await r.text().catch(() => '')).slice(0, 300);
+      throw new Error(`Viva API ${r.status}${r.status === 401 ? ' — credentials rejected. Regenerate the Account Transactions Credentials and update the Railway variables.' : ''}${t ? ': ' + t : ''}`);
     }
     const d = await r.json().catch(() => null);
     const items = Array.isArray(d) ? d : (d && (d.items || d.data || d.results || d.transactions)) || [];
     all.push(...items);
+    console.log(`[viva] page ${page}: ${items.length} tx (running total ${all.length})`);
     if (items.length < pageSize) break;
   }
   return all;
+}
+
+// Isolated connectivity test:  node server.js --viva-fetch-test
+if (process.argv.includes('--viva-fetch-test')) {
+  (async () => {
+    try {
+      const to = new Date(); const from = new Date(to.getTime() - 7 * 86400000);
+      const txs = await vivaFetchTransactions(from.toISOString(), to.toISOString());
+      console.log('VIVA FETCH OK —', txs.length, 'transactions in the last 7 days');
+      process.exit(0);
+    } catch (e) { console.error('VIVA FETCH FAILED —', e.message); process.exit(1); }
+  })();
 }
 
 // Normalize to incoming credits only (amount > 0)
@@ -1236,7 +1302,10 @@ app.get('/api/viva/status', (req, res) => {
 });
 app.post('/api/viva/check-now', async (req, res) => {
   try {
-    const report = await vivaRunCheck('manual');
+    const report = await Promise.race([
+      vivaRunCheck('manual'),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('Viva check did not finish within 90 s — open the Railway deploy logs and look at the [viva] lines to see where it stopped.')), 90000)),
+    ]);
     res.json({ ok: true, matched: report.matched, unmatchedCredits: report.unmatchedCredits.length, missingExpected: report.missingExpected.length, creditsSeen: report.creditsSeen });
   } catch (e) {
     console.error('[viva] check-now error:', e.message);
