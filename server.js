@@ -1040,7 +1040,9 @@ const VIVA_BASE     = VIVA_HOSTS[0];   // kept for the probe endpoint
 const VIVA_ACCOUNTS = process.env.VIVA_ACCOUNTS_URL || (VIVA_ENV === 'demo' ? 'https://demo-accounts.vivapayments.com' : 'https://accounts.vivapayments.com');
 const VIVA_HTTP_TIMEOUT = 20000;   // per-request; a hung connection can never freeze the check
 const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
+const VIVA_BUILD = 'v3';           // shown in /api/viva/status + error diags so we know which build is live
 let _vivaWorking = null;           // { base, authMode } — locked in after first success
+const _vivaDiag = { scope: '', claims: '', persons: 0 };
 
 // ── Viva API client ───────────────────────────────────────────────────────────
 // Every request is logged ([viva] lines in the Railway deploy logs) and hard-
@@ -1127,7 +1129,9 @@ async function vivaPersonCandidates() {
   // (a) claims of the unscoped access token
   try {
     const claims = vivaDecodeJwt(await vivaBearer(''));
-    console.log('[viva] token claim keys: ' + Object.keys(claims).join(','));
+    _vivaDiag.claims = Object.keys(claims).join(',');
+    _vivaDiag.scope = Array.isArray(claims.scope) ? claims.scope.join(' ') : String(claims.scope || '');
+    console.log('[viva] token claim keys: ' + _vivaDiag.claims);
     if (claims.scope) console.log('[viva] token scope: ' + JSON.stringify(claims.scope));
     // any claim whose KEY mentions "person" wins, whatever shape its value has —
     // Viva puts it in urn:viva:payments:client_person_id
@@ -1162,6 +1166,7 @@ async function vivaFetchTransactions(fromISO, toISO) {
   if (_vivaWorking) candidates = [_vivaWorking];
   else {
     const persons = await vivaPersonCandidates();
+    _vivaDiag.persons = persons.length;
     console.log(`[viva] trying ${persons.length} PersonId candidate(s)`);
     const api = VIVA_HOSTS[0];
     candidates = [
@@ -1190,7 +1195,8 @@ async function vivaFetchTransactions(fromISO, toISO) {
   }
   if (!combo) {
     _vivaWorking = null;
-    throw new Error('No Viva combination worked — ' + failures.join(' · '));
+    throw new Error('No Viva combination worked — ' + failures.join(' · ') +
+      ` [diag ${VIVA_BUILD}: personCandidates=${_vivaDiag.persons}, tokenScope="${_vivaDiag.scope || 'NONE'}", claims=${_vivaDiag.claims || '?'}]`);
   }
   if (!_vivaWorking) {
     console.log(`[viva] LOCKED IN: ${combo.base} + ${combo.authMode}${combo.scope ? ' (scope ' + combo.scope + ')' : ''}${combo.personId ? ' + PersonId header' : ''}`);
@@ -1406,7 +1412,7 @@ async function vivaRunCheck(trigger) {
 
 // ── Endpoints (behind the same APP_PASSWORD protection as the whole app) ──────
 app.get('/api/viva/status', (req, res) => {
-  res.json({ configured: vivaConfigured(), env: VIVA_ENV, schedule: 'Saturday 08:00 Europe/Athens' });
+  res.json({ configured: vivaConfigured(), env: VIVA_ENV, schedule: 'Saturday 08:00 Europe/Athens', build: VIVA_BUILD });
 });
 
 // One-shot diagnostic: tries every likely request variant against the Viva API
