@@ -1086,7 +1086,7 @@ async function vivaFetchTransactions(fromISO, toISO) {
   const pageSize = 100;
   let auth = 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64');
   let r = await vivaSearchPage(auth, 1, pageSize, body);
-  if (r.status === 401 || r.status === 403) {
+  if (r.status === 401 || r.status === 403 || r.status === 406) {
     console.log(`[viva] Basic auth rejected (${r.status}) — retrying with OAuth bearer token`);
     auth = 'Bearer ' + await vivaBearer();
     r = await vivaSearchPage(auth, 1, pageSize, body);
@@ -1299,6 +1299,54 @@ async function vivaRunCheck(trigger) {
 // ── Endpoints (behind the same APP_PASSWORD protection as the whole app) ──────
 app.get('/api/viva/status', (req, res) => {
   res.json({ configured: vivaConfigured(), env: VIVA_ENV, schedule: 'Saturday 08:00 Europe/Athens' });
+});
+
+// One-shot diagnostic: tries every likely request variant against the Viva API
+// and reports what each returns. GET /api/viva/probe — safe: sends only the
+// stored credentials to Viva itself, returns only statuses + response snippets.
+app.get('/api/viva/probe', async (req, res) => {
+  if (!vivaConfigured()) return res.status(400).json({ error: 'Viva credentials not configured.' });
+  const basic = 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64');
+  const to = new Date(); const from = new Date(to.getTime() - 7 * 86400000);
+  const jsonBody = JSON.stringify({ DateFrom: from.toISOString(), DateTo: to.toISOString() });
+  const S_URL = `${VIVA_BASE}/dataservices/v1/accounttransactions/Search`;
+  const out = [];
+  async function attempt(label, url, opts) {
+    const t0 = Date.now();
+    try {
+      const r = await fetch(url, { timeout: 15000, ...opts });
+      const txt = (await r.text().catch(() => '')).slice(0, 220);
+      out.push({ label, status: r.status, ms: Date.now() - t0, snippet: txt });
+      return { r, txt };
+    } catch (e) {
+      out.push({ label, status: 'ERR', ms: Date.now() - t0, snippet: String(e.message).slice(0, 220) });
+      return null;
+    }
+  }
+  const J = { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'ElysianClearing/1.0' };
+  await attempt('A: POST Search+query, Basic, Accept json', S_URL + '?PageSize=5&Page=1&OrderBy=Descending', { method: 'POST', headers: { ...J, Authorization: basic }, body: jsonBody });
+  await attempt('B: POST Search+query, Basic, NO Accept', S_URL + '?PageSize=5&Page=1&OrderBy=Descending', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: basic }, body: jsonBody });
+  await attempt('C: POST Search no query, Basic', S_URL, { method: 'POST', headers: { ...J, Authorization: basic }, body: jsonBody });
+  await attempt('D: POST Search empty body {}, Basic', S_URL + '?PageSize=5&Page=1', { method: 'POST', headers: { ...J, Authorization: basic }, body: '{}' });
+  await attempt('E: GET Search-as-GET, Basic', S_URL + `?PageSize=5&Page=1&DateFrom=${encodeURIComponent(from.toISOString())}&DateTo=${encodeURIComponent(to.toISOString())}`, { method: 'GET', headers: { Accept: 'application/json', Authorization: basic } });
+  await attempt('F: GET collection (no /Search), Basic', `${VIVA_BASE}/dataservices/v1/accounttransactions?PageSize=5&Page=1`, { method: 'GET', headers: { Accept: 'application/json', Authorization: basic } });
+  const tok = await attempt('G: OAuth token (accounts host)', VIVA_ACCOUNTS + '/connect/token', { method: 'POST', headers: { Authorization: basic, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials' });
+  let bearer = null;
+  if (tok && tok.r && tok.r.status === 200) { try { bearer = JSON.parse(tok.txt).access_token || null; } catch (e) {} }
+  if (!bearer && tok && tok.r && tok.r.status === 200) {
+    // token body was truncated by the snippet — refetch cleanly
+    try { const r2 = await fetch(VIVA_ACCOUNTS + '/connect/token', { timeout: 15000, method: 'POST', headers: { Authorization: basic, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials' }); const d2 = await r2.json(); bearer = d2.access_token || null; } catch (e) {}
+  }
+  if (bearer) {
+    const B = { ...J, Authorization: 'Bearer ' + bearer };
+    await attempt('H: POST Search+query, Bearer', S_URL + '?PageSize=5&Page=1&OrderBy=Descending', { method: 'POST', headers: B, body: jsonBody });
+    await attempt('I: GET Search-as-GET, Bearer', S_URL + `?PageSize=5&Page=1&DateFrom=${encodeURIComponent(from.toISOString())}&DateTo=${encodeURIComponent(to.toISOString())}`, { method: 'GET', headers: { Accept: 'application/json', Authorization: 'Bearer ' + bearer } });
+    await attempt('J: GET collection, Bearer', `${VIVA_BASE}/dataservices/v1/accounttransactions?PageSize=5&Page=1`, { method: 'GET', headers: { Accept: 'application/json', Authorization: 'Bearer ' + bearer } });
+  } else {
+    out.push({ label: 'H-J skipped', status: '-', ms: 0, snippet: 'no bearer token obtained' });
+  }
+  out.forEach(o => console.log(`[viva][probe] ${o.label} → ${o.status} (${o.ms}ms) ${o.snippet.slice(0, 120)}`));
+  res.json({ probe: out });
 });
 app.post('/api/viva/check-now', async (req, res) => {
   try {
