@@ -1026,10 +1026,21 @@ app.post('/api/debug-cancelled', async (req, res) => {
 const VIVA_TX_USER = process.env.VIVA_TX_USER || '';
 const VIVA_TX_PASS = process.env.VIVA_TX_PASS || '';
 const VIVA_ENV     = (process.env.VIVA_ENV || 'live').toLowerCase();
-const VIVA_BASE     = process.env.VIVA_BASE_URL     || (VIVA_ENV === 'demo' ? 'https://demo.vivapayments.com' : 'https://www.vivapayments.com');
+// Probe evidence (24 Jul 2026): www.vivapayments.com answers 406/hangs on
+// /dataservices (it's the website gateway, not the API), while the OAuth token
+// from accounts.vivapayments.com is issued fine. The API host is
+// api.vivapayments.com. We keep a candidate list and self-heal: the first
+// host+auth combination that answers 2xx is locked in for the session.
+const VIVA_HOSTS = process.env.VIVA_BASE_URL
+  ? [process.env.VIVA_BASE_URL]
+  : (VIVA_ENV === 'demo'
+      ? ['https://demo-api.vivapayments.com', 'https://demo.vivapayments.com']
+      : ['https://api.vivapayments.com', 'https://www.vivapayments.com']);
+const VIVA_BASE     = VIVA_HOSTS[0];   // kept for the probe endpoint
 const VIVA_ACCOUNTS = process.env.VIVA_ACCOUNTS_URL || (VIVA_ENV === 'demo' ? 'https://demo-accounts.vivapayments.com' : 'https://accounts.vivapayments.com');
 const VIVA_HTTP_TIMEOUT = 20000;   // per-request; a hung connection can never freeze the check
 const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
+let _vivaWorking = null;           // { base, authMode } — locked in after first success
 
 // ── Viva API client ───────────────────────────────────────────────────────────
 // Every request is logged ([viva] lines in the Railway deploy logs) and hard-
@@ -1076,27 +1087,54 @@ async function vivaBearer() {
   return _vivaToken.token;
 }
 
-function vivaSearchPage(auth, page, pageSize, body) {
-  const url = `${VIVA_BASE}/dataservices/v1/accounttransactions/Search?PageSize=${pageSize}&Page=${page}&OrderBy=Ascending`;
+function vivaSearchPage(base, auth, page, pageSize, body) {
+  const url = `${base}/dataservices/v1/accounttransactions/Search?PageSize=${pageSize}&Page=${page}&OrderBy=Ascending`;
   return vivaHttp(url, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
+async function vivaAuthHeader(mode) {
+  if (mode === 'basic') return 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64');
+  return 'Bearer ' + await vivaBearer();
 }
 
 async function vivaFetchTransactions(fromISO, toISO) {
   const body = { DateFrom: fromISO, DateTo: toISO, AmountFrom: 0.01 };   // credits only — debits can never match a payout
   const pageSize = 100;
-  let auth = 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64');
-  let r = await vivaSearchPage(auth, 1, pageSize, body);
-  if (r.status === 401 || r.status === 403 || r.status === 406) {
-    console.log(`[viva] Basic auth rejected (${r.status}) — retrying with OAuth bearer token`);
-    auth = 'Bearer ' + await vivaBearer();
-    r = await vivaSearchPage(auth, 1, pageSize, body);
+
+  // Candidate host+auth combinations, most likely first. Bearer leads because
+  // the probe proved the OAuth client-credentials flow works with these creds.
+  const candidates = _vivaWorking ? [_vivaWorking] :
+    VIVA_HOSTS.flatMap(base => [{ base, authMode: 'bearer' }, { base, authMode: 'basic' }]);
+
+  let combo = null, firstPage = null;
+  const failures = [];
+  for (const c of candidates) {
+    let auth;
+    try { auth = await vivaAuthHeader(c.authMode); }
+    catch (e) { failures.push(`${c.base} (${c.authMode}): ${e.message}`); continue; }
+    try {
+      const r = await vivaSearchPage(c.base, auth, 1, pageSize, body);
+      if (r.ok) { combo = { ...c, auth }; firstPage = r; break; }
+      failures.push(`${c.base} (${c.authMode}): HTTP ${r.status}`);
+    } catch (e) { failures.push(`${c.base} (${c.authMode}): ${e.message}`); }
   }
+  if (!combo) {
+    _vivaWorking = null;
+    throw new Error('No Viva host/auth combination worked — ' + failures.join(' · '));
+  }
+  if (!_vivaWorking || _vivaWorking.base !== combo.base || _vivaWorking.authMode !== combo.authMode) {
+    console.log(`[viva] LOCKED IN working combination: ${combo.base} + ${combo.authMode} auth`);
+  }
+  _vivaWorking = { base: combo.base, authMode: combo.authMode };
+
   const all = [];
+  let r = firstPage;
   for (let page = 1; page <= 50; page++) {
-    if (page > 1) r = await vivaSearchPage(auth, page, pageSize, body);
+    if (page > 1) r = await vivaSearchPage(combo.base, combo.auth, page, pageSize, body);
     if (!r.ok) {
+      _vivaWorking = null;   // stop trusting the combo if it stops working
       const t = (await r.text().catch(() => '')).slice(0, 300);
-      throw new Error(`Viva API ${r.status}${r.status === 401 ? ' — credentials rejected. Regenerate the Account Transactions Credentials and update the Railway variables.' : ''}${t ? ': ' + t : ''}`);
+      throw new Error(`Viva API ${r.status} on page ${page}${t ? ': ' + t : ''}`);
     }
     const d = await r.json().catch(() => null);
     const items = Array.isArray(d) ? d : (d && (d.items || d.data || d.results || d.transactions)) || [];
