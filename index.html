@@ -146,6 +146,7 @@
         <button class="nav-dd-item" id="nav-hhapi" data-tab="hhapi" onclick="navDdGo('hhapi')">🔌 Hosthub API</button>
         <button class="nav-dd-item" id="nav-imports" data-tab="imports" onclick="navDdGo('imports')">📥 Imports</button>
         <button class="nav-dd-item" id="nav-co" data-tab="co" onclick="navDdGo('co')">🧳 Checkout Tracker</button>
+        <button class="nav-dd-item" id="nav-pay" data-tab="pay" onclick="navDdGo('pay')">💳 Payments Check</button>
       </div>
     </div>
   </nav>
@@ -649,6 +650,9 @@
 
 <div id="tab-co" class="tab-panel" style="background:var(--bg)"></div>
 
+<!-- PAYMENTS CHECK TAB -->
+<div id="tab-pay" class="tab-panel" style="background:var(--bg)"></div>
+
 <!-- MONTHLY ACCOUNTING TASKS TAB -->
 <div id="tab-mt" class="tab-panel"></div>
 
@@ -786,7 +790,7 @@ const GENERIC_AL={
   "ΠΛΥΝΤΗΡΙΑ ΘΕΣ":"Cleaning Material Thessaloniki"
 };
 
-let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]},cleanOverride:{},rptLocks:{},moOverride:{},monthlyTasks:{},monthlyTaskDefs:[]};
+let S={apts:[],bks:[],exps:[],ef:"all",splTgt:null,revenue:{cleaning:{},mgmt:{}},daily:{snapshots:{},tasks:[]},cleanOverride:{},rptLocks:{},moOverride:{},monthlyTasks:{},monthlyTaskDefs:[],payChk:{marks:{},cfg:{}}};
 let rptMode="mo";
 
 // ── Persistence ──────────────────────────────────────────
@@ -845,6 +849,7 @@ function load() {
       S.moOverride = p.moOverride || {};
       S.monthlyTasks = p.monthlyTasks || {};
       S.monthlyTaskDefs = p.monthlyTaskDefs || [];
+      S.payChk = p.payChk || { marks: {}, cfg: {} };
     }
   } catch(e) {}
   // If localStorage had real data, mark as initialized
@@ -856,7 +861,7 @@ function load() {
 function save() {
   // Immediate local save
   try {
-    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]}, cleanOverride: S.cleanOverride || {}, rptLocks: S.rptLocks || {}, moOverride: S.moOverride || {}, monthlyTasks: S.monthlyTasks || {}, monthlyTaskDefs: S.monthlyTaskDefs || [] }));
+    localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta || {}, revenue: S.revenue || {cleaning:{},mgmt:{}}, daily: S.daily || {snapshots:{},tasks:[]}, cleanOverride: S.cleanOverride || {}, rptLocks: S.rptLocks || {}, moOverride: S.moOverride || {}, monthlyTasks: S.monthlyTasks || {}, monthlyTaskDefs: S.monthlyTaskDefs || [], payChk: S.payChk || {marks:{},cfg:{}} }));
   } catch(e) {}
   // Debounced DB save (2s after last change)
   if (_dbAvailable) {
@@ -883,7 +888,8 @@ async function saveToDb() {
       rptLocks: S.rptLocks || {},
       moOverride: S.moOverride || {},
       monthlyTasks: S.monthlyTasks || {},
-      monthlyTaskDefs: S.monthlyTaskDefs || []
+      monthlyTaskDefs: S.monthlyTaskDefs || [],
+      payChk: S.payChk || {marks:{},cfg:{}}
     };
     const r = await fetch('/api/db/data', {
       method: 'POST',
@@ -922,12 +928,12 @@ async function loadFromDb() {
     S.bks     = data.bks     || S.bks;
     S.exps    = data.exps    || S.exps;
     S.meta    = data.meta    || S.meta    || {};
-    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};S.rptLocks = data.rptLocks || S.rptLocks || {};S.moOverride = data.moOverride || S.moOverride || {};S.monthlyTasks = data.monthlyTasks || S.monthlyTasks || {};S.monthlyTaskDefs = data.monthlyTaskDefs || S.monthlyTaskDefs || [];
+    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};S.rptLocks = data.rptLocks || S.rptLocks || {};S.moOverride = data.moOverride || S.moOverride || {};S.monthlyTasks = data.monthlyTasks || S.monthlyTasks || {};S.monthlyTaskDefs = data.monthlyTaskDefs || S.monthlyTaskDefs || [];S.payChk = data.payChk || S.payChk || {marks:{},cfg:{}};
     _lastDbSave = data._savedAt;
     _dataInitialized = true;
     // Persist loaded state to localStorage
     try {
-      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily, cleanOverride: S.cleanOverride, rptLocks: S.rptLocks, moOverride: S.moOverride, monthlyTasks: S.monthlyTasks, monthlyTaskDefs: S.monthlyTaskDefs }));
+      localStorage.setItem('e_v3', JSON.stringify({ apts: S.apts, bks: S.bks, exps: S.exps, meta: S.meta, revenue: S.revenue, daily: S.daily, cleanOverride: S.cleanOverride, rptLocks: S.rptLocks, moOverride: S.moOverride, monthlyTasks: S.monthlyTasks, monthlyTaskDefs: S.monthlyTaskDefs, payChk: S.payChk }));
       // Sync the "Last synced" display with actual last sync from DB meta
       const lastSync = S.meta?.lastSync || S.meta?.lastAutoSync;
       if (lastSync) localStorage.setItem('hh_last_sync', lastSync);
@@ -956,6 +962,7 @@ async function loadFromDb() {
     if (_activeTab === 'tab-ops')  renderOps();
     if (_activeTab === 'tab-rev')  renderRevenue();
     if (_activeTab === 'tab-mt' && typeof renderMt === 'function') renderMt();
+    if (_activeTab === 'tab-pay' && typeof renderPay === 'function') renderPay();
     renderDash();
     updateDbBadge();
     console.log('[db] Loaded from shared database, savedAt:', data._savedAt);
@@ -6857,6 +6864,31 @@ function runFinancialTests() {
     results.push({ name:'W1-W4 occupancy window (rptOverlapWindow missing)', pass:false, actual:'missing', expected:'function' });
   }
 
+  // ── TEST GROUP Pc: Payments Check — Viva payout expectations ─────────────────
+  // Booking.com rule: payout(Thursday T) = Σ checkouts ∈ [T−7, T−1]  (net of fees)
+  // Airbnb rule:      payout released ~24 h after check-in
+  if (typeof pcThursday === 'function') {
+    const D = (y,m,d) => new Date(y, m-1, d);
+    assertEq('Pc1 Wed 22 Jul 2026 checkout → Thu 23 Jul payout', pcThursday(D(2026,7,22)).getTime(), D(2026,7,23).getTime());
+    assertEq('Pc2 Thu 23 Jul 2026 checkout → NEXT Thu 30 Jul',   pcThursday(D(2026,7,23)).getTime(), D(2026,7,30).getTime());
+    assertEq('Pc3 Fri 24 Jul 2026 checkout → Thu 30 Jul',        pcThursday(D(2026,7,24)).getTime(), D(2026,7,30).getTime());
+    assertEq('Pc4 whole window Thu 16 – Wed 22 Jul → Thu 23 Jul',
+      [16,17,18,19,20,21,22].every(d => pcThursday(D(2026,7,d)).getTime() === D(2026,7,23).getTime()), true);
+    assertEq('Pc5 Airbnb check-in 20 Jul → release 21 Jul', pcAbbRelease(D(2026,7,20)).getTime(), D(2026,7,21).getTime());
+    assert('Pc6 amount = Hosthub Total Payout when present', pcAmt({payout:412.30, gross:500, svc:60, pchg:10}), 412.30);
+    assert('Pc7 fallback = gross − svc − pchg when payout missing', pcAmt({gross:500, svc:75.50, pchg:9.20}), 415.30);
+    assert('Pc8 channel-remitted taxes deducted (never reach bank)', pcAmt({payout:400, trChan:12.5}), 387.5);
+    const today = D(2026,7,24);
+    assertEq('Pc9 future Thursday → upcoming',  pcStatus(D(2026,7,30), 3, null, today), 'upcoming');
+    assertEq('Pc10 yesterday, within grace → due', pcStatus(D(2026,7,23), 3, null, today), 'due');
+    assertEq('Pc11 past grace → overdue',       pcStatus(D(2026,7,16), 3, null, today), 'overdue');
+    assertEq('Pc12 ticked → received regardless of date', pcStatus(D(2026,7,2), 3, {at:'x'}, today), 'rcvd');
+    assertEq('Pc13 channel detection bdc/abb/other',
+      [pcChan({platform:'Booking.com'}), pcChan({platform:'airbnb'}), pcChan({platform:'Direct'})].join(','), 'bdc,abb,');
+  } else {
+    results.push({ name:'Pc1-Pc13 payments check (pcThursday missing)', pass:false, actual:'missing', expected:'function' });
+  }
+
   // ── Summary ──────────────────────────────────────────────────────────────────
   const passed = results.filter(r=>r.pass).length;
   const failed = results.filter(r=>!r.pass);
@@ -9109,6 +9141,520 @@ loadFromDb()
   setInterval(() => {
     const p = document.getElementById('tab-mt');
     if (p && p.classList.contains('active')) renderMt();
+  }, 60000);
+})();
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 💳 PAYMENTS CHECK — Viva payout reconciliation (Booking.com · Airbnb)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Payment rules implemented here:
+//   • Booking.com — payout(Thursday T) = Σ reservations with checkout ∈ [T−7, T−1]
+//     (i.e. a checkout is paid on the FIRST Thursday strictly after it), one bank
+//     credit PER PROPERTY per Thursday. Amount = gross − commission − payment
+//     charges (Hosthub "Total Payout") minus any channel-remitted taxes.
+//   • Airbnb — payout released ~24 h AFTER CHECK-IN, one credit per reservation,
+//     lands in the bank ~1–3 business days later. Amount = gross − host service
+//     fee (Airbnb never bills a separate payment charge).
+// Reconciliation marks are keyed on NATURAL keys (Thursday+property, or
+// property+check-in+guest) — never booking ids, which are regenerated on every
+// Hosthub sync. Marks sync to the shared DB so the whole team sees one truth.
+(function () {
+  'use strict';
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const GOLD = '#C9A84C';
+
+  // ── Shared state access (defensive: key may be missing on stale data) ───────
+  function pcState() {
+    if (!S.payChk || typeof S.payChk !== 'object') S.payChk = { marks:{}, cfg:{} };
+    if (!S.payChk.marks || typeof S.payChk.marks !== 'object') S.payChk.marks = {};
+    if (!S.payChk.cfg   || typeof S.payChk.cfg   !== 'object') S.payChk.cfg = {};
+    return S.payChk;
+  }
+  function pcCfg() {
+    const c = pcState().cfg;
+    const num = (v, dflt, min, max) => { const n = parseFloat(v); return isFinite(n) && n >= min && n <= max ? n : dflt; };
+    return {
+      from:     /^\d{4}-\d{2}-\d{2}$/.test(c.from || '') ? c.from : '2026-01-01',
+      bdcGrace: num(c.bdcGrace, 3, 0, 30),
+      abbGrace: num(c.abbGrace, 5, 0, 30),
+      tol:      num(c.tol, 1, 0, 100),
+      horizon:  num(c.horizon, 21, 0, 90),
+    };
+  }
+
+  // ── Pure date helpers (exposed below for the self-test suite) ───────────────
+  const pcDay0   = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const pcISO    = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  const pcFromISO= s => { const m = String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? new Date(+m[1], +m[2]-1, +m[3]) : null; };
+  const pcAdd    = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+  const pcParseDMY = v => { const d = (typeof parseD === 'function') ? parseD(v) : new Date(v); return d && !isNaN(d) ? pcDay0(d) : null; };
+  const pcDateLbl = d => d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+  const pcDateSm  = d => d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+
+  // Booking.com: checkout on date d is paid on the first Thursday STRICTLY after d.
+  // (⇔ payout(Thursday T) covers checkouts in [T−7, T−1]; Thu checkout → +7 days.)
+  function pcThursday(d) {
+    let delta = (4 - d.getDay() + 7) % 7;
+    if (delta === 0) delta = 7;
+    return pcAdd(pcDay0(d), delta);
+  }
+  // Airbnb: payout released ~24 h after check-in.
+  function pcAbbRelease(ci) { return pcAdd(pcDay0(ci), 1); }
+
+  // Expected bank credit for one reservation:
+  // Hosthub "Total Payout" (gross − commission − payment charges); defensive
+  // fallback recomputes it if the field is missing. Taxes the CHANNEL remits
+  // itself (trChan) never reach the bank, so they are always deducted.
+  function pcAmt(b) {
+    const tc = Math.max(0, +b.trChan || 0);
+    const p = +b.payout;
+    const base = (isFinite(p) && p > 0) ? p : Math.max(0, (+b.gross || 0) - (+b.svc || 0) - (+b.pchg || 0));
+    return Math.max(0, base - tc);
+  }
+  function pcChan(b) {
+    const ch = String(b.platform || b.channel || '').toLowerCase();
+    if (ch.includes('airbnb'))  return 'abb';
+    if (ch.includes('booking')) return 'bdc';
+    return null;
+  }
+  const pcAptKey = b => ((typeof normAptName === 'function' ? normAptName(b.aptName || '') : String(b.aptName || '').toLowerCase().trim()) || b.aptId || '?');
+  const pcNormG  = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  // Natural mark keys — MUST survive Hosthub re-syncs (booking ids are random
+  // and regenerated on every sync; never key on them).
+  const pcKeyBdc = (thuISO, aptKey) => 'bdc|' + thuISO + '|' + aptKey;
+  const pcKeyAbb = b => { const ci = pcParseDMY(b.checkIn); return 'abb|' + pcAptKey(b) + '|' + (ci ? pcISO(ci) : String(b.checkIn)) + '|' + pcNormG(b.guestName); };
+
+  // Status of one expected credit: rcvd | upcoming | due | overdue
+  function pcStatus(expDate, graceDays, mark, today) {
+    if (mark) return 'rcvd';
+    const t = pcDay0(today || new Date());
+    if (expDate > t) return 'upcoming';
+    if (pcAdd(expDate, graceDays) >= t) return 'due';
+    return 'overdue';
+  }
+
+  // ── Compute the full picture ────────────────────────────────────────────────
+  function pcCompute(today) {
+    const cfg   = pcCfg();
+    const t     = pcDay0(today || new Date());
+    const from  = pcFromISO(cfg.from) || new Date(2026, 0, 1);
+    const hEnd  = pcAdd(t, cfg.horizon);
+    const marks = pcState().marks;
+    const skipped = { badDate: 0, zero: 0 };
+    let feeIssues = 0;
+
+    const bdcMap = {};   // thuISO → batch
+    const abbRows = [];
+
+    (S.bks || []).forEach(b => {
+      if (!b || b.cancelled) return;
+      if (typeof isRevenueBooking === 'function' && !isRevenueBooking(b)) return;
+      const chan = pcChan(b);
+      if (!chan) return;                       // Direct & other channels are paid outside OTA payouts
+      const amt = pcAmt(b);
+
+      if (chan === 'bdc') {
+        const co = pcParseDMY(b.checkOut);
+        if (!co) { skipped.badDate++; return; }
+        if (!(amt > 0)) { skipped.zero++; return; }
+        const thu = pcThursday(co);
+        if (thu < from || thu > hEnd) return;
+        const thuISO = pcISO(thu);
+        const aptKey = pcAptKey(b);
+        const feeMiss = !((+b.svc || 0) > 0) || !((+b.pchg || 0) > 0);  // Booking.com always bills both
+        if (feeMiss) feeIssues++;
+        const g = bdcMap[thuISO] || (bdcMap[thuISO] = { thu, thuISO, props: {} });
+        const p = g.props[aptKey] || (g.props[aptKey] = { aptKey, name: b.aptName || (typeof aptById === 'function' && aptById(b.aptId) ? aptById(b.aptId).name : '') || '?', items: [], exp: 0, feeMiss: 0 });
+        p.items.push({ guest: b.guestName || '—', ci: b.checkIn, co: b.checkOut, amt });
+        p.exp += amt;
+        if (feeMiss) p.feeMiss++;
+      } else {
+        const ci = pcParseDMY(b.checkIn);
+        if (!ci) { skipped.badDate++; return; }
+        if (!(amt > 0)) { skipped.zero++; return; }
+        const rel = pcAbbRelease(ci);
+        if (rel < from || rel > hEnd) return;
+        const feeMiss = !((+b.svc || 0) > 0);                            // Airbnb: host fee only
+        if (feeMiss) feeIssues++;
+        abbRows.push({ key: pcKeyAbb(b), rel, relISO: pcISO(rel), apt: b.aptName || '?', guest: b.guestName || '—', ci: b.checkIn, co: b.checkOut, exp: amt, feeMiss });
+      }
+    });
+
+    // Booking.com batches, newest first, with per-property reconciliation lines
+    const batches = Object.values(bdcMap).sort((a, b) => b.thu - a.thu);
+    batches.forEach(g => {
+      g.lines = Object.values(g.props).sort((a, b) => a.name.localeCompare(b.name));
+      g.exp = 0; g.rcvd = 0; g.nRes = 0; g.feeMiss = 0;
+      g.lines.forEach(l => {
+        l.key   = pcKeyBdc(g.thuISO, l.aptKey);
+        l.mark  = marks[l.key] || null;
+        l.st    = pcStatus(g.thu, cfg.bdcGrace, l.mark, t);
+        l.drift = !!(l.mark && isFinite(+l.mark.exp) && Math.abs(+l.mark.exp - l.exp) > 0.011);
+        l.diff  = (l.mark && l.mark.amt != null && l.mark.amt !== '') ? (+l.mark.amt - l.exp) : null;
+        g.exp += l.exp; g.nRes += l.items.length; g.feeMiss += l.feeMiss;
+        if (l.mark) g.rcvd += (l.mark.amt != null && l.mark.amt !== '' ? +l.mark.amt : l.exp);
+      });
+      g.nMarked = g.lines.filter(l => l.mark).length;
+      g.st = g.nMarked === g.lines.length ? 'rcvd'
+           : g.lines.some(l => l.st === 'overdue') ? 'overdue'
+           : g.lines.some(l => l.st === 'due')     ? 'due' : 'upcoming';
+    });
+
+    // Airbnb rows, newest first, grouped by release week (Mon–Sun)
+    abbRows.forEach(r => {
+      r.mark  = marks[r.key] || null;
+      r.st    = pcStatus(r.rel, cfg.abbGrace, r.mark, t);
+      r.drift = !!(r.mark && isFinite(+r.mark.exp) && Math.abs(+r.mark.exp - r.exp) > 0.011);
+      r.diff  = (r.mark && r.mark.amt != null && r.mark.amt !== '') ? (+r.mark.amt - r.exp) : null;
+    });
+    abbRows.sort((a, b) => b.rel - a.rel || a.apt.localeCompare(b.apt));
+    const weekStart = d => pcAdd(d, -((d.getDay() + 6) % 7));
+    const wkMap = {};
+    abbRows.forEach(r => {
+      const ws = weekStart(r.rel), wISO = pcISO(ws);
+      (wkMap[wISO] || (wkMap[wISO] = { wISO, ws, rows: [] })).rows.push(r);
+    });
+    const weeks = Object.values(wkMap).sort((a, b) => b.ws - a.ws);
+    weeks.forEach(w => {
+      w.exp     = w.rows.reduce((s, r) => s + r.exp, 0);
+      w.nMarked = w.rows.filter(r => r.mark).length;
+      w.rcvd    = w.rows.reduce((s, r) => s + (r.mark ? (r.mark.amt != null && r.mark.amt !== '' ? +r.mark.amt : r.exp) : 0), 0);
+      w.st      = w.nMarked === w.rows.length ? 'rcvd'
+                : w.rows.some(r => r.st === 'overdue') ? 'overdue'
+                : w.rows.some(r => r.st === 'due')     ? 'due' : 'upcoming';
+    });
+
+    // KPIs across both channels
+    const wkS = weekStart(t), wkE = pcAdd(wkS, 6);
+    const units = [];
+    batches.forEach(g => g.lines.forEach(l => units.push({ exp: l.exp, date: g.thu, st: l.st, mark: l.mark })));
+    abbRows.forEach(r => units.push({ exp: r.exp, date: r.rel, st: r.st, mark: r.mark }));
+    const sum = a => a.reduce((s, u) => s + u.exp, 0);
+    const uWeek = units.filter(u => u.date >= wkS && u.date <= wkE && !u.mark);
+    const uDue  = units.filter(u => u.st === 'due');
+    const uOver = units.filter(u => u.st === 'overdue');
+    const uMo   = units.filter(u => u.mark && u.date.getMonth() === t.getMonth() && u.date.getFullYear() === t.getFullYear());
+    const kpi = {
+      week: sum(uWeek), weekN: uWeek.length,
+      due:  sum(uDue),  dueN:  uDue.length,
+      over: sum(uOver), overN: uOver.length,
+      moRcvd: uMo.reduce((s, u) => s + (u.mark.amt != null && u.mark.amt !== '' ? +u.mark.amt : u.exp), 0), moN: uMo.length,
+    };
+
+    return { batches, weeks, abbRows, kpi, skipped, feeIssues, cfg, today: t };
+  }
+
+  // Expose the pure engine for the built-in test suite (Imports → Run Tests)
+  window.pcThursday = pcThursday; window.pcAbbRelease = pcAbbRelease;
+  window.pcAmt = pcAmt; window.pcStatus = pcStatus; window.pcChan = pcChan;
+  window.pcCompute = pcCompute;
+
+  // ── Marking actions ─────────────────────────────────────────────────────────
+  function pcUser(force) {
+    let n = localStorage.getItem('elysian_user_name') || '';
+    if (!n || force) {
+      n = (prompt('Your name — recorded next to the payouts you tick off:', n) || '').trim();
+      if (n) localStorage.setItem('elysian_user_name', n);
+    }
+    return n || 'Team member';
+  }
+  window.pcMark = function (el) {
+    const key = el.dataset.k, exp = +el.dataset.e || 0;
+    const st = pcState();
+    if (st.marks[key]) {
+      if (!confirm('Un-mark this payout as received?')) return;
+      delete st.marks[key];
+    } else {
+      st.marks[key] = { at: new Date().toISOString(), by: pcUser(), exp: Math.round(exp * 100) / 100, amt: null };
+    }
+    save(); renderPay();
+  };
+  window.pcSetAmt = function (el) {
+    const m = pcState().marks[el.dataset.k];
+    if (!m) return;
+    let v = String(el.value).trim().replace(/[\s€]/g, '');
+    if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');   // Greek format 1.234,56
+    const n = parseFloat(v);
+    m.amt = isFinite(n) ? Math.round(n * 100) / 100 : null;
+    save(); renderPay();
+  };
+  window.pcMarkAll = function (el) {
+    const kind = el.dataset.kind, id = el.dataset.id;
+    const C = pcCompute();
+    const st = pcState(); const by = pcUser(); const at = new Date().toISOString();
+    let n = 0;
+    if (kind === 'bdc') {
+      const g = C.batches.find(x => x.thuISO === id);
+      if (g) g.lines.forEach(l => { if (!st.marks[l.key]) { st.marks[l.key] = { at, by, exp: Math.round(l.exp * 100) / 100, amt: null }; n++; } });
+    } else {
+      const w = C.weeks.find(x => x.wISO === id);
+      if (w) w.rows.forEach(r => { if (!st.marks[r.key]) { st.marks[r.key] = { at, by, exp: Math.round(r.exp * 100) / 100, amt: null }; n++; } });
+    }
+    if (n) { save(); if (typeof toast === 'function') toast(n + ' payout' + (n > 1 ? 's' : '') + ' marked received'); }
+    renderPay();
+  };
+  window.pcSetCfg = function (k, v) {
+    pcState().cfg[k] = v;
+    save(); renderPay();
+  };
+
+  // ── Local view state (per browser, not synced) ──────────────────────────────
+  const _pcOpen = {};                                            // card id → explicit open/closed once touched
+  let _pcView   = localStorage.getItem('pc_view') || 'all';      // all | bdc | abb
+  let _pcSetOpen = false;
+  let _pcHideRcvd = localStorage.getItem('pc_hide_rcvd') === '1';
+  function pcEffOpen(id, dflt) { return (id in _pcOpen) ? _pcOpen[id] : !!dflt; }
+  window.pcToggle = function (id, dflt) { _pcOpen[id] = !pcEffOpen(id, dflt); renderPay(); };
+  window.pcViewSet = function (v) { _pcView = v; localStorage.setItem('pc_view', v); renderPay(); };
+  window.pcToggleSet = function () { _pcSetOpen = !_pcSetOpen; renderPay(); };
+  window.pcToggleHide = function () { _pcHideRcvd = !_pcHideRcvd; localStorage.setItem('pc_hide_rcvd', _pcHideRcvd ? '1' : '0'); renderPay(); };
+
+  // ── Rendering ───────────────────────────────────────────────────────────────
+  const PC_ST = {
+    rcvd:     { lbl: '✓ Received', bg: '#D1FAE5',    fg: '#065F46',    bd: '#A7F3D0' },
+    upcoming: { lbl: 'Upcoming',   bg: 'var(--bg2)', fg: 'var(--tx3)', bd: 'var(--bdr)' },
+    due:      { lbl: 'Expected',   bg: '#FEF3C7',    fg: '#92400E',    bd: '#FDE68A' },
+    overdue:  { lbl: '⚠ Overdue',  bg: '#FEE2E2',    fg: '#991B1B',    bd: '#FCA5A5' },
+  };
+  const pill = (stKey, key, exp, mark, extraTitle) => {
+    const s = PC_ST[stKey];
+    const title = mark
+      ? 'Ticked by ' + (mark.by || '?') + ' · ' + new Date(mark.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' — click to un-mark'
+      : (extraTitle || 'Click when this credit appears in Viva');
+    return '<button data-k="' + esc(key) + '" data-e="' + exp + '" onclick="pcMark(this)" title="' + esc(title) + '" ' +
+      'style="cursor:pointer;border:1px solid ' + s.bd + ';background:' + s.bg + ';color:' + s.fg + ';border-radius:20px;padding:3px 11px;font-size:11px;font-weight:600;white-space:nowrap">' + s.lbl + '</button>';
+  };
+  const chip = (stKey, txt) => { const s = PC_ST[stKey]; return '<span style="border:1px solid ' + s.bd + ';background:' + s.bg + ';color:' + s.fg + ';border-radius:20px;padding:2px 10px;font-size:10.5px;font-weight:600;white-space:nowrap">' + txt + '</span>'; };
+  const amtInput = (key, mark) => mark
+    ? '<input type="text" inputmode="decimal" data-k="' + esc(key) + '" value="' + (mark.amt != null ? (+mark.amt).toFixed(2).replace('.', ',') : '') + '" placeholder="€ actual" onchange="pcSetAmt(this)" ' +
+      'style="width:82px;padding:3px 7px;border:1px solid var(--bdr);border-radius:6px;font-family:var(--mono);font-size:11.5px;text-align:right" title="Optional: type the actual Viva credit to auto-check the difference">'
+    : '';
+  const diffBadge = (diff, tol) => {
+    if (diff == null) return '';
+    if (Math.abs(diff) <= tol) return '<span style="font-size:10.5px;font-weight:700;color:var(--tx-ok);white-space:nowrap">✓ matches</span>';
+    return '<span style="font-size:10.5px;font-weight:700;color:var(--tx-err);white-space:nowrap" title="Actual − expected. Hunt refund adjustments / modified reservations in the detail list.">Δ ' + (diff > 0 ? '+' : '−') + fmt(Math.abs(diff)) + '</span>';
+  };
+  const driftBadge = mark => '<span style="font-size:10px;color:var(--tx-warn);white-space:nowrap" title="A Hosthub sync changed this amount AFTER it was ticked off (refund / modification?). Re-check it against the bank.">⚠ changed since ticked (was ' + fmt(+mark.exp || 0) + ')</span>';
+  const feeBadge = n => '<span style="font-size:10px;color:var(--tx-warn);white-space:nowrap" title="Commission / payment charge missing on this reservation in Hosthub — the expected amount is probably overstated. Fix the fees in Hosthub, then re-sync.">⚠ ' + n + ' res. missing fees</span>';
+
+  function renderPay() {
+    const panel = document.getElementById('tab-pay');
+    if (!panel) return;
+    const C = pcCompute();
+    const cfg = C.cfg;
+
+    const kpiCard = (label, val, sub, color) => '<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:13px 18px;min-width:150px;flex:1">' +
+      '<div style="font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em">' + label + '</div>' +
+      '<div style="font-size:21px;font-weight:700;color:' + (color || GOLD) + ';margin-top:2px;font-family:var(--mono)">' + val + '</div>' +
+      (sub ? '<div style="font-size:11px;color:var(--tx3);margin-top:2px">' + sub + '</div>' : '') + '</div>';
+
+    // Warning banner (data quality)
+    let warn = '';
+    if (C.feeIssues > 0 || C.skipped.badDate > 0 || C.skipped.zero > 0) {
+      const bits = [];
+      if (C.feeIssues) bits.push(C.feeIssues + ' reservation' + (C.feeIssues > 1 ? 's' : '') + ' missing platform fees (expected amounts may be overstated — fix in Hosthub and re-sync)');
+      if (C.skipped.badDate) bits.push(C.skipped.badDate + ' skipped: unreadable dates');
+      if (C.skipped.zero) bits.push(C.skipped.zero + ' skipped: zero payout');
+      warn = '<div style="background:var(--bg-warn);border:.5px solid var(--bdr-warn);border-radius:var(--r);padding:9px 14px;margin-bottom:14px;font-size:12px;color:var(--tx-warn)">⚠ ' + bits.join(' · ') + '</div>';
+    }
+
+    // Settings block
+    let setHTML = '';
+    if (_pcSetOpen) {
+      const numIn = (k, v, lbl, title) => '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2)" title="' + esc(title) + '">' + lbl +
+        '<input type="number" min="0" value="' + v + '" onchange="pcSetCfg(\'' + k + '\', this.value)" style="width:58px;padding:4px 7px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"></label>';
+      setHTML = '<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:12px 16px;margin-bottom:14px;display:flex;gap:18px;flex-wrap:wrap;align-items:center">' +
+        '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2)" title="Payouts expected before this date are ignored — set it to when your Hosthub data starts being complete.">Check payments from' +
+        '<input type="date" value="' + cfg.from + '" onchange="pcSetCfg(\'from\', this.value)" style="padding:4px 7px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"></label>' +
+        numIn('bdcGrace', cfg.bdcGrace, 'Booking.com grace (days)', 'How many days after the payout Thursday before an un-ticked payout turns Overdue. Bank transfers usually land the same or next working day.') +
+        numIn('abbGrace', cfg.abbGrace, 'Airbnb grace (days)', 'How many days after the release date (check-in + 24 h) before an un-ticked payout turns Overdue. Airbnb bank transfers take ~1–3 business days.') +
+        numIn('tol', cfg.tol, 'Match tolerance (€)', 'When you type the actual amount received, differences up to this are treated as a match (bank fees, rounding).') +
+        numIn('horizon', cfg.horizon, 'Look ahead (days)', 'How far into the future to show upcoming payouts.') +
+        '<span style="font-size:10.5px;color:var(--tx3)">Settings are shared with the whole team.</span></div>';
+    }
+
+    const viewBtn = (v, lbl) => '<button class="btn sm" onclick="pcViewSet(\'' + v + '\')" style="' + (_pcView === v ? 'background:' + GOLD + ';border-color:' + GOLD + ';color:#fff;font-weight:700' : '') + '">' + lbl + '</button>';
+
+    let html = '<div style="padding:20px 22px;max-width:1080px">' +
+      '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">' +
+        '<div><div style="font-size:20px;font-weight:600">Payments Check</div>' +
+        '<div style="font-size:11.5px;color:var(--tx3);max-width:640px">What should be landing in the <b>Viva</b> account. Booking.com pays <b>each property every Thursday</b> for checkouts Thu–Wed before it · Airbnb releases <b>each reservation ~24 h after check-in</b> (in bank ~1–3 business days later). Net of commission &amp; payment charges · cancelled bookings and owner blocks excluded.</div></div>' +
+        '<div style="flex:1"></div>' +
+        viewBtn('all', 'All') + viewBtn('bdc', 'Booking.com') + viewBtn('abb', 'Airbnb') +
+        '<button class="btn sm" onclick="pcToggleHide()" title="Hide fully received batches">' + (_pcHideRcvd ? 'Show received ✓' : 'Hide received ✓') + '</button>' +
+        '<button class="btn sm" onclick="pcToggleSet()">⚙ Settings</button>' +
+        '<button class="btn sm" onclick="pcExport()">⬇ Excel</button>' +
+        '<button class="btn sm primary" onclick="pcRefresh()">↻ Refresh now</button>' +
+      '</div>' + warn + setHTML +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">' +
+        kpiCard('Expected this week', fmt(C.kpi.week), C.kpi.weekN + ' payout' + (C.kpi.weekN === 1 ? '' : 's') + ' not yet ticked') +
+        kpiCard('Awaiting arrival', fmt(C.kpi.due), C.kpi.dueN + ' within grace window', 'var(--tx-warn)') +
+        kpiCard('Overdue', fmt(C.kpi.over), C.kpi.overN + ' payout' + (C.kpi.overN === 1 ? '' : 's') + ' past grace — chase these', C.kpi.overN ? 'var(--tx-err)' : 'var(--tx-ok)') +
+        kpiCard('Received this month', fmt(C.kpi.moRcvd), C.kpi.moN + ' ticked off', 'var(--tx-ok)') +
+      '</div>';
+
+    // ── Booking.com section ──
+    if (_pcView !== 'abb') {
+      html += '<div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 10px"><div style="font-size:15px;font-weight:700">Booking.com — Thursday payout batches</div>' +
+        '<div style="font-size:11px;color:var(--tx3)">one credit per property per Thursday · payout(T) = checkouts ' + '[T−7 … T−1]' + '</div></div>';
+      const shown = C.batches.filter(g => !(_pcHideRcvd && g.st === 'rcvd'));
+      if (!shown.length) html += '<div style="font-size:12.5px;color:var(--tx3);margin-bottom:18px">No Booking.com payouts in the selected window' + (_pcHideRcvd ? ' (received ones hidden)' : '') + '.</div>';
+      shown.forEach(g => {
+        const id = 'b' + g.thuISO;
+        const dfltOpen = g.st !== 'rcvd';
+        const isOpen = pcEffOpen(id, dfltOpen);
+        const wFrom = pcAdd(g.thu, -7), wTo = pcAdd(g.thu, -1);
+        html += '<div style="background:var(--bg2);border:1px solid ' + (g.st === 'overdue' ? '#FCA5A5' : 'var(--bdr)') + ';border-radius:var(--r);margin-bottom:10px;overflow:hidden">' +
+          '<div onclick="pcToggle(\'' + id + '\',' + dfltOpen + ')" style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 16px;flex-wrap:wrap">' +
+            '<span style="color:var(--tx3);font-size:11px">' + (isOpen ? '▾' : '▸') + '</span>' +
+            '<span style="font-weight:700;font-size:13.5px;color:' + (g.st === 'rcvd' ? 'var(--tx-ok)' : 'var(--tx)') + '">' + pcDateLbl(g.thu) + '</span>' +
+            chip(g.st, PC_ST[g.st].lbl + (g.st === 'rcvd' ? '' : ' · ' + g.nMarked + '/' + g.lines.length)) +
+            '<span style="font-size:11.5px;color:var(--tx3)">covers checkouts ' + pcDateSm(wFrom) + ' – ' + pcDateSm(wTo) + ' · ' + g.nRes + ' res · ' + g.lines.length + ' propert' + (g.lines.length === 1 ? 'y' : 'ies') + '</span>' +
+            (g.feeMiss ? feeBadge(g.feeMiss) : '') +
+            '<span style="flex:1"></span>' +
+            '<span style="font-family:var(--mono);font-weight:700;font-size:13.5px;color:' + GOLD + '">' + fmt(g.exp) + '</span>' +
+            (g.nMarked ? '<span style="font-size:11px;color:var(--tx-ok);font-family:var(--mono)">received ' + fmt(g.rcvd) + '</span>' : '') +
+            (g.nMarked < g.lines.length && g.st !== 'upcoming' ? '<button class="btn sm" data-kind="bdc" data-id="' + g.thuISO + '" onclick="event.stopPropagation();pcMarkAll(this)" style="padding:3px 9px;font-size:10.5px">✓ all received</button>' : '') +
+          '</div>';
+        if (isOpen) {
+          html += '<div style="border-top:1px solid var(--bdr);padding:4px 16px 10px">';
+          g.lines.forEach(l => {
+            const did = 'd' + l.key;
+            const dOpen = pcEffOpen(did, false);
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:.5px dashed var(--bdr);flex-wrap:wrap">' +
+              pill(l.st, l.key, l.exp, l.mark) +
+              '<span onclick="pcToggle(\'' + esc(did) + '\',false)" style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--tx)" title="Click for the reservation detail">' + (dOpen ? '▾ ' : '▸ ') + esc(l.name) + '</span>' +
+              '<span style="font-size:11px;color:var(--tx3)">' + l.items.length + ' res</span>' +
+              (l.feeMiss ? feeBadge(l.feeMiss) : '') +
+              (l.drift ? driftBadge(l.mark) : '') +
+              '<span style="flex:1"></span>' +
+              (l.mark ? '<span style="font-size:10.5px;color:var(--tx3)">' + esc(l.mark.by || '') + '</span>' : '') +
+              amtInput(l.key, l.mark) + diffBadge(l.diff, cfg.tol) +
+              '<span style="font-family:var(--mono);font-weight:700;font-size:12.5px;min-width:88px;text-align:right">' + fmt(l.exp) + '</span>' +
+            '</div>';
+            if (dOpen) {
+              html += '<div style="padding:4px 0 8px 34px">';
+              l.items.forEach(it => {
+                html += '<div style="display:flex;gap:14px;font-size:11.5px;color:var(--tx2);padding:2px 0"><span style="min-width:170px">' + esc(it.guest) + '</span><span style="font-family:var(--mono)">' + esc(it.ci) + ' → ' + esc(it.co) + '</span><span style="flex:1"></span><span style="font-family:var(--mono)">' + fmt(it.amt) + '</span></div>';
+              });
+              html += '</div>';
+            }
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+      });
+    }
+
+    // ── Airbnb section ──
+    if (_pcView !== 'bdc') {
+      html += '<div style="display:flex;align-items:baseline;gap:10px;margin:22px 0 10px"><div style="font-size:15px;font-weight:700">Airbnb — payout per reservation</div>' +
+        '<div style="font-size:11px;color:var(--tx3)">released ~24 h after check-in · lands in Viva ~1–3 business days later</div></div>';
+      const shownW = C.weeks.filter(w => !(_pcHideRcvd && w.st === 'rcvd'));
+      if (!shownW.length) html += '<div style="font-size:12.5px;color:var(--tx3)">No Airbnb payouts in the selected window' + (_pcHideRcvd ? ' (received ones hidden)' : '') + '.</div>';
+      shownW.forEach(w => {
+        const id = 'w' + w.wISO;
+        const dfltOpen = w.st !== 'rcvd';
+        const isOpen = pcEffOpen(id, dfltOpen);
+        const we = pcAdd(w.ws, 6);
+        html += '<div style="background:var(--bg2);border:1px solid ' + (w.st === 'overdue' ? '#FCA5A5' : 'var(--bdr)') + ';border-radius:var(--r);margin-bottom:10px;overflow:hidden">' +
+          '<div onclick="pcToggle(\'' + id + '\',' + dfltOpen + ')" style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 16px;flex-wrap:wrap">' +
+            '<span style="color:var(--tx3);font-size:11px">' + (isOpen ? '▾' : '▸') + '</span>' +
+            '<span style="font-weight:700;font-size:13.5px;color:' + (w.st === 'rcvd' ? 'var(--tx-ok)' : 'var(--tx)') + '">Week ' + pcDateSm(w.ws) + ' – ' + pcDateSm(we) + '</span>' +
+            chip(w.st, PC_ST[w.st].lbl + (w.st === 'rcvd' ? '' : ' · ' + w.nMarked + '/' + w.rows.length)) +
+            '<span style="font-size:11.5px;color:var(--tx3)">' + w.rows.length + ' payout' + (w.rows.length === 1 ? '' : 's') + '</span>' +
+            '<span style="flex:1"></span>' +
+            '<span style="font-family:var(--mono);font-weight:700;font-size:13.5px;color:' + GOLD + '">' + fmt(w.exp) + '</span>' +
+            (w.nMarked ? '<span style="font-size:11px;color:var(--tx-ok);font-family:var(--mono)">received ' + fmt(w.rcvd) + '</span>' : '') +
+            (w.nMarked < w.rows.length && w.st !== 'upcoming' ? '<button class="btn sm" data-kind="abb" data-id="' + w.wISO + '" onclick="event.stopPropagation();pcMarkAll(this)" style="padding:3px 9px;font-size:10.5px">✓ all received</button>' : '') +
+          '</div>';
+        if (isOpen) {
+          html += '<div style="border-top:1px solid var(--bdr);padding:4px 16px 10px">';
+          w.rows.forEach(r => {
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:.5px dashed var(--bdr);flex-wrap:wrap">' +
+              pill(r.st, r.key, r.exp, r.mark, 'Release ' + pcDateSm(r.rel) + ' — click when this credit appears in Viva') +
+              '<span style="font-size:11.5px;color:var(--tx2);font-family:var(--mono);min-width:86px" title="Payout release date (check-in + 24 h)">' + pcDateSm(r.rel) + '</span>' +
+              '<span style="font-size:12.5px;font-weight:600">' + esc(r.apt) + '</span>' +
+              '<span style="font-size:11.5px;color:var(--tx3)">' + esc(r.guest) + ' · in ' + esc(r.ci) + '</span>' +
+              (r.feeMiss ? feeBadge(1) : '') +
+              (r.drift ? driftBadge(r.mark) : '') +
+              '<span style="flex:1"></span>' +
+              (r.mark ? '<span style="font-size:10.5px;color:var(--tx3)">' + esc(r.mark.by || '') + '</span>' : '') +
+              amtInput(r.key, r.mark) + diffBadge(r.diff, cfg.tol) +
+              '<span style="font-family:var(--mono);font-weight:700;font-size:12.5px;min-width:88px;text-align:right">' + fmt(r.exp) + '</span>' +
+            '</div>';
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+      });
+    }
+
+    html += '<div style="font-size:10.5px;color:var(--tx3);margin-top:16px;line-height:1.6">Expected amounts = Hosthub <b>Total Payout</b> (gross − commission − payment charges), minus any taxes the channel remits itself. ' +
+      'Ticks are shared with the whole team and survive Hosthub re-syncs. If a batch shows <i>“changed since ticked”</i>, a sync altered the reservation after reconciliation (refund / date change) — re-check it against the bank statement. ' +
+      'Refund adjustments: Booking.com nets refunds inside the same Thursday batch, so a mismatch usually means a refunded or modified reservation — open the batch detail to compare line by line.</div>';
+
+    html += '</div>';
+    panel.innerHTML = html;
+  }
+  window.renderPay = renderPay;
+
+  // ── Refresh (same path the Checkout Tracker uses) ───────────────────────────
+  window.pcRefresh = async function () {
+    if (typeof window.startSync === 'function') { try { await window.startSync(); } catch (e) {} }
+    else if (typeof window.loadFromDb === 'function') { try { await window.loadFromDb(); } catch (e) {} }
+    renderPay();
+    if (typeof toast === 'function') toast('Payments check refreshed.', 'ok');
+  };
+
+  // ── Excel export ────────────────────────────────────────────────────────────
+  window.pcExport = function () {
+    try {
+      const C = pcCompute();
+      const stLbl = s => ({ rcvd: 'Received', upcoming: 'Upcoming', due: 'Expected', overdue: 'OVERDUE' })[s] || s;
+      const r2 = n => Math.round(n * 100) / 100;
+      const bdc = [];
+      C.batches.slice().reverse().forEach(g => g.lines.forEach(l => bdc.push({
+        'Payout Thursday': g.thuISO, 'Property': l.name, 'Reservations': l.items.length,
+        'Expected €': r2(l.exp), 'Status': stLbl(l.st),
+        'Received €': l.mark && l.mark.amt != null ? l.mark.amt : '',
+        'Diff €': l.diff != null ? r2(l.diff) : '',
+        'Ticked by': l.mark ? l.mark.by : '', 'Ticked at': l.mark ? l.mark.at : '',
+        'Flags': [(l.feeMiss ? l.feeMiss + ' missing fees' : ''), (l.drift ? 'changed since ticked' : '')].filter(Boolean).join(' · '),
+      })));
+      const abb = C.abbRows.slice().reverse().map(r => ({
+        'Release date': r.relISO, 'Property': r.apt, 'Guest': r.guest, 'Check-in': r.ci,
+        'Expected €': r2(r.exp), 'Status': stLbl(r.st),
+        'Received €': r.mark && r.mark.amt != null ? r.mark.amt : '',
+        'Diff €': r.diff != null ? r2(r.diff) : '',
+        'Ticked by': r.mark ? r.mark.by : '', 'Ticked at': r.mark ? r.mark.at : '',
+        'Flags': [(r.feeMiss ? 'missing fees' : ''), (r.drift ? 'changed since ticked' : '')].filter(Boolean).join(' · '),
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bdc.length ? bdc : [{ 'Payout Thursday': '' }]), 'Booking.com batches');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(abb.length ? abb : [{ 'Release date': '' }]), 'Airbnb payouts');
+      XLSX.writeFile(wb, 'payments-check-' + pcISO(new Date()) + '.xlsx');
+    } catch (e) { if (typeof toast === 'function') toast('Export failed: ' + e.message, 'err'); }
+  };
+
+  // ── Wiring: tab switch + keep fresh with the app's 60 s DB poll ────────────
+  const _prevShowTabPay = window.showTab;
+  window.showTab = function (name, btn) {
+    if (name === 'pay') {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-pay').classList.add('active');
+      if (btn) btn.classList.add('active');
+      renderPay();
+      return;
+    }
+    return _prevShowTabPay.apply(this, arguments);
+  };
+  setInterval(() => {
+    const p = document.getElementById('tab-pay');
+    if (p && p.classList.contains('active') && !document.activeElement?.matches?.('#tab-pay input')) renderPay();
   }, 60000);
 })();
 

@@ -299,6 +299,12 @@ app.post('/api/db/data', async (req, res) => {
       // (stale client). An explicit empty array is a deliberate deletion.
       if (payload.monthlyTaskDefs === undefined && Array.isArray(existing.monthlyTaskDefs) && existing.monthlyTaskDefs.length)
         payload.monthlyTaskDefs = existing.monthlyTaskDefs;
+
+      // ANTI-WIPE PAYMENTS CHECK (Viva reconciliation ticks — must survive
+      // "Clear data" and stale clients that don't know about this key)
+      const dbPc = existing.payChk && existing.payChk.marks && typeof existing.payChk.marks === 'object' ? Object.keys(existing.payChk.marks).length : 0;
+      const inPc = payload.payChk  && payload.payChk.marks  && typeof payload.payChk.marks  === 'object' ? Object.keys(payload.payChk.marks).length  : 0;
+      if (dbPc > 0 && inPc === 0) payload.payChk = existing.payChk;
     }
 
     await pool.query(
