@@ -1068,23 +1068,33 @@ async function vivaHttp(url, opts) {
   }
 }
 
-let _vivaToken = null;   // { token, exp }
-async function vivaBearer() {
-  if (_vivaToken && _vivaToken.exp > Date.now()) return _vivaToken.token;
+// Scopes required by the Account Transactions API (developer.viva.com, Account
+// API reference): access tokens need urn:viva:payments:biservices:internalapi
+// (identity tokens would use ...:publicapi). Tokens are cached per scope.
+const VIVA_SCOPE_INT = 'urn:viva:payments:biservices:internalapi';
+const VIVA_SCOPE_PUB = 'urn:viva:payments:biservices:publicapi';
+const _vivaTokens = {};   // scope → { token, exp }
+async function vivaBearer(scope) {
+  const key = scope || '_none';
+  const c = _vivaTokens[key];
+  if (c && c.exp > Date.now()) return c.token;
   const r = await vivaHttp(VIVA_ACCOUNTS + '/connect/token', {
     method: 'POST',
     headers: {
       Authorization: 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64'),
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: 'grant_type=client_credentials',
+    body: 'grant_type=client_credentials' + (scope ? '&scope=' + encodeURIComponent(scope) : ''),
   });
-  if (!r.ok) throw new Error('Viva rejected the credentials on both auth methods (Basic and OAuth token, HTTP ' + r.status + '). Regenerate the Account Transactions Credentials in Viva → Settings → API Access and update the Railway variables.');
+  if (!r.ok) {
+    const t = (await r.text().catch(() => '')).slice(0, 160);
+    throw new Error('token HTTP ' + r.status + (scope ? ' for scope ' + scope : '') + (t ? ' — ' + t : ''));
+  }
   const d = await r.json().catch(() => ({}));
-  if (!d.access_token) throw new Error('Viva OAuth token response contained no access_token.');
-  _vivaToken = { token: d.access_token, exp: Date.now() + Math.max(60, (+d.expires_in || 3600) - 120) * 1000 };
-  console.log('[viva] OAuth bearer token obtained (expires in ' + (d.expires_in || 3600) + 's)');
-  return _vivaToken.token;
+  if (!d.access_token) throw new Error('Viva OAuth token response contained no access_token' + (scope ? ' (scope ' + scope + ')' : '') + '.');
+  _vivaTokens[key] = { token: d.access_token, exp: Date.now() + Math.max(60, (+d.expires_in || 3600) - 120) * 1000 };
+  console.log('[viva] OAuth bearer token obtained' + (scope ? ' with scope ' + scope : '') + ' (expires in ' + (d.expires_in || 3600) + 's)');
+  return _vivaTokens[key].token;
 }
 
 function vivaSearchPage(base, auth, page, pageSize, body) {
@@ -1092,40 +1102,46 @@ function vivaSearchPage(base, auth, page, pageSize, body) {
   return vivaHttp(url, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 }
 
-async function vivaAuthHeader(mode) {
+async function vivaAuthHeader(mode, scope) {
   if (mode === 'basic') return 'Basic ' + Buffer.from(`${VIVA_TX_USER}:${VIVA_TX_PASS}`).toString('base64');
-  return 'Bearer ' + await vivaBearer();
+  return 'Bearer ' + await vivaBearer(scope);
 }
 
 async function vivaFetchTransactions(fromISO, toISO) {
   const body = { DateFrom: fromISO, DateTo: toISO, AmountFrom: 0.01 };   // credits only — debits can never match a payout
   const pageSize = 100;
 
-  // Candidate host+auth combinations, most likely first. Bearer leads because
-  // the probe proved the OAuth client-credentials flow works with these creds.
+  // Candidate host+auth combinations, most likely first: the Account
+  // Transactions API needs a bearer token with the biservices scope.
   const candidates = _vivaWorking ? [_vivaWorking] :
-    VIVA_HOSTS.flatMap(base => [{ base, authMode: 'bearer' }, { base, authMode: 'basic' }]);
+    VIVA_HOSTS.flatMap(base => [
+      { base, authMode: 'bearer', scope: VIVA_SCOPE_INT },
+      { base, authMode: 'bearer', scope: VIVA_SCOPE_PUB },
+      { base, authMode: 'bearer', scope: '' },
+      { base, authMode: 'basic', scope: '' },
+    ]);
 
   let combo = null, firstPage = null;
   const failures = [];
   for (const c of candidates) {
+    const tag = `${c.base.replace('https://', '')} (${c.authMode}${c.scope ? '+' + c.scope.split(':').pop() : ''})`;
     let auth;
-    try { auth = await vivaAuthHeader(c.authMode); }
-    catch (e) { failures.push(`${c.base} (${c.authMode}): ${e.message}`); continue; }
+    try { auth = await vivaAuthHeader(c.authMode, c.scope); }
+    catch (e) { failures.push(`${tag}: ${e.message}`); continue; }
     try {
       const r = await vivaSearchPage(c.base, auth, 1, pageSize, body);
       if (r.ok) { combo = { ...c, auth }; firstPage = r; break; }
-      failures.push(`${c.base} (${c.authMode}): HTTP ${r.status}`);
-    } catch (e) { failures.push(`${c.base} (${c.authMode}): ${e.message}`); }
+      failures.push(`${tag}: HTTP ${r.status}`);
+    } catch (e) { failures.push(`${tag}: ${e.message}`); }
   }
   if (!combo) {
     _vivaWorking = null;
-    throw new Error('No Viva host/auth combination worked — ' + failures.join(' · '));
+    throw new Error('No Viva host/auth combination worked — ' + failures.join(' · ') + ' — if everything says 401, double-check that the Railway variables hold the ACCOUNT TRANSACTIONS credentials (Viva → Settings → API Access), not the Smart Checkout ones.');
   }
-  if (!_vivaWorking || _vivaWorking.base !== combo.base || _vivaWorking.authMode !== combo.authMode) {
-    console.log(`[viva] LOCKED IN working combination: ${combo.base} + ${combo.authMode} auth`);
+  if (!_vivaWorking || _vivaWorking.base !== combo.base || _vivaWorking.authMode !== combo.authMode || _vivaWorking.scope !== combo.scope) {
+    console.log(`[viva] LOCKED IN working combination: ${combo.base} + ${combo.authMode}${combo.scope ? ' (scope ' + combo.scope + ')' : ''}`);
   }
-  _vivaWorking = { base: combo.base, authMode: combo.authMode };
+  _vivaWorking = { base: combo.base, authMode: combo.authMode, scope: combo.scope };
 
   const all = [];
   let r = firstPage;
