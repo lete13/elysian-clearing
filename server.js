@@ -1023,8 +1023,8 @@ app.post('/api/debug-cancelled', async (req, res) => {
 //   VIVA_TX_USER / VIVA_TX_PASS   Account Transactions credentials
 //   VIVA_ENV                      'live' (default) or 'demo'
 
-const VIVA_TX_USER = process.env.VIVA_TX_USER || '';
-const VIVA_TX_PASS = process.env.VIVA_TX_PASS || '';
+const VIVA_TX_USER = (process.env.VIVA_TX_USER || '').trim();
+const VIVA_TX_PASS = (process.env.VIVA_TX_PASS || '').trim();
 const VIVA_ENV     = (process.env.VIVA_ENV || 'live').toLowerCase();
 // Probe evidence (24 Jul 2026): www.vivapayments.com answers 406/hangs on
 // /dataservices (it's the website gateway, not the API), while the OAuth token
@@ -1097,9 +1097,11 @@ async function vivaBearer(scope) {
   return _vivaTokens[key].token;
 }
 
-function vivaSearchPage(base, auth, page, pageSize, body) {
+function vivaSearchPage(base, auth, page, pageSize, body, personId) {
   const url = `${base}/dataservices/v1/accounttransactions/Search?PageSize=${pageSize}&Page=${page}&OrderBy=Ascending`;
-  return vivaHttp(url, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const headers = { Authorization: auth, 'Content-Type': 'application/json' };
+  if (personId) headers.PersonId = personId;   // required for client-credential access tokens (Viva docs)
+  return vivaHttp(url, { method: 'POST', headers, body: JSON.stringify(body) });
 }
 
 async function vivaAuthHeader(mode, scope) {
@@ -1107,46 +1109,94 @@ async function vivaAuthHeader(mode, scope) {
   return 'Bearer ' + await vivaBearer(scope);
 }
 
+// ── PersonId discovery ────────────────────────────────────────────────────────
+// The Account Transactions API demands a PersonId header alongside access
+// tokens. We never ask the user for it — we mine candidates from (a) the JWT
+// claims of the token itself and (b) the wallets endpoint, then let the
+// candidate loop find the one Viva accepts.
+function vivaDecodeJwt(token) {
+  try {
+    const p = String(token).split('.')[1];
+    return JSON.parse(Buffer.from(p.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+  } catch (e) { return {}; }
+}
+const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function vivaPersonCandidates() {
+  const out = [];
+  const push = v => { v = String(v == null ? '' : v).trim(); if (v && !out.includes(v)) out.push(v); };
+  // (a) claims of the unscoped access token
+  try {
+    const claims = vivaDecodeJwt(await vivaBearer(''));
+    console.log('[viva] token claim keys: ' + Object.keys(claims).join(','));
+    ['personId', 'PersonId', 'person_id', 'viva_person_id', 'sub', 'client_sub', 'merchantId', 'merchant_id'].forEach(k => { if (claims[k]) push(claims[k]); });
+    Object.values(claims).forEach(v => { if (typeof v === 'string' && GUID_RE.test(v)) push(v); });
+  } catch (e) { console.log('[viva] no token for claim mining: ' + e.message); }
+  // (b) the wallets endpoint sometimes reveals the owner id
+  for (const mode of ['bearer', 'basic']) {
+    try {
+      const auth = await vivaAuthHeader(mode, '');
+      const r = await vivaHttp(VIVA_HOSTS[0] + '/walletaccounts/v1/wallets', { method: 'GET', headers: { Authorization: auth } });
+      if (r.ok) {
+        const d = await r.json().catch(() => null);
+        JSON.stringify(d || {}).replace(/"(personId|person_id|ownerId|clientId)"\s*:\s*"([^"]+)"/gi, (m, k, v) => { push(v); return m; });
+        console.log(`[viva] wallets endpoint (${mode}) responded — person candidates now: ${out.length}`);
+        break;
+      }
+    } catch (e) { /* keep going */ }
+  }
+  return out.slice(0, 6);
+}
+
 async function vivaFetchTransactions(fromISO, toISO) {
   const body = { DateFrom: fromISO, DateTo: toISO, AmountFrom: 0.01 };   // credits only — debits can never match a payout
   const pageSize = 100;
 
-  // Candidate host+auth combinations, most likely first: the Account
-  // Transactions API needs a bearer token with the biservices scope.
-  const candidates = _vivaWorking ? [_vivaWorking] :
-    VIVA_HOSTS.flatMap(base => [
-      { base, authMode: 'bearer', scope: VIVA_SCOPE_INT },
-      { base, authMode: 'bearer', scope: VIVA_SCOPE_PUB },
-      { base, authMode: 'bearer', scope: '' },
-      { base, authMode: 'basic', scope: '' },
-    ]);
+  // Candidate combinations, most likely first. Per the Viva docs the Search
+  // endpoint wants a bearer ACCESS token + a PersonId header — the PersonId
+  // candidates are auto-discovered from the token claims / wallets endpoint.
+  let candidates;
+  if (_vivaWorking) candidates = [_vivaWorking];
+  else {
+    const persons = await vivaPersonCandidates();
+    console.log(`[viva] trying ${persons.length} PersonId candidate(s)`);
+    const api = VIVA_HOSTS[0];
+    candidates = [
+      ...persons.map(p => ({ base: api, authMode: 'bearer', scope: '', personId: p })),
+      ...persons.slice(0, 2).map(p => ({ base: api, authMode: 'basic', scope: '', personId: p })),
+      { base: api, authMode: 'bearer', scope: VIVA_SCOPE_INT, personId: '' },
+      { base: api, authMode: 'bearer', scope: VIVA_SCOPE_PUB, personId: '' },
+      { base: api, authMode: 'bearer', scope: '', personId: '' },
+      { base: api, authMode: 'basic', scope: '', personId: '' },
+      ...VIVA_HOSTS.slice(1).map(base => ({ base, authMode: 'bearer', scope: '', personId: '' })),
+    ];
+  }
 
   let combo = null, firstPage = null;
   const failures = [];
   for (const c of candidates) {
-    const tag = `${c.base.replace('https://', '')} (${c.authMode}${c.scope ? '+' + c.scope.split(':').pop() : ''})`;
+    const tag = `${c.base.replace('https://', '')} (${c.authMode}${c.scope ? '+' + c.scope.split(':').pop() : ''}${c.personId ? '+PersonId' : ''})`;
     let auth;
     try { auth = await vivaAuthHeader(c.authMode, c.scope); }
     catch (e) { failures.push(`${tag}: ${e.message}`); continue; }
     try {
-      const r = await vivaSearchPage(c.base, auth, 1, pageSize, body);
+      const r = await vivaSearchPage(c.base, auth, 1, pageSize, body, c.personId);
       if (r.ok) { combo = { ...c, auth }; firstPage = r; break; }
       failures.push(`${tag}: HTTP ${r.status}`);
     } catch (e) { failures.push(`${tag}: ${e.message}`); }
   }
   if (!combo) {
     _vivaWorking = null;
-    throw new Error('No Viva host/auth combination worked — ' + failures.join(' · ') + ' — if everything says 401, double-check that the Railway variables hold the ACCOUNT TRANSACTIONS credentials (Viva → Settings → API Access), not the Smart Checkout ones.');
+    throw new Error('No Viva combination worked — ' + failures.join(' · '));
   }
-  if (!_vivaWorking || _vivaWorking.base !== combo.base || _vivaWorking.authMode !== combo.authMode || _vivaWorking.scope !== combo.scope) {
-    console.log(`[viva] LOCKED IN working combination: ${combo.base} + ${combo.authMode}${combo.scope ? ' (scope ' + combo.scope + ')' : ''}`);
+  if (!_vivaWorking) {
+    console.log(`[viva] LOCKED IN: ${combo.base} + ${combo.authMode}${combo.scope ? ' (scope ' + combo.scope + ')' : ''}${combo.personId ? ' + PersonId header' : ''}`);
   }
-  _vivaWorking = { base: combo.base, authMode: combo.authMode, scope: combo.scope };
+  _vivaWorking = { base: combo.base, authMode: combo.authMode, scope: combo.scope, personId: combo.personId };
 
   const all = [];
   let r = firstPage;
   for (let page = 1; page <= 50; page++) {
-    if (page > 1) r = await vivaSearchPage(combo.base, combo.auth, page, pageSize, body);
+    if (page > 1) r = await vivaSearchPage(combo.base, combo.auth, page, pageSize, body, combo.personId);
     if (!r.ok) {
       _vivaWorking = null;   // stop trusting the combo if it stops working
       const t = (await r.text().catch(() => '')).slice(0, 300);
