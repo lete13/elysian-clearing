@@ -1040,7 +1040,7 @@ const VIVA_BASE     = VIVA_HOSTS[0];   // kept for the probe endpoint
 const VIVA_ACCOUNTS = process.env.VIVA_ACCOUNTS_URL || (VIVA_ENV === 'demo' ? 'https://demo-accounts.vivapayments.com' : 'https://accounts.vivapayments.com');
 const VIVA_HTTP_TIMEOUT = 20000;   // per-request; a hung connection can never freeze the check
 const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
-const VIVA_BUILD = 'v8';           // shown in /api/viva/status + error diags so we know which build is live
+const VIVA_BUILD = 'v9';           // shown in /api/viva/status + error diags so we know which build is live
 let _vivaWorking = null;           // { base, authMode } — locked in after first success
 const _vivaDiag = { scope: '', claims: '', persons: 0, aud: '' };
 
@@ -1448,9 +1448,15 @@ function vivaExpectedUnits(data, today) {
 
 // ── Credit classification & matching ─────────────────────────────────────────
 function vivaClassify(counterpart) {
-  const c = String(counterpart || '').toLowerCase();
+  const c = String(counterpart || '').toLowerCase().trim();
   if (/airbnb/.test(c)) return 'abb';
   if (/booking/.test(c)) return 'bdc';
+  // Viva's v2 Search stores the counterparty IBAN, not the name (verified on
+  // live data 29 Jul 2026). The channels' payout accounts:
+  //   Airbnb Payments  — Bank of America Dublin   → IE..BOFA...
+  //   Booking.com B.V. — Citibank Netherlands     → NL..CITI...
+  if (/^ie\d{2}bofa/.test(c)) return 'abb';
+  if (/^nl\d{2}citi/.test(c)) return 'bdc';
   return null;   // unknown counterparties (card settlements, transfers…) are NEVER matched
 }
 
@@ -1655,6 +1661,9 @@ function vivaSelfTest() {
   ok('classify booking', vivaClassify('BOOKING.COM B.V.') === 'bdc');
   ok('classify airbnb', vivaClassify('Airbnb Payments Luxembourg S.A.') === 'abb');
   ok('classify unknown → never matched', vivaClassify('CARD SETTLEMENT 1234') === null);
+  ok('classify Airbnb payout IBAN (BOFA Dublin)', vivaClassify('IE93BOFA99006156923068') === 'abb');
+  ok('classify Booking.com payout IBAN (Citi NL)', vivaClassify('NL15CITI2032301393') === 'bdc');
+  ok('other IBANs stay unclassified', vivaClassify('GR1601101250000000012300695') === null);
 
   const data = {
     payChk: { marks: {}, cfg: { from: '2026-07-01', tol: 1 } },
