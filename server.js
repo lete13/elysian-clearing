@@ -1040,7 +1040,7 @@ const VIVA_BASE     = VIVA_HOSTS[0];   // kept for the probe endpoint
 const VIVA_ACCOUNTS = process.env.VIVA_ACCOUNTS_URL || (VIVA_ENV === 'demo' ? 'https://demo-accounts.vivapayments.com' : 'https://accounts.vivapayments.com');
 const VIVA_HTTP_TIMEOUT = 20000;   // per-request; a hung connection can never freeze the check
 const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
-const VIVA_BUILD = 'v6';           // shown in /api/viva/status + error diags so we know which build is live
+const VIVA_BUILD = 'v7';           // shown in /api/viva/status + error diags so we know which build is live
 let _vivaWorking = null;           // { base, authMode } — locked in after first success
 const _vivaDiag = { scope: '', claims: '', persons: 0, aud: '' };
 
@@ -1272,52 +1272,54 @@ async function vivaMerchantsStrategy(fromISO, toISO, failures) {
   try { bearerH = 'Bearer ' + await vivaBearer(''); } catch (e) { failures.push('token: ' + e.message); return null; }
   const base = VIVA_HOSTS[0];
 
-  // 1) Wallets — the endpoint our scopes unlock
-  let wallets;
-  {
+  // 1) Wallets — nice-to-have context, but NEVER gates the transactions search
+  //    (after Viva granted datafileapi, the wallets scope was dropped from the
+  //    credentials — the search must run standalone, account-wide).
+  let ids = [];
+  try {
     const r = await vivaHttp(base + '/merchants/v1/wallets', { method: 'GET', headers: { Authorization: bearerH } });
-    if (!r.ok) {
-      const bt = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 140);
-      failures.push(`merchants/v1/wallets: HTTP ${r.status}${bt ? ' — ' + bt : ''}`);
-      return null;
+    if (r.ok) {
+      const d = await r.json().catch(() => null);
+      const ws = Array.isArray(d) ? d : (d && (d.wallets || d.items || d.data)) || [];
+      ids = ws.map(w => w.walletId != null ? w.walletId : w.WalletId).filter(x => x != null);
+      failures.push('WALLETS_OK');
+      console.log(`[viva] ✓ merchants/v1/wallets — ${ids.length} wallet(s)`);
+    } else {
+      failures.push(`merchants/v1/wallets: HTTP ${r.status} (not gating — continuing to the Search)`);
     }
-    const d = await r.json().catch(() => null);
-    wallets = Array.isArray(d) ? d : (d && (d.wallets || d.items || d.data)) || [];
-    if (!wallets.length) { failures.push('merchants/v1/wallets: empty wallet list'); return null; }
-  }
-  const ids = wallets.map(w => w.walletId != null ? w.walletId : w.WalletId).filter(x => x != null);
-  console.log(`[viva] ✓ merchants/v1/wallets — ${ids.length} wallet(s): ` + wallets.map(w => (w.friendlyName || w.walletId) + ' (' + (w.iban || 'no iban') + ')').join(', '));
-  failures.push('WALLETS_OK');
+  } catch (e) { failures.push('merchants/v1/wallets: ' + e.message); }
 
-  // 2) Transactions — v2 Search, paged until HTTP 204 per the reference
+  // 2) Transactions — v2 Search, account-wide (WalletId only when known), paged
+  //    until HTTP 204 per the reference
   const fmtV = v => new Date(v).toISOString().replace('T', ' ').replace('Z', ' +00:00');
   const body0 = { DateFrom: fmtV(fromISO), DateTo: fmtV(toISO) };
   const tokens = [{ tag: '', h: bearerH }];
   try { tokens.push({ tag: '+datafileapi', h: 'Bearer ' + await vivaBearer('urn:viva:payments:biservices:datafileapi') }); }
   catch (e) { failures.push('datafileapi scope: ' + e.message); }
+  const bodies = ids.length ? ids.map(id => ({ ...body0, WalletId: id })) : [body0];
   for (const tk of tokens) {
     const all = [];
     let ok = true;
-    for (const id of ids) {
+    for (const bd of bodies) {
       for (let page = 1; page <= 40; page++) {
         const url = `${base}/dataservices/v2/accounttransactions/Search?PageSize=500&Page=${page}&OrderBy=Ascending`;
-        const r = await vivaHttp(url, { method: 'POST', headers: { Authorization: tk.h, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body0, WalletId: id }) });
+        const r = await vivaHttp(url, { method: 'POST', headers: { Authorization: tk.h, 'Content-Type': 'application/json' }, body: JSON.stringify(bd) });
         if (r.status === 204) break;
         if (!r.ok) {
           const bt = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 140);
-          failures.push(`v2 Search${tk.tag} (wallet ${id}): HTTP ${r.status}${bt ? ' — ' + bt : ''}`);
+          failures.push(`v2 Search${tk.tag}: HTTP ${r.status}${bt ? ' — ' + bt : ''}`);
           ok = false; break;
         }
         const d = await r.json().catch(() => null);
         const items = Array.isArray(d) ? d : (d && (d.items || d.data || d.results || d.transactions)) || [];
         if (!items.length) break;
         all.push(...items);
-        console.log(`[viva] v2 Search${tk.tag} wallet ${id} page ${page}: ${items.length} tx`);
+        console.log(`[viva] v2 Search${tk.tag} page ${page}: ${items.length} tx`);
         if (items.length < 500) break;
       }
       if (!ok) break;
     }
-    if (ok) { console.log(`[viva] ✓ v2 Search${tk.tag} — ${all.length} transactions from ${ids.length} wallet(s)`); return all; }
+    if (ok) { console.log(`[viva] ✓ v2 Search${tk.tag} — ${all.length} transactions`); return all; }
   }
   return null;
 }
