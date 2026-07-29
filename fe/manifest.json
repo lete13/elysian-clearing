@@ -1,0 +1,8 @@
+{
+  "sha256": "00440ad4b7c98e9551b6cf32305306f06885840df0889dd6e5724d037bb1041d",
+  "bytes": 657003,
+  "parts": 4,
+  "compressed": 159707,
+  "builtAt": "2026-07-29T12:46:52.979Z",
+  "note": "index.html release artifact. Reassembled by server.js at boot (build v10+): concat parts -> base64-decode -> brotli-decompress -> overwrite index.html. The repo index.html is only a fallback and may be stale; the file served in production is THIS one. Readable source is mirrored in the Desktop elysian-clearing folder."
+}
