@@ -260,8 +260,11 @@
 
   
 
-  <!-- ── KPI STRIP ─────────────────────────────────────────── -->
-  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;border:.5px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:20px;background:var(--bg)">
+  <!-- ── TODAY'S ACTION CENTER ─────────────────────────────── -->
+  <div id="dash-actions"></div>
+
+  <!-- ── TOTALS STRIP (reference numbers, demoted) ───────────── -->
+  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;border:.5px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:20px;background:var(--bg);opacity:.92">
     <div class="kpi" style="border-right:.5px solid var(--bdr2)"><div class="kpi-lbl">Properties</div><div class="kpi-val" id="kp-n">0</div><div class="kpi-sub">active</div></div>
     <div class="kpi" style="border-right:.5px solid var(--bdr2)"><div class="kpi-lbl">Bookings</div><div class="kpi-val" id="kp-bk">0</div><div class="kpi-sub">imported</div></div>
     <div class="kpi" style="border-right:.5px solid var(--bdr2)"><div class="kpi-lbl">Gross revenue</div><div class="kpi-val" id="kp-tv" style="font-size:16px">€0</div><div class="kpi-sub" id="kp-tv-s"></div></div>
@@ -270,59 +273,6 @@
     <div class="kpi" id="kp-ua-c"><div class="kpi-lbl">Unassigned</div><div class="kpi-val" id="kp-ua" style="font-size:16px;color:var(--tx-warn)">0</div><div class="kpi-sub">expenses</div></div>
   </div>
 
-  <!-- ── 3-COLUMN LAYOUT ───────────────────────────────────── -->
-  <div style="display:grid;grid-template-columns:1fr 1fr 240px;gap:16px;margin-bottom:20px">
-
-    <!-- Revenue by property (main) -->
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="padding:14px 16px;background:#0F1E2E;display:flex;align-items:center;justify-content:space-between">
-        <div style="font-size:13px;font-weight:600;color:#C9A84C">Properties</div>
-        <div style="font-size:11px;color:rgba(201,168,76,.6)" id="d-grid-count"></div>
-      </div>
-      <div id="d-grid-wrap" style="max-height:360px;overflow-y:auto">
-        <div id="d-grid"></div>
-        <div id="d-empty" style="display:none;padding:32px;text-align:center;color:var(--tx3)">
-          <i class="ti ti-building-estate" style="font-size:28px;display:block;margin-bottom:10px;opacity:.3"></i>
-          <div style="font-size:13px;font-weight:500;margin-bottom:6px">No data yet</div>
-          <div style="font-size:12px">Go to <strong>Imports</strong> → sync or import a file</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Booking breakdown -->
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="padding:14px 16px;background:#0F1E2E">
-        <div style="font-size:13px;font-weight:600;color:#C9A84C">Bookings by channel</div>
-      </div>
-      <div id="d-channels" style="padding:14px 16px">
-        <div style="color:var(--tx3);font-size:13px">No bookings imported</div>
-      </div>
-    </div>
-
-    <!-- Quick actions -->
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <div class="card" style="padding:14px">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);margin-bottom:10px">Quick actions</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <button class="btn primary" onclick="navDdGo('imports')" style="justify-content:flex-start"><i class="ti ti-upload"></i> Import data</button>
-          <button class="btn" onclick="startSync()" style="justify-content:flex-start"><i class="ti ti-refresh"></i> Sync Hosthub</button>
-          <button class="btn" onclick="openTestSuite()" style="justify-content:flex-start;border-color:#7C3AED;color:#7C3AED"><i class="ti ti-flask"></i> Run Financial Tests</button>
-          <button class="btn" onclick="syncCancelled()" style="justify-content:flex-start;border-color:#F59E0B;color:#92400E"><i class="ti ti-ban"></i> Sync Cancelled Bookings</button>
-          <button class="btn" onclick="showTab('rpt',document.querySelector('[onclick*=rpt]'))" style="justify-content:flex-start"><i class="ti ti-file-analytics"></i> Generate report</button>
-          <button class="btn" onclick="showTab('cfg',document.querySelector('[onclick*=cfg]'))" style="justify-content:flex-start"><i class="ti ti-settings-2"></i> Configuration</button>
-        </div>
-      </div>
-      <div class="card" style="padding:14px">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);margin-bottom:8px">Data loaded</div>
-        <div id="dash-status" style="font-size:12px;color:var(--tx2);line-height:1.8">
-          <div>📋 <span id="ds-bk">0 bookings</span></div>
-          <div>🧾 <span id="ds-exp">0 expenses</span></div>
-          <div>🏠 <span id="ds-apt">0 properties</span></div>
-        </div>
-      </div>
-    </div>
-
-  </div>
 </div>
 
 <!-- BOOKINGS -->
@@ -2800,24 +2750,7 @@ function renderDash(){
   document.getElementById('kp-ua').textContent=ua;
   document.getElementById('kp-ua-c').style.border=ua>0?'1px solid var(--bdr-warn)':'.5px solid var(--bdr)';
   document.getElementById('kp-ua').style.color=ua>0?'var(--tx-warn)':'var(--tx-ok)';
-  const has=S.apts.length>0;
-  document.getElementById('d-empty').style.display=has?'none':'';
-  document.getElementById('d-grid-wrap').style.display=has?'':'none';
-  if(has){
-    document.getElementById('d-grid').innerHTML=S.apts.map(a=>{
-      const bks=S.bks.filter(b=>b.aptId===a.id);
-      return`<div class="prop-chip">
-        <div style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name}</div>
-        <div style="display:flex;justify-content:space-between;font-size:13px">
-          <span style="color:var(--tx2)">${bks.length} bookings</span>
-          <span class="mono" style="color:var(--tx-ok)">${fmt(bks.reduce((s,b)=>s+(b.payout||0),0))}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--tx3)">
-          <span>Mgmt ${a.mgmtFee}%</span>
-          <span>${fmt(S.exps.filter(e=>e.aptId===a.id).reduce((s,e)=>s+(e.total||0),0))} exp.</span>
-        </div>
-      </div>`;
-    }).join('');}
+  if (typeof renderDashActions === 'function') { try { renderDashActions(); } catch(e) { console.error('[dash-actions]', e); } }
   const izBk=document.getElementById('iz-bk'),izSt=document.getElementById('iz-bk-st');
   if(S.bks.length>0){izBk.classList.add('loaded');izSt.style.display='';izSt.style.color='var(--tx-ok)';izSt.innerHTML=`<i class="ti ti-check"></i> ${S.bks.length} bookings · ${S.apts.length} properties`;}
   else{izBk.classList.remove('loaded');izSt.style.display='none';}
@@ -2830,40 +2763,6 @@ function renderDash(){
   }else{izEx.classList.remove('loaded');izExSt.style.display='none';}
   if(typeof initSyncUI==='function')initSyncUI();
 
-  // ── Channel breakdown ───────────────────────────────────────
-  const chBk = {};
-  S.bks.forEach(b => { chBk[b.platform] = (chBk[b.platform]||0) + 1; });
-  const chEl = document.getElementById('d-channels');
-  if(chEl){
-    const total = S.bks.length;
-    if(!total){
-      chEl.innerHTML = '<div style="color:var(--tx3);font-size:13px;padding:8px 0">No bookings imported yet</div>';
-    } else {
-      chEl.innerHTML = Object.entries(chBk).sort((a,b)=>b[1]-a[1]).map(([ch,cnt])=>{
-        const pct = Math.round(cnt/total*100);
-        return `<div style="margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-            <span style="font-weight:500;color:var(--tx)">${ch}</span>
-            <span style="color:var(--tx3)">${cnt} <span style="font-size:11px">(${pct}%)</span></span>
-          </div>
-          <div style="height:5px;background:var(--bdr2);border-radius:3px">
-            <div style="height:5px;width:${pct}%;background:#C9A84C;border-radius:3px;transition:width .4s"></div>
-          </div></div>`;
-      }).join('');
-    }
-  }
-
-  // ── Property count badge ────────────────────────────────────
-  const gcEl = document.getElementById('d-grid-count');
-  if(gcEl) gcEl.textContent = S.apts.length + ' properties';
-
-  // ── Data status mini cards ──────────────────────────────────
-  const dsBk  = document.getElementById('ds-bk');
-  const dsExp = document.getElementById('ds-exp');
-  const dsApt = document.getElementById('ds-apt');
-  if(dsBk)  dsBk.textContent  = S.bks.length  + ' bookings';
-  if(dsExp) dsExp.textContent = (S.exps||[]).length + ' expenses';
-  if(dsApt) dsApt.textContent = S.apts.length + ' properties';
 }
 
 // ── Bookings Import (Hosthub_Bookings_Financial_Report) ──
@@ -8864,6 +8763,19 @@ loadFromDb()
     mtMonth=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0'); renderMt(); }
   window.mtShiftMonth = mtShiftMonth;
   window.mtSetMonth = function(v){ if(/^\d{4}-\d{2}$/.test(v)){ mtMonth=v; renderMt(); } };
+  // Dashboard action-center hook: checklist progress for any month, side-effect-free
+  window.mtSummaryFor = function (month) {
+    try {
+      const st = (S.monthlyTasks && S.monthlyTasks[month]) || {};
+      let total = 0, closed = 0;
+      mtDefs().forEach(def => mtRows(def).forEach(r => {
+        total++;
+        const e = st[def.key + '|' + r.id];
+        if (e && (e.done || e.na)) closed++;
+      }));
+      return { month, label: mtMonthLabel(month), total, closed, left: total - closed };
+    } catch (e) { return { month, label: month, total: 0, closed: 0, left: 0 }; }
+  };
 
   // ── Team-member identity (shown to the manager next to completed tasks) ────
   function mtUser(force) {
@@ -9885,6 +9797,166 @@ loadFromDb()
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// 🎯 DASHBOARD ACTION CENTER — "what needs doing today", per workspace profile
+// ═══════════════════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+  const escD = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const GOLD = '#C9A84C';
+  const day0 = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const TONE = { ok: 'var(--tx-ok)', warn: 'var(--tx-warn)', err: 'var(--tx-err)', gold: GOLD };
+
+  window.dashGo = function (t) {
+    if (['hhapi', 'imports', 'co', 'pay'].includes(t)) { navDdGo(t); return; }
+    showTab(t, document.querySelector('.nav-btn[data-tab="' + t + '"]'));
+  };
+
+  const big = (n, lbl, tone) => '<div style="display:inline-flex;flex-direction:column;margin-right:22px"><span style="font-size:26px;font-weight:700;font-family:var(--mono);color:' + (TONE[tone] || 'var(--tx)') + ';line-height:1.1">' + n + '</span><span style="font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em">' + lbl + '</span></div>';
+  const line = t => '<div style="font-size:12px;color:var(--tx2);padding:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + t + '</div>';
+  const card = (icon, title, tone, bigHtml, linesHtml, btn) =>
+    '<div class="card" style="padding:15px 16px;border-left:3px solid ' + (TONE[tone] || 'var(--bdr)') + ';display:flex;flex-direction:column">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px"><span style="font-size:15px">' + icon + '</span><span style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx2)">' + title + '</span></div>' +
+      '<div style="margin-bottom:6px">' + bigHtml + '</div>' +
+      '<div style="flex:1">' + linesHtml + '</div>' +
+      (btn ? '<div style="margin-top:9px">' + btn + '</div>' : '') +
+    '</div>';
+  const goBtn = (t, lbl) => '<button class="btn sm" onclick="dashGo(\'' + t + '\')" style="font-size:11.5px">' + lbl + ' →</button>';
+
+  window.renderDashActions = function () {
+    const root = document.getElementById('dash-actions');
+    if (!root) return;
+    const prof = (function () { const p = localStorage.getItem('nav_profile'); return ['operator', 'accountant', 'management'].includes(p) ? p : 'management'; })();
+    const showOps = prof !== 'accountant';
+    const showMoney = prof !== 'operator';
+    const today = new Date();
+    const cards = [];
+
+    // ── 1 · Today\'s operations ──
+    if (showOps) { try {
+      const rows = (typeof _opsAutoRows === 'function') ? (_opsAutoRows(_opsTodayStr()) || []) : [];
+      const co = rows.filter(r => r.checkinSameDay !== 'checkin_only');
+      const sameday = co.filter(r => r.checkinSameDay === 'yes');
+      const nCi = rows.filter(r => r.checkinSameDay === 'checkin_only').length + sameday.length;
+      const lines = co.slice(0, 5).map(r => line((r.checkinSameDay === 'yes' ? '⚡ ' : '') + escD(r.aptName || '?') + (r.checkoutGuest ? ' <span style="color:var(--tx3)">· ' + escD(r.checkoutGuest) + '</span>' : ''))).join('') +
+        (co.length > 5 ? line('<span style="color:var(--tx3)">+ ' + (co.length - 5) + ' more…</span>') : '') +
+        (!co.length && !nCi ? line('<span style="color:var(--tx-ok)">No checkouts or check-ins today ✓</span>') : '');
+      cards.push(card('🗓', 'Today\'s operations', co.length ? (sameday.length ? 'warn' : 'gold') : 'ok',
+        big(co.length, 'checkouts', co.length ? 'gold' : 'ok') + big(sameday.length, '⚡ same-day turnover', sameday.length ? 'warn' : 'ok') + big(nCi, 'check-ins', 'gold'),
+        lines, goBtn('ops', 'Open Daily Ops')));
+    } catch (e) {} }
+
+    // ── 2 · Payments to chase ──
+    if (showMoney && typeof pcCompute === 'function') { try {
+      const C = pcCompute();
+      const units = [];
+      C.batches.forEach(g => g.lines.forEach(l => units.push({ st: l.st, exp: l.exp, date: g.thu, label: escD(l.name) + ' — Booking.com Thu ' + g.thuISO.slice(5) })));
+      (C.abbRows || []).forEach(r => units.push({ st: r.st, exp: r.exp, date: r.rel, label: escD(r.apt) + ' — Airbnb · ' + escD(r.guest) }));
+      (C.dirRows || []).forEach(r => units.push({ st: r.st, exp: r.exp, date: r.rel, label: escD(r.apt) + ' — Direct · ' + escD(r.guest) }));
+      const over = units.filter(u => u.st === 'overdue').sort((a, b) => a.date - b.date);
+      const due = units.filter(u => u.st === 'due');
+      const sum = a => a.reduce((x, u) => x + u.exp, 0);
+      const lr = (S.payChk && S.payChk.bank && S.payChk.bank.lastResult) || null;
+      const lines = over.slice(0, 4).map(u => line('<span style="color:var(--tx-err)">' + u.label + ' · ' + fmt(u.exp) + '</span>')).join('') +
+        (over.length > 4 ? line('<span style="color:var(--tx3)">+ ' + (over.length - 4) + ' more overdue…</span>') : '') +
+        (lr ? line('<span style="color:var(--tx3)">Last bank check: ' + (lr.matched || 0) + ' auto-ticked · ' + ((lr.unmatchedCredits || []).length) + ' unmatched · ' + ((lr.missingExpected || []).length) + ' missing</span>') : '') +
+        (!over.length ? line('<span style="color:var(--tx-ok)">Nothing overdue ✓</span>') : '');
+      cards.push(card('💳', 'Payments to chase', over.length ? 'err' : 'ok',
+        big(over.length, 'overdue', over.length ? 'err' : 'ok') + big(fmt(sum(over)), 'overdue €', over.length ? 'err' : 'ok') + big(due.length, 'expected now', due.length ? 'warn' : 'ok'),
+        lines, goBtn('pay', 'Open Payments Check')));
+    } catch (e) {} }
+
+    // ── 3 · Monthly accounting tasks ──
+    if (showMoney && typeof mtSummaryFor === 'function') { try {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+      const month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      const ms = mtSummaryFor(month);
+      if (ms.total) {
+        cards.push(card('📋', 'Monthly tasks — ' + escD(ms.label), ms.left ? 'warn' : 'ok',
+          big(ms.left, 'left to do', ms.left ? 'warn' : 'ok') + big(ms.closed + '/' + ms.total, 'closed', 'gold'),
+          ms.left ? line('Proof-backed checklist for the accounting month.') : line('<span style="color:var(--tx-ok)">All closed ✓</span>'),
+          goBtn('mt', 'Open Monthly Tasks')));
+      }
+    } catch (e) {} }
+
+    // ── 4 · Data health (only when something is wrong) ──
+    if (showMoney) { try {
+      const fee = (typeof feeCheckIssues === 'function') ? feeCheckIssues(S.bks).length : 0;
+      const ua = (S.exps || []).filter(e => !e.aptId).length;
+      if (fee || ua) {
+        cards.push(card('⚠', 'Data health', 'warn',
+          (fee ? big(fee, 'res. missing fees', 'warn') : '') + (ua ? big(ua, 'unassigned expenses', 'warn') : ''),
+          (fee ? line('Fix commissions/payment charges in Hosthub, then re-sync.') : '') + (ua ? line('Assign the expenses to properties before reports.') : ''),
+          (fee ? goBtn('bk', 'Bookings') : '') + ' ' + (ua ? goBtn('exp', 'Expenses') : '')));
+      }
+    } catch (e) {} }
+
+    // ── 5 · New in the last 48 h ──
+    try {
+      const cut = Date.now() - 48 * 3600 * 1000;
+      const nb = (S.bks || []).filter(b => b && !b.cancelled && b.created && new Date(b.created).getTime() > cut);
+      const nc = (S.bks || []).filter(b => b && b.cancelled && b.cancelledAt && new Date(b.cancelledAt).getTime() > cut);
+      if (nb.length || nc.length) {
+        const val = nb.reduce((x, b) => x + (+b.payout || 0), 0);
+        cards.push(card('🆕', 'Last 48 hours', nc.length ? 'warn' : 'gold',
+          big(nb.length, 'new bookings', 'gold') + big(fmt(val), 'new payout value', 'ok') + (nc.length ? big(nc.length, 'cancellations', 'warn') : ''),
+          nb.slice(0, 3).map(b => line(escD(b.aptName || '?') + ' <span style="color:var(--tx3)">· ' + escD(b.platform || '') + ' · in ' + escD(b.checkIn || '?') + '</span>')).join(''),
+          goBtn('bk', 'Open Bookings')));
+      }
+    } catch (e) {}
+
+    // ── 6 · Occupancy risk, next 7 days (management) ──
+    if (prof === 'management' && (S.bks || []).length) { try {
+      const from = day0(today); const to = new Date(from); to.setDate(to.getDate() + 7);
+      const risky = [];
+      (S.apts || []).forEach(a => {
+        let nights = 0;
+        (S.bks || []).forEach(b => {
+          if (!b || b.cancelled || b.aptId !== a.id) return;
+          if (typeof isRevenueBooking === 'function' && !isRevenueBooking(b)) return;
+          const ci = parseD(b.checkIn), co2 = parseD(b.checkOut);
+          if (!ci || !co2 || isNaN(ci) || isNaN(co2)) return;
+          const s2 = ci > from ? ci : from, e2 = co2 < to ? co2 : to;
+          if (e2 > s2) nights += Math.round((e2 - s2) / 86400000);
+        });
+        risky.push({ name: a.name, occ: nights / 7 });
+      });
+      const low = risky.filter(r => r.occ < 0.5).sort((a, b) => a.occ - b.occ);
+      if (low.length) {
+        cards.push(card('📉', 'Occupancy risk — next 7 days', 'warn',
+          big(low.length, 'properties under 50%', 'warn'),
+          low.slice(0, 4).map(r => line(escD(r.name) + ' <span style="font-family:var(--mono);color:var(--tx-warn)">' + Math.round(r.occ * 100) + '%</span>')).join('') +
+          (low.length > 4 ? line('<span style="color:var(--tx3)">+ ' + (low.length - 4) + ' more…</span>') : ''),
+          goBtn('perf', 'Open Performance')));
+      }
+    } catch (e) {} }
+
+    // ── header: date + sync freshness ──
+    let syncChip = '';
+    try {
+      const last = (S.meta && (S.meta.lastSync || S.meta.lastAutoSync)) || localStorage.getItem('hh_last_sync');
+      if (last) {
+        const mins = Math.round((Date.now() - new Date(last).getTime()) / 60000);
+        const stale = mins > 180;
+        const lbl = mins < 60 ? mins + ' min ago' : Math.round(mins / 60) + ' h ago';
+        syncChip = '<span style="border:1px solid ' + (stale ? 'var(--bdr-warn)' : 'var(--bdr)') + ';background:' + (stale ? 'var(--bg-warn)' : 'var(--bg2)') + ';color:' + (stale ? 'var(--tx-warn)' : 'var(--tx3)') + ';border-radius:20px;padding:3px 11px;font-size:11px">' + (stale ? '⚠ last sync ' + lbl + ' — hit Sync if it looks off' : '⟳ synced ' + lbl) + '</span>';
+      }
+    } catch (e) {}
+    const profLbl = { operator: '🛎 Operator', accountant: '🧾 Accountant', management: '👔 Management' }[prof];
+    const head = '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<div style="font-size:16px;font-weight:700">' + today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) + '</div>' +
+      '<span style="font-size:11.5px;color:var(--tx3)">' + profLbl + ' — what needs action today</span>' + syncChip + '</div>';
+
+    root.innerHTML = head +
+      (cards.length
+        ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-bottom:20px">' + cards.join('') + '</div>'
+        : '<div class="card" style="padding:22px;text-align:center;margin-bottom:20px"><div style="font-size:26px">✓</div><div style="font-size:14px;font-weight:600;color:var(--tx-ok);margin-top:4px">Nothing needs action right now</div><div style="font-size:12px;color:var(--tx3);margin-top:3px">Checkouts, payments, tasks and data checks are all clear.</div></div>');
+    if (typeof applyNavProfile === 'function') applyNavProfile();
+  };
+  // first paint (loadFromDb re-renders later with fresh data)
+  try { window.renderDashActions(); } catch (e) {}
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // 👔 WORKSPACE PROFILES — Operator / Accountant / Management
 // ═══════════════════════════════════════════════════════════════════════════════
 // Filters the navigation per role so each person sees only their workspace.
@@ -9948,6 +10020,7 @@ loadFromDb()
   window.setNavProfile = function (v) {
     localStorage.setItem('nav_profile', PROFILES[v] ? v : 'management');
     apply();
+    if (typeof renderDashActions === 'function') { try { renderDashActions(); } catch (e) {} }
     if (typeof toast === 'function') {
       const L = { operator: '🛎 Operator workspace', accountant: '🧾 Accountant workspace', management: '👔 Management workspace' };
       toast(L[cur()] + ' — the menu shows only what this role needs. Switch back anytime.');
