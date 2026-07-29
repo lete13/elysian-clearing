@@ -6885,6 +6885,14 @@ function runFinancialTests() {
     assertEq('Pc12 ticked → received regardless of date', pcStatus(D(2026,7,2), 3, {at:'x'}, today), 'rcvd');
     assertEq('Pc13 channel detection bdc/abb/other',
       [pcChan({platform:'Booking.com'}), pcChan({platform:'airbnb'}), pcChan({platform:'Direct'})].join(','), 'bdc,abb,');
+    // Pc14: direct-site bookings appear as a third channel, due at check-in
+    if (typeof pcCompute === 'function') {
+      const _sb = S.bks; S.bks = [{ platform:'Direct', aptName:'T Apt', guestName:'G', checkIn:'20/7/2026', checkOut:'22/7/2026', gross:150, payout:150 }];
+      const _c = pcCompute(new Date(2026,6,24));
+      assertEq('Pc14 direct row built, due at check-in', _c.dirRows.length === 1 && _c.dirRows[0].relISO === '2026-07-20', true);
+      assertEq('Pc15 direct key format dir|apt|ci|guest', _c.dirRows[0].key, 'dir|t apt|2026-07-20|g');
+      S.bks = _sb;
+    }
   } else {
     results.push({ name:'Pc1-Pc13 payments check (pcThursday missing)', pass:false, actual:'missing', expected:'function' });
   }
@@ -9178,6 +9186,7 @@ loadFromDb()
       from:     /^\d{4}-\d{2}-\d{2}$/.test(c.from || '') ? c.from : '2026-01-01',
       bdcGrace: num(c.bdcGrace, 3, 0, 30),
       abbGrace: num(c.abbGrace, 5, 0, 30),
+      dirGrace: num(c.dirGrace, 7, 0, 60),
       tol:      num(c.tol, 1, 0, 100),
       horizon:  num(c.horizon, 21, 0, 90),
     };
@@ -9247,12 +9256,12 @@ loadFromDb()
 
     const bdcMap = {};   // thuISO → batch
     const abbRows = [];
+    const dirRows = [];
 
     (S.bks || []).forEach(b => {
       if (!b || b.cancelled) return;
       if (typeof isRevenueBooking === 'function' && !isRevenueBooking(b)) return;
-      const chan = pcChan(b);
-      if (!chan) return;                       // Direct & other channels are paid outside OTA payouts
+      const chan = pcChan(b) || 'dir';       // non-OTA bookings = the direct site & friends
       const amt = pcAmt(b);
 
       if (chan === 'bdc') {
@@ -9270,6 +9279,14 @@ loadFromDb()
         p.items.push({ guest: b.guestName || '—', ci: b.checkIn, co: b.checkOut, amt });
         p.exp += amt;
         if (feeMiss) p.feeMiss++;
+      } else if (chan === 'dir') {
+        // Direct site & other channels: money arrives via Viva card settlements
+        // (aggregated) — shown per reservation, ticked MANUALLY, due at check-in.
+        const ci = pcParseDMY(b.checkIn);
+        if (!ci) { skipped.badDate++; return; }
+        if (!(amt > 0)) { skipped.zero++; return; }
+        if (ci < from || ci > hEnd) return;
+        dirRows.push({ key: 'dir|' + pcAptKey(b) + '|' + pcISO(ci) + '|' + pcNormG(b.guestName), chan: 'dir', aptKey: pcAptKey(b), rel: ci, relISO: pcISO(ci), apt: b.aptName || '?', guest: b.guestName || '—', ci: b.checkIn, co: b.checkOut, exp: amt, feeMiss: false, platform: b.platform || 'Direct' });
       } else {
         const ci = pcParseDMY(b.checkIn);
         if (!ci) { skipped.badDate++; return; }
@@ -9278,7 +9295,7 @@ loadFromDb()
         if (rel < from || rel > hEnd) return;
         const feeMiss = !((+b.svc || 0) > 0);                            // Airbnb: host fee only
         if (feeMiss) feeIssues++;
-        abbRows.push({ key: pcKeyAbb(b), rel, relISO: pcISO(rel), apt: b.aptName || '?', guest: b.guestName || '—', ci: b.checkIn, co: b.checkOut, exp: amt, feeMiss });
+        abbRows.push({ key: pcKeyAbb(b), chan: 'abb', aptKey: pcAptKey(b), rel, relISO: pcISO(rel), apt: b.aptName || '?', guest: b.guestName || '—', ci: b.checkIn, co: b.checkOut, exp: amt, feeMiss });
       }
     });
 
@@ -9310,11 +9327,32 @@ loadFromDb()
       r.diff  = (r.mark && r.mark.amt != null && r.mark.amt !== '') ? (+r.mark.amt - r.exp) : null;
     });
     abbRows.sort((a, b) => b.rel - a.rel || a.apt.localeCompare(b.apt));
+    dirRows.forEach(r => {
+      r.mark  = marks[r.key] || null;
+      r.st    = pcStatus(r.rel, cfg.dirGrace, r.mark, t);
+      r.drift = !!(r.mark && isFinite(+r.mark.exp) && Math.abs(+r.mark.exp - r.exp) > 0.011);
+      r.diff  = (r.mark && r.mark.amt != null && r.mark.amt !== '') ? (+r.mark.amt - r.exp) : null;
+    });
+    dirRows.sort((a, b) => b.rel - a.rel || a.apt.localeCompare(b.apt));
     const weekStart = d => pcAdd(d, -((d.getDay() + 6) % 7));
     const wkMap = {};
     abbRows.forEach(r => {
       const ws = weekStart(r.rel), wISO = pcISO(ws);
       (wkMap[wISO] || (wkMap[wISO] = { wISO, ws, rows: [] })).rows.push(r);
+    });
+    const dwMap = {};
+    dirRows.forEach(r => {
+      const ws = weekStart(r.rel), wISO = pcISO(ws);
+      (dwMap[wISO] || (dwMap[wISO] = { wISO: 'd' + wISO, ws, rows: [] })).rows.push(r);
+    });
+    const dirWeeks = Object.values(dwMap).sort((a, b) => b.ws - a.ws);
+    dirWeeks.forEach(w => {
+      w.exp     = w.rows.reduce((sm, r) => sm + r.exp, 0);
+      w.nMarked = w.rows.filter(r => r.mark).length;
+      w.rcvd    = w.rows.reduce((sm, r) => sm + (r.mark ? (r.mark.amt != null && r.mark.amt !== '' ? +r.mark.amt : r.exp) : 0), 0);
+      w.st      = w.nMarked === w.rows.length ? 'rcvd'
+                : w.rows.some(r => r.st === 'overdue') ? 'overdue'
+                : w.rows.some(r => r.st === 'due')     ? 'due' : 'upcoming';
     });
     const weeks = Object.values(wkMap).sort((a, b) => b.ws - a.ws);
     weeks.forEach(w => {
@@ -9331,6 +9369,7 @@ loadFromDb()
     const units = [];
     batches.forEach(g => g.lines.forEach(l => units.push({ exp: l.exp, date: g.thu, st: l.st, mark: l.mark })));
     abbRows.forEach(r => units.push({ exp: r.exp, date: r.rel, st: r.st, mark: r.mark }));
+    dirRows.forEach(r => units.push({ exp: r.exp, date: r.rel, st: r.st, mark: r.mark }));
     const sum = a => a.reduce((s, u) => s + u.exp, 0);
     const uWeek = units.filter(u => u.date >= wkS && u.date <= wkE && !u.mark);
     const uDue  = units.filter(u => u.st === 'due');
@@ -9343,7 +9382,7 @@ loadFromDb()
       moRcvd: uMo.reduce((s, u) => s + (u.mark.amt != null && u.mark.amt !== '' ? +u.mark.amt : u.exp), 0), moN: uMo.length,
     };
 
-    return { batches, weeks, abbRows, kpi, skipped, feeIssues, cfg, today: t };
+    return { batches, weeks, abbRows, dirRows, dirWeeks, kpi, skipped, feeIssues, cfg, today: t };
   }
 
   // Expose the pure engine for the built-in test suite (Imports → Run Tests)
@@ -9403,11 +9442,13 @@ loadFromDb()
   // ── Local view state (per browser, not synced) ──────────────────────────────
   const _pcOpen = {};                                            // card id → explicit open/closed once touched
   let _pcView   = localStorage.getItem('pc_view') || 'all';      // all | bdc | abb
+  let _pcGroup  = localStorage.getItem('pc_group') || 'chan';    // chan | apt
   let _pcSetOpen = false;
   let _pcHideRcvd = localStorage.getItem('pc_hide_rcvd') === '1';
   function pcEffOpen(id, dflt) { return (id in _pcOpen) ? _pcOpen[id] : !!dflt; }
   window.pcToggle = function (id, dflt) { _pcOpen[id] = !pcEffOpen(id, dflt); renderPay(); };
   window.pcViewSet = function (v) { _pcView = v; localStorage.setItem('pc_view', v); renderPay(); };
+  window.pcGroupSet = function (v) { _pcGroup = v; localStorage.setItem('pc_group', v); renderPay(); };
   window.pcToggleSet = function () { _pcSetOpen = !_pcSetOpen; renderPay(); };
   window.pcToggleHide = function () { _pcHideRcvd = !_pcHideRcvd; localStorage.setItem('pc_hide_rcvd', _pcHideRcvd ? '1' : '0'); renderPay(); };
 
@@ -9490,6 +9531,7 @@ loadFromDb()
         '<input type="date" value="' + cfg.from + '" onchange="pcSetCfg(\'from\', this.value)" style="padding:4px 7px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"></label>' +
         numIn('bdcGrace', cfg.bdcGrace, 'Booking.com grace (days)', 'How many days after the payout Thursday before an un-ticked payout turns Overdue. Bank transfers usually land the same or next working day.') +
         numIn('abbGrace', cfg.abbGrace, 'Airbnb grace (days)', 'How many days after the release date (check-in + 24 h) before an un-ticked payout turns Overdue. Airbnb bank transfers take ~1–3 business days.') +
+        numIn('dirGrace', cfg.dirGrace, 'Direct grace (days)', 'How many days after check-in before an un-ticked direct-site payment turns Overdue. Direct payments arrive as Viva card settlements and are ticked manually.') +
         numIn('tol', cfg.tol, 'Match tolerance (€)', 'When you type the actual amount received, differences up to this are treated as a match (bank fees, rounding).') +
         numIn('horizon', cfg.horizon, 'Look ahead (days)', 'How far into the future to show upcoming payouts.') +
         '<span style="font-size:10.5px;color:var(--tx3)">Settings are shared with the whole team.</span></div>';
@@ -9502,7 +9544,11 @@ loadFromDb()
         '<div><div style="font-size:20px;font-weight:600">Payments Check</div>' +
         '<div style="font-size:11.5px;color:var(--tx3);max-width:640px">What should be landing in the <b>Viva</b> account. Booking.com pays <b>each property every Thursday</b> for checkouts Thu–Wed before it · Airbnb releases <b>each reservation ~24 h after check-in</b> (in bank ~1–3 business days later). Net of commission &amp; payment charges · cancelled bookings and owner blocks excluded.</div></div>' +
         '<div style="flex:1"></div>' +
-        viewBtn('all', 'All') + viewBtn('bdc', 'Booking.com') + viewBtn('abb', 'Airbnb') +
+        '<div style="display:flex;gap:4px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:3px">' +
+          '<button class="btn sm" onclick="pcGroupSet(\'chan\')" style="border:none;' + (_pcGroup === 'chan' ? 'background:' + GOLD + ';color:#fff;font-weight:700' : 'background:transparent') + '">By channel</button>' +
+          '<button class="btn sm" onclick="pcGroupSet(\'apt\')" style="border:none;' + (_pcGroup === 'apt' ? 'background:' + GOLD + ';color:#fff;font-weight:700' : 'background:transparent') + '">By apartment</button>' +
+        '</div>' +
+        (_pcGroup === 'chan' ? viewBtn('all', 'All') + viewBtn('bdc', 'Booking.com') + viewBtn('abb', 'Airbnb') : '') +
         '<button class="btn sm" onclick="pcToggleHide()" title="Hide fully received batches">' + (_pcHideRcvd ? 'Show received ✓' : 'Hide received ✓') + '</button>' +
         '<button class="btn sm" onclick="pcToggleSet()">⚙ Settings</button>' +
         '<button class="btn sm" onclick="pcExport()">⬇ Excel</button>' +
@@ -9560,6 +9606,7 @@ loadFromDb()
       html += '</div>';
     }
 
+    if (_pcGroup === 'chan') {
     // ── Booking.com section ──
     if (_pcView !== 'abb') {
       html += '<div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 10px"><div style="font-size:15px;font-weight:700">Booking.com — Thursday payout batches</div>' +
@@ -9652,6 +9699,113 @@ loadFromDb()
             '</div>';
           });
           html += '</div>';
+        }
+        html += '</div>';
+      });
+    }
+
+    // ── Direct site section (channel view, "All" filter only) ──
+    if (_pcView === 'all' && C.dirWeeks.length) {
+      html += '<div style="display:flex;align-items:baseline;gap:10px;margin:22px 0 10px"><div style="font-size:15px;font-weight:700">Direct site — payments per reservation</div>' +
+        '<div style="font-size:11px;color:var(--tx3)">collected via your own site (Viva card settlements arrive bundled) · tick manually when reconciled · due at check-in</div></div>';
+      const shownD = C.dirWeeks.filter(w => !(_pcHideRcvd && w.st === 'rcvd'));
+      shownD.forEach(w => {
+        const id = 'w' + w.wISO;
+        const dfltOpen = w.st !== 'rcvd';
+        const isOpen = pcEffOpen(id, dfltOpen);
+        const we = pcAdd(w.ws, 6);
+        html += '<div style="background:var(--bg2);border:1px solid ' + (w.st === 'overdue' ? '#FCA5A5' : 'var(--bdr)') + ';border-radius:var(--r);margin-bottom:10px;overflow:hidden">' +
+          '<div onclick="pcToggle(\'' + id + '\',' + dfltOpen + ')" style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 16px;flex-wrap:wrap">' +
+            '<span style="color:var(--tx3);font-size:11px">' + (isOpen ? '▾' : '▸') + '</span>' +
+            '<span style="font-weight:700;font-size:13.5px;color:' + (w.st === 'rcvd' ? 'var(--tx-ok)' : 'var(--tx)') + '">Week ' + pcDateSm(w.ws) + ' – ' + pcDateSm(we) + '</span>' +
+            chip(w.st, PC_ST[w.st].lbl + (w.st === 'rcvd' ? '' : ' · ' + w.nMarked + '/' + w.rows.length)) +
+            '<span style="font-size:11.5px;color:var(--tx3)">' + w.rows.length + ' payment' + (w.rows.length === 1 ? '' : 's') + '</span>' +
+            '<span style="flex:1"></span>' +
+            '<span style="font-family:var(--mono);font-weight:700;font-size:13.5px;color:' + GOLD + '">' + fmt(w.exp) + '</span>' +
+            (w.nMarked ? '<span style="font-size:11px;color:var(--tx-ok);font-family:var(--mono)">received ' + fmt(w.rcvd) + '</span>' : '') +
+          '</div>';
+        if (isOpen) {
+          html += '<div style="border-top:1px solid var(--bdr);padding:4px 16px 10px">';
+          w.rows.forEach(r => {
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:.5px dashed var(--bdr);flex-wrap:wrap">' +
+              pill(r.st, r.key, r.exp, r.mark, 'Due at check-in ' + pcDateSm(r.rel) + ' — tick when the payment is reconciled') +
+              '<span style="font-size:11.5px;color:var(--tx2);font-family:var(--mono);min-width:86px">' + pcDateSm(r.rel) + '</span>' +
+              '<span style="font-size:12.5px;font-weight:600">' + esc(r.apt) + '</span>' +
+              '<span style="font-size:11.5px;color:var(--tx3)">' + esc(r.guest) + ' · ' + esc(r.platform) + '</span>' +
+              (r.drift ? driftBadge(r.mark) : '') +
+              '<span style="flex:1"></span>' +
+              (r.mark ? '<span style="font-size:10.5px;color:var(--tx3)">' + (r.mark.auto ? '🤖 ' : '') + esc(r.mark.by || '') + '</span>' : '') +
+              amtInput(r.key, r.mark) + diffBadge(r.diff, cfg.tol) +
+              '<span style="font-family:var(--mono);font-weight:700;font-size:12.5px;min-width:88px;text-align:right">' + fmt(r.exp) + '</span>' +
+            '</div>';
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+      });
+    }
+    } else {
+      // ── By-apartment view: every property × three channels ──
+      const byApt = {};
+      const A = k => byApt[k] || (byApt[k] = { key: k, name: '', bdc: [], abb: [], dir: [] });
+      C.batches.forEach(g => g.lines.forEach(l => { const a = A(l.aptKey); a.name = a.name || l.name; a.bdc.push({ ...l, thu: g.thu, thuISO: g.thuISO }); }));
+      C.abbRows.forEach(r => { const a = A(r.aptKey); a.name = a.name || r.apt; a.abb.push(r); });
+      C.dirRows.forEach(r => { const a = A(r.aptKey); a.name = a.name || r.apt; a.dir.push(r); });
+      const vis = r => !(_pcHideRcvd && r.mark);
+      const aptList = Object.values(byApt).filter(a => [...a.bdc, ...a.abb, ...a.dir].some(vis));
+      const sev = a => { const rows = [...a.bdc, ...a.abb, ...a.dir]; return rows.some(x => x.st === 'overdue') ? 0 : rows.some(x => x.st === 'due') ? 1 : rows.some(x => !x.mark) ? 2 : 3; };
+      aptList.sort((x, y) => sev(x) - sev(y) || x.name.localeCompare(y.name));
+      const chanTot = rows => ({
+        exp: rows.reduce((s2, r) => s2 + r.exp, 0),
+        rcvd: rows.reduce((s2, r) => s2 + (r.mark ? (r.mark.amt != null && r.mark.amt !== '' ? +r.mark.amt : r.exp) : 0), 0),
+        open: rows.filter(r => !r.mark).length,
+        over: rows.filter(r => r.st === 'overdue').length,
+        n: rows.length,
+      });
+      const chanChip = (lbl, tt) => {
+        if (!tt.n) return '<span style="font-size:10px;color:var(--tx3);padding:2px 8px">' + lbl + ' —</span>';
+        const st = tt.over ? 'overdue' : (tt.open ? 'due' : 'rcvd');
+        return chip(st, lbl + ' ' + (tt.n - tt.open) + '/' + tt.n);
+      };
+      const aptRow = (r, lbl, sub) => '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:.5px dashed var(--bdr);flex-wrap:wrap">' +
+        pill(r.st, r.key, r.exp, r.mark) +
+        '<span style="font-size:11.5px;color:var(--tx2);font-family:var(--mono);min-width:96px">' + lbl + '</span>' +
+        (sub ? '<span style="font-size:11.5px;color:var(--tx3)">' + sub + '</span>' : '') +
+        (r.feeMiss ? feeBadge(r.feeMiss === true ? 1 : r.feeMiss) : '') +
+        (r.drift ? driftBadge(r.mark) : '') +
+        '<span style="flex:1"></span>' +
+        (r.mark ? '<span style="font-size:10.5px;color:var(--tx3)">' + (r.mark.auto ? '🤖 ' : '') + esc(r.mark.by || '') + '</span>' : '') +
+        amtInput(r.key, r.mark) + diffBadge(r.diff, cfg.tol) +
+        '<span style="font-family:var(--mono);font-weight:700;font-size:12.5px;min-width:88px;text-align:right">' + fmt(r.exp) + '</span></div>';
+      const chanBlock = (title, note, rows, mk) => {
+        const rr = rows.filter(vis);
+        if (!rr.length) return '';
+        return '<div style="margin:10px 0 2px;font-size:11.5px;font-weight:700;color:' + GOLD + '">' + title + ' <span style="font-weight:400;color:var(--tx3)">' + note + '</span></div>' + rr.map(mk).join('');
+      };
+      if (!aptList.length) html += '<div style="font-size:12.5px;color:var(--tx3)">Nothing to show' + (_pcHideRcvd ? ' (received hidden)' : '') + '.</div>';
+      aptList.forEach(a => {
+        const tb = chanTot(a.bdc), ta = chanTot(a.abb), td = chanTot(a.dir);
+        const openExp = [...a.bdc, ...a.abb, ...a.dir].filter(r => !r.mark).reduce((s2, r) => s2 + r.exp, 0);
+        const rcvdAll = tb.rcvd + ta.rcvd + td.rcvd;
+        const worst = [...a.bdc, ...a.abb, ...a.dir].some(r => r.st === 'overdue');
+        const id = 'a' + a.key;
+        const dfltOpen = false;
+        const isOpen = pcEffOpen(id, dfltOpen);
+        html += '<div style="background:var(--bg2);border:1px solid ' + (worst ? '#FCA5A5' : 'var(--bdr)') + ';border-radius:var(--r);margin-bottom:8px;overflow:hidden">' +
+          '<div onclick="pcToggle(\'' + esc(id) + '\',' + dfltOpen + ')" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 16px;flex-wrap:wrap">' +
+            '<span style="color:var(--tx3);font-size:11px">' + (isOpen ? '▾' : '▸') + '</span>' +
+            '<span style="font-weight:700;font-size:13px">' + esc(a.name || a.key) + '</span>' +
+            chanChip('Booking', tb) + chanChip('Airbnb', ta) + chanChip('Direct', td) +
+            '<span style="flex:1"></span>' +
+            (openExp > 0.005 ? '<span style="font-size:11px;color:var(--tx-warn);font-family:var(--mono)" title="Not yet ticked">open ' + fmt(openExp) + '</span>' : '') +
+            (rcvdAll > 0.005 ? '<span style="font-size:11px;color:var(--tx-ok);font-family:var(--mono)">received ' + fmt(rcvdAll) + '</span>' : '') +
+          '</div>';
+        if (isOpen) {
+          html += '<div style="border-top:1px solid var(--bdr);padding:2px 16px 10px">' +
+            chanBlock('Booking.com', 'one credit per Thursday', a.bdc.sort((x, y) => y.thu - x.thu), l => aptRow(l, pcDateSm(l.thu), l.items.length + ' res')) +
+            chanBlock('Airbnb', 'per reservation, ~24 h after check-in', a.abb, r => aptRow(r, pcDateSm(r.rel), esc(r.guest))) +
+            chanBlock('Direct site', 'card settlements · tick manually', a.dir, r => aptRow(r, pcDateSm(r.rel), esc(r.guest) + ' · ' + esc(r.platform))) +
+          '</div>';
         }
         html += '</div>';
       });
