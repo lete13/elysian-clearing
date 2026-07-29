@@ -158,7 +158,7 @@
       <option value="operator">🛎 Operator</option>
     </select>
     <button class="btn sm" id="btn-clear-all" onclick="clearAll()" style="border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.6);background:transparent"><i class="ti ti-trash"></i> Clear data</button>
-    <div style="text-align:right">
+    <div id="hdr-props" style="text-align:right">
       <div style="font-size:9px;color:#ffffff55;text-transform:uppercase;letter-spacing:.1em">Properties</div>
       <div id="hdr-n" style="font-family:var(--mono);color:#C9A84C;font-weight:600;font-size:14px">0</div>
     </div>
@@ -263,8 +263,8 @@
   <!-- ── TODAY'S ACTION CENTER ─────────────────────────────── -->
   <div id="dash-actions"></div>
 
-  <!-- ── TOTALS STRIP (reference numbers, demoted) ───────────── -->
-  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;border:.5px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:20px;background:var(--bg);opacity:.92">
+  <!-- ── TOTALS STRIP (reference numbers, demoted; hidden for Operator) ── -->
+  <div id="dash-totals" style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;border:.5px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:20px;background:var(--bg);opacity:.92">
     <div class="kpi" style="border-right:.5px solid var(--bdr2)"><div class="kpi-lbl">Properties</div><div class="kpi-val" id="kp-n">0</div><div class="kpi-sub">active</div></div>
     <div class="kpi" style="border-right:.5px solid var(--bdr2)"><div class="kpi-lbl">Bookings</div><div class="kpi-val" id="kp-bk">0</div><div class="kpi-sub">imported</div></div>
     <div class="kpi" style="border-right:.5px solid var(--bdr2)"><div class="kpi-lbl">Gross revenue</div><div class="kpi-val" id="kp-tv" style="font-size:16px">€0</div><div class="kpi-sub" id="kp-tv-s"></div></div>
@@ -495,7 +495,10 @@
   <!-- ── DATA STATUS (top, 4 equal cards) ─────────────────── -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
     <div class="shdr" style="margin:0">Data status</div>
-    <button class="btn sm" onclick="loadFromDb().then(()=>{renderHealth();toast('Refreshed from database','ok')})" style="font-size:11px"><i class="ti ti-refresh"></i> Refresh from DB</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn sm" onclick="openTestSuite()" style="font-size:11px" title="Financial engine self-tests incl. golden records G1–G31 (Horizon · Skyline · Cozy Corner, June 2026) and payments checks Pc1–Pc15"><i class="ti ti-flask"></i> Run tests</button>
+      <button class="btn sm" onclick="loadFromDb().then(()=>{renderHealth();toast('Refreshed from database','ok')})" style="font-size:11px"><i class="ti ti-refresh"></i> Refresh from DB</button>
+    </div>
   </div>
   <div id="health-panel" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px"></div>
 
@@ -9811,6 +9814,33 @@ loadFromDb()
     showTab(t, document.querySelector('.nav-btn[data-tab="' + t + '"]'));
   };
 
+  // Dashboard task widget — bridges to the Daily Ops task store (S.daily.tasks)
+  window.dashTaskDone = function (id, done) {
+    try {
+      if (!_opsDate) _opsDate = _opsTodayStr();
+      opsCompleteTask(id, done); // saves + re-renders Daily Ops
+    } catch (e) {}
+    window.renderDashActions();
+  };
+  window.dashTaskAdd = function () {
+    const inp = document.getElementById('dash-task-new');
+    const text = (inp && inp.value || '').trim();
+    if (!text) return;
+    try {
+      _opsEnsure();
+      S.daily.tasks.push({
+        id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        aptId: '', aptName: '', text: text,
+        createdDate: _opsTodayStr(), completed: false, completedDate: null,
+      });
+      save();
+      if (typeof renderOps === 'function') renderOps();
+    } catch (e) {}
+    window.renderDashActions();
+    const el2 = document.getElementById('dash-task-new');
+    if (el2) el2.focus();
+  };
+
   const big = (n, lbl, tone) => '<div style="display:inline-flex;flex-direction:column;margin-right:22px"><span style="font-size:26px;font-weight:700;font-family:var(--mono);color:' + (TONE[tone] || 'var(--tx)') + ';line-height:1.1">' + n + '</span><span style="font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em">' + lbl + '</span></div>';
   const line = t => '<div style="font-size:12px;color:var(--tx2);padding:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + t + '</div>';
   const card = (icon, title, tone, bigHtml, linesHtml, btn) =>
@@ -9843,6 +9873,64 @@ loadFromDb()
       cards.push(card('🗓', 'Today\'s operations', co.length ? (sameday.length ? 'warn' : 'gold') : 'ok',
         big(co.length, 'checkouts', co.length ? 'gold' : 'ok') + big(sameday.length, '⚡ same-day turnover', sameday.length ? 'warn' : 'ok') + big(nCi, 'check-ins', 'gold'),
         lines, goBtn('ops', 'Open Daily Ops')));
+    } catch (e) {} }
+
+    // ── 1b · Open tasks ──
+    if (showOps) { try {
+      if (typeof _opsEnsure === 'function') _opsEnsure();
+      const todayStr = (typeof _opsTodayStr === 'function') ? _opsTodayStr() : new Date().toISOString().slice(0, 10);
+      const open = ((S.daily && S.daily.tasks) || []).filter(t => t && !t.completed)
+        .sort((a, b) => String(a.createdDate || '').localeCompare(String(b.createdDate || '')));
+      const overdueT = open.filter(t => t.createdDate && t.createdDate < todayStr);
+      const rowsH = open.slice(0, 6).map(t => {
+        const old = t.createdDate && t.createdDate < todayStr;
+        return '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--tx2);padding:2.5px 0;cursor:pointer">' +
+          '<input type="checkbox" onchange="dashTaskDone(\'' + t.id + '\', this.checked)" style="cursor:pointer;flex-shrink:0">' +
+          '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escD(t.text) +
+          (t.aptName ? ' <span style="color:var(--tx3)">· ' + escD(t.aptName) + '</span>' : '') +
+          (old ? ' <span style="color:var(--tx-warn);font-family:var(--mono);font-size:10.5px">⏰ ' + escD(t.createdDate) + '</span>' : '') +
+          '</span></label>';
+      }).join('') +
+        (open.length > 6 ? line('<span style="color:var(--tx3)">+ ' + (open.length - 6) + ' more…</span>') : '') +
+        (!open.length ? line('<span style="color:var(--tx-ok)">No open tasks ✓</span>') : '') +
+        '<div style="display:flex;gap:6px;margin-top:7px">' +
+          '<input id="dash-task-new" placeholder="Add a task…" onkeydown="if(event.key===\'Enter\')dashTaskAdd()" style="flex:1;min-width:0;background:var(--bg2);border:1px solid var(--bdr);border-radius:6px;color:var(--tx);font-size:12px;padding:5px 8px">' +
+          '<button class="btn sm" onclick="dashTaskAdd()" style="font-size:11.5px">+ Add</button>' +
+        '</div>';
+      cards.push(card('✅', 'Open tasks', overdueT.length ? 'warn' : (open.length ? 'gold' : 'ok'),
+        big(open.length, 'open', open.length ? 'gold' : 'ok') + (overdueT.length ? big(overdueT.length, 'from earlier days', 'warn') : ''),
+        rowsH, goBtn('ops', 'Manage in Daily Ops')));
+    } catch (e) {} }
+
+    // ── 1c · Performance snapshot (operator — percentages only, no money, no counts) ──
+    if (prof === 'operator' && (S.apts || []).length) { try {
+      const occPct = days => {
+        const from = day0(today); const to = new Date(from); to.setDate(to.getDate() + days);
+        let nights = 0;
+        (S.bks || []).forEach(b => {
+          if (!b || b.cancelled) return;
+          if (typeof isRevenueBooking === 'function' && !isRevenueBooking(b)) return;
+          const ci = parseD(b.checkIn), co2 = parseD(b.checkOut);
+          if (!ci || !co2 || isNaN(ci) || isNaN(co2)) return;
+          const s2 = ci > from ? ci : from, e2 = co2 < to ? co2 : to;
+          if (e2 > s2) nights += Math.round((e2 - s2) / 86400000);
+        });
+        const cap = (S.apts || []).length * days;
+        return cap ? Math.round(nights / cap * 100) : 0;
+      };
+      const tonight = occPct(1), w1 = occPct(7), w2 = occPct(14);
+      const from7 = day0(today); const to7 = new Date(from7); to7.setDate(to7.getDate() + 7);
+      const arrivals = (S.bks || []).filter(b => {
+        if (!b || b.cancelled) return false;
+        const ci = parseD(b.checkIn);
+        return ci && !isNaN(ci) && ci >= from7 && ci < to7;
+      }).length;
+      const oc = p => p >= 70 ? 'ok' : (p >= 40 ? 'warn' : 'err');
+      cards.push(card('📊', 'Performance snapshot', oc(w1),
+        big(tonight + '%', 'tonight', oc(tonight)) + big(w1 + '%', 'next 7 days', oc(w1)) +
+        big(w2 + '%', 'next 14 days', oc(w2)) + big(arrivals, 'arrivals next 7d', 'gold'),
+        line('<span style="color:var(--tx3)">Occupancy across all managed units.</span>'),
+        goBtn('perf', 'Open Performance')));
     } catch (e) {} }
 
     // ── 2 · Payments to chase ──
@@ -9898,7 +9986,7 @@ loadFromDb()
       if (nb.length || nc.length) {
         const val = nb.reduce((x, b) => x + (+b.payout || 0), 0);
         cards.push(card('🆕', 'Last 48 hours', nc.length ? 'warn' : 'gold',
-          big(nb.length, 'new bookings', 'gold') + big(fmt(val), 'new payout value', 'ok') + (nc.length ? big(nc.length, 'cancellations', 'warn') : ''),
+          big(nb.length, 'new bookings', 'gold') + (showMoney ? big(fmt(val), 'new payout value', 'ok') : '') + (nc.length ? big(nc.length, 'cancellations', 'warn') : ''),
           nb.slice(0, 3).map(b => line(escD(b.aptName || '?') + ' <span style="color:var(--tx3)">· ' + escD(b.platform || '') + ' · in ' + escD(b.checkIn || '?') + '</span>')).join(''),
           goBtn('bk', 'Open Bookings')));
       }
@@ -9999,6 +10087,11 @@ loadFromDb()
     // management-only chrome
     const clearBtn = document.getElementById('btn-clear-all');
     if (clearBtn) clearBtn.style.display = name === 'management' ? '' : 'none';
+    // Operator is a finance-free view: no revenue totals, no property counts
+    const totals = document.getElementById('dash-totals');
+    if (totals) totals.style.display = name === 'operator' ? 'none' : '';
+    const hdrProps = document.getElementById('hdr-props');
+    if (hdrProps) hdrProps.style.display = name === 'operator' ? 'none' : '';
     // dashboard quick-action shortcuts follow the profile too
     document.querySelectorAll('#tab-dash button[onclick*="showTab"]').forEach(b => {
       const m = String(b.getAttribute('onclick') || '').match(/showTab\('(\w+)'/);
