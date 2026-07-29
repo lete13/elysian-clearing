@@ -1040,7 +1040,7 @@ const VIVA_BASE     = VIVA_HOSTS[0];   // kept for the probe endpoint
 const VIVA_ACCOUNTS = process.env.VIVA_ACCOUNTS_URL || (VIVA_ENV === 'demo' ? 'https://demo-accounts.vivapayments.com' : 'https://accounts.vivapayments.com');
 const VIVA_HTTP_TIMEOUT = 20000;   // per-request; a hung connection can never freeze the check
 const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
-const VIVA_BUILD = 'v7';           // shown in /api/viva/status + error diags so we know which build is live
+const VIVA_BUILD = 'v8';           // shown in /api/viva/status + error diags so we know which build is live
 let _vivaWorking = null;           // { base, authMode } — locked in after first success
 const _vivaDiag = { scope: '', claims: '', persons: 0, aud: '' };
 
@@ -1522,10 +1522,17 @@ async function vivaRunCheck(trigger) {
     .slice(0, 25)
     .map(u => ({ key: u.key, label: u.label, date: pcvISO(u.date), exp: u.exp }));
 
+  // Diagnostics: what do the credits we could NOT classify look like?
+  const unclass = credits.filter(c => !vivaClassify(c.counterpart));
+  const typeHisto = {};
+  unclass.forEach(c => { const k = (c.typeId != null ? c.typeId : '?') + '/' + (c.subTypeId != null ? c.subTypeId : '?'); typeHisto[k] = (typeHisto[k] || 0) + 1; });
+
   const report = {
     ranAt: nowIso, trigger, env: VIVA_ENV,
     window: { from: pcvISO(from), to: pcvISO(today) },
     creditsSeen: creditsAll.length, creditsChannel: classified.length,
+    unclassifiedTypes: typeHisto,
+    sampleUnclassified: unclass.slice(0, 15).map(c => ({ date: pcvISO(pcvDay0(c.date)), amount: c.amount, counterpart: String(c.counterpart || '').slice(0, 40) || '(empty)', typeId: c.typeId, subTypeId: c.subTypeId })),
     matched: matches.length,
     autoTicked: matches.map(m => ({ key: m.unit.key, label: m.unit.label, exp: m.unit.exp, amt: m.credit.amount, diff: m.diff, kind: m.kind, txAt: pcvISO(pcvDay0(m.credit.date)), counterpart: m.credit.counterpart.slice(0, 60) })),
     unmatchedCredits: unmatchedCredits.slice(0, 25).map(x => ({ date: pcvISO(pcvDay0(x.credit.date)), counterpart: x.credit.counterpart.slice(0, 60), amount: x.credit.amount, candidates: x.candidates })),
