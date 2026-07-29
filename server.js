@@ -19,6 +19,52 @@ const { Pool }   = require('pg');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// ── Frontend bootstrap (build v10) ───────────────────────────────────────────
+// index.html is too large to push through the GitHub connector, so frontend
+// releases ship as fe/patches.json: an ordered list of exact string
+// replacements applied to the repo's index.html at boot (all-or-nothing,
+// sha256-verified). If patches are absent, empty, or fail verification, the
+// repo's index.html serves unchanged. GET /api/fe-info reports what is live.
+// Consolidation: when patches accumulate, upload a fresh full index.html via
+// GitHub web and reset patches.json to {"patches": []} in the same release.
+const FE_INFO = { source: 'repo-file', patches: 0, bytes: 0, sha256: '', builtAt: '', error: '' };
+(function feBootstrap() {
+  const fsB = require('fs'), crypto = require('crypto');
+  const sha256 = s => crypto.createHash('sha256').update(s).digest('hex');
+  try {
+    const idx = path.join(__dirname, 'index.html');
+    const orig = fsB.readFileSync(idx, 'utf8');
+    FE_INFO.bytes = Buffer.byteLength(orig);
+    FE_INFO.sha256 = sha256(orig);
+    const pf = path.join(__dirname, 'fe', 'patches.json');
+    if (!fsB.existsSync(pf)) { console.log('  FE: no fe/patches.json — serving repo index.html as-is'); return; }
+    const spec = JSON.parse(fsB.readFileSync(pf, 'utf8'));
+    const ops = spec.patches || [];
+    if (!ops.length) { console.log('  FE: fe/patches.json empty — serving repo index.html as-is'); return; }
+    if (spec.baseSha256 && spec.baseSha256 !== FE_INFO.sha256) {
+      throw new Error('base drifted: repo index.html sha256 ' + FE_INFO.sha256.slice(0, 12) + '… ≠ patch base ' + String(spec.baseSha256).slice(0, 12) + '… (a fresh full upload probably landed — reset patches.json to {"patches":[]})');
+    }
+    let html = orig;
+    ops.forEach((p, i) => {
+      const n = html.split(p.find).length - 1;
+      const want = p.count || 1;
+      if (n !== want) throw new Error('patch #' + (i + 1) + (p.note ? ' (' + p.note + ')' : '') + ': anchor found ' + n + 'x, expected ' + want + 'x');
+      html = html.split(p.find).join(p.replace);
+    });
+    const sha = sha256(html);
+    if (spec.expectedSha256 && spec.expectedSha256 !== sha) {
+      throw new Error('patched result sha256 ' + sha.slice(0, 12) + '… ≠ expected ' + String(spec.expectedSha256).slice(0, 12) + '…');
+    }
+    fsB.writeFileSync(idx, html);
+    Object.assign(FE_INFO, { source: 'repo-file+patches', patches: ops.length, bytes: Buffer.byteLength(html), sha256: sha, builtAt: spec.builtAt || '' });
+    console.log('  FE: applied ' + ops.length + ' patch(es) to index.html (' + FE_INFO.bytes + ' bytes, sha256 ' + sha.slice(0, 12) + '…)');
+  } catch (e) {
+    FE_INFO.source = 'repo-file (patches FAILED)';
+    FE_INFO.error = e.message;
+    console.error('  FE: patch apply FAILED — serving repo index.html unpatched. ' + e.message);
+  }
+})();
+
 // ── PostgreSQL ────────────────────────────────────────────────────────────────
 let pool = null;
 
@@ -85,7 +131,7 @@ const SERVER_API_KEY = process.env.HOSTHUB_API_KEY || '';
 
 if (APP_PASSWORD) {
   app.use((req, res, next) => {
-    if (req.path === '/health') return next();
+    if (req.path === '/health' || req.path === '/api/fe-info') return next();
     const auth = req.headers['authorization'] || '';
     const b64  = auth.replace(/^Basic\s+/i, '');
     const [, pw] = Buffer.from(b64, 'base64').toString().split(':');
@@ -881,6 +927,13 @@ app.get('/health', async (req, res) => {
   res.json({ status: 'ok', db: dbOk, ts: Date.now() });
 });
 
+// ── Deploy verification: which frontend build is live ────────────────────────
+// Auth-exempt (leaks only a hash + byte count) so deploys can be verified
+// without credentials: GET /api/fe-info
+app.get('/api/fe-info', (req, res) => {
+  res.json({ build: VIVA_BUILD, fe: FE_INFO, ts: Date.now() });
+});
+
 // ── Catch-all: serve the app with injected DB-load guarantee ─────────────────
 const fs = require('fs');
 app.get('/', (req, res) => {
@@ -1040,7 +1093,7 @@ const VIVA_BASE     = VIVA_HOSTS[0];   // kept for the probe endpoint
 const VIVA_ACCOUNTS = process.env.VIVA_ACCOUNTS_URL || (VIVA_ENV === 'demo' ? 'https://demo-accounts.vivapayments.com' : 'https://accounts.vivapayments.com');
 const VIVA_HTTP_TIMEOUT = 20000;   // per-request; a hung connection can never freeze the check
 const vivaConfigured = () => !!(VIVA_TX_USER && VIVA_TX_PASS);
-const VIVA_BUILD = 'v9';           // shown in /api/viva/status + error diags so we know which build is live
+const VIVA_BUILD = 'v10';          // shown in /api/viva/status + error diags so we know which build is live
 let _vivaWorking = null;           // { base, authMode } — locked in after first success
 const _vivaDiag = { scope: '', claims: '', persons: 0, aud: '' };
 
