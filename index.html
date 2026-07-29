@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Elysian Clearing Automation</title>
+  <title>Elysian Command Center</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -126,20 +126,20 @@
 <div style="background:#0F1E2E;padding:0 24px;display:flex;align-items:stretch;gap:16px;border-bottom:2px solid #C9A84C;position:sticky;top:0;z-index:100" class="no-print">
   <div style="padding:14px 0 10px;display:flex;flex-direction:column;justify-content:center">
     <div style="font-size:20px;color:#fff;font-weight:600">Elysian</div>
-    <div style="font-size:9px;color:#C9A84C;letter-spacing:.18em;text-transform:uppercase;margin-top:1px">Clearing Automation</div>
+    <div style="font-size:9px;color:#C9A84C;letter-spacing:.18em;text-transform:uppercase;margin-top:1px">Command Center</div>
   </div>
   <div style="width:.5px;background:#ffffff30;margin:10px 4px"></div>
   <nav style="display:flex;gap:0;align-items:stretch">
-    <button class="nav-btn active" onclick="showTab('dash',this)">Dashboard</button>
-    <button class="nav-btn" onclick="showTab('bk',this)" id="nav-bk">Bookings</button>
-    <button class="nav-btn" onclick="showTab('exp',this)" id="nav-exp">Expenses</button>
-    <button class="nav-btn" onclick="showTab('cfg',this)">Configuration</button>
-    <button class="nav-btn" onclick="showTab('rpt',this)">Reports</button>
-    <button class="nav-btn" onclick="showTab('ann',this)">Annual Tracker</button>
-    <button class="nav-btn" onclick="showTab('mt',this)" id="nav-mt">📋 Monthly Tasks</button>
-    <button class="nav-btn" onclick="showTab('rev',this)" id="nav-rev">💰 Elysian Revenue</button>
-    <button class="nav-btn" onclick="showTab('ops',this)" id="nav-ops">🗓 Daily Ops</button>
-    <button class="nav-btn" onclick="showTab('perf',this)" id="nav-perf">📊 Performance</button>
+    <button class="nav-btn active" data-tab="dash" onclick="showTab('dash',this)">Dashboard</button>
+    <button class="nav-btn" data-tab="bk" onclick="showTab('bk',this)" id="nav-bk">Bookings</button>
+    <button class="nav-btn" data-tab="exp" onclick="showTab('exp',this)" id="nav-exp">Expenses</button>
+    <button class="nav-btn" data-tab="cfg" onclick="showTab('cfg',this)">Configuration</button>
+    <button class="nav-btn" data-tab="rpt" onclick="showTab('rpt',this)">Reports</button>
+    <button class="nav-btn" data-tab="ann" onclick="showTab('ann',this)">Annual Tracker</button>
+    <button class="nav-btn" data-tab="mt" onclick="showTab('mt',this)" id="nav-mt">📋 Monthly Tasks</button>
+    <button class="nav-btn" data-tab="rev" onclick="showTab('rev',this)" id="nav-rev">💰 Elysian Revenue</button>
+    <button class="nav-btn" data-tab="ops" onclick="showTab('ops',this)" id="nav-ops">🗓 Daily Ops</button>
+    <button class="nav-btn" data-tab="perf" onclick="showTab('perf',this)" id="nav-perf">📊 Performance</button>
     <div class="nav-dd" id="nav-dd">
       <button class="nav-btn" id="nav-tools" onclick="navDdToggle(event)">🧰 Tools<span class="nav-dd-caret">▼</span></button>
       <div class="nav-dd-menu">
@@ -151,7 +151,13 @@
     </div>
   </nav>
   <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
-    <button class="btn sm" onclick="clearAll()" style="border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.6);background:transparent"><i class="ti ti-trash"></i> Clear data</button>
+    <select id="nav-profile" onchange="setNavProfile(this.value)" title="Choose which workspace this browser shows — it only tidies the menu, it does not restrict access"
+      style="background:#16283A;color:#C9A84C;border:1px solid #C9A84C66;border-radius:8px;padding:5px 8px;font-size:12px;font-weight:600;cursor:pointer">
+      <option value="management">👔 Management</option>
+      <option value="accountant">🧾 Accountant</option>
+      <option value="operator">🛎 Operator</option>
+    </select>
+    <button class="btn sm" id="btn-clear-all" onclick="clearAll()" style="border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.6);background:transparent"><i class="ti ti-trash"></i> Clear data</button>
     <div style="text-align:right">
       <div style="font-size:9px;color:#ffffff55;text-transform:uppercase;letter-spacing:.1em">Properties</div>
       <div id="hdr-n" style="font-family:var(--mono);color:#C9A84C;font-weight:600;font-size:14px">0</div>
@@ -9875,6 +9881,80 @@ loadFromDb()
     const p = document.getElementById('tab-pay');
     if (p && p.classList.contains('active') && !document.activeElement?.matches?.('#tab-pay input')) renderPay();
   }, 60000);
+})();
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 👔 WORKSPACE PROFILES — Operator / Accountant / Management
+// ═══════════════════════════════════════════════════════════════════════════════
+// Filters the navigation per role so each person sees only their workspace.
+// UI decluttering only (per-browser, stored in localStorage) — NOT access
+// control: the app still has one shared password and one shared database.
+(function () {
+  'use strict';
+  const PROFILES = {
+    // Operator — the daily runbook: operations + rates/performance
+    operator:   { tabs: ['dash', 'ops', 'perf'],                 tools: ['co'] },
+    // Accountant — the money paperwork
+    accountant: { tabs: ['dash', 'mt', 'rpt', 'exp', 'ann'],     tools: ['imports', 'pay'] },
+    // Management — everything
+    management: { tabs: 'all', tools: 'all' },
+  };
+  const cur = () => {
+    const p = localStorage.getItem('nav_profile');
+    return PROFILES[p] ? p : 'management';
+  };
+  function apply() {
+    const name = cur();
+    const prof = PROFILES[name];
+    const sel = document.getElementById('nav-profile');
+    if (sel) sel.value = name;
+    // main tabs
+    document.querySelectorAll('.nav-btn[data-tab]').forEach(b => {
+      const t = b.dataset.tab;
+      const show = prof.tabs === 'all' || prof.tabs.includes(t);
+      b.style.display = show ? '' : 'none';
+    });
+    // tools dropdown items
+    let toolsVisible = 0;
+    document.querySelectorAll('.nav-dd-item[data-tab]').forEach(b => {
+      const show = prof.tools === 'all' || prof.tools.includes(b.dataset.tab);
+      b.style.display = show ? '' : 'none';
+      if (show) toolsVisible++;
+    });
+    const dd = document.getElementById('nav-dd');
+    if (dd) dd.style.display = toolsVisible ? '' : 'none';
+    // management-only chrome
+    const clearBtn = document.getElementById('btn-clear-all');
+    if (clearBtn) clearBtn.style.display = name === 'management' ? '' : 'none';
+    // dashboard quick-action shortcuts follow the profile too
+    document.querySelectorAll('#tab-dash button[onclick*="showTab"]').forEach(b => {
+      const m = String(b.getAttribute('onclick') || '').match(/showTab\('(\w+)'/);
+      if (!m) return;
+      const t = m[1];
+      const ok = (prof.tabs === 'all' || prof.tabs.includes(t)) || (prof.tools === 'all' || (Array.isArray(prof.tools) && prof.tools.includes(t)));
+      b.style.display = ok ? '' : 'none';
+    });
+    // if the open tab is now hidden, fall back to the Dashboard
+    const act = document.querySelector('.tab-panel.active');
+    const actName = act ? act.id.replace(/^tab-/, '') : 'dash';
+    const allowed = t => (PROFILES[name].tabs === 'all' || PROFILES[name].tabs.includes(t)) ||
+                         (PROFILES[name].tools === 'all' || PROFILES[name].tools.includes(t));
+    if (!allowed(actName)) {
+      const dashBtn = document.querySelector('.nav-btn[data-tab="dash"]');
+      if (typeof showTab === 'function') showTab('dash', dashBtn);
+    }
+  }
+  window.setNavProfile = function (v) {
+    localStorage.setItem('nav_profile', PROFILES[v] ? v : 'management');
+    apply();
+    if (typeof toast === 'function') {
+      const L = { operator: '🛎 Operator workspace', accountant: '🧾 Accountant workspace', management: '👔 Management workspace' };
+      toast(L[cur()] + ' — the menu shows only what this role needs. Switch back anytime.');
+    }
+  };
+  window.applyNavProfile = apply;
+  apply();
 })();
 
 </script>
