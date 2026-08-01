@@ -527,7 +527,9 @@ app.post('/api/ops/schedule-check', async (req, res) => {
   const prompt = [
     `This photo/screenshot is a housekeeping schedule ("πρόγραμμα") for ${String(b.date || 'today').slice(0, 20)}. Row labels may be in Greek or English, abbreviated, or slightly different from the official names.`,
     `Here are the apartments that CHECK OUT that day (index. name):\n${list}`,
-    `Match each indexed apartment against the rows visible in the image. Treat a row as a match if it clearly refers to the same property, even with different wording, extra address text, or partial names. Rows like laundry ("ΠΛΥΝΤΗΡΙΟ"), linen transfer ("ΜΕΤΑΦΟΡΑ ΙΜΑΤΙΣΜΟΥ") or preparation-only lines are not checkouts.`,
+    `First carefully read and transcribe every row visible in the schedule. Then match each indexed apartment against those rows. Treat a row as a match if it clearly refers to the same property, even with different wording, extra address text, abbreviations, or partial names.`,
+    `CRITICAL: several listed apartments may share the same base name and differ ONLY in a trailing number (e.g. "Votsala 1", "Votsala 2", "Votsala 6" are different units). Read those digits with extra care and match each number to the apartment with the same number. A single schedule row can also cover MORE THAN ONE listed apartment (e.g. "ΒΟΤΣΑΛΑ 1 & 2" or "Votsala 1-2" covers both units) — in that case include every covered index in "found". If a digit or row is hard to read, still make your best match and mention the uncertainty in "notes".`,
+    `Rows like laundry ("ΠΛΥΝΤΗΡΙΟ"), linen transfer ("ΜΕΤΑΦΟΡΑ ΙΜΑΤΙΣΜΟΥ") or preparation-only lines are not checkouts.`,
     `Answer with STRICT JSON only, no markdown fences, exactly this shape:`,
     `{"found":[indices],"missing":[indices],"extra_rows":["schedule row text that matches none of the listed apartments (excluding laundry/transfer/prep lines)"],"notes":"one short sentence only if something is unreadable or ambiguous, otherwise an empty string"}`,
   ].join('\n\n');
