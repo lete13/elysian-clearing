@@ -882,32 +882,21 @@ function mergeApts(existing, rentals) {
   return Object.values(byName).filter(a => a.name);
 }
 
-// ── Auto-sync scheduler (every 2 hours: 00:00, 02:00, 04:00 ... 22:00) ───────
+// ── Auto-sync scheduler (every 15 minutes: :00, :15, :30, :45) ───────────────
+// The next run is scheduled only AFTER the current sync finishes, so a slow
+// Hosthub sync can never overlap with itself — it simply lands on the next
+// quarter-hour mark.
 function scheduleAutoSync() {
-  const now   = new Date();
-  const hh    = now.getHours();
-  const mm    = now.getMinutes();
-  const ss    = now.getSeconds();
-
-  // Next even hour (0, 2, 4, 6 ... 22)
-  const nextHour = hh % 2 === 0 && mm === 0 && ss < 5
-    ? hh                          // just hit an even hour — run now-ish handled below
-    : (Math.floor(hh / 2) + 1) * 2; // next even hour
-
+  const now = new Date();
   const nextRun = new Date(now);
-  if (nextHour >= 24) {
-    // wrap to midnight next day
-    nextRun.setDate(nextRun.getDate() + 1);
-    nextRun.setHours(0, 0, 0, 0);
-  } else {
-    nextRun.setHours(nextHour, 0, 0, 0);
-  }
+  nextRun.setSeconds(0, 0);
+  nextRun.setMinutes(Math.floor(now.getMinutes() / 15) * 15 + 15);   // rolls over hour/day automatically
 
   const msUntil = nextRun - now;
-  const hLeft   = Math.floor(msUntil / 3600000);
-  const mLeft   = Math.floor((msUntil % 3600000) / 60000);
+  const mLeft   = Math.floor(msUntil / 60000);
+  const sLeft   = Math.round((msUntil % 60000) / 1000);
 
-  console.log(`  ✓  Auto-sync scheduled → ${nextRun.toISOString()} (in ${hLeft}h ${mLeft}m)`);
+  console.log(`  ✓  Auto-sync scheduled → ${nextRun.toISOString()} (in ${mLeft}m ${sLeft}s)`);
 
   setTimeout(async () => {
     const apiKey = SERVER_API_KEY || (pool ? await getStoredApiKey() : null);
