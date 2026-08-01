@@ -527,10 +527,10 @@ app.post('/api/ops/schedule-check', async (req, res) => {
   const prompt = [
     `This photo/screenshot is a housekeeping schedule ("πρόγραμμα") for ${String(b.date || 'today').slice(0, 20)}. Row labels may be in Greek or English, abbreviated, or slightly different from the official names.`,
     `Here are the apartments that CHECK OUT that day (index. name):\n${list}`,
-    `First carefully read and transcribe every row visible in the schedule. Then match each indexed apartment against those rows. Treat a row as a match if it clearly refers to the same property, even with different wording, extra address text, abbreviations, or partial names.`,
+    `First carefully read every row visible in the schedule (do this silently — never include the transcription in your reply). Then match each indexed apartment against those rows. Treat a row as a match if it clearly refers to the same property, even with different wording, extra address text, abbreviations, or partial names.`,
     `CRITICAL: several listed apartments may share the same base name and differ ONLY in a trailing number (e.g. "Votsala 1", "Votsala 2", "Votsala 6" are different units). Read those digits with extra care and match each number to the apartment with the same number. A single schedule row can also cover MORE THAN ONE listed apartment (e.g. "ΒΟΤΣΑΛΑ 1 & 2" or "Votsala 1-2" covers both units) — in that case include every covered index in "found". If a digit or row is hard to read, still make your best match and mention the uncertainty in "notes".`,
     `Rows like laundry ("ΠΛΥΝΤΗΡΙΟ"), linen transfer ("ΜΕΤΑΦΟΡΑ ΙΜΑΤΙΣΜΟΥ") or preparation-only lines are not checkouts.`,
-    `Answer with STRICT JSON only, no markdown fences, exactly this shape:`,
+    `Your ENTIRE reply must be ONLY one JSON object — no explanation, no transcription, no markdown fences, no text before or after it. Exactly this shape:`,
     `{"found":[indices],"missing":[indices],"extra_rows":["schedule row text that matches none of the listed apartments (excluding laundry/transfer/prep lines)"],"notes":"one short sentence only if something is unreadable or ambiguous, otherwise an empty string"}`,
   ].join('\n\n');
 
@@ -540,7 +540,7 @@ app.post('/api/ops/schedule-check', async (req, res) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: SCHEDULE_CHECK_MODEL,
-        max_tokens: 1200,
+        max_tokens: 2500,
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'base64', media_type: b.mime || 'image/jpeg', data: b.dataB64 } },
           { type: 'text', text: prompt },
@@ -550,9 +550,14 @@ app.post('/api/ops/schedule-check', async (req, res) => {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return res.status(502).json({ error: `Anthropic API ${r.status}: ${(d && d.error && d.error.message) || 'request failed'}` });
     const txt = ((d.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n') || '').replace(/```json|```/g, '').trim();
-    let parsed;
+    let parsed = null;
     try { parsed = JSON.parse(txt); } catch (e) {
-      return res.status(502).json({ error: 'Could not parse the AI response', raw: txt.slice(0, 400) });
+      const m = txt.match(/\{[\s\S]*\}/);   // salvage: first '{' through last '}'
+      if (m) { try { parsed = JSON.parse(m[0]); } catch (e2) {} }
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      console.error('[sched-check] unparseable AI response (' + txt.length + ' chars): ' + txt.slice(0, 500));
+      return res.status(502).json({ error: 'Could not parse the AI response — try again', raw: txt.slice(0, 400) });
     }
     const idx = a => (Array.isArray(a) ? a : []).map(n => parseInt(n)).filter(n => Number.isInteger(n) && n >= 0 && n < expected.length);
     const foundIdx = idx(parsed.found);
