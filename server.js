@@ -9,6 +9,9 @@
  *   APP_PASSWORD      Password to protect the app (HTTP Basic Auth)
  *   DATABASE_URL      PostgreSQL connection string (auto-set by Railway DB add-on)
  *   PORT              Auto-set by Railway
+ *   SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASS
+ *                     Owner-report e-mail (see 📧 section below)
+ *   EMAIL_FROM / EMAIL_REPLY_TO / EMAIL_BCC   optional e-mail extras
  */
 
 const express    = require('express');
@@ -1118,6 +1121,102 @@ app.post('/api/debug-cancelled', async (req, res) => {
     });
   } catch(e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📧 OWNER REPORT E-MAIL — sends clearing reports with the PDF attached
+// ═══════════════════════════════════════════════════════════════════════════════
+// The Reports tab renders the PDF client-side and POSTs it here together with an
+// HTML body (page-1 preview + logo embedded as inline cid images). Sending uses
+// plain SMTP via nodemailer, so it works with Google Workspace (app password),
+// the domain host's mailbox, or any other provider.
+//
+// Credentials live ONLY in Railway environment variables:
+//   SMTP_HOST / SMTP_PORT       e.g. smtp.gmail.com / 587 (default 587)
+//   SMTP_SECURE                 'true' for implicit TLS on :465 (default false)
+//   SMTP_USER / SMTP_PASS       mailbox login (Google: use an App Password)
+//   EMAIL_FROM                  display From, e.g. "Elysian Properties <info@…>"
+//                               (defaults to SMTP_USER)
+//   EMAIL_REPLY_TO              optional Reply-To address
+//   EMAIL_BCC                   optional — auto-BCC every send (keeps a copy)
+//
+// GET  /api/email/status  → { configured, from, host }   (behind app password)
+// POST /api/email/send    → { ok, messageId } | { error } (behind app password)
+
+let nodemailer = null;
+try { nodemailer = require('nodemailer'); }
+catch (e) { console.log('  EMAIL: nodemailer not installed — /api/email/send disabled until npm install runs'); }
+
+const EMAIL = {
+  host:    process.env.SMTP_HOST || '',
+  port:    parseInt(process.env.SMTP_PORT || '587', 10),
+  secure:  String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
+  user:    process.env.SMTP_USER || '',
+  pass:    process.env.SMTP_PASS || '',
+  from:    process.env.EMAIL_FROM || process.env.SMTP_USER || '',
+  replyTo: process.env.EMAIL_REPLY_TO || '',
+  bcc:     process.env.EMAIL_BCC || '',
+};
+const emailConfigured  = () => !!(nodemailer && EMAIL.host && EMAIL.user && EMAIL.pass);
+const EMAIL_MAX_BYTES  = 20 * 1024 * 1024;   // total decoded attachment budget per send
+const emailAddrOk      = s => /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(String(s || '').trim());
+const emailSplitAddrs  = s => String(s || '').split(/[,;]/).map(x => x.trim()).filter(Boolean);
+
+if (emailConfigured()) console.log('  EMAIL: configured — ' + EMAIL.host + ':' + EMAIL.port + ' as ' + EMAIL.user);
+else console.log('  EMAIL: not configured (set SMTP_HOST/SMTP_USER/SMTP_PASS in Railway → Variables)');
+
+app.get('/api/email/status', (req, res) => {
+  res.json({ configured: emailConfigured(), from: EMAIL.from, host: EMAIL.host });
+});
+
+app.post('/api/email/send', async (req, res) => {
+  try {
+    if (!emailConfigured()) return res.status(503).json({ error: 'Email is not configured on the server (set SMTP_HOST / SMTP_USER / SMTP_PASS in Railway → Variables)' });
+    const b  = req.body || {};
+    const to = emailSplitAddrs(b.to), cc = emailSplitAddrs(b.cc);
+    if (!to.length)         return res.status(400).json({ error: 'No recipient' });
+    const bad = [...to, ...cc].filter(a => !emailAddrOk(a));
+    if (bad.length)         return res.status(400).json({ error: 'Invalid address: ' + bad.join(', ') });
+    if (!b.subject)         return res.status(400).json({ error: 'No subject' });
+    if (!b.html && !b.text) return res.status(400).json({ error: 'Empty message' });
+
+    const atts   = Array.isArray(b.attachments) ? b.attachments : [];
+    const inline = Array.isArray(b.inline)      ? b.inline      : [];
+    let bytes = 0;
+    const mailAtts = [];
+    for (const a of atts) {
+      if (!a || !a.contentBase64 || !a.filename) return res.status(400).json({ error: 'Malformed attachment' });
+      const buf = Buffer.from(a.contentBase64, 'base64'); bytes += buf.length;
+      mailAtts.push({ filename: String(a.filename).replace(/[\r\n"]/g, ''), content: buf, contentType: a.contentType || 'application/octet-stream' });
+    }
+    for (const i of inline) {
+      if (!i || !i.contentBase64 || !i.cid) continue;
+      const buf = Buffer.from(i.contentBase64, 'base64'); bytes += buf.length;
+      mailAtts.push({ filename: i.cid + (i.contentType === 'image/png' ? '.png' : '.jpg'), content: buf, contentType: i.contentType || 'image/jpeg', cid: i.cid, contentDisposition: 'inline' });
+    }
+    if (bytes > EMAIL_MAX_BYTES) return res.status(413).json({ error: 'Attachments too large (' + Math.round(bytes / 1048576) + ' MB > 20 MB)' });
+
+    const transporter = nodemailer.createTransport({
+      host: EMAIL.host, port: EMAIL.port, secure: EMAIL.secure,
+      auth: { user: EMAIL.user, pass: EMAIL.pass },
+    });
+    const info = await transporter.sendMail({
+      from: EMAIL.from,
+      to: to.join(', '),
+      cc: cc.length ? cc.join(', ') : undefined,
+      bcc: EMAIL.bcc || undefined,
+      replyTo: EMAIL.replyTo || undefined,
+      subject: String(b.subject).slice(0, 300),
+      text: b.text || undefined,
+      html: b.html || undefined,
+      attachments: mailAtts,
+    });
+    console.log('[email] sent "' + String(b.subject).slice(0, 80) + '" → ' + to.join(', ') + ' (' + Math.round(bytes / 1024) + ' KB, id ' + (info.messageId || '?') + ')');
+    res.json({ ok: true, messageId: info.messageId || '' });
+  } catch (e) {
+    console.error('[email] send FAILED:', e.message);
+    res.status(502).json({ error: 'Send failed: ' + e.message });
   }
 });
 
