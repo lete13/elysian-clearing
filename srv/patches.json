@@ -1,77 +1,12 @@
 {
- "baseSha256": "067e16d90769324af8af35c537c3768652f9d11e2a9b5f294b297415f3f3b978",
- "expectedSha256": "b25993599062589b5a587f37ea8d4bf984a2964c7ed2922b7724e1e4fd130fdf",
+ "baseSha256": "c5e08d7dc06de9f4780cbd4d5cc730d079c53eb23b375651a75a6f71976e5741",
+ "expectedSha256": "c0a48774e5dca1f5df9090e26877691651bf067d51441d1c3d18d5afe2b59dd3",
+ "builtAt": "2026-08-05 email-probe",
  "patches": [
   {
-   "note": "build tag",
-   "find": "const VIVA_BUILD = 'v10';",
-   "replace": "const VIVA_BUILD = 'v11';",
-   "count": 1
-  },
-  {
-   "note": "header comment",
-   "find": "// ── Frontend bootstrap (build v10) ",
-   "replace": "// ── Frontend bootstrap (build v11) ",
-   "count": 1
-  },
-  {
-   "note": "auth block",
-   "find": "if (APP_PASSWORD) {\n  app.use((req, res, next) => {\n    if (req.path === '/health' || req.path === '/api/fe-info') return next();\n    const auth = req.headers['authorization'] || '';\n    const b64  = auth.replace(/^Basic\\s+/i, '');\n    const [, pw] = Buffer.from(b64, 'base64').toString().split(':');\n    if (pw === APP_PASSWORD) return next();\n    res.set('WWW-Authenticate', 'Basic realm=\"Elysian Clearing\"');\n    res.status(401).send('Authentication required');\n  });\n}",
-   "replace": "// [v11-test-start:parseUsers]\nfunction parseUsers(raw) {\n  try {\n    const j = JSON.parse(raw || '[]');\n    return Array.isArray(j) ? j.filter(u => u && u.user && u.pass).map(u => ({\n      user: String(u.user), pass: String(u.pass),\n      access: (u.access === 'all' || !Array.isArray(u.access)) ? 'all' : u.access.map(String),\n    })) : [];\n  } catch (e) { console.error('[auth] USERS_JSON parse error:', e.message); return []; }\n}\n// [v11-test-end:parseUsers]\nconst USERS = parseUsers(process.env.USERS_JSON);\nif (USERS.length) console.log('  ✓  Accounts:', USERS.map(u => u.user + (u.access === 'all' ? '' : ' (' + u.access.join('/') + ')')).join(', '));\n\nif (APP_PASSWORD || USERS.length) {\n  app.use((req, res, next) => {\n    if (req.path === '/health' || req.path === '/api/fe-info') return next();\n    const b64 = (req.headers['authorization'] || '').replace(/^Basic\\s+/i, '');\n    let u = '', pw = '';\n    try { const s = Buffer.from(b64, 'base64').toString(); const i = s.indexOf(':'); u = i < 0 ? '' : s.slice(0, i); pw = i < 0 ? s : s.slice(i + 1); } catch (e) {}\n    const acct = USERS.find(x => x.user.toLowerCase() === String(u).toLowerCase() && x.pass === pw);\n    if (acct) { req.acctUser = acct.user; req.acctAccess = acct.access; return next(); }\n    if (APP_PASSWORD && pw === APP_PASSWORD) { req.acctUser = u || 'admin'; req.acctAccess = 'all'; return next(); }\n    res.set('WWW-Authenticate', 'Basic realm=\"Elysian Command Center\"');\n    res.status(401).send('Authentication required');\n  });\n}\n\n// GET /api/whoami — who is signed in + which tabs their account may open\napp.get('/api/whoami', (req, res) => {\n  res.json({ user: req.acctUser || 'team', access: req.acctAccess || 'all', mode: USERS.length ? 'users' : 'legacy' });\n});",
-   "count": 1
-  },
-  {
-   "note": "proofs month regex",
-   "find": "if (!/^\\d{4}-\\d{2}$/.test(b.month || ''))      return res.status(400).json({ error: 'Invalid month (YYYY-MM expected)' });",
-   "replace": "if (!/^\\d{4}-\\d{2}$/.test(b.month || '') && b.month !== 'law5170') return res.status(400).json({ error: 'Invalid month (YYYY-MM or law5170 expected)' });",
-   "count": 1
-  },
-  {
-   "note": "download param",
-   "find": "res.set('Content-Disposition', `inline; filename*=UTF-8''${safeName}`);",
-   "replace": "res.set('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + `; filename*=UTF-8''${safeName}`);",
-   "count": 1
-  },
-  {
-   "note": "changelog + rental-info block",
-   "find": "  _memProofs.delete(id);\n  res.json({ ok: true });\n});\n\n// ── AI schedule check (Daily Ops) ─",
-   "replace": "  logEvent(req, 'files', 'delete', 'proof #' + id);\n  _memProofs.delete(id);\n  res.json({ ok: true });\n});\n\n// ── Change log (v11) ─────────────────────────────────────────────────────────────────\n// Per-account audit trail. Server-stamped username (from Basic auth) — the\n// client can add events via POST /api/changelog but never chooses the user.\nlet _logTableReady = false, _logN = 0;\nasync function ensureLogTable() {\n  if (_logTableReady || !pool) return;\n  await pool.query(`CREATE TABLE IF NOT EXISTS change_log (\n    id SERIAL PRIMARY KEY, ts TIMESTAMPTZ DEFAULT NOW(),\n    username TEXT, area TEXT, action TEXT, details TEXT\n  );`);\n  await pool.query(`CREATE INDEX IF NOT EXISTS idx_changelog_id ON change_log (id DESC);`);\n  _logTableReady = true;\n}\nasync function logEvent(req, area, action, details) {\n  if (!pool) return;\n  try {\n    await ensureLogTable();\n    await pool.query(\n      `INSERT INTO change_log (username, area, action, details) VALUES ($1,$2,$3,$4)`,\n      [String((req && req.acctUser) || 'system').slice(0, 60), String(area || 'app').slice(0, 30),\n       String(action || 'event').slice(0, 80), String(details == null ? '' : details).slice(0, 600)]\n    );\n    if ((++_logN) % 25 === 0)\n      await pool.query(`DELETE FROM change_log WHERE id < (SELECT COALESCE(MIN(id),0) FROM (SELECT id FROM change_log ORDER BY id DESC LIMIT 8000) t)`);\n  } catch (e) { console.error('[log]', e.message); }\n}\n// [v11-test-start:diffSummary]\nfunction diffSummary(oldD, newD) {\n  try {\n    const out = [];\n    const keys = [...new Set([...(oldD ? Object.keys(oldD) : []), ...(newD ? Object.keys(newD) : [])])];\n    for (const k of keys) {\n      const a = oldD ? oldD[k] : undefined, b = newD ? newD[k] : undefined;\n      if (Array.isArray(a) || Array.isArray(b)) {\n        const la = Array.isArray(a) ? a.length : 0, lb = Array.isArray(b) ? b.length : 0;\n        if (la !== lb) out.push(k + ' ' + la + '→' + lb);\n        else if (la <= 2000 && JSON.stringify(a) !== JSON.stringify(b)) out.push(k + ' ✎');\n      } else if (a && b && typeof a === 'object' && typeof b === 'object') {\n        const ka = Object.keys(a).length, kb = Object.keys(b).length;\n        if (JSON.stringify(a) !== JSON.stringify(b)) out.push(k + ' ✎' + (ka !== kb ? ' (' + ka + '→' + kb + ' keys)' : ''));\n      } else if (JSON.stringify(a) !== JSON.stringify(b)) out.push(k + ' ✎');\n      if (out.length >= 12) { out.push('…'); break; }\n    }\n    return out.length ? out.join(' · ') : 'saved (no top-level change detected)';\n  } catch (e) { return 'saved'; }\n}\n// [v11-test-end:diffSummary]\n\n// POST /api/changelog — client-side events (area/action/details); user is server-stamped\napp.post('/api/changelog', async (req, res) => {\n  const b = req.body || {};\n  await logEvent(req, b.area, b.action, b.details);\n  res.json({ ok: true });\n});\n// GET /api/changelog?limit=&user=&area= — newest first\napp.get('/api/changelog', async (req, res) => {\n  if (!pool) return res.json([]);\n  try {\n    await ensureLogTable();\n    const lim = Math.min(parseInt(req.query.limit) || 300, 500);\n    const conds = [], vals = [];\n    if (req.query.user) { vals.push(req.query.user); conds.push('username = $' + vals.length); }\n    if (req.query.area) { vals.push(req.query.area); conds.push('area = $' + vals.length); }\n    vals.push(lim);\n    const r = await pool.query(\n      'SELECT id, ts, username, area, action, details FROM change_log' +\n      (conds.length ? ' WHERE ' + conds.join(' AND ') : '') + ' ORDER BY id DESC LIMIT $' + vals.length, vals);\n    res.json(r.rows);\n  } catch (e) { res.status(500).json({ error: e.message }); }\n});\n\n// ── Per-rental amenities, FAQs, house rules & Law 5170 compliance (v11) ─────\n// One isolated record per rental, keyed `rental:<id>` in app_data. Binary files\n// are NOT stored here — they live in proof_files under month='law5170' and the\n// record only keeps their ids, so these rows stay tiny.\nfunction _rentalKey(id) {\n  const safe = String(id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60);\n  return safe ? 'rental:' + safe : null;\n}\napp.get('/api/rental-info/:id', async (req, res) => {\n  if (!pool) return res.status(503).json({ error: 'No database configured.' });\n  const key = _rentalKey(req.params.id);\n  if (!key) return res.status(400).json({ error: 'Invalid rental id.' });\n  try {\n    const r = await pool.query('SELECT data, updated_at FROM app_data WHERE key = $1', [key]);\n    if (!r.rows[0]) return res.json({ amenities: {}, faqs: [], houseRules: {}, compliance: {}, updated: null });\n    res.json({ ...r.rows[0].data, updated: r.rows[0].updated_at });\n  } catch (e) {\n    console.error('[rental-info] read error:', e.message);\n    res.status(500).json({ error: 'Read failed.' });\n  }\n});\napp.post('/api/rental-info/:id', async (req, res) => {\n  if (!pool) return res.status(503).json({ error: 'No database configured.' });\n  const key = _rentalKey(req.params.id);\n  if (!key) return res.status(400).json({ error: 'Invalid rental id.' });\n  try {\n    const body = req.body || {};\n    const clean = {\n      amenities: (body.amenities && typeof body.amenities === 'object') ? body.amenities : {},\n      faqs: Array.isArray(body.faqs) ? body.faqs.filter(f => f && (f.q || f.a)).slice(0, 200) : [],\n      houseRules: (body.houseRules && typeof body.houseRules === 'object') ? body.houseRules : {},\n      compliance: (body.compliance && typeof body.compliance === 'object') ? body.compliance : {},\n    };\n    await pool.query(\n      `INSERT INTO app_data (key, data, updated_at) VALUES ($1, $2, NOW())\n       ON CONFLICT (key) DO UPDATE SET data = $2, updated_at = NOW()`,\n      [key, clean]\n    );\n    logEvent(req, 'pinfo', 'save', req.params.id + ' · ' +\n      Object.values(clean.amenities).filter(a => a && a.on).length + ' amenities · ' +\n      clean.faqs.length + ' FAQs · ' + Object.keys(clean.compliance).length + ' compliance items');\n    res.json({ ok: true });\n  } catch (e) {\n    console.error('[rental-info] write error:', e.message);\n    res.status(500).json({ error: 'Save failed.' });\n  }\n});\napp.get('/api/rental-info', async (req, res) => {\n  if (!pool) return res.json({});\n  try {\n    const r = await pool.query(\"SELECT key, data FROM app_data WHERE key LIKE 'rental:%'\");\n    const out = {};\n    r.rows.forEach(row => { out[row.key.replace('rental:', '')] = row.data; });\n    res.json(out);\n  } catch (e) {\n    console.error('[rental-info] bulk read error:', e.message);\n    res.json({});\n  }\n});\n\n// ── AI schedule check (Daily Ops) ─",
-   "count": 1
-  },
-  {
-   "note": "blocked-bks log",
-   "find": "      if (dbBks > 10 && inBks === 0) {\n        console.warn('[db] BLOCKED write: would wipe', dbBks, 'bookings');",
-   "replace": "      if (dbBks > 10 && inBks === 0) {\n        console.warn('[db] BLOCKED write: would wipe', dbBks, 'bookings');\n        logEvent(req, 'data', '⚠ blocked wipe', 'write would have deleted ' + dbBks + ' bookings');",
-   "count": 1
-  },
-  {
-   "note": "blocked-exps log",
-   "find": "      if (dbExps > 0 && inExps === 0 && dbBks > 0) {\n        console.warn('[db] BLOCKED write: would wipe', dbExps, 'expenses');",
-   "replace": "      if (dbExps > 0 && inExps === 0 && dbBks > 0) {\n        console.warn('[db] BLOCKED write: would wipe', dbExps, 'expenses');\n        logEvent(req, 'data', '⚠ blocked wipe', 'write would have deleted ' + dbExps + ' expenses');",
-   "count": 1
-  },
-  {
-   "note": "save diff log",
-   "find": "    const ts = await pool.query(\"SELECT updated_at FROM app_data WHERE key = 'main'\");\n    // Also capture a trend snapshot from the saved data (covers manual refresh).",
-   "replace": "    const ts = await pool.query(\"SELECT updated_at FROM app_data WHERE key = 'main'\");\n    logEvent(req, 'data', 'save', diffSummary(existing, payload));\n    // Also capture a trend snapshot from the saved data (covers manual refresh).",
-   "count": 1
-  },
-  {
-   "note": "upload log (db)",
-   "find": "      return res.json({ ok: true, db: true, id: r.rows[0].id, uploadedAt: r.rows[0].uploaded_at });",
-   "replace": "      logEvent(req, 'files', 'upload', (meta.month === 'law5170' ? '[Law5170] ' : '[' + meta.month + '] ') + meta.apt_name + ' · ' + meta.task_key + ' · ' + meta.filename);\n      return res.json({ ok: true, db: true, id: r.rows[0].id, uploadedAt: r.rows[0].uploaded_at });",
-   "count": 1
-  },
-  {
-   "note": "upload log (mem)",
-   "find": "  const id = 'm' + _memProofSeq++;\n  _memProofs.set(id, { ...meta, id, uploaded_at: new Date().toISOString(), data: b.dataB64 });",
-   "replace": "  const id = 'm' + _memProofSeq++;\n  _memProofs.set(id, { ...meta, id, uploaded_at: new Date().toISOString(), data: b.dataB64 });\n  logEvent(req, 'files', 'upload', '[mem] ' + meta.apt_name + ' · ' + meta.task_key + ' · ' + meta.filename);",
-   "count": 1
-  },
-  {
-   "note": "delete log (db)",
-   "find": "    try { await ensureProofTable(); await pool.query(`DELETE FROM proof_files WHERE id = $1`, [parseInt(id)]); return res.json({ ok: true }); }",
-   "replace": "    try { await ensureProofTable(); await pool.query(`DELETE FROM proof_files WHERE id = $1`, [parseInt(id)]); logEvent(req, 'files', 'delete', 'proof #' + id); return res.json({ ok: true }); }",
+   "note": "email diagnostics: GET /api/email/probe — SMTP port reachability from Railway + login verify",
+   "find": "s.json({ ok: true, messageId: info.messageId || '' });\n  } catch (e) {\n    console.error('[email] send FAILED:', e.message);\n    res.status(502).json({ error: 'Send failed: ' + e.message });\n  }\n});\n\n",
+   "replace": "s.json({ ok: true, messageId: info.messageId || '' });\n  } catch (e) {\n    console.error('[email] send FAILED:', e.message);\n    res.status(502).json({ error: 'Send failed: ' + e.message });\n  }\n});\n\n// Diagnostic: which SMTP ports are reachable from Railway's network, and does a\n// real login work? GET /api/email/probe (behind the app password). Safe: never\n// returns the password; only connectivity + the server's own error messages.\napp.get('/api/email/probe', async (req, res) => {\n  const net = require('net');\n  const host = req.query.host || EMAIL.host || 'localhost';\n  const tryPort = port => new Promise(resolve => {\n    const started = Date.now();\n    const sock = net.connect({ host, port, timeout: 6000 });\n    const done = result => { try { sock.destroy(); } catch (e) {} resolve({ port, ...result, ms: Date.now() - started }); };\n    sock.once('connect', () => done({ open: true }));\n    sock.once('timeout', () => done({ open: false, error: 'timeout' }));\n    sock.once('error', e => done({ open: false, error: e.code || e.message }));\n  });\n  const ports = await Promise.all([25, 465, 587, 2525].map(tryPort));\n  let verify = 'skipped (not configured)';\n  if (emailConfigured()) {\n    try {\n      const transporter = nodemailer.createTransport({\n        host: EMAIL.host, port: EMAIL.port, secure: EMAIL.secure,\n        auth: { user: EMAIL.user, pass: EMAIL.pass },\n        connectionTimeout: 8000, greetingTimeout: 8000,\n      });\n      await transporter.verify();\n      verify = 'OK — connection + login succeeded with the current variables';\n    } catch (e) { verify = 'FAILED: ' + e.message; }\n  }\n  res.json({ host, configuredPort: EMAIL.port, secure: EMAIL.secure, user: EMAIL.user ? EMAIL.user.replace(/^(..).*(@.*)$/, '$1…$2') : '', ports, verify });\n});\n\n",
    "count": 1
   }
  ]
