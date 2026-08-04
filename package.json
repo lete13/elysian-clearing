@@ -4,8 +4,8 @@
   "description": "Elysian Properties — Clearing Automation Tool",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev":   "node server.js"
+    "start": "node srv-boot.js",
+    "dev":   "node srv-boot.js"
   },
   "engines": {
     "node": ">=18.0.0",
