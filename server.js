@@ -1220,7 +1220,537 @@ app.post('/api/email/send', async (req, res) => {
   }
 });
 
+// Diagnostic: which SMTP ports are reachable from Railway's network, and does a
+// real login work? GET /api/email/probe (behind the app password). Safe: never
+// returns the password; only connectivity + the server's own error messages.
+app.get('/api/email/probe', async (req, res) => {
+  const net = require('net');
+  const host = req.query.host || EMAIL.host || 'localhost';
+  const tryPort = port => new Promise(resolve => {
+    const started = Date.now();
+    const sock = net.connect({ host, port, timeout: 6000 });
+    const done = result => { try { sock.destroy(); } catch (e) {} resolve({ port, ...result, ms: Date.now() - started }); };
+    sock.once('connect', () => done({ open: true }));
+    sock.once('timeout', () => done({ open: false, error: 'timeout' }));
+    sock.once('error', e => done({ open: false, error: e.code || e.message }));
+  });
+  const ports = await Promise.all([25, 465, 587, 2525].map(tryPort));
+  let verify = 'skipped (not configured)';
+  if (emailConfigured()) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: EMAIL.host, port: EMAIL.port, secure: EMAIL.secure,
+        auth: { user: EMAIL.user, pass: EMAIL.pass },
+        connectionTimeout: 8000, greetingTimeout: 8000,
+      });
+      await transporter.verify();
+      verify = 'OK — connection + login succeeded with the current variables';
+    } catch (e) { verify = 'FAILED: ' + e.message; }
+  }
+  res.json({ host, configuredPort: EMAIL.port, secure: EMAIL.secure, user: EMAIL.user ? EMAIL.user.replace(/^(..).*(@.*)$/, '$1…$2') : '', ports, verify });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
+// ==== OXYGEN PELATOLOGIO — diagnostics (status + sandbox test-issue) ====
+// Env: OXYGEN_API_KEY (from Oxygen support) · OXYGEN_API_BASE (defaults to the
+// SANDBOX — switching to production is a deliberate, later change).
+// GET /api/oxygen/status      → key check + contacts/sequences/taxes/payment lookups
+// GET /api/oxygen/test-issue  → issues ONE test receipt, SANDBOX ONLY (403 otherwise)
+//   query overrides for iteration: ?contact_id= &tax_id= &seq= &doc=rs|s &ctype=1 &pm= &mdt=
+
+const OXY = {
+  key:  process.env.OXYGEN_API_KEY || '',
+  base: (process.env.OXYGEN_API_BASE || 'https://sandbox-api.oxygen.gr/v1').replace(/\/+$/, ''),
+};
+const oxySandbox = () => OXY.base.indexOf('sandbox') !== -1;
+async function oxyFetch(path, opts) {
+  const o = opts || {};
+  const r = await fetch(OXY.base + path, {
+    method: o.method || 'GET',
+    body: o.body,
+    headers: Object.assign({ Authorization: 'Bearer ' + OXY.key, Accept: 'application/json', 'Content-Type': 'application/json' }, o.headers || {}),
+  });
+  let j = null; try { j = await r.json(); } catch (e) {}
+  return { status: r.status, ok: r.status >= 200 && r.status < 300, body: j };
+}
+const oxyArr = b => Array.isArray(b) ? b : ((b && (b.data || b.items)) || []);
+
+app.get('/api/oxygen/status', async (req, res) => {
+  if (!OXY.key) return res.json({ configured: false, hint: 'set OXYGEN_API_KEY in Railway → Variables' });
+  const out = { configured: true, base: OXY.base, sandbox: oxySandbox() };
+  const probes = [['contacts', '/contacts'], ['sequences', '/numbering-sequences'], ['taxes', '/taxes'], ['paymentMethods', '/payment-methods']];
+  for (const pair of probes) {
+    const name = pair[0];
+    const r = await oxyFetch(pair[1]);
+    if (!r.ok) { out[name] = 'HTTP ' + r.status + ' ' + JSON.stringify(r.body || {}).slice(0, 200); continue; }
+    const arr = oxyArr(r.body);
+    out[name + 'Count'] = arr.length;
+    out[name] = arr.slice(0, 12).map(x => ({
+      id: x.id,
+      name: x.name || x.title || x.description || x.nickname || [x.company_name, x.surname].filter(Boolean).join(' ') || undefined,
+      rate: (x.rate !== undefined ? x.rate : (x.percentage !== undefined ? x.percentage : x.value)),
+    }));
+    if (arr.length) out[name + 'Sample'] = arr[0];
+  }
+  res.json(out);
+});
+
+app.get('/api/oxygen/test-issue', async (req, res) => {
+  try {
+    if (!OXY.key) return res.status(503).json({ error: 'OXYGEN_API_KEY not set' });
+    if (!oxySandbox()) return res.status(403).json({ error: 'test-issue is SANDBOX-only — refusing on ' + OXY.base });
+    const q = req.query || {};
+
+    // 1) test contact: ?contact_id, else find "ELYSIAN-TEST", else create it
+    let contactId = q.contact_id || '';
+    let contactNote = 'from query';
+    if (!contactId) {
+      const list = await oxyFetch('/contacts');
+      const t = oxyArr(list.body).find(c => (c.nickname || '') === 'ELYSIAN-TEST');
+      if (t) { contactId = t.id; contactNote = 'found existing ELYSIAN-TEST'; }
+      else {
+        const made = await oxyFetch('/contacts', { method: 'POST', body: JSON.stringify({
+          type: parseInt(q.ctype || '1', 10), is_client: true, is_supplier: false,
+          name: 'Test', surname: 'Owner', nickname: 'ELYSIAN-TEST', country: 'GR',
+        }) });
+        if (!made.ok) return res.status(502).json({ step: 'create-contact', status: made.status, body: made.body });
+        const c = (made.body && (made.body.data || made.body)) || {};
+        contactId = c.id; contactNote = 'created ELYSIAN-TEST';
+      }
+    }
+
+    // 2) 24% VAT tax id: ?tax_id, else pick from /taxes
+    let taxId = q.tax_id || '';
+    if (!taxId) {
+      const taxes = await oxyFetch('/taxes');
+      const arr = oxyArr(taxes.body);
+      const t24 = arr.find(t => parseFloat(t.rate !== undefined ? t.rate : (t.percentage !== undefined ? t.percentage : t.value)) === 24);
+      if (!t24) return res.status(422).json({ step: 'find-tax-24', hint: 'no 24% tax found — pass ?tax_id=', taxes: arr.slice(0, 10) });
+      taxId = t24.id;
+    }
+
+    // 2b) payment method: ?pm=, else first from /payment-methods
+    let pmId = q.pm || '';
+    if (!pmId) {
+      const pms = await oxyFetch('/payment-methods');
+      const arr = oxyArr(pms.body);
+      if (!arr.length) return res.status(422).json({ step: 'find-payment-method', hint: 'no payment methods — pass ?pm=' });
+      pmId = arr[0].id;
+    }
+
+    // 3) issue: agreed mapping — category1_3 everywhere; type + myDATA doc code per document
+    const doc = q.doc === 's' ? 's' : 'rs';
+    const cls = { mydata_classification_category: 'category1_3', mydata_classification_type: doc === 's' ? 'E3_561_001' : 'E3_561_003' };
+    const line = (d, v) => Object.assign({ description: d, quantity: 1, unit_net_value: v, net_amount: v, vat_amount: Math.round(v * 24) / 100, tax_id: taxId }, cls);
+    const payload = {
+      issue_date: new Date().toISOString().slice(0, 10),
+      document_type: doc, mydata_document_type: q.mdt || (doc === 's' ? '2.1' : '11.2'),
+      language: 'el', contact_id: contactId, payment_method_id: pmId, is_paid: false,
+      comments: 'TEST — Elysian Clearing sandbox check (safe to ignore)',
+      items: [line('Αμοιβή διαχείρισης (TEST)', 100), line('Καθαριότητα (TEST)', 40), line('Software (TEST)', 10)],
+    };
+    if (q.seq) payload.numbering_sequence_id = q.seq;
+    const made = await oxyFetch('/invoices', { method: 'POST', body: JSON.stringify(payload) });
+    if (!made.ok) return res.status(502).json({ step: 'create-invoice', status: made.status, sent: payload, body: made.body });
+    const inv = (made.body && (made.body.data || made.body)) || {};
+    console.log('[oxygen] SANDBOX test document issued: ' + (inv.sequence || '') + ' ' + (inv.number || '') + ' total ' + (inv.total_amount || '?'));
+    res.json({ ok: true, sandbox: true, contact: { id: contactId, note: contactNote },
+      invoice: { id: inv.id, sequence: inv.sequence, number: inv.number, document_type: inv.document_type,
+                 net: inv.net_amount, vat: inv.vat_amount, total: inv.total_amount, mydata: inv.mydata } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// OXYGEN PELATOLOGIO - issuing engine (clearing report -> owner legal document)
+// Turns a locked clearing report's Elysian-charges block into the owner's legal
+// document on Oxygen (with myDATA transmission), then hands the identifiers back
+// so the client can stamp S.rptLocks[key].oxygen and write the trackers.
+//
+// Agreed mapping (spec 5 Aug 2026):
+//   Private -> Receipt  (ΑΠΥ)  document_type 'rs'  myDATA doc 11.2  cls E3_561_003
+//   B2B     -> Invoice  (ΤΠΥ)  document_type 's'   myDATA doc 2.1   cls E3_561_001
+//   Leased  -> NO document (the rental agreement is the paperwork) - skipped
+//  Every line: mydata_classification_category category1_3 + 24% VAT.
+//  One line per charge; the cleaning line is present ONLY when the client sends
+//  it (the per-apartment "cleaning uncharged but in the mgmt base" toggle
+//  suppresses it upstream). Figures come from buildPdfDoc, so the engine ASSERTS
+//  sum(line net) == the report's Elysian-charges total and refuses on any drift -
+//  the invoice equals the report by construction, never by re-computation.
+//
+// Endpoints (all behind the same APP_PASSWORD as the whole app):
+//  POST /api/oxygen/issue          -> issue (or return the already-issued doc)
+//  POST /api/oxygen/issue-preview  -> dry-run: build + assert, NEVER posts
+//  GET  /api/oxygen/documents      -> the issued-document ledger (audit trail)
+//
+// SAFETY: like test-issue, issuing runs freely on the SANDBOX. On a PRODUCTION
+// base the call is refused unless it carries an explicit confirmLive:true (the
+// "one-click confirm" of the agreed rollout ramp) - the code path is identical,
+// production merely needs the deliberate acknowledgement. Idempotency is keyed on
+// aptId+period+base: resending the owner e-mail can never double-issue or
+// double-count. On sandbox only, force:true bypasses the ledger so you can
+// re-test the same apartment/period while iterating.
+
+// -- Static mapping (pure)
+const OXY_MYDATA = {
+  private: { doc: 'rs', mdt: '11.2', cls: 'E3_561_003', label: 'ΑΠΥ (Receipt)' },
+  b2b:     { doc: 's',  mdt: '2.1',  cls: 'E3_561_001', label: 'ΤΠΥ (Invoice)' },
+  leased:  null,  // no document - the rental agreement is the paperwork
+};
+// Forgiving profile normalisation -> one of the three keys above, or '' if unknown.
+function oxyProfileKey(p) {
+  const s = String(p == null ? '' : p).toLowerCase().trim();
+  if (['private', 'privat', 'idiotis', 'ιδιώτης', 'ιδιωτης', 'apy', 'rs'].includes(s)) return 'private';
+  if (['b2b', 'business', 'company', 'invoice', 'tpy', 's'].includes(s)) return 'b2b';
+  if (['leased', 'lease', 'misthosi', 'μίσθωση', 'μισθωση', 'rental', 'none'].includes(s)) return 'leased';
+  return '';
+}
+const oxyMoney = v => Math.round((Number(v) || 0) * 100) / 100;
+const OXY_VAT = 24;
+
+// -- Line + payload builders (pure - the golden tests hit these directly)
+function oxyLine(description, net, taxId, cls) {
+  const n = oxyMoney(net);
+  return {
+    description: String(description || '').slice(0, 300),
+    quantity: 1,
+    unit_net_value: n,
+    net_amount: n,
+    vat_amount: Math.round(n * OXY_VAT) / 100,  // 24% - matches test-issue exactly
+    tax_id: taxId,
+    mydata_classification_category: 'category1_3',
+    mydata_classification_type: cls,
+  };
+}
+
+// Validate the incoming charge lines against the report total. Returns
+// { ok, sum, error }. This is the "invoice == report" guard.
+function oxyValidateLines(lines, reportTotal) {
+  if (!Array.isArray(lines) || !lines.length) return { ok: false, sum: 0, error: 'no charge lines supplied' };
+  let sum = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i] || {};
+    const net = Number(L.net != null ? L.net : L.net_amount != null ? L.net_amount : L.unit_net_value);
+    if (!L.description || !String(L.description).trim()) return { ok: false, sum, error: 'line ' + (i + 1) + ' has no description' };
+    if (!isFinite(net) || net <= 0) return { ok: false, sum, error: 'line ' + (i + 1) + ' (' + L.description + ') has a non-positive net amount' };
+    sum += net;
+  }
+  sum = oxyMoney(sum);
+  if (reportTotal != null && isFinite(Number(reportTotal))) {
+    const rt = oxyMoney(reportTotal);
+    if (Math.abs(sum - rt) > 0.01)
+      return { ok: false, sum, error: 'line total EUR ' + sum.toFixed(2) + ' != report Elysian-charges total EUR ' + rt.toFixed(2) + ' - refusing so the invoice can never diverge from the report' };
+  }
+  return { ok: true, sum, error: '' };
+}
+
+// Build the full Oxygen /invoices payload for one apartment's report, OR signal
+// a skip for Leased. Pure - no network, no state. Returns { skip, reason } or
+// { payload, map }.
+function oxyBuildInvoice(opts) {
+  const o = opts || {};
+  const key = oxyProfileKey(o.profile);
+  if (!key) return { error: 'unknown apartment profile "' + o.profile + '" - expected private | b2b | leased' };
+  const map = OXY_MYDATA[key];
+  if (map === null) return { skip: true, reason: 'leased' };  // no document
+
+  if (!o.contactId) return { error: 'no Oxygen contact linked for this apartment - link it in Configuration (never guessed)' };
+  if (!o.taxId) return { error: 'no 24% tax id resolved' };
+  if (!o.pmId) return { error: 'no payment method resolved' };
+
+  const items = (o.lines || []).map(L => oxyLine(
+    L.description,
+    (L.net != null ? L.net : L.net_amount != null ? L.net_amount : L.unit_net_value),
+    o.taxId, map.cls,
+  ));
+  const payload = {
+    issue_date: o.issueDate || new Date().toISOString().slice(0, 10),
+    document_type: map.doc,
+    mydata_document_type: map.mdt,
+    language: (String(o.language || 'el').toLowerCase() === 'en') ? 'en' : 'el',
+    contact_id: o.contactId,
+    payment_method_id: o.pmId,
+    is_paid: !!o.isPaid,
+    comments: o.comments || '',
+    items,
+  };
+  if (o.seq) payload.numbering_sequence_id = o.seq;
+  return { payload, map, profileKey: key };
+}
+
+// -- Live wiring (network + Postgres ledger)
+// Resolve the 24% tax id and a payment-method id once, then memoise. Env
+// overrides win (OXYGEN_TAX24_ID / OXYGEN_PM_ID); per-request overrides win over
+// those. Numbering sequences are per document type (ΑΠΥ vs ΤΠΥ) from env.
+const _oxyLookups = { tax24: process.env.OXYGEN_TAX24_ID || '', pm: process.env.OXYGEN_PM_ID || '' };
+const OXY_SEQ = { rs: process.env.OXYGEN_SEQ_RS || '', s: process.env.OXYGEN_SEQ_S || '' };
+async function oxyResolveTax24() {
+  if (_oxyLookups.tax24) return _oxyLookups.tax24;
+  const r = await oxyFetch('/taxes');
+  const t = oxyArr(r.body).find(x => parseFloat(x.rate !== undefined ? x.rate : (x.percentage !== undefined ? x.percentage : x.value)) === OXY_VAT);
+  if (t) _oxyLookups.tax24 = t.id;
+  return _oxyLookups.tax24;
+}
+async function oxyResolvePaymentMethod() {
+  if (_oxyLookups.pm) return _oxyLookups.pm;
+  const r = await oxyFetch('/payment-methods');
+  const arr = oxyArr(r.body);
+  if (arr.length) _oxyLookups.pm = arr[0].id;
+  return _oxyLookups.pm;
+}
+
+// Issued-document ledger - the exactly-once guarantee + a permanent audit trail
+// of every legal document the pipeline has issued. Self-heals its table like the
+// proofs table does.
+let _oxyDocTableReady = false;
+async function oxyEnsureDocTable() {
+  if (_oxyDocTableReady || !pool) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS oxygen_documents (
+      id           SERIAL PRIMARY KEY,
+      apt_id       TEXT        NOT NULL,
+      apt_name     TEXT,
+      period       VARCHAR(7)  NOT NULL,
+      base         TEXT        NOT NULL,
+      sandbox      BOOLEAN     NOT NULL DEFAULT TRUE,
+      profile      TEXT,
+      document_type TEXT,
+      invoice_id   TEXT,
+      sequence     TEXT,
+      number       TEXT,
+      mark         TEXT,
+      net          NUMERIC,
+      vat          NUMERIC,
+      total        NUMERIC,
+      mydata       JSONB,
+      issued_by    TEXT,
+      issued_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_oxydoc_key ON oxygen_documents (apt_id, period, base);`);
+  _oxyDocTableReady = true;
+}
+function oxyLedgerRow(r) {
+  if (!r) return null;
+  return {
+    aptId: r.apt_id, aptName: r.apt_name, period: r.period, sandbox: r.sandbox, profile: r.profile,
+    documentType: r.document_type, invoiceId: r.invoice_id, sequence: r.sequence, number: r.number,
+    mark: r.mark, net: r.net != null ? Number(r.net) : null, vat: r.vat != null ? Number(r.vat) : null,
+    total: r.total != null ? Number(r.total) : null, mydata: r.mydata, issuedBy: r.issued_by, issuedAt: r.issued_at,
+  };
+}
+async function oxyLedgerGet(aptId, period) {
+  if (!pool) return null;
+  await oxyEnsureDocTable();
+  const r = await pool.query('SELECT * FROM oxygen_documents WHERE apt_id=$1 AND period=$2 AND base=$3', [String(aptId), String(period), OXY.base]);
+  return oxyLedgerRow(r.rows[0]);
+}
+async function oxyLedgerPut(rec) {
+  if (!pool) return;
+  await oxyEnsureDocTable();
+  await pool.query(
+    `INSERT INTO oxygen_documents
+       (apt_id, apt_name, period, base, sandbox, profile, document_type, invoice_id, sequence, number, mark, net, vat, total, mydata, issued_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
+     ON CONFLICT (apt_id, period, base) DO NOTHING`,
+    [String(rec.aptId), rec.aptName || '', String(rec.period), OXY.base, oxySandbox(), rec.profile || '',
+     rec.documentType || '', String(rec.invoiceId || ''), String(rec.sequence || ''), String(rec.number || ''),
+     rec.mark || '', rec.net, rec.vat, rec.total, JSON.stringify(rec.mydata || null), rec.issuedBy || ''],
+  );
+}
+
+// Shared setup for issue + preview: normalise body, resolve lookups, build the
+// payload, run the equality guard. Returns { error, status } | { built, ctx }.
+async function oxyPrepare(body) {
+  const b = body || {};
+  const aptId = String(b.aptId || b.apt_id || '').trim();
+  const period = String(b.period || '').trim();
+  if (!aptId) return { status: 400, error: 'missing aptId' };
+  if (!/^\d{4}-\d{2}$/.test(period)) return { status: 400, error: 'missing/invalid period (YYYY-MM expected)' };
+
+  const profileKey = oxyProfileKey(b.profile);
+  if (!profileKey) return { status: 400, error: 'unknown apartment profile "' + b.profile + '" - expected private | b2b | leased' };
+  if (profileKey === 'leased') return { built: { skip: true, reason: 'leased' }, ctx: { aptId, period, profileKey } };
+
+  const lines = Array.isArray(b.lines) ? b.lines : [];
+  const check = oxyValidateLines(lines, b.reportTotal);
+  if (!check.ok) return { status: 422, error: check.error, sum: check.sum };
+
+  const taxId = b.taxId || await oxyResolveTax24();
+  if (!taxId) return { status: 422, error: 'could not resolve the 24% tax id - pass taxId or set OXYGEN_TAX24_ID' };
+  const pmId = b.pmId || b.paymentMethodId || await oxyResolvePaymentMethod();
+  if (!pmId) return { status: 422, error: 'could not resolve a payment method - pass pmId or set OXYGEN_PM_ID' };
+
+  const map = OXY_MYDATA[profileKey];
+  const seq = b.seq || OXY_SEQ[map.doc] || '';
+  const built = oxyBuildInvoice({
+    profile: profileKey, lines, language: b.language, contactId: b.contactId || b.contact_id,
+    taxId, pmId, seq, isPaid: !!b.isPaid,
+    issueDate: b.issueDate || new Date().toISOString().slice(0, 10),
+    comments: b.comments != null ? b.comments : ('Elysian Properties - ' + period + (b.aptName ? ' - ' + b.aptName : '')),
+  });
+  if (built.error) return { status: 422, error: built.error };
+  return { built, ctx: { aptId, aptName: b.aptName || '', period, profileKey, sum: check.sum } };
+}
+
+// POST /api/oxygen/issue-preview - build + assert, NEVER touches Oxygen.
+app.post('/api/oxygen/issue-preview', async (req, res) => {
+  try {
+    if (!OXY.key) return res.status(503).json({ error: 'OXYGEN_API_KEY not set' });
+    const prep = await oxyPrepare(req.body);
+    if (prep.error) return res.status(prep.status || 400).json({ error: prep.error, sum: prep.sum });
+    if (prep.built.skip) return res.json({ ok: true, skipped: true, reason: prep.built.reason, apt: prep.ctx.aptId, period: prep.ctx.period });
+    res.json({ ok: true, preview: true, sandbox: oxySandbox(), base: OXY.base,
+      apt: prep.ctx.aptId, period: prep.ctx.period, profile: prep.ctx.profileKey,
+      document: prep.built.map.label, chargesTotal: prep.ctx.sum, payload: prep.built.payload });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/oxygen/issue - issue the owner document (or return the already-issued
+// one). Body: { aptId, aptName, period:'YYYY-MM', profile:'private|b2b|leased',
+// contactId, language:'el|en', lines:[{description,net}], reportTotal,
+// issueDate?, confirmLive?, force?, by?, taxId?, pmId?, seq? }
+app.post('/api/oxygen/issue', async (req, res) => {
+  try {
+    if (!OXY.key) return res.status(503).json({ error: 'OXYGEN_API_KEY not set' });
+    const b = req.body || {};
+
+    const prep = await oxyPrepare(b);
+    if (prep.error) return res.status(prep.status || 400).json({ error: prep.error, sum: prep.sum });
+
+   // Leased -> no document. Uniform trigger chain: the client always calls
+   // issue; the server decides to skip so the caller needs no profile branching.
+    if (prep.built.skip) return res.json({ ok: true, skipped: true, reason: prep.built.reason, apt: prep.ctx.aptId, period: prep.ctx.period });
+
+    const { aptId, aptName, period, profileKey, sum } = prep.ctx;
+
+   // PRODUCTION guard - deliberate acknowledgement required off-sandbox.
+    if (!oxySandbox() && b.confirmLive !== true)
+      return res.status(403).json({ error: 'PRODUCTION base (' + OXY.base + '): refusing to issue a real legal document without confirmLive:true' });
+
+   // Exactly-once. Sandbox may re-test with force:true; production never can.
+    const force = b.force === true && oxySandbox();
+    if (!force) {
+      const existing = await oxyLedgerGet(aptId, period);
+      if (existing && existing.invoiceId)
+        return res.json({ ok: true, alreadyIssued: true, sandbox: oxySandbox(), apt: aptId, period, document: existing });
+    }
+
+   // Issue.
+    const made = await oxyFetch('/invoices', { method: 'POST', body: JSON.stringify(prep.built.payload) });
+    if (!made.ok) return res.status(502).json({ step: 'create-invoice', status: made.status, sent: prep.built.payload, body: made.body });
+    const inv = (made.body && (made.body.data || made.body)) || {};
+    const md = inv.mydata || {};
+
+    const rec = {
+      aptId, aptName, period, profile: profileKey, documentType: inv.document_type || prep.built.map.doc,
+      invoiceId: inv.id, sequence: inv.sequence, number: inv.number,
+      mark: md.mark || md.Mark || '', net: inv.net_amount, vat: inv.vat_amount, total: inv.total_amount,
+      mydata: inv.mydata || null, issuedBy: b.by || '',
+    };
+    try { await oxyLedgerPut(rec); } catch (e) { console.error('[oxygen] ledger write failed (document WAS issued):', e.message); }
+
+    console.log('[oxygen] ' + (oxySandbox() ? 'SANDBOX' : 'LIVE') + ' ' + prep.built.map.label + ' issued for ' + (aptName || aptId) + ' ' + period +
+      ' -> ' + (inv.sequence || '') + ' ' + (inv.number || '') + ' total ' + (inv.total_amount != null ? inv.total_amount : '?') +
+      (md.mark ? ' mark ' + md.mark : '') + (md.status ? ' [myDATA ' + md.status + ']' : ''));
+
+    res.json({ ok: true, issued: true, sandbox: oxySandbox(), apt: aptId, period,
+      document: { invoiceId: inv.id, sequence: inv.sequence, number: inv.number, documentType: inv.document_type,
+                  net: inv.net_amount, vat: inv.vat_amount, total: inv.total_amount, mydata: inv.mydata } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/oxygen/documents?period=YYYY-MM - issued-document ledger (audit trail)
+app.get('/api/oxygen/lookups', async (req, res) => {
+  if (!OXY.key) return res.json({ configured: false });
+  const out = { configured: true, base: OXY.base, sandbox: oxySandbox() };
+  const disp = c => ([c.name, c.surname].filter(Boolean).join(' ') || c.company_name || c.nickname || c.email || ('#' + c.id));
+  const grab = async (p, map) => { const r = await oxyFetch(p); if (!r.ok) return { error: 'HTTP ' + r.status }; return oxyArr(r.body).map(map); };
+  out.contacts = await grab('/contacts', c => ({ id: c.id, name: disp(c), afm: c.vat_number || '', email: c.email || '' }));
+  out.paymentMethods = await grab('/payment-methods', p => ({ id: p.id, title: p.title_gr || p.title_en || p.title || '', code: p.mydata_code || '' }));
+  out.sequences = await grab('/numbering-sequences', s => ({ id: s.id, name: s.name || s.title || '', doc: s.document_type || '' }));
+  res.json(out);
+});
+
+app.get('/api/oxygen/documents', async (req, res) => {
+  if (!pool) return res.json({ db: false, documents: [] });
+  try {
+    await oxyEnsureDocTable();
+    const period = req.query.period || '';
+    const r = period
+      ? await pool.query('SELECT * FROM oxygen_documents WHERE period=$1 ORDER BY issued_at DESC', [period])
+      : await pool.query('SELECT * FROM oxygen_documents ORDER BY issued_at DESC LIMIT 500');
+    res.json({ db: true, base: OXY.base, sandbox: oxySandbox(), documents: r.rows.map(oxyLedgerRow) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// -- Offline golden tests: node server.js --oxygen-selftest
+// Asserts the agreed mapping and the invoice==report guard as PURE functions -
+// no network, no database. Mirrors the Viva self-test.
+function oxygenSelfTest() {
+  let n = 0, fail = 0;
+  const ok = (name, cond) => { n++; if (!cond) { fail++; console.log('  X -', name); } else console.log('  ok -', name); };
+
+  // Profile -> document mapping
+  const priv = oxyBuildInvoice({ profile: 'private', contactId: 'c1', taxId: 't24', pmId: 'pm1', language: 'el',
+    lines: [{ description: 'Αμοιβή διαχείρισης', net: 100 }, { description: 'Καθαριότητα', net: 40 }, { description: 'Software', net: 10 }] });
+  ok('Private -> document_type rs', priv.payload.document_type === 'rs');
+  ok('Private -> myDATA doc 11.2', priv.payload.mydata_document_type === '11.2');
+  ok('Private lines -> classification E3_561_003', priv.payload.items.every(i => i.mydata_classification_type === 'E3_561_003'));
+
+  const b2b = oxyBuildInvoice({ profile: 'b2b', contactId: 'c2', taxId: 't24', pmId: 'pm1', language: 'en',
+    lines: [{ description: 'Management fee', net: 200 }] });
+  ok('B2B -> document_type s', b2b.payload.document_type === 's');
+  ok('B2B -> myDATA doc 2.1', b2b.payload.mydata_document_type === '2.1');
+  ok('B2B lines -> classification E3_561_001', b2b.payload.items.every(i => i.mydata_classification_type === 'E3_561_001'));
+  ok('language passes through (en)', b2b.payload.language === 'en');
+
+  // Leased -> no document
+  const leased = oxyBuildInvoice({ profile: 'leased', contactId: 'c3', taxId: 't24', pmId: 'pm1', lines: [{ description: 'x', net: 1 }] });
+  ok('Leased -> skip (no document)', leased.skip === true && leased.reason === 'leased');
+
+  // Every line: category1_3 + 24% VAT, computed exactly like test-issue
+  ok('every line category1_3', priv.payload.items.every(i => i.mydata_classification_category === 'category1_3'));
+  ok('VAT = round(net*24)/100 (100->24.00)', priv.payload.items[0].vat_amount === 24);
+  ok('VAT on 40 -> 9.60', priv.payload.items[1].vat_amount === 9.6);
+  ok('net_amount == unit_net_value', priv.payload.items.every(i => i.net_amount === i.unit_net_value));
+  ok('tax_id stamped on every line', priv.payload.items.every(i => i.tax_id === 't24'));
+
+  // Invoice == report guard
+  ok('lines summing to report total -> ok', oxyValidateLines([{ description: 'a', net: 100 }, { description: 'b', net: 40 }, { description: 'c', net: 10 }], 150).ok === true);
+  ok('sub-cent drift tolerated (<= EUR 0.01)', oxyValidateLines([{ description: 'a', net: 100.004 }], 100).ok === true);
+  const drift = oxyValidateLines([{ description: 'a', net: 100 }, { description: 'b', net: 40 }], 150);
+  ok('dropped/short line -> REFUSED', drift.ok === false && /!=/.test(drift.error));
+  const extra = oxyValidateLines([{ description: 'a', net: 100 }, { description: 'b', net: 40 }, { description: 'c', net: 10 }, { description: 'stray', net: 5 }], 150);
+  ok('extra stray line -> REFUSED', extra.ok === false);
+  ok('cleaning suppressed (2 lines) still == its own total', oxyValidateLines([{ description: 'mgmt', net: 100 }, { description: 'software', net: 10 }], 110).ok === true);
+  ok('empty lines -> refused', oxyValidateLines([], 0).ok === false);
+  ok('non-positive line -> refused', oxyValidateLines([{ description: 'a', net: 0 }], 0).ok === false);
+  ok('no-description line -> refused', oxyValidateLines([{ net: 10 }], 10).ok === false);
+
+  // Contact must be linked, never guessed
+  const noContact = oxyBuildInvoice({ profile: 'private', taxId: 't24', pmId: 'pm1', lines: [{ description: 'a', net: 10 }] });
+  ok('missing Oxygen contact -> error (never guessed)', !!noContact.error && /contact/i.test(noContact.error));
+
+  // Unknown profile -> error
+  ok('unknown profile -> error', !!oxyBuildInvoice({ profile: 'mystery', contactId: 'c', taxId: 't', pmId: 'p', lines: [{ description: 'a', net: 1 }] }).error);
+
+  // Profile normalisation (forgiving)
+  ok('profile alias "ιδιώτης" -> private', oxyProfileKey('Ιδιώτης') === 'private');
+  ok('profile alias "business" -> b2b', oxyProfileKey('business') === 'b2b');
+  ok('profile alias "μίσθωση" -> leased', oxyProfileKey('Μίσθωση') === 'leased');
+
+  // Full example: invoice items mirror the report block byte-for-byte in value
+  const rep = [{ description: 'Αμοιβή διαχείρισης', net: 87.5 }, { description: 'Καθαριότητα', net: 45 }, { description: 'Software', net: 12 }, { description: 'Έξοδο: Λαμπτήρες', net: 8.4 }];
+  const repTotal = 152.9;
+  const full = oxyBuildInvoice({ profile: 'private', contactId: 'c1', taxId: 't24', pmId: 'pm1', lines: rep });
+  ok('one Oxygen line per report charge', full.payload.items.length === rep.length);
+  ok('sum(line net) === report total', oxyMoney(full.payload.items.reduce((s, i) => s + i.net_amount, 0)) === repTotal);
+  ok('validate agrees with report total', oxyValidateLines(rep, repTotal).ok === true);
+
+  console.log(fail ? `\nX - ${fail}/${n} OXYGEN SELF-TESTS FAILED` : `\nok - ALL ${n} OXYGEN SELF-TESTS PASSED`);
+  process.exit(fail ? 1 : 0);
+}
+if (process.argv.includes('--oxygen-selftest')) oxygenSelfTest();
+
 // 🏦 VIVA BANK BRIDGE — automatic payout reconciliation for the Payments Check tab
 // ═══════════════════════════════════════════════════════════════════════════════
 // Pulls real account movements from the Viva Account Transactions API
