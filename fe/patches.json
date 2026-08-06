@@ -1,7 +1,7 @@
 {
  "baseSha256": "de7b117bc00a180b8a570ee6de17f7f16b6a0e46464b9cadd9fdfdfcf7594229",
- "expectedSha256": "dddaf898f531441dc531308e37a2a45c94cc95215e86f047bb14e67484c550f9",
- "builtAt": "2026-08-06 fe v9 (TAKK attachments + expenses line + revenue/remittance writes + tracker column)",
+ "expectedSha256": "8145af199e9868a78c99c85d063c4df7237b2d9c5c9f0782bafcf2ffc870f139",
+ "builtAt": "2026-08-06 fe v10 (document issued by the send = last step)",
  "patches": [
   {
    "note": "Send: attach the TAKK document + payment proof (private) to the owner email",
@@ -25,6 +25,18 @@
    "note": "Annual Tracker: show the saved Owner Remittance total per property",
    "find": "          <div style=\"text-align:right\"><div class=\"lbl\">Mgmt fees</div><div class=\"mono\" style=\"font-size:14px;font-weight:500\">${fmt(tot.mf)}</div></div>",
    "replace": "          <div style=\"text-align:right\"><div class=\"lbl\">Mgmt fees</div><div class=\"mono\" style=\"font-size:14px;font-weight:500\">${fmt(tot.mf)}</div></div>\n          <div style=\"text-align:right\"><div class=\"lbl\">Remitted</div><div class=\"mono\" style=\"font-size:14px;font-weight:500;color:#0369A1\">${fmt(MONTHS.reduce((s,_,mo)=>s+(((S.ownerRemit||{})[apt.id+'::'+yr+'::'+mo]||{}).amount||0),0))}</div></div>",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: the APY/TPY is issued BY the send, so Receipt/Invoice follows Email instead of preceding it",
+   "find": "      { key: 'takk_pay', label: 'Pay', action: 'Pay TAKK', desc: 'Attach the payment proof' },\n      { key: 'receipt', label: 'Receipt', action: 'Issue receipt', desc: 'Receipt (APY) issued from Oxygen' },\n      { key: 'email', label: 'Email', action: 'Send email', desc: 'Email the owner - report + receipt attached' }\n    ],\n    b2b: [\n      { key: 'report', label: 'Report', action: 'Check report', desc: 'Verify every element pulled for clearing is correct' },\n      { key: 'invoice', label: 'Invoice', action: 'Issue invoice', desc: 'Invoice (TPY) issued from Oxygen' },\n      { key: 'email', label: 'Email', action: 'Send email', desc: 'Email the owner - report + invoice attached' }\n    ],",
+   "replace": "      { key: 'takk_pay', label: 'Pay', action: 'Pay TAKK', desc: 'Attach the payment proof' },\n      { key: 'email', label: 'Email', action: 'Send email', desc: 'Sends the owner everything and issues the APY at that moment - the last step' },\n      { key: 'receipt', label: 'Receipt', action: 'Issue receipt', desc: 'APY - issued automatically by the send, no separate step' }\n    ],\n    b2b: [\n      { key: 'report', label: 'Report', action: 'Check report', desc: 'Verify every element pulled for clearing is correct' },\n      { key: 'email', label: 'Email', action: 'Send email', desc: 'Sends the owner everything and issues the TPY at that moment - the last step' },\n      { key: 'invoice', label: 'Invoice', action: 'Issue invoice', desc: 'TPY - issued automatically by the send, no separate step' }\n    ],",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: funnel order mirrors the flow (Email before Receipt/Invoice)",
+   "find": "    { key: 'receipt', types: ['private'] },\n    { key: 'invoice', types: ['b2b'] },\n    { key: 'email', types: ['private', 'b2b', 'leased'] }\n  ];",
+   "replace": "    { key: 'email', types: ['private', 'b2b', 'leased'] },\n    { key: 'receipt', types: ['private'] },\n    { key: 'invoice', types: ['b2b'] }\n  ];",
    "count": 1
   }
  ]
