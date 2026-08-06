@@ -1,12 +1,18 @@
 {
  "baseSha256": "0a8f738558f75e95d1a6ad04f6c6f5dd30cc8e11d43c7c4baefa186e28c760c8",
- "expectedSha256": "0f24d229beada26bc2620021fd25c154d459aeb020eed26a6672d6fc09b78012",
- "builtAt": "2026-08-06 clean consolidated base + oxygen invoice-raw probe",
+ "expectedSha256": "6e67941445e7dba5266890b75186032a61804623f08cc942bcff40dbe2d14d4a",
+ "builtAt": "2026-08-06 oxygen: mark capture + invoice pdf endpoint",
  "patches": [
   {
-   "note": "oxygen: GET /api/oxygen/invoice-raw/:id - probe invoice JSON (mark, pdf fields) + pdf/accept/print endpoints",
+   "note": "oxygen: poll for the myDATA MARK after issuing so the ledger + report stamp record it",
+   "find": "    const inv = (made.body && (made.body.data || made.body)) || {};\n    const md = inv.mydata || {};",
+   "replace": "    let inv = (made.body && (made.body.data || made.body)) || {};\n    // Oxygen assigns the myDATA MARK a moment after creation - poll briefly so the ledger records it.\n    if (inv.id && !((inv.mydata || {}).mark)) {\n      for (let _i = 0; _i < 3; _i++) {\n        await new Promise(r => setTimeout(r, 1200));\n        const again = await oxyFetch('/invoices/' + encodeURIComponent(inv.id));\n        const fresh = (again.body && (again.body.data || again.body)) || null;\n        if (fresh && fresh.id) { inv = fresh; if ((fresh.mydata || {}).mark) break; }\n      }\n    }\n    const md = inv.mydata || {};",
+   "count": 1
+  },
+  {
+   "note": "oxygen: GET /api/oxygen/invoice-pdf/:id - invoice PDF as base64 for the owner email attachment",
    "find": "app.get('/api/oxygen/lookups'",
-   "replace": "app.get('/api/oxygen/invoice-raw/:id', async (req, res) => {\n  if (!OXY.key) return res.json({ configured: false });\n  const id = req.params.id;\n  const out = { id: id, base: OXY.base };\n  try {\n    const r = await oxyFetch('/invoices/' + encodeURIComponent(id));\n    out.status = r.status; out.ok = r.ok;\n    const b = (r.body && (r.body.data || r.body)) || {};\n    out.keys = (b && typeof b === 'object') ? Object.keys(b) : [];\n    const pick = {};\n    ['id','number','sequence','document_type','mydata','pdf','pdf_url','public_url','permalink','url','download_url','file','file_url','qr_url','qrUrl','uid','mark','status'].forEach(function(k){ if (b && b[k] !== undefined) pick[k] = b[k]; });\n    out.fields = pick;\n  } catch (e) { out.err = String((e && e.message) || e); }\n  const B = OXY.base.replace(/\\/+$/, '');\n  const probe = async function(label, url, headers) {\n    try { const r = await fetch(url, { headers: Object.assign({ Authorization: 'Bearer ' + OXY.key }, headers || {}) }); out[label] = { status: r.status, contentType: r.headers.get('content-type'), len: r.headers.get('content-length') }; }\n    catch (e) { out[label] = { err: String((e && e.message) || e) }; }\n  };\n  await probe('pdf_endpoint', B + '/invoices/' + encodeURIComponent(id) + '/pdf');\n  await probe('accept_pdf', B + '/invoices/' + encodeURIComponent(id), { Accept: 'application/pdf' });\n  await probe('print_endpoint', B + '/invoices/' + encodeURIComponent(id) + '/print');\n  res.json(out);\n});\n\napp.get('/api/oxygen/lookups'",
+   "replace": "// GET /api/oxygen/invoice-pdf/:id - the issued document's PDF, base64, for email attachment\napp.get('/api/oxygen/invoice-pdf/:id', async (req, res) => {\n  if (!OXY.key) return res.status(400).json({ error: 'oxygen not configured' });\n  const id = req.params.id;\n  try {\n    const url = OXY.base.replace(/\\/+$/, '') + '/invoices/' + encodeURIComponent(id) + '/pdf';\n    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + OXY.key, Accept: 'application/pdf' } });\n    if (!r.ok) return res.status(502).json({ error: 'pdf fetch failed', status: r.status });\n    const buf = r.buffer ? await r.buffer() : Buffer.from(await r.arrayBuffer());\n    if (!(buf.length > 4 && buf.slice(0, 4).toString('latin1') === '%PDF'))\n      return res.status(502).json({ error: 'response was not a PDF', bytes: buf.length });\n    res.json({ ok: true, id: id, bytes: buf.length, base64: buf.toString('base64') });\n  } catch (e) { res.status(500).json({ error: e.message }); }\n});\n\napp.get('/api/oxygen/lookups'",
    "count": 1
   }
  ]
