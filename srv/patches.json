@@ -1,6 +1,6 @@
 {
  "baseSha256": "0a8f738558f75e95d1a6ad04f6c6f5dd30cc8e11d43c7c4baefa186e28c760c8",
- "expectedSha256": "7cbe75d263402ea56ad3b0c50e6a4b70ca6e8f2c2fd7ca43a71ed5bb8e04ba5e",
+ "expectedSha256": "7cbe75d26340c2e38454572b4bb2ed3a55b2b4072f7533206393616f05517613",
  "builtAt": "2026-08-06 oxygen: mark capture + pdf + epi-pistosei + paid",
  "patches": [
   {
