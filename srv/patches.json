@@ -1,7 +1,7 @@
 {
  "baseSha256": "0a8f738558f75e95d1a6ad04f6c6f5dd30cc8e11d43c7c4baefa186e28c760c8",
- "expectedSha256": "ddff6e5eb115a4bfae3ab3efc93cb49492a1afdb2ce4952062b2d029cd2f71ea",
- "builtAt": "2026-08-06 oxygen: mark capture + pdf endpoint + on-credit payment default",
+ "expectedSha256": "e490e430802b9e544da65946594dfeb799d3d5810724436634be3ac9f800bb92",
+ "builtAt": "2026-08-06 oxygen: mark capture + pdf + on-credit + paid-by-default",
  "patches": [
   {
    "note": "oxygen: poll for the myDATA MARK after issuing so the ledger + report stamp record it",
@@ -19,6 +19,12 @@
    "note": "oxygen: default payment method = Epi Pistosei (on credit, myDATA 5) instead of first-in-list (Cash)",
    "find": "async function oxyResolvePaymentMethod() {\n  if (_oxyLookups.pm) return _oxyLookups.pm;\n  const r = await oxyFetch('/payment-methods');\n  const arr = oxyArr(r.body);\n  if (arr.length) _oxyLookups.pm = arr[0].id;\n  return _oxyLookups.pm;\n}",
    "replace": "async function oxyResolvePaymentMethod() {\n  if (_oxyLookups.pm) return _oxyLookups.pm;\n  const r = await oxyFetch('/payment-methods');\n  const arr = oxyArr(r.body);\n  // Owner clearing is settled against the payout, not paid at issue, so every\n  // APY/TPY defaults to 'Epi Pistosei' (on credit, myDATA code 5). Matched by\n  // myDATA code first so it survives an id change, then by id. OXYGEN_PM_ID wins.\n  const ON_CREDIT_CODE = '5', ON_CREDIT_ID = '5dc5dbda-6da6-4499-9ac6-200ed1abbbb3';\n  const pick = arr.find(x => String(x.mydata_code) === ON_CREDIT_CODE) || arr.find(x => x.id === ON_CREDIT_ID);\n  if (pick) _oxyLookups.pm = pick.id;\n  else if (arr.length) _oxyLookups.pm = arr[0].id;\n  return _oxyLookups.pm;\n}",
+   "count": 1
+  },
+  {
+   "note": "oxygen: mark clearing documents as paid by default (fee is deducted from the payout)",
+   "find": "    taxId, pmId, seq, isPaid: !!b.isPaid,",
+   "replace": "    // Clearing fees are settled against the owner's payout, so the document is\n    // marked paid unless the caller explicitly passes isPaid:false.\n    taxId, pmId, seq, isPaid: (b.isPaid === undefined ? true : !!b.isPaid),",
    "count": 1
   }
  ]
