@@ -3284,9 +3284,20 @@ function renderCfg(){
           <div class="shdr">Owner contact (for email reports)</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             <div style="display:flex;gap:8px">
-          <div style="flex:1"><label class="lbl">Owner name</label><input type="text" value="${a.ownerName||''}" placeholder="First name" onchange="setApt('${a.id}','ownerName',this.value)"></div>
-          <div style="flex:1"><label class="lbl">Surname</label><input type="text" value="${a.ownerSurname||''}" placeholder="Last name" onchange="setApt('${a.id}','ownerSurname',this.value)"></div>
+          <div style="flex:1"><label class="lbl">Owner name</label><input type="text" value="${(a.ownerName||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}" placeholder="First name" onchange="setApt('${a.id}','ownerName',this.value)"></div>
+          <div style="flex:1"><label class="lbl">Surname</label><input type="text" value="${(a.ownerSurname||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}" placeholder="Last name" onchange="setApt('${a.id}','ownerSurname',this.value)"></div>
         </div></div>
+        <div style="background:var(--bg2);border-radius:var(--r);padding:12px">
+          <div class="shdr">Fiscal contact (Oxygen) - owner's ΑΠΥ/ΤΠΥ is issued to this contact</div>
+          <div style="position:relative">
+            <input type="text" id="oxy-in-${a.id}" autocomplete="off" value="${((a.oxyContactName||'')+'').replace(/"/g,'&quot;')}" placeholder="Search owner by name or ΑΦΜ..." oninput="_oxyFilter('${a.id}',this.value)" onfocus="_oxyFilter('${a.id}',this.value)" onblur="setTimeout(function(){var r=document.getElementById('oxy-res-${a.id}');if(r)r.style.display='none';},200)" style="width:100%;font-size:12px;padding:7px;border-radius:var(--r);border:1px solid var(--bdr);background:var(--bg);color:var(--tx)">
+            <div id="oxy-res-${a.id}" style="display:none;position:absolute;z-index:60;left:0;right:0;top:100%;max-height:220px;overflow:auto;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.28)"></div>
+          </div>
+          <div style="font-size:10px;color:var(--tx3);margin-top:5px;display:flex;justify-content:space-between;gap:8px">
+            <span>${a.oxyContactId?('Linked: '+((a.oxyContactName||a.oxyContactId)+'').replace(/</g,'&lt;')):'Type a name or ΑΦΜ to link the owner.'}</span>
+            ${a.oxyContactId?'<a href=\'#\' onclick="_oxyClear(\''+a.id+'\');return false" style="color:var(--tx-warn);white-space:nowrap">unlink</a>':''}
+          </div>
+        </div>
             <div><label class="lbl">Owner email</label><input type="email" value="${a.ownerEmail||''}" placeholder="email@example.com" onchange="setApt('${a.id}','ownerEmail',this.value)"></div>
           </div>
         </div>
@@ -4654,11 +4665,71 @@ async function _emailSend() {
     if (st.logoSrc) inline.push({ cid: 'elogo', contentType: 'image/jpeg', contentBase64: st.logoSrc });
     const html = _emailBuildHtml(st, intro, 'cid:p1', st.logoSrc ? 'cid:elogo' : '');
     const text = _emailBuildText(st, intro);
+    // --- Oxygen: issue the owner's legal document BEFORE sending, so its PDF rides along ---
+    let _oxyDoc = null, _oxyNote = '';
+    const _atts = [{ filename: st.pdf.fname, contentType: 'application/pdf', contentBase64: st.pdf.base64 }];
+    try {
+      const _apt = st.d.apt || {};
+      const _k = window._rptLockKey;
+      const _prev = (_k && S.rptLocks && S.rptLocks[_k] && S.rptLocks[_k].oxygen) || null;
+      const _label = _apt.profile === 'b2b' ? 'ΤΠΥ (Invoice)' : 'ΑΠΥ (Receipt)';
+      if (_apt.profile && _apt.profile !== 'leased') {
+        if (!_apt.oxyContactId) {
+          _oxyNote = 'Link a Fiscal contact (Oxygen) in Config to issue the ' + _label + '.';
+        } else if (_prev && _prev.invoiceId) {
+          _oxyDoc = _prev;
+        } else {
+          const _c = st.d.cmb || {};
+          const _d0 = new Date(st.d.dates.from);
+          const _period = _d0.getFullYear() + '-' + String(_d0.getMonth() + 1).padStart(2, '0');
+          const _lines = [];
+          const _addL = function (desc, net) { net = Math.round((net || 0) * 100) / 100; if (net > 0.005) _lines.push({ description: desc, net: net }); };
+          _addL('Αμοιβή διαχείρισης', _c.mf);
+          _addL('Καθαριότητα', _c.cleanDeduct);
+          _addL('Χρήση λογισμικού', _c.fixedCh);
+          const _tot = Math.round(_lines.reduce(function (s, l) { return s + l.net; }, 0) * 100) / 100;
+          if (!_lines.length) {
+            _oxyNote = 'No Elysian charges to invoice for ' + _period + '.';
+          } else {
+            const _bd = { aptId: _apt.id, aptName: _apt.name, period: _period, profile: _apt.profile, contactId: _apt.oxyContactId, language: (st.isGR ? 'el' : 'en'), lines: _lines, reportTotal: _tot };
+            const _pv = await fetch('/api/oxygen/issue-preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_bd) }).then(function (x) { return x.json(); }).catch(function () { return null; });
+            if (!_pv || !_pv.ok) {
+              _oxyNote = 'Oxygen preview failed: ' + ((_pv && _pv.error) || 'error') + ' - not issued.';
+            } else {
+              const _vat = Math.round(_tot * 24) / 100;
+              const _msg = 'Issue ' + (_pv.document || _label) + ' and attach it to this email?\n\n' + _lines.map(function (l) { return '  ' + l.description + ': EUR ' + l.net.toFixed(2); }).join('\n') + '\n  VAT 24%: EUR ' + _vat.toFixed(2) + '\n  Total: EUR ' + (_tot + _vat).toFixed(2) + '\n\nPeriod ' + _period + '. This creates a REAL AADE document + myDATA submission.';
+              if (confirm(_msg)) {
+                if (status) status.textContent = 'Issuing ' + (_pv.document || _label) + '…';
+                const _is = await fetch('/api/oxygen/issue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, _bd, { confirmLive: true, by: (localStorage.getItem('elysian_user_name') || '') })) }).then(function (x) { return x.json(); }).catch(function () { return null; });
+                if (_is && _is.ok && (_is.issued || _is.alreadyIssued)) {
+                  const _D = _is.document || {};
+                  _oxyDoc = { invoiceId: _D.invoiceId, number: _D.number, sequence: _D.sequence, mark: (_D.mydata && (_D.mydata.mark || _D.mydata.Mark)) || _D.mark || '', total: _D.total, at: Date.now(), by: (localStorage.getItem('elysian_user_name') || '') };
+                } else {
+                  _oxyNote = 'Oxygen issue failed: ' + ((_is && (_is.error || _is.step)) || 'error') + '.';
+                }
+              } else {
+                _oxyNote = 'Invoice not issued (cancelled).';
+              }
+            }
+          }
+        }
+      }
+      if (_oxyDoc && _oxyDoc.invoiceId) {
+        if (status) status.textContent = 'Attaching invoice PDF…';
+        const _pf = await fetch('/api/oxygen/invoice-pdf/' + encodeURIComponent(_oxyDoc.invoiceId)).then(function (x) { return x.json(); }).catch(function () { return null; });
+        if (_pf && _pf.ok && _pf.base64) {
+          _atts.push({ filename: (_apt.profile === 'b2b' ? 'TPY' : 'APY') + '-' + (_oxyDoc.number || _oxyDoc.invoiceId) + '.pdf', contentType: 'application/pdf', contentBase64: _pf.base64 });
+        } else {
+          _oxyNote = 'Invoice issued but its PDF could not be attached.';
+        }
+      }
+    } catch (_e) { _oxyNote = 'Oxygen step skipped: ' + _e.message; }
+    if (status) status.textContent = 'Sending…';
     const r = await fetch('/api/email/send', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         to, cc, subject, html, text, inline,
-        attachments: [{ filename: st.pdf.fname, contentType: 'application/pdf', contentBase64: st.pdf.base64 }],
+        attachments: _atts,
       }),
     });
     const j = await r.json().catch(() => ({}));
@@ -4670,6 +4741,11 @@ async function _emailSend() {
         save();
       }
       toast('Report emailed to ' + to, 'ok');
+      if (_oxyDoc && _oxyDoc.invoiceId && key && S.rptLocks[key]) {
+        S.rptLocks[key].oxygen = _oxyDoc; save();
+        toast('Invoice ' + (_oxyDoc.number || _oxyDoc.invoiceId) + (_oxyDoc.mark ? ' - MARK ' + _oxyDoc.mark : '') + ' attached to the email.', 'ok');
+      }
+      if (_oxyNote) toast(_oxyNote, 'warn');
       const apt = st.d.apt;
       _emailModalClose();
       renderRpt();
@@ -11417,6 +11493,405 @@ loadFromDb()
       '<th style="text-align:left;padding:7px 10px;font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bdr2)">What changed</th></tr>' +
       (rowsH || '<tr><td colspan="5" style="padding:22px;text-align:center;color:var(--tx3)">No entries yet — they will appear as the team works.</td></tr>') +
       '</table></div></div>';
+  };
+})();
+
+</script>
+<script>
+(function(){
+  async function loadOxyContacts(){
+    var arr=null;
+    try{ var r=await fetch('/api/oxygen/lookups'); if(r.ok){ var j=await r.json(); if(Array.isArray(j.contacts)){ arr=j.contacts.map(function(c){return {id:c.id,name:c.name,afm:c.afm||''};}); window._oxyLookups=j; } } }catch(e){}
+    if(!arr){ try{ var r2=await fetch('/api/oxygen/status'); var j2=await r2.json(); if(Array.isArray(j2.contacts)) arr=j2.contacts.map(function(c){return {id:c.id,name:c.name,afm:''};}); }catch(e){} }
+    window._oxyContacts=arr||[];
+    if(typeof renderCfg==='function'&&document.getElementById('cfg-grid'))renderCfg();
+  }
+  window._reloadOxyContacts=loadOxyContacts;
+  window._oxyFilter=function(aptId,q){
+    var res=document.getElementById('oxy-res-'+aptId); if(!res) return;
+    q=(q||'').trim().toLowerCase(); var all=window._oxyContacts||[];
+    var list = q ? all.filter(function(c){ return ((c.name||'').toLowerCase().indexOf(q)>=0)||((c.afm||'').toLowerCase().indexOf(q)>=0); }) : all;
+    list=list.slice(0,40);
+    var esc=function(s){return (s+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');};
+    if(!list.length){ res.innerHTML='<div style="padding:8px;font-size:11px;color:var(--tx3)">'+(all.length?'No match':'No contacts loaded yet')+'</div>'; res.style.display='block'; return; }
+    res.innerHTML=list.map(function(c){ var af=c.afm?(' — ΑΦΜ '+esc(c.afm)):''; return '<div onmousedown="_oxyPick(\''+aptId+'\',\''+esc(c.id)+'\')" style="padding:7px 9px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--bdr)">'+esc(c.name||('#'+c.id))+'<span style="color:var(--tx3)">'+af+'</span></div>'; }).join('');
+    res.style.display='block';
+  };
+  window._oxyPick=function(aptId,id){ var c=(window._oxyContacts||[]).find(function(x){return String(x.id)===String(id);}); var nm=c?(c.name||id):id; if(typeof setApt==='function'){ setApt(aptId,'oxyContactId',id); setApt(aptId,'oxyContactName',nm);} var res=document.getElementById('oxy-res-'+aptId); if(res)res.style.display='none'; if(typeof renderCfg==='function')renderCfg(); };
+  window._oxyClear=function(aptId){ if(typeof setApt==='function'){ setApt(aptId,'oxyContactId',''); setApt(aptId,'oxyContactName','');} if(typeof renderCfg==='function')renderCfg(); };
+  setTimeout(loadOxyContacts,1500);
+})();
+</script>
+<style>
+#tab-mt .mc-head{background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:14px;margin-bottom:12px}
+#tab-mt .mc-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#tab-mt .mc-brand{font-weight:700;font-size:15px;letter-spacing:.2px}
+#tab-mt .mc-mark{color:var(--acc);margin-right:6px}
+#tab-mt .mc-monthnav{display:flex;align-items:center;gap:8px}
+#tab-mt .mc-month{font-weight:600;font-size:13px;min-width:120px;text-align:center}
+#tab-mt .mc-meterrow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
+#tab-mt .mc-count b{font-size:26px;font-weight:700}
+#tab-mt .mc-count span{color:var(--tx3);font-size:12px;margin-left:6px}
+#tab-mt .mc-legend{display:flex;gap:14px;font-size:11px;color:var(--tx3)}
+#tab-mt .mcd{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
+#tab-mt .mcd.done,#tab-mt .mcseg.done{background:#059669}
+#tab-mt .mcd.doing,#tab-mt .mcseg.doing{background:#D97706}
+#tab-mt .mcd.todo,#tab-mt .mcseg.todo{background:var(--bdr)}
+#tab-mt .mc-meter{display:flex;gap:2px;margin-top:10px;flex-wrap:wrap}
+#tab-mt .mcseg{width:14px;height:16px;border:0;border-radius:2px;cursor:pointer;padding:0}
+#tab-mt .mcseg.flag{outline:2px solid #DC2626;outline-offset:1px}
+#tab-mt .mc-funnel{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+#tab-mt .mcchip{background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r);padding:6px 9px;min-width:96px}
+#tab-mt .mcchip.full{border-color:#059669}
+#tab-mt .mcchip .fl{display:block;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px}
+#tab-mt .mcchip .fn{font-size:14px;font-weight:700}
+#tab-mt .mcchip .fslash{font-size:11px;font-weight:400;color:var(--tx3)}
+#tab-mt .mcchip .fbar{display:block;height:3px;background:var(--bdr);border-radius:2px;margin-top:4px;overflow:hidden}
+#tab-mt .mcchip .ffill{display:block;height:100%;background:#059669}
+#tab-mt .mc-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+#tab-mt .mc-tabs{display:flex;gap:4px}
+#tab-mt .mctab{background:var(--bg2);border:1px solid var(--bdr);color:var(--tx3);border-radius:var(--r);padding:7px 13px;font-size:12px;cursor:pointer}
+#tab-mt .mctab.on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+#tab-mt .mc-filters{display:flex;gap:6px}
+#tab-mt .mc-sel,#tab-mt .mc-search{background:var(--bg);border:1px solid var(--bdr);color:var(--tx);border-radius:var(--r);padding:6px 9px;font-size:12px}
+#tab-mt .mc-fq{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--tx3);margin-bottom:10px}
+#tab-mt .mc-fqbar{flex:1;height:5px;background:var(--bdr);border-radius:3px;overflow:hidden}
+#tab-mt .mc-fqfill{display:block;height:100%;background:#059669}
+#tab-mt .mc-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:16px}
+#tab-mt .mc-cardhead{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+#tab-mt .mc-name{font-size:17px;font-weight:700}
+#tab-mt .mc-owner{font-size:12px;color:var(--tx3)}
+#tab-mt .mcbadge{border:1px solid var(--bdr);border-radius:99px;padding:2px 9px;font-size:10px;font-weight:600;background:var(--bg)}
+#tab-mt .mcbadge.private{color:#0369A1;border-color:#0369A1}
+#tab-mt .mcbadge.b2b{color:#7C3AED;border-color:#7C3AED}
+#tab-mt .mcbadge.leased{color:#059669;border-color:#059669}
+#tab-mt .mc-flag{background:none;border:0;color:var(--bdr);cursor:pointer;font-size:15px}
+#tab-mt .mc-flag.on{color:#DC2626}
+#tab-mt .mc-steps{display:flex;gap:6px;margin:14px 0;flex-wrap:wrap}
+#tab-mt .mcpill{border:1px solid var(--bdr);background:var(--bg);color:var(--tx3);border-radius:99px;padding:7px 14px;font-size:12px;cursor:pointer}
+#tab-mt .mcpill.done{background:#05966915;border-color:#059669;color:#059669;font-weight:600}
+#tab-mt .mcpill.cur{border-color:var(--acc);color:var(--tx);font-weight:600;box-shadow:0 0 0 2px var(--acc)22}
+#tab-mt .mc-act{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;border-top:1px solid var(--bdr);padding-top:13px;flex-wrap:wrap}
+#tab-mt .mc-step{display:block;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px}
+#tab-mt .mc-next{display:block;font-size:15px;font-weight:700;margin:2px 0}
+#tab-mt .mc-desc{display:block;font-size:11px;color:var(--tx3)}
+#tab-mt .mc-auto,#tab-mt .mc-proof{display:block;font-size:10px;color:var(--tx3);margin-top:3px;font-style:italic}
+#tab-mt .mc-btns{display:flex;gap:7px}
+#tab-mt .mc-upnext{margin-top:12px}
+#tab-mt .mc-uph{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+#tab-mt .mc-uprow{display:flex;align-items:center;gap:9px;width:100%;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:8px 11px;margin-bottom:4px;cursor:pointer;text-align:left;color:var(--tx)}
+#tab-mt .mc-upname{font-size:12px;font-weight:600;flex:1}
+#tab-mt .mc-upnext2{font-size:11px;color:var(--tx3)}
+#tab-mt .mc-batchbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+#tab-mt .mc-bstages{display:flex;gap:5px;flex-wrap:wrap}
+#tab-mt .mc-bstage{background:var(--bg2);border:1px solid var(--bdr);color:var(--tx3);border-radius:var(--r);padding:6px 11px;font-size:12px;cursor:pointer}
+#tab-mt .mc-bstage.on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+#tab-mt .mc-bcount{margin-left:6px;font-size:10px;opacity:.8}
+#tab-mt .mc-hint{font-size:11px;color:var(--tx3);margin:0 0 9px}
+#tab-mt .mc-list{display:flex;flex-direction:column;gap:3px}
+#tab-mt .mc-brow,#tab-mt .mc-lrow{display:flex;align-items:center;gap:9px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:8px 11px}
+#tab-mt .mc-lrow.done{opacity:.6}
+#tab-mt .mc-lrow.flagged{border-left:3px solid #DC2626}
+#tab-mt .mc-lrow.jump{box-shadow:0 0 0 2px var(--acc)}
+#tab-mt .mc-bname,#tab-mt .mc-lname{font-size:12px;font-weight:600}
+#tab-mt .mc-spacer{flex:1}
+#tab-mt .mc-dots{display:flex;gap:3px}
+#tab-mt .mcdot{width:8px;height:8px;border-radius:99px;background:var(--bdr)}
+#tab-mt .mcdot.done{background:#059669}
+#tab-mt .mcdot.cur{background:var(--acc)}
+#tab-mt .mc-lnext{font-size:11px;color:var(--tx3);margin-right:6px}
+#tab-mt .mc-sent{font-size:11px;color:#059669;font-weight:600}
+#tab-mt .mc-empty{padding:22px;text-align:center;color:var(--tx3);font-size:12px}
+#tab-mt .mc-alldone{text-align:center;padding:36px}
+#tab-mt .mc-check{font-size:40px;color:#059669}
+#tab-mt .mc-adt{font-size:15px;font-weight:700;margin-top:8px}
+#tab-mt .mc-ads{font-size:12px;color:var(--tx3)}
+#tab-mt .mc-clear{font-size:12px;color:#059669;font-weight:600}
+#tab-mt .mc-foot{margin-top:14px;font-size:11px;color:var(--tx3);line-height:1.6}
+</style>
+<script>
+(function () {
+  'use strict';
+  var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var enc = function (s) { return encodeURIComponent(String(s)); };
+
+  var FLOWS = {
+    private: [
+      { key: 'report', label: 'Report', action: 'Check report', desc: 'Verify every element pulled for clearing is correct' },
+      { key: 'takk_issue', label: 'TAKK', action: 'Issue TAKK', desc: 'Attach the TAKK document' },
+      { key: 'takk_pay', label: 'Pay', action: 'Pay TAKK', desc: 'Attach the payment proof' },
+      { key: 'receipt', label: 'Receipt', action: 'Issue receipt', desc: 'Receipt (APY) issued from Oxygen' },
+      { key: 'email', label: 'Email', action: 'Send email', desc: 'Email the owner - report + receipt attached' }
+    ],
+    b2b: [
+      { key: 'report', label: 'Report', action: 'Check report', desc: 'Verify every element pulled for clearing is correct' },
+      { key: 'invoice', label: 'Invoice', action: 'Issue invoice', desc: 'Invoice (TPY) issued from Oxygen' },
+      { key: 'email', label: 'Email', action: 'Send email', desc: 'Email the owner - report + invoice attached' }
+    ],
+    leased: [
+      { key: 'report', label: 'Report', action: 'Check report', desc: 'Verify every element pulled for clearing is correct' },
+      { key: 'email', label: 'Email', action: 'Send email', desc: 'Email the owner - report attached' }
+    ]
+  };
+  var FUNNEL = [
+    { key: 'report', types: ['private', 'b2b', 'leased'] },
+    { key: 'takk_issue', types: ['private'] },
+    { key: 'takk_pay', types: ['private'] },
+    { key: 'receipt', types: ['private'] },
+    { key: 'invoice', types: ['b2b'] },
+    { key: 'email', types: ['private', 'b2b', 'leased'] }
+  ];
+  var TYPE_LABEL = { private: 'Private', b2b: 'B2B', leased: 'Leased' };
+  var TYPE_SHORT = { private: 'Priv', b2b: 'B2B', leased: 'Leas' };
+  var AUTO_STAGE = { report: 1, receipt: 1, invoice: 1, email: 1 };
+
+  var mcMonth = (function () { var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); })();
+  var view = 'focus', typeFilter = 'all', statusFilter = 'all', search = '', batchStage = '', focusId = null;
+  var MONTHS_L = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var mLabel = function (m) { var p = (m || '').split('-'); return (MONTHS_L[(parseInt(p[1], 10) || 1) - 1] || '') + ' ' + (p[0] || ''); };
+
+  function mcStore() {
+    if (!S.monthlyClose || typeof S.monthlyClose !== 'object') S.monthlyClose = {};
+    if (!S.monthlyClose[mcMonth]) S.monthlyClose[mcMonth] = {};
+    return S.monthlyClose[mcMonth];
+  }
+  function mcRec(id, create) {
+    var st = mcStore();
+    if (!st[id] && create) st[id] = { done: {}, flag: false };
+    if (st[id] && !st[id].done) st[id].done = {};
+    return st[id] || null;
+  }
+  function apts() {
+    return (S.apts || []).filter(function (a) { return a && a.name && FLOWS[a.profile]; })
+      .map(function (a) { return { id: String(a.id), name: a.name, type: a.profile, area: (a.aliases || '') || '', owner: ((a.ownerName || '') + ' ' + (a.ownerSurname || '')).trim() }; })
+      .sort(function (x, y) { return x.name.localeCompare(y.name); });
+  }
+  // Evidence the app already holds: report locks carry email + oxygen stamps.
+  function lockFor(aptId) {
+    var L = S.rptLocks || {}, hit = null;
+    Object.keys(L).forEach(function (k) {
+      var p = k.split('::'); if (p.length < 2) return;
+      if (String(p[1] || '').slice(0, 7) !== mcMonth) return;
+      if (p[0].split('+').indexOf(aptId) < 0) return;
+      var v = L[k];
+      if (!hit) { hit = v; return; }
+      if ((v.oxygen && !hit.oxygen) || (v.email && !hit.email)) hit = v;
+    });
+    return hit;
+  }
+  function takkDone(stage, aptId) {
+    var st = (S.monthlyTasks && S.monthlyTasks[mcMonth]) || {};
+    var e = st[stage + '|' + aptId];
+    return !!(e && (e.done || e.na));
+  }
+  function takkProofs(stage, aptId) {
+    var st = (S.monthlyTasks && S.monthlyTasks[mcMonth]) || {};
+    var e = st[stage + '|' + aptId];
+    return (e && e.proofs) ? e.proofs.length : 0;
+  }
+  function isDone(a, key) {
+    var r = mcRec(a.id), lk;
+    if (r && r.done && r.done[key]) return true;
+    if (key === 'takk_issue' || key === 'takk_pay') return takkDone(key, a.id);
+    lk = lockFor(a.id);
+    if (!lk) return false;
+    if (key === 'report') return true;
+    if (key === 'receipt' || key === 'invoice') return !!(lk.oxygen && lk.oxygen.invoiceId);
+    if (key === 'email') return !!lk.email;
+    return false;
+  }
+  var flowOf = function (a) { return FLOWS[a.type] || FLOWS.private; };
+  function nextIdx(a) { var f = flowOf(a), i = 0; while (i < f.length && isDone(a, f[i].key)) i++; return i; }
+  var complete = function (a) { return nextIdx(a) === flowOf(a).length; };
+  var started = function (a) { return nextIdx(a) > 0; };
+  function stageMeta(k) { var all = FLOWS.private.concat(FLOWS.b2b); for (var i = 0; i < all.length; i++) if (all[i].key === k) return all[i]; return { label: k, action: k, desc: '' }; }
+
+  // ---- actions ----
+  window.mcShiftMonth = function (d) {
+    var p = mcMonth.split('-'), dt = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1 + d, 1);
+    mcMonth = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
+    focusId = null; renderMt();
+  };
+  window.mcView = function (v) { view = v; renderMt(); };
+  window.mcFilter = function (v) { typeFilter = v; focusId = null; renderMt(); };
+  window.mcStatus = function (v) { statusFilter = v; renderMt(); };
+  window.mcSearch = function (v) { search = v; renderMt(); };
+  window.mcBatchStage = function (k) { batchStage = k; renderMt(); };
+  window.mcFocus = function (id) { focusId = id; renderMt(); };
+  window.mcFlag = function (id) { var r = mcRec(id, true); r.flag = !r.flag; save(); renderMt(); };
+
+  function who() { return (localStorage.getItem('elysian_user_name') || 'Team member'); }
+  window.mcMark = function (id, key) {
+    var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;
+    if (key === 'takk_issue' || key === 'takk_pay') {
+      if (typeof mtSetMonth === 'function') mtSetMonth(mcMonth);
+      if (typeof mtToggle === 'function') { mtToggle(enc(key + '|' + id)); return; }
+    }
+    var r = mcRec(id, true);
+    if (r.done[key]) { var f = flowOf(a), hit = 0; f.forEach(function (s) { if (s.key === key) hit = 1; if (hit) delete r.done[s.key]; }); }
+    else r.done[key] = { by: who(), at: Date.now() };
+    save(); renderMt();
+  };
+  window.mcAdvance = function (id) {
+    var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;
+    var f = flowOf(a), i = nextIdx(a); if (i >= f.length) return;
+    mcMark(id, f[i].key);
+  };
+  window.mcProof = function (id, key) {
+    var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;
+    if (typeof mtSetMonth === 'function') mtSetMonth(mcMonth);
+    if (typeof mtUpload === 'function') mtUpload(enc(key + '|' + id), enc(a.name));
+  };
+  window.mcSkip = function () {
+    var q = queue(); if (q.length < 2) return;
+    var i = 0; q.forEach(function (a, n) { if (a.id === focusId) i = n; });
+    focusId = (q[i + 1] || q[0]).id; renderMt();
+  };
+  window.mcClearStage = function () {
+    var list = batchList(); if (!list.length) return;
+    var manual = list.filter(function (a) { return batchStage === 'takk_issue' || batchStage === 'takk_pay'; });
+    if (manual.length) { toast('TAKK lines need a proof each - open them individually.', 'warn'); return; }
+    if (!confirm('Mark ' + stageMeta(batchStage).label + ' done for ' + list.length + ' apartments?')) return;
+    list.forEach(function (a) { var r = mcRec(a.id, true); r.done[batchStage] = { by: who(), at: Date.now() }; });
+    save(); renderMt();
+  };
+
+  function pool() { return apts().filter(function (a) { return typeFilter === 'all' || a.type === typeFilter; }); }
+  function queue() { return pool().filter(function (a) { return !complete(a); }); }
+  function batchList() {
+    return pool().filter(function (a) { var f = flowOf(a), i = nextIdx(a); return i < f.length && f[i].key === batchStage; });
+  }
+
+  // ---- render ----
+  window.renderMt = function () {
+    var panel = document.getElementById('tab-mt'); if (!panel) return;
+    var all = apts(), P = pool(), Q = queue();
+    var done = 0, doing = 0;
+    all.forEach(function (a) { if (complete(a)) done++; else if (started(a)) doing++; });
+    var pct = all.length ? Math.round(done / all.length * 100) : 0;
+
+    var stagesAvail = {};
+    P.forEach(function (a) { var f = flowOf(a), i = nextIdx(a); if (i < f.length) stagesAvail[f[i].key] = (stagesAvail[f[i].key] || 0) + 1; });
+    if (!stagesAvail[batchStage]) { var ks = FUNNEL.filter(function (s) { return stagesAvail[s.key]; }); batchStage = ks.length ? ks[0].key : ''; }
+
+    var h = '';
+    h += '<div class="mc-head">'
+      + '<div class="mc-top"><div class="mc-brand"><span class="mc-mark">&#9670;</span> Monthly Close</div>'
+      + '<div class="mc-monthnav"><button class="btn sm" onclick="mcShiftMonth(-1)">&#9664;</button>'
+      + '<span class="mc-month">' + esc(mLabel(mcMonth)) + '</span>'
+      + '<button class="btn sm" onclick="mcShiftMonth(1)">&#9654;</button></div></div>'
+      + '<div class="mc-meterrow"><div class="mc-count"><b>' + done + '</b><span>/ ' + all.length + ' sent</span></div>'
+      + '<div class="mc-legend"><span><i class="mcd done"></i>' + done + ' sent</span><span><i class="mcd doing"></i>' + doing + ' in progress</span><span><i class="mcd todo"></i>' + (all.length - done - doing) + ' not started</span></div></div>'
+      + '<div class="mc-meter">' + all.map(function (a) {
+        var s = complete(a) ? 'done' : started(a) ? 'doing' : 'todo';
+        var r = mcRec(a.id);
+        return '<button class="mcseg ' + s + (r && r.flag ? ' flag' : '') + '" title="' + esc(a.name) + '" onclick="mcView(\'list\');mcFocus(\'' + esc(a.id) + '\')"></button>';
+      }).join('') + '</div>'
+      + '<div class="mc-funnel">' + FUNNEL.map(function (s) {
+        var el = all.filter(function (a) { return s.types.indexOf(a.type) >= 0; });
+        var cl = el.filter(function (a) { return isDone(a, s.key); }).length;
+        var full = el.length > 0 && cl === el.length;
+        return '<div class="mcchip' + (full ? ' full' : '') + '"><span class="fl">' + esc(stageMeta(s.key).label) + '</span>'
+          + '<span class="fn">' + cl + '<span class="fslash">/' + el.length + '</span></span>'
+          + '<span class="fbar"><span class="ffill" style="width:' + (el.length ? cl / el.length * 100 : 0) + '%"></span></span></div>';
+      }).join('') + '</div></div>';
+
+    h += '<div class="mc-controls"><div class="mc-tabs">'
+      + ['focus|Focus', 'batch|Batch by stage', 'list|List'].map(function (t) {
+        var p = t.split('|'); return '<button class="mctab' + (view === p[0] ? ' on' : '') + '" onclick="mcView(\'' + p[0] + '\')">' + p[1] + '</button>';
+      }).join('') + '</div><div class="mc-filters">'
+      + (view === 'list' ? '<input class="mc-search" placeholder="Search name or owner..." value="' + esc(search) + '" oninput="mcSearch(this.value)">' : '')
+      + '<select class="mc-sel" onchange="mcFilter(this.value)">' + [['all', 'All types'], ['private', 'Private'], ['b2b', 'B2B'], ['leased', 'Leased']].map(function (o) {
+        return '<option value="' + o[0] + '"' + (typeFilter === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('') + '</select>'
+      + (view === 'list' ? '<select class="mc-sel" onchange="mcStatus(this.value)">' + [['all', 'All status'], ['todo', 'Not started'], ['doing', 'In progress'], ['done', 'Sent'], ['flag', 'Flagged']].map(function (o) {
+        return '<option value="' + o[0] + '"' + (statusFilter === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('') + '</select>' : '')
+      + '</div></div>';
+
+    if (view === 'focus') {
+      var cur = null;
+      Q.forEach(function (a) { if (a.id === focusId) cur = a; });
+      if (!cur) cur = Q[0] || null;
+      h += '<div class="mc-fq"><span><b>' + done + '</b> sent &middot; <b>' + Q.length + '</b> to go</span>'
+        + '<span class="mc-fqbar"><span class="mc-fqfill" style="width:' + pct + '%"></span></span><span class="mc-fqpct">' + pct + '%</span></div>';
+      if (!cur) {
+        h += '<div class="mc-alldone"><div class="mc-check">&#10003;</div><div class="mc-adt">Everything closed for ' + esc(mLabel(mcMonth)) + '</div><div class="mc-ads">Nothing left in the queue.</div></div>';
+      } else {
+        var f = flowOf(cur), i = nextIdx(cur), s = f[i], r = mcRec(cur.id);
+        h += '<div class="mc-card"><div class="mc-cardhead">'
+          + '<span class="mcbadge ' + cur.type + '">' + TYPE_LABEL[cur.type] + '</span>'
+          + '<span class="mc-name">' + esc(cur.name) + '</span>'
+          + (cur.owner ? '<span class="mc-owner">' + esc(cur.owner) + '</span>' : '')
+          + '<button class="mc-flag' + (r && r.flag ? ' on' : '') + '" onclick="mcFlag(\'' + esc(cur.id) + '\')" title="Flag">&#9873;</button></div>'
+          + '<div class="mc-steps">' + f.map(function (x, n) {
+            var d = isDone(cur, x.key), c = !d && n === i;
+            return '<button class="mcpill ' + (d ? 'done' : c ? 'cur' : 'todo') + '" title="' + esc(x.desc) + '" onclick="mcMark(\'' + esc(cur.id) + '\',\'' + x.key + '\')">' + (d ? '&#10003; ' : '') + esc(x.label) + '</button>';
+          }).join('') + '</div>'
+          + '<div class="mc-act"><div class="mc-actlbl"><span class="mc-step">Step ' + (i + 1) + ' of ' + f.length + '</span>'
+          + '<span class="mc-next">' + esc(s.action) + '</span><span class="mc-desc">' + esc(s.desc) + '</span>'
+          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<span class="mc-proof">' + takkProofs(s.key, cur.id) + ' proof(s) attached</span>' : (AUTO_STAGE[s.key] ? '<span class="mc-auto">detected automatically once done in the app</span>' : ''))
+          + '</div><div class="mc-btns">'
+          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<button class="btn sm" onclick="mcProof(\'' + esc(cur.id) + '\',\'' + s.key + '\')">Attach proof</button>' : '')
+          + (Q.length > 1 ? '<button class="btn sm" onclick="mcSkip()">Skip</button>' : '')
+          + '<button class="btn sm primary" onclick="mcAdvance(\'' + esc(cur.id) + '\')">' + (i === f.length - 1 ? 'Finish' : 'Mark done') + ' &rarr;</button>'
+          + '</div></div></div>';
+        var up = Q.filter(function (a) { return a.id !== cur.id; }).slice(0, 4);
+        if (up.length) {
+          h += '<div class="mc-upnext"><div class="mc-uph">Up next &middot; ' + (Q.length - 1) + ' more</div>'
+            + up.map(function (a) {
+              return '<button class="mc-uprow" onclick="mcFocus(\'' + esc(a.id) + '\')"><span class="mcbadge sm ' + a.type + '">' + TYPE_SHORT[a.type] + '</span>'
+                + '<span class="mc-upname">' + esc(a.name) + '</span><span class="mc-upnext2">' + esc(flowOf(a)[nextIdx(a)].action) + '</span></button>';
+            }).join('') + '</div>';
+        }
+      }
+    }
+
+    if (view === 'batch') {
+      var bl = batchList();
+      h += '<div class="mc-batchbar"><div class="mc-bstages">'
+        + (Object.keys(stagesAvail).length ? FUNNEL.filter(function (s) { return stagesAvail[s.key]; }).map(function (s) {
+          return '<button class="mc-bstage' + (batchStage === s.key ? ' on' : '') + '" onclick="mcBatchStage(\'' + s.key + '\')">' + esc(stageMeta(s.key).label) + '<span class="mc-bcount">' + stagesAvail[s.key] + '</span></button>';
+        }).join('') : '<span class="mc-clear">Everything cleared</span>')
+        + '</div>' + (bl.length ? '<button class="btn sm primary" onclick="mcClearStage()">Clear all ' + bl.length + ' &rarr;</button>' : '') + '</div>'
+        + '<p class="mc-hint">' + esc(stageMeta(batchStage).desc || '') + '</p><div class="mc-list">'
+        + (bl.length ? bl.map(function (a) {
+          return '<div class="mc-brow"><span class="mcbadge sm ' + a.type + '">' + TYPE_SHORT[a.type] + '</span><span class="mc-bname">' + esc(a.name) + '</span>'
+            + '<span class="mc-spacer"></span>'
+            + ((batchStage === 'takk_issue' || batchStage === 'takk_pay') ? '<button class="btn sm" onclick="mcProof(\'' + esc(a.id) + '\',\'' + batchStage + '\')">Attach proof</button>' : '')
+            + '<button class="btn sm primary" onclick="mcAdvance(\'' + esc(a.id) + '\')">' + esc(stageMeta(batchStage).action) + ' &rarr;</button></div>';
+        }).join('') : '<div class="mc-empty">No apartments waiting on this stage.</div>') + '</div>';
+    }
+
+    if (view === 'list') {
+      var q = (search || '').trim().toLowerCase();
+      var rows = P.filter(function (a) {
+        if (statusFilter === 'done' && !complete(a)) return false;
+        if (statusFilter === 'doing' && !(started(a) && !complete(a))) return false;
+        if (statusFilter === 'todo' && started(a)) return false;
+        if (statusFilter === 'flag') { var r = mcRec(a.id); if (!(r && r.flag)) return false; }
+        if (q && a.name.toLowerCase().indexOf(q) < 0 && (a.owner || '').toLowerCase().indexOf(q) < 0) return false;
+        return true;
+      });
+      h += '<div class="mc-list">' + (rows.length ? rows.map(function (a) {
+        var f = flowOf(a), i = nextIdx(a), cp = i >= f.length, r = mcRec(a.id);
+        return '<div class="mc-lrow' + (cp ? ' done' : '') + (r && r.flag ? ' flagged' : '') + (a.id === focusId ? ' jump' : '') + '">'
+          + '<span class="mcbadge sm ' + a.type + '">' + TYPE_SHORT[a.type] + '</span>'
+          + '<span class="mc-lname">' + esc(a.name) + '</span>'
+          + '<span class="mc-dots">' + f.map(function (x, n) {
+            var d = isDone(a, x.key);
+            return '<span class="mcdot ' + (d ? 'done' : (!d && n === i) ? 'cur' : 'todo') + '" title="' + esc(x.label) + '"></span>';
+          }).join('') + '</span><span class="mc-spacer"></span>'
+          + '<button class="mc-flag tiny' + (r && r.flag ? ' on' : '') + '" onclick="mcFlag(\'' + esc(a.id) + '\')">&#9873;</button>'
+          + (cp ? '<span class="mc-sent">&#10003; Sent</span>'
+            : '<span class="mc-lact"><span class="mc-lnext">' + esc(f[i].action) + '</span><button class="btn sm primary" onclick="mcAdvance(\'' + esc(a.id) + '\')">&rarr;</button></span>')
+          + '</div>';
+      }).join('') : '<div class="mc-empty">No apartments match these filters.</div>') + '</div>';
+    }
+
+    h += '<div class="mc-foot"><b>Focus</b> drains the queue one apartment at a time &middot; <b>Batch</b> clears a whole stage &middot; <b>List</b> is the full table. '
+      + 'Report, receipt/invoice and email tick themselves from what you do in the app; TAKK lines still need their proof.</div>';
+    panel.innerHTML = h;
   };
 })();
 
