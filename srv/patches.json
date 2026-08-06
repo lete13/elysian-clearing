@@ -1,7 +1,7 @@
 {
  "baseSha256": "0a8f738558f75e95d1a6ad04f6c6f5dd30cc8e11d43c7c4baefa186e28c760c8",
- "expectedSha256": "6e67941445e7dba5266890b75186032a61804623f08cc942bcff40dbe2d14d4a",
- "builtAt": "2026-08-06 oxygen: mark capture + invoice pdf endpoint",
+ "expectedSha256": "ddff6e5eb115a4bfae3ab3efc93cb49492a1afdb2ce4952062b2d029cd2f71ea",
+ "builtAt": "2026-08-06 oxygen: mark capture + pdf endpoint + on-credit payment default",
  "patches": [
   {
    "note": "oxygen: poll for the myDATA MARK after issuing so the ledger + report stamp record it",
@@ -13,6 +13,12 @@
    "note": "oxygen: GET /api/oxygen/invoice-pdf/:id - invoice PDF as base64 for the owner email attachment",
    "find": "app.get('/api/oxygen/lookups'",
    "replace": "// GET /api/oxygen/invoice-pdf/:id - the issued document's PDF, base64, for email attachment\napp.get('/api/oxygen/invoice-pdf/:id', async (req, res) => {\n  if (!OXY.key) return res.status(400).json({ error: 'oxygen not configured' });\n  const id = req.params.id;\n  try {\n    const url = OXY.base.replace(/\\/+$/, '') + '/invoices/' + encodeURIComponent(id) + '/pdf';\n    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + OXY.key, Accept: 'application/pdf' } });\n    if (!r.ok) return res.status(502).json({ error: 'pdf fetch failed', status: r.status });\n    const buf = r.buffer ? await r.buffer() : Buffer.from(await r.arrayBuffer());\n    if (!(buf.length > 4 && buf.slice(0, 4).toString('latin1') === '%PDF'))\n      return res.status(502).json({ error: 'response was not a PDF', bytes: buf.length });\n    res.json({ ok: true, id: id, bytes: buf.length, base64: buf.toString('base64') });\n  } catch (e) { res.status(500).json({ error: e.message }); }\n});\n\napp.get('/api/oxygen/lookups'",
+   "count": 1
+  },
+  {
+   "note": "oxygen: default payment method = Epi Pistosei (on credit, myDATA 5) instead of first-in-list (Cash)",
+   "find": "async function oxyResolvePaymentMethod() {\n  if (_oxyLookups.pm) return _oxyLookups.pm;\n  const r = await oxyFetch('/payment-methods');\n  const arr = oxyArr(r.body);\n  if (arr.length) _oxyLookups.pm = arr[0].id;\n  return _oxyLookups.pm;\n}",
+   "replace": "async function oxyResolvePaymentMethod() {\n  if (_oxyLookups.pm) return _oxyLookups.pm;\n  const r = await oxyFetch('/payment-methods');\n  const arr = oxyArr(r.body);\n  // Owner clearing is settled against the payout, not paid at issue, so every\n  // APY/TPY defaults to 'Epi Pistosei' (on credit, myDATA code 5). Matched by\n  // myDATA code first so it survives an id change, then by id. OXYGEN_PM_ID wins.\n  const ON_CREDIT_CODE = '5', ON_CREDIT_ID = '5dc5dbda-6da6-4499-9ac6-200ed1abbbb3';\n  const pick = arr.find(x => String(x.mydata_code) === ON_CREDIT_CODE) || arr.find(x => x.id === ON_CREDIT_ID);\n  if (pick) _oxyLookups.pm = pick.id;\n  else if (arr.length) _oxyLookups.pm = arr[0].id;\n  return _oxyLookups.pm;\n}",
    "count": 1
   }
  ]
