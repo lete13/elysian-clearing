@@ -1,7 +1,7 @@
 {
  "baseSha256": "0a8f738558f75e95d1a6ad04f6c6f5dd30cc8e11d43c7c4baefa186e28c760c8",
- "expectedSha256": "51868de3b902a27290a20941b68e024d5f63cf5eef2597a36a3d19a234f395cc",
- "builtAt": "2026-08-06 oxygen: mark capture + pdf + bank-transfer + paid",
+ "expectedSha256": "7cbe75d263402ea56ad3b0c50e6a4b70ca6e8f2c2fd7ca43a71ed5bb8e04ba5e",
+ "builtAt": "2026-08-06 oxygen: mark capture + pdf + epi-pistosei + paid",
  "patches": [
   {
    "note": "oxygen: poll for the myDATA MARK after issuing so the ledger + report stamp record it",
@@ -16,9 +16,9 @@
    "count": 1
   },
   {
-   "note": "oxygen: default payment method = domestic bank transfer (myDATA 1) instead of first-in-list (Cash)",
+   "note": "oxygen: default payment method = Epi Pistosei (on credit, myDATA 5)",
    "find": "async function oxyResolvePaymentMethod() {\n  if (_oxyLookups.pm) return _oxyLookups.pm;\n  const r = await oxyFetch('/payment-methods');\n  const arr = oxyArr(r.body);\n  if (arr.length) _oxyLookups.pm = arr[0].id;\n  return _oxyLookups.pm;\n}",
-   "replace": "async function oxyResolvePaymentMethod() {\n  if (_oxyLookups.pm) return _oxyLookups.pm;\n  const r = await oxyFetch('/payment-methods');\n  const arr = oxyArr(r.body);\n  // Clearing fees are settled by bank transfer against the owner's payout, so\n  // every APY/TPY defaults to domestic bank deposit (myDATA code 1). Matched by\n  // myDATA code first so it survives an id change, then by id. OXYGEN_PM_ID wins.\n  const PM_CODE = '1', PM_ID = 'd52ecb29-e0e9-4c69-b31a-78b8bfe40b44';\n  const pick = arr.find(x => String(x.mydata_code) === PM_CODE) || arr.find(x => x.id === PM_ID);\n  if (pick) _oxyLookups.pm = pick.id;\n  else if (arr.length) _oxyLookups.pm = arr[0].id;\n  return _oxyLookups.pm;\n}",
+   "replace": "async function oxyResolvePaymentMethod() {\n  if (_oxyLookups.pm) return _oxyLookups.pm;\n  const r = await oxyFetch('/payment-methods');\n  const arr = oxyArr(r.body);\n  // Owner clearing fees are settled against the payout rather than paid at\n  // issue, so every APY/TPY carries 'Epi Pistosei' (on credit, myDATA code 5).\n  // Matched by myDATA code first so it survives an id change, then by id.\n  // OXYGEN_PM_ID still overrides.\n  const PM_CODE = '5', PM_ID = '5dc5dbda-6da6-4499-9ac6-200ed1abbbb3';\n  const pick = arr.find(x => String(x.mydata_code) === PM_CODE) || arr.find(x => x.id === PM_ID);\n  if (pick) _oxyLookups.pm = pick.id;\n  else if (arr.length) _oxyLookups.pm = arr[0].id;\n  return _oxyLookups.pm;\n}",
    "count": 1
   },
   {
