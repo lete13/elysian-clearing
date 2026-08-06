@@ -1,7 +1,7 @@
 {
  "baseSha256": "5cdd8af197760be0729888435e2bda4c1b210c9c42fe4c4b74466b5637fb1cda",
- "expectedSha256": "3cb39f5c5bf46d9f871657a68b5bd684ca25f1f956f925b72a2920ad31ef6021",
- "builtAt": "2026-08-05 oxygen fe v3 (searchable name/AFM combobox + lookups loader + send hook)",
+ "expectedSha256": "3e51351cf572e7c31f3e5a7315ae56803fe49b517fb03bae938fe74ea9bd51f9",
+ "builtAt": "2026-08-06 fe v4 (combobox + send hook + owner name/surname value-escape)",
  "patches": [
   {
    "note": "Config: searchable Fiscal contact (Oxygen) combobox per apartment (name or AFM) -> apt.oxyContactId/Name",
@@ -19,6 +19,18 @@
    "note": "Send hook: after email+lock, preview -> confirm -> issue APY/TPY -> stamp lock.oxygen",
    "find": "      toast('Report emailed to ' + to, 'ok');\n      const apt = st.d.apt;\n",
    "replace": "      toast('Report emailed to ' + to, 'ok');\n      const apt = st.d.apt;\n      // --- Oxygen: issue the owner's legal doc from the same report charges ---\n      try {\n        if (apt && apt.profile && apt.profile !== 'leased') {\n          const _doc = apt.profile === 'b2b' ? 'ΤΠΥ (Invoice)' : 'ΑΠΥ (Receipt)';\n          const _ox = S.rptLocks[key] && S.rptLocks[key].oxygen;\n          if (!apt.oxyContactId) {\n            toast('Emailed. Link a Fiscal contact (Oxygen) in Config to issue the ' + _doc + '.', 'warn');\n          } else if (_ox && _ox.invoiceId) {\n            toast(_doc + ' already issued (' + (_ox.number || _ox.invoiceId) + ').', 'ok');\n          } else {\n            const _c = st.d.cmb || {};\n            const _d0 = new Date(st.d.dates.from);\n            const _period = _d0.getFullYear() + '-' + String(_d0.getMonth() + 1).padStart(2, '0');\n            const _lines = [];\n            const _add = function (desc, net) { net = Math.round((net || 0) * 100) / 100; if (net > 0.005) _lines.push({ description: desc, net: net }); };\n            _add('Αμοιβή διαχείρισης', _c.mf);\n            _add('Καθαριότητα', _c.cleanDeduct);\n            _add('Χρήση λογισμικού', _c.fixedCh);\n            const _total = Math.round(_lines.reduce(function (s, l) { return s + l.net; }, 0) * 100) / 100;\n            if (!_lines.length) {\n              toast('Emailed. No Elysian charges to invoice for ' + _period + '.', 'warn');\n            } else {\n              const _body = { aptId: apt.id, aptName: apt.name, period: _period, profile: apt.profile, contactId: apt.oxyContactId, language: (st.isGR ? 'el' : 'en'), lines: _lines, reportTotal: _total };\n              const _pv = await fetch('/api/oxygen/issue-preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_body) }).then(function (r) { return r.json(); }).catch(function () { return null; });\n              if (!_pv || !_pv.ok) {\n                toast('Emailed. Oxygen preview failed: ' + ((_pv && _pv.error) || 'error') + ' - not issued.', 'warn');\n              } else {\n                const _vat = Math.round(_total * 24) / 100;\n                const _who = ((apt.ownerName || '') + ' ' + (apt.ownerSurname || '')).trim();\n                const _msg = 'Issue ' + (_pv.document || _doc) + (_who ? ' to ' + _who : '') + '?\\n\\n' + _lines.map(function (l) { return '  ' + l.description + ': EUR ' + l.net.toFixed(2); }).join('\\n') + '\\n  VAT 24%: EUR ' + _vat.toFixed(2) + '\\n  Total: EUR ' + (_total + _vat).toFixed(2) + '\\n\\nPeriod ' + _period + '. This creates a REAL AADE document + myDATA submission.';\n                if (confirm(_msg)) {\n                  const _iss = await fetch('/api/oxygen/issue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, _body, { confirmLive: true, by: (localStorage.getItem('elysian_user_name') || '') })) }).then(function (r) { return r.json(); }).catch(function () { return null; });\n                  if (_iss && _iss.ok && (_iss.issued || _iss.alreadyIssued)) {\n                    const _D = _iss.document || {};\n                    S.rptLocks[key].oxygen = { invoiceId: _D.invoiceId, number: _D.number, sequence: _D.sequence, mark: (_D.mydata && (_D.mydata.mark || _D.mydata.Mark)) || '', total: _D.total, at: Date.now(), by: (localStorage.getItem('elysian_user_name') || '') };\n                    save();\n                    if (typeof renderRpt === 'function') renderRpt();\n                    toast((_pv.document || _doc) + ' issued: ' + (_D.number || _D.invoiceId || '') + (S.rptLocks[key].oxygen.mark ? ' - MARK ' + S.rptLocks[key].oxygen.mark : ''), 'ok');\n                  } else {\n                    toast('Emailed. Oxygen issue failed: ' + ((_iss && (_iss.error || _iss.step)) || 'error') + '.', 'warn');\n                  }\n                } else {\n                  toast('Emailed. Invoice not issued (cancelled).', 'warn');\n                }\n              }\n            }\n          }\n        }\n      } catch (_e) { toast('Emailed. Oxygen issue skipped: ' + _e.message, 'warn'); }\n",
+   "count": 1
+  },
+  {
+   "note": "Config: escape owner NAME value attribute (prevent quote/<> in data breaking the input)",
+   "find": "value=\"${a.ownerName||''}\" placeholder=\"First name\"",
+   "replace": "value=\"${(a.ownerName||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;')}\" placeholder=\"First name\"",
+   "count": 1
+  },
+  {
+   "note": "Config: escape owner SURNAME value attribute (prevent quote/<> in data breaking the input)",
+   "find": "value=\"${a.ownerSurname||''}\" placeholder=\"Last name\"",
+   "replace": "value=\"${(a.ownerSurname||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;')}\" placeholder=\"Last name\"",
    "count": 1
   }
  ]
