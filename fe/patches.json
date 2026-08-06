@@ -1,7 +1,7 @@
 {
  "baseSha256": "de7b117bc00a180b8a570ee6de17f7f16b6a0e46464b9cadd9fdfdfcf7594229",
- "expectedSha256": "8145af199e9868a78c99c85d063c4df7237b2d9c5c9f0782bafcf2ffc870f139",
- "builtAt": "2026-08-06 fe v10 (document issued by the send = last step)",
+ "expectedSha256": "c9287865303dec668f169dd714b61d2b58cbe777ab785a941410cc2b179164a9",
+ "builtAt": "2026-08-06 fe v11 (report stage opens the real report)",
  "patches": [
   {
    "note": "Send: attach the TAKK document + payment proof (private) to the owner email",
@@ -37,6 +37,24 @@
    "note": "Monthly Close: funnel order mirrors the flow (Email before Receipt/Invoice)",
    "find": "    { key: 'receipt', types: ['private'] },\n    { key: 'invoice', types: ['b2b'] },\n    { key: 'email', types: ['private', 'b2b', 'leased'] }\n  ];",
    "replace": "    { key: 'email', types: ['private', 'b2b', 'leased'] },\n    { key: 'receipt', types: ['private'] },\n    { key: 'invoice', types: ['b2b'] }\n  ];",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: Report stage opens the real Reports tab for that apartment/month, with a return bar",
+   "find": "    panel.innerHTML = h;\n  };\n})();",
+   "replace": "    panel.innerHTML = h;\n  };\n\n  // ---- Report stage: work in the real Reports tab, then come back ----\n  var _mcCtx = null;\n  window.mcOpenReport = function (id) {\n    var a = null; (S.apts || []).forEach(function (x) { if (String(x.id) === String(id)) a = x; });\n    if (!a) return;\n    _mcCtx = { id: String(id), name: a.name, month: mcMonth };\n    try {\n      if (typeof rptSelectedApts !== 'undefined') rptSelectedApts.length = 0, rptSelectedApts.push(String(id));\n      var sel = document.getElementById('r-apt'); if (sel) sel.value = String(id);\n      if (typeof setRptMode === 'function') setRptMode('mo');\n      var p = mcMonth.split('-');\n      var ms = document.getElementById('r-mo'), ys = document.getElementById('r-yr');\n      if (ms) ms.value = String(parseInt(p[1], 10) - 1);\n      if (ys) ys.value = p[0];\n    } catch (e) {}\n    if (typeof showTab === 'function') showTab('rpt', document.querySelector('.nav-btn[data-tab=\"rpt\"]'));\n    setTimeout(function () { try { renderRpt(); } catch (e) {} }, 60);\n  };\n  window.mcBackToClose = function (markDone) {\n    var c = _mcCtx; _mcCtx = null;\n    var bar = document.getElementById('mc-ctx-bar'); if (bar) bar.remove();\n    if (c && markDone) { mcMark(c.id, 'report'); focusId = c.id; }\n    if (typeof showTab === 'function') showTab('mt', document.querySelector('.nav-btn[data-tab=\"mt\"]'));\n    setTimeout(function () { try { renderMt(); } catch (e) {} }, 60);\n  };\n  function mcCtxBar() {\n    var old = document.getElementById('mc-ctx-bar'); if (old) old.remove();\n    if (!_mcCtx) return;\n    var panel = document.getElementById('tab-rpt'); if (!panel) return;\n    var d = document.createElement('div');\n    d.id = 'mc-ctx-bar';\n    d.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--acc);border-radius:var(--r);padding:10px 14px;margin-bottom:14px';\n    d.innerHTML = '<span style=\"font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px\">Monthly Close</span>'\n      + '<span style=\"font-size:13px;font-weight:600\">' + esc(_mcCtx.name) + '</span>'\n      + '<span style=\"font-size:12px;color:var(--tx3)\">' + esc(mLabel(_mcCtx.month)) + ' &middot; check the figures, adjust the cleaning count or switch to a custom period, then continue</span>'\n      + '<span style=\"flex:1\"></span>'\n      + '<button class=\"btn sm\" onclick=\"mcBackToClose(false)\">Back</button>'\n      + '<button class=\"btn sm primary\" onclick=\"mcBackToClose(true)\">Report checked &rarr;</button>';\n    panel.insertBefore(d, panel.firstChild);\n  }\n  var _mcPrevRenderRpt = window.renderRpt;\n  window.renderRpt = function () {\n    var r = _mcPrevRenderRpt ? _mcPrevRenderRpt.apply(this, arguments) : undefined;\n    try { mcCtxBar(); } catch (e) {}\n    return r;\n  };\n})();",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: Open report button on the focus card",
+   "find": "          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<button class=\"btn sm\" onclick=\"mcProof(\\'' + esc(cur.id) + '\\',\\'' + s.key + '\\')\">Attach proof</button>' : '')",
+   "replace": "          + (s.key === 'report' ? '<button class=\"btn sm\" onclick=\"mcOpenReport(\\'' + esc(cur.id) + '\\')\">Open report</button>' : '')\n          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<button class=\"btn sm\" onclick=\"mcProof(\\'' + esc(cur.id) + '\\',\\'' + s.key + '\\')\">Attach proof</button>' : '')",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: Open report button on batch rows",
+   "find": "            + ((batchStage === 'takk_issue' || batchStage === 'takk_pay') ? '<button class=\"btn sm\" onclick=\"mcProof(\\'' + esc(a.id) + '\\',\\'' + batchStage + '\\')\">Attach proof</button>' : '')",
+   "replace": "            + (batchStage === 'report' ? '<button class=\"btn sm\" onclick=\"mcOpenReport(\\'' + esc(a.id) + '\\')\">Open report</button>' : '')\n            + ((batchStage === 'takk_issue' || batchStage === 'takk_pay') ? '<button class=\"btn sm\" onclick=\"mcProof(\\'' + esc(a.id) + '\\',\\'' + batchStage + '\\')\">Attach proof</button>' : '')",
    "count": 1
   }
  ]
