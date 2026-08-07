@@ -1,7 +1,7 @@
 {
  "baseSha256": "de7b117bc00a180b8a570ee6de17f7f16b6a0e46464b9cadd9fdfdfcf7594229",
- "expectedSha256": "20a219a8449b038f3fa38919ddd612929307b276036b73a8332d5ff68ccdd7c6",
- "builtAt": "2026-08-07 fe v13 (step back / reopen stages)",
+ "expectedSha256": "cd00ad5ce3342d3550ca6c24213b36202ed92ccc78dcea7abd0892867a50764e",
+ "builtAt": "2026-08-07 fe v14 (checkout counts on TAKK step)",
  "patches": [
   {
    "note": "Send: attach the TAKK document + payment proof (private) to the owner email",
@@ -127,6 +127,24 @@
    "note": "Monthly Close: Undo step + Previous buttons on the focus card",
    "find": "          + (Q.length > 1 ? '<button class=\"btn sm\" onclick=\"mcSkip()\">Skip</button>' : '')",
    "replace": "          + (i > 0 ? '<button class=\"btn sm\" onclick=\"mcStepBack(\\'' + esc(cur.id) + '\\')\">&larr; Undo step</button>' : '')\n          + (Q.length > 1 ? '<button class=\"btn sm\" onclick=\"mcPrev()\">&larr; Previous</button>' : '')\n          + (Q.length > 1 ? '<button class=\"btn sm\" onclick=\"mcSkip()\">Skip</button>' : '')",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: count checkouts for the closing month by channel",
+   "find": "  function takkProofs(stage, aptId) {",
+   "replace": "  // Checkouts in the month being closed - the TAKK levy is charged per stay,\n  // so the operator needs this count in hand when issuing.\n  function mcCheckouts(aptId) {\n    var p = mcMonth.split('-'), yr = parseInt(p[0], 10), mo = parseInt(p[1], 10);\n    var out = { airbnb: 0, booking: 0, vrbo: 0, direct: 0, total: 0 };\n    (S.bks || []).forEach(function (b) {\n      if (!b || String(b.aptId) !== String(aptId) || b.cancelled) return;\n      var d = String(b.checkOut || '').split('/');\n      if (d.length !== 3) return;\n      if (parseInt(d[1], 10) !== mo || parseInt(d[2], 10) !== yr) return;\n      var pl = String(b.platform || '').toLowerCase();\n      if (pl.indexOf('airbnb') >= 0) out.airbnb++;\n      else if (pl.indexOf('booking') >= 0) out.booking++;\n      else if (pl.indexOf('vrbo') >= 0 || pl.indexOf('homeaway') >= 0) out.vrbo++;\n      else out.direct++;\n      out.total++;\n    });\n    return out;\n  }\n  function takkProofs(stage, aptId) {",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: show the checkout breakdown on the TAKK issuance step",
+   "find": "          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<span class=\"mc-proof\">' + takkProofs(s.key, cur.id) + ' proof(s) attached</span>' : (AUTO_STAGE[s.key] ? '<span class=\"mc-auto\">detected automatically once done in the app</span>' : ''))",
+   "replace": "          + (s.key === 'takk_issue' ? (function () { var co = mcCheckouts(cur.id);\n              return '<span class=\"mc-co\"><b>' + co.total + '</b> checkout' + (co.total === 1 ? '' : 's') + ' in ' + esc(mLabel(mcMonth)) + ':'\n                + '<span class=\"mc-copill\">Airbnb ' + co.airbnb + '</span>'\n                + '<span class=\"mc-copill\">Booking ' + co.booking + '</span>'\n                + '<span class=\"mc-copill\">Vrbo ' + co.vrbo + '</span>'\n                + '<span class=\"mc-copill\">Direct ' + co.direct + '</span>'\n                + '<span class=\"mc-copill tot\">Total ' + co.total + '</span></span>'; })() : '')\n          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<span class=\"mc-proof\">' + takkProofs(s.key, cur.id) + ' proof(s) attached</span>' : (AUTO_STAGE[s.key] ? '<span class=\"mc-auto\">detected automatically once done in the app</span>' : ''))",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: styling for the checkout breakdown",
+   "find": "#tab-mt .mc-auto,#tab-mt .mc-proof{display:block;font-size:10px;color:var(--tx3);margin-top:3px;font-style:italic}",
+   "replace": "#tab-mt .mc-auto,#tab-mt .mc-proof{display:block;font-size:10px;color:var(--tx3);margin-top:3px;font-style:italic}\n#tab-mt .mc-co{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:11px;color:var(--tx3)}\n#tab-mt .mc-co b{font-size:15px;color:var(--tx)}\n#tab-mt .mc-copill{background:var(--bg);border:1px solid var(--bdr);border-radius:99px;padding:2px 9px;font-size:11px;color:var(--tx)}\n#tab-mt .mc-copill.tot{border-color:var(--acc);font-weight:700}",
    "count": 1
   }
  ]
