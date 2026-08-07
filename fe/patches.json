@@ -1,7 +1,7 @@
 {
  "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
- "expectedSha256": "4351d8d071227661b7b89da955741ea1f6d1ec91b03aff424d563059b63773f3",
- "builtAt": "2026-08-07 fix: attachment scope, channel restore, email opens",
+ "expectedSha256": "5266873a1e20b542fdd8368e028cf2e96a6ac80863e73b8f091a9ba2ef4679f2",
+ "builtAt": "2026-08-07 grouped apartments clear as one unit",
  "patches": [
   {
    "note": "Send: fix out-of-scope _period that silently skipped every TAKK/payment attachment",
@@ -25,6 +25,42 @@
    "note": "Monthly Close: the Email step opens the email itself once the report has rendered",
    "find": "    setTimeout(function () { try { renderRpt(); } catch (e) {} }, 60);\n  };\n  window.mcBackToClose",
    "replace": "    setTimeout(function () {\n      try { renderRpt(); } catch (e) {}\n      // Sending: go straight to the email, built from the report just restored.\n      if (wantSend) setTimeout(function () { try { if (typeof emailRpt === 'function') emailRpt(); } catch (e) {} }, 350);\n    }, 60);\n  };\n  window.mcBackToClose",
+   "count": 1
+  },
+  {
+   "note": "Config: clearing group field (apartments cleared together share one pipeline)",
+   "find": "          <div class=\"shdr\">Fiscal contact (Oxygen) - owner's ΑΠΥ/ΤΠΥ is issued to this contact</div>",
+   "replace": "          <div class=\"shdr\">Clearing group - apartments sharing a name are reported, invoiced and paid together</div>\n          <input type=\"text\" value=\"${(a.clearGroup||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;')}\" placeholder=\"e.g. Votsala\" onchange=\"setApt('${a.id}','clearGroup',this.value.trim())\" style=\"width:100%;font-size:12px;padding:7px;border-radius:var(--r);border:1px solid var(--bdr);background:var(--bg);color:var(--tx);margin-bottom:10px\">\n          <div class=\"shdr\">Fiscal contact (Oxygen) - owner's ΑΠΥ/ΤΠΥ is issued to this contact</div>",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: grouped apartments form one queue unit, tracked on the first member",
+   "find": "  function apts() {\n    return (S.apts || []).filter(function (a) { return a && a.name && FLOWS[a.profile]; })\n      .map(function (a) { return { id: String(a.id), name: a.name, type: a.profile, area: (a.aliases || '') || '', owner: ((a.ownerName || '') + ' ' + (a.ownerSurname || '')).trim() }; })\n      .sort(function (x, y) { return x.name.localeCompare(y.name); });\n  }",
+   "replace": "  // Apartments sharing a clearing group are one unit: one report, one email, one\n  // payment. Stage state lives on the first member; members lists every apartment\n  // so the counters still speak in apartments.\n  function apts() {\n    var raw = (S.apts || []).filter(function (a) { return a && a.name && FLOWS[a.profile]; })\n      .sort(function (x, y) { return String(x.name).localeCompare(String(y.name)); });\n    var byKey = {}, order = [];\n    raw.forEach(function (a) {\n      var g = String(a.clearGroup || '').trim();\n      var key = g ? 'g:' + g.toLowerCase() : 'a:' + a.id;\n      if (!byKey[key]) {\n        byKey[key] = { id: String(a.id), name: g || a.name, type: a.profile,\n          area: (a.aliases || '') || '', owner: ((a.ownerName || '') + ' ' + (a.ownerSurname || '')).trim(),\n          group: g, members: [] };\n        order.push(key);\n      }\n      byKey[key].members.push(String(a.id));\n    });\n    return order.map(function (k) { var u = byKey[k];\n      if (u.members.length > 1) u.name = u.group + ' (' + u.members.length + ' apartments)'; return u; });\n  }",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: counters stay in apartments so a group clears all of its members",
+   "find": "    var all = apts(), P = pool(), Q = queue();\n    var done = 0, doing = 0;\n    all.forEach(function (a) { if (complete(a)) done++; else if (started(a)) doing++; });\n    var pct = all.length ? Math.round(done / all.length * 100) : 0;",
+   "replace": "    var all = apts(), P = pool(), Q = queue();\n    var done = 0, doing = 0, tot = 0;\n    all.forEach(function (a) {\n      var n = (a.members || [a.id]).length; tot += n;\n      if (complete(a)) done += n; else if (started(a)) doing += n;\n    });\n    var pct = tot ? Math.round(done / tot * 100) : 0;",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: header and legend totals read apartments, not units",
+   "find": "<b>' + done + '</b><span>/ ' + all.length + ' sent</span></div>'",
+   "replace": "<b>' + done + '</b><span>/ ' + tot + ' sent</span></div>'",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: legend not-started reads apartments",
+   "find": "' + (all.length - done - doing) + ' not started</span>",
+   "replace": "' + (tot - done - doing) + ' not started</span>",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: opening a grouped report selects every member",
+   "find": "      if (typeof rptSelectedApts !== 'undefined') rptSelectedApts.length = 0, rptSelectedApts.push(String(id));",
+   "replace": "      if (typeof rptSelectedApts !== 'undefined') {\n        rptSelectedApts.length = 0;\n        var _u = apts().filter(function (x) { return x.id === String(id); })[0];\n        ((_u && _u.members) || [String(id)]).forEach(function (m) { rptSelectedApts.push(m); });\n      }",
    "count": 1
   }
  ]
