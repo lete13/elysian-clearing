@@ -1,7 +1,7 @@
 {
  "baseSha256": "de7b117bc00a180b8a570ee6de17f7f16b6a0e46464b9cadd9fdfdfcf7594229",
- "expectedSha256": "cd00ad5ce3342d3550ca6c24213b36202ed92ccc78dcea7abd0892867a50764e",
- "builtAt": "2026-08-07 fe v14 (checkout counts on TAKK step)",
+ "expectedSha256": "60235dabcc0d00982c31d775412e8c64dfbcfe9195f80e28fd8ffa71aa7382b9",
+ "builtAt": "2026-08-07 fe v15 (nights booked on TAKK step)",
  "patches": [
   {
    "note": "Send: attach the TAKK document + payment proof (private) to the owner email",
@@ -130,15 +130,15 @@
    "count": 1
   },
   {
-   "note": "Monthly Close: count checkouts for the closing month by channel",
+   "note": "Monthly Close: count nights booked in the closing month by channel",
    "find": "  function takkProofs(stage, aptId) {",
-   "replace": "  // Checkouts in the month being closed - the TAKK levy is charged per stay,\n  // so the operator needs this count in hand when issuing.\n  function mcCheckouts(aptId) {\n    var p = mcMonth.split('-'), yr = parseInt(p[0], 10), mo = parseInt(p[1], 10);\n    var out = { airbnb: 0, booking: 0, vrbo: 0, direct: 0, total: 0 };\n    (S.bks || []).forEach(function (b) {\n      if (!b || String(b.aptId) !== String(aptId) || b.cancelled) return;\n      var d = String(b.checkOut || '').split('/');\n      if (d.length !== 3) return;\n      if (parseInt(d[1], 10) !== mo || parseInt(d[2], 10) !== yr) return;\n      var pl = String(b.platform || '').toLowerCase();\n      if (pl.indexOf('airbnb') >= 0) out.airbnb++;\n      else if (pl.indexOf('booking') >= 0) out.booking++;\n      else if (pl.indexOf('vrbo') >= 0 || pl.indexOf('homeaway') >= 0) out.vrbo++;\n      else out.direct++;\n      out.total++;\n    });\n    return out;\n  }\n  function takkProofs(stage, aptId) {",
+   "replace": "  // Nights occupied inside the month being closed, split by channel. A stay that\n  // straddles month boundaries only contributes the nights that fall inside it.\n  function mcNights(aptId) {\n    var p = mcMonth.split('-'), yr = parseInt(p[0], 10), mo = parseInt(p[1], 10);\n    var mStart = Date.UTC(yr, mo - 1, 1), mEnd = Date.UTC(yr, mo, 1);\n    var DAY = 86400000;\n    var out = { airbnb: 0, booking: 0, vrbo: 0, direct: 0, total: 0, days: Math.round((mEnd - mStart) / DAY) };\n    (S.bks || []).forEach(function (b) {\n      if (!b || String(b.aptId) !== String(aptId) || b.cancelled) return;\n      var ci = String(b.checkIn || '').split('/'), co = String(b.checkOut || '').split('/');\n      if (ci.length !== 3 || co.length !== 3) return;\n      var t0 = Date.UTC(+ci[2], +ci[1] - 1, +ci[0]), t1 = Date.UTC(+co[2], +co[1] - 1, +co[0]);\n      if (!t0 || !t1) return;\n      var n = Math.round((Math.min(t1, mEnd) - Math.max(t0, mStart)) / DAY);\n      if (!(n > 0)) return;\n      var pl = String(b.platform || '').toLowerCase();\n      if (pl.indexOf('airbnb') >= 0) out.airbnb += n;\n      else if (pl.indexOf('booking') >= 0) out.booking += n;\n      else if (pl.indexOf('vrbo') >= 0 || pl.indexOf('homeaway') >= 0) out.vrbo += n;\n      else out.direct += n;\n      out.total += n;\n    });\n    return out;\n  }\n  function takkProofs(stage, aptId) {",
    "count": 1
   },
   {
-   "note": "Monthly Close: show the checkout breakdown on the TAKK issuance step",
+   "note": "Monthly Close: show the nights-booked breakdown on the TAKK issuance step",
    "find": "          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<span class=\"mc-proof\">' + takkProofs(s.key, cur.id) + ' proof(s) attached</span>' : (AUTO_STAGE[s.key] ? '<span class=\"mc-auto\">detected automatically once done in the app</span>' : ''))",
-   "replace": "          + (s.key === 'takk_issue' ? (function () { var co = mcCheckouts(cur.id);\n              return '<span class=\"mc-co\"><b>' + co.total + '</b> checkout' + (co.total === 1 ? '' : 's') + ' in ' + esc(mLabel(mcMonth)) + ':'\n                + '<span class=\"mc-copill\">Airbnb ' + co.airbnb + '</span>'\n                + '<span class=\"mc-copill\">Booking ' + co.booking + '</span>'\n                + '<span class=\"mc-copill\">Vrbo ' + co.vrbo + '</span>'\n                + '<span class=\"mc-copill\">Direct ' + co.direct + '</span>'\n                + '<span class=\"mc-copill tot\">Total ' + co.total + '</span></span>'; })() : '')\n          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<span class=\"mc-proof\">' + takkProofs(s.key, cur.id) + ' proof(s) attached</span>' : (AUTO_STAGE[s.key] ? '<span class=\"mc-auto\">detected automatically once done in the app</span>' : ''))",
+   "replace": "          + (s.key === 'takk_issue' ? (function () { var co = mcNights(cur.id);\n              return '<span class=\"mc-co\"><b>' + co.total + '</b> of ' + co.days + ' nights booked in ' + esc(mLabel(mcMonth)) + ':'\n                + '<span class=\"mc-copill\">Airbnb ' + co.airbnb + '</span>'\n                + '<span class=\"mc-copill\">Booking ' + co.booking + '</span>'\n                + '<span class=\"mc-copill\">Vrbo ' + co.vrbo + '</span>'\n                + '<span class=\"mc-copill\">Direct ' + co.direct + '</span>'\n                + '<span class=\"mc-copill tot\">Total ' + co.total + '</span></span>'; })() : '')\n          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<span class=\"mc-proof\">' + takkProofs(s.key, cur.id) + ' proof(s) attached</span>' : (AUTO_STAGE[s.key] ? '<span class=\"mc-auto\">detected automatically once done in the app</span>' : ''))",
    "count": 1
   },
   {
