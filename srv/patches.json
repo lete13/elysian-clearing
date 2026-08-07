@@ -1,37 +1,6 @@
 {
- "baseSha256": "0a8f738558f75e95d1a6ad04f6c6f5dd30cc8e11d43c7c4baefa186e28c760c8",
+ "baseSha256": "7d1857d5d5c5529f6688860c7b618d2c68a3956f9319ffc5d6544c546011edd0",
  "expectedSha256": "7d1857d5d5c5529f6688860c7b618d2c68a3956f9319ffc5d6544c546011edd0",
- "builtAt": "2026-08-07 oxygen: paginate contacts",
- "patches": [
-  {
-   "note": "oxygen: poll for the myDATA MARK after issuing so the ledger + report stamp record it",
-   "find": "    const inv = (made.body && (made.body.data || made.body)) || {};\n    const md = inv.mydata || {};",
-   "replace": "    let inv = (made.body && (made.body.data || made.body)) || {};\n    // Oxygen assigns the myDATA MARK a moment after creation - poll briefly so the ledger records it.\n    if (inv.id && !((inv.mydata || {}).mark)) {\n      for (let _i = 0; _i < 3; _i++) {\n        await new Promise(r => setTimeout(r, 1200));\n        const again = await oxyFetch('/invoices/' + encodeURIComponent(inv.id));\n        const fresh = (again.body && (again.body.data || again.body)) || null;\n        if (fresh && fresh.id) { inv = fresh; if ((fresh.mydata || {}).mark) break; }\n      }\n    }\n    const md = inv.mydata || {};",
-   "count": 1
-  },
-  {
-   "note": "oxygen: GET /api/oxygen/invoice-pdf/:id - invoice PDF as base64 for the owner email attachment",
-   "find": "app.get('/api/oxygen/lookups'",
-   "replace": "// GET /api/oxygen/invoice-pdf/:id - the issued document's PDF, base64, for email attachment\napp.get('/api/oxygen/invoice-pdf/:id', async (req, res) => {\n  if (!OXY.key) return res.status(400).json({ error: 'oxygen not configured' });\n  const id = req.params.id;\n  try {\n    const url = OXY.base.replace(/\\/+$/, '') + '/invoices/' + encodeURIComponent(id) + '/pdf';\n    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + OXY.key, Accept: 'application/pdf' } });\n    if (!r.ok) return res.status(502).json({ error: 'pdf fetch failed', status: r.status });\n    const buf = r.buffer ? await r.buffer() : Buffer.from(await r.arrayBuffer());\n    if (!(buf.length > 4 && buf.slice(0, 4).toString('latin1') === '%PDF'))\n      return res.status(502).json({ error: 'response was not a PDF', bytes: buf.length });\n    res.json({ ok: true, id: id, bytes: buf.length, base64: buf.toString('base64') });\n  } catch (e) { res.status(500).json({ error: e.message }); }\n});\n\napp.get('/api/oxygen/lookups'",
-   "count": 1
-  },
-  {
-   "note": "oxygen: default payment method = Epi Pistosei (on credit, myDATA 5)",
-   "find": "async function oxyResolvePaymentMethod() {\n  if (_oxyLookups.pm) return _oxyLookups.pm;\n  const r = await oxyFetch('/payment-methods');\n  const arr = oxyArr(r.body);\n  if (arr.length) _oxyLookups.pm = arr[0].id;\n  return _oxyLookups.pm;\n}",
-   "replace": "async function oxyResolvePaymentMethod() {\n  if (_oxyLookups.pm) return _oxyLookups.pm;\n  const r = await oxyFetch('/payment-methods');\n  const arr = oxyArr(r.body);\n  // Owner clearing fees are settled against the payout rather than paid at\n  // issue, so every APY/TPY carries 'Epi Pistosei' (on credit, myDATA code 5).\n  // Matched by myDATA code first so it survives an id change, then by id.\n  // OXYGEN_PM_ID still overrides.\n  const PM_CODE = '5', PM_ID = '5dc5dbda-6da6-4499-9ac6-200ed1abbbb3';\n  const pick = arr.find(x => String(x.mydata_code) === PM_CODE) || arr.find(x => x.id === PM_ID);\n  if (pick) _oxyLookups.pm = pick.id;\n  else if (arr.length) _oxyLookups.pm = arr[0].id;\n  return _oxyLookups.pm;\n}",
-   "count": 1
-  },
-  {
-   "note": "oxygen: mark clearing documents as paid by default (fee is deducted from the payout)",
-   "find": "    taxId, pmId, seq, isPaid: !!b.isPaid,",
-   "replace": "    // Clearing fees are settled against the owner's payout, so the document is\n    // marked paid unless the caller explicitly passes isPaid:false.\n    taxId, pmId, seq, isPaid: (b.isPaid === undefined ? true : !!b.isPaid),",
-   "count": 1
-  },
-  {
-   "note": "oxygen: paginate /contacts so owners past the first 500 are searchable",
-   "find": "  out.contacts = await grab('/contacts', c => ({ id: c.id, name: disp(c), afm: c.vat_number || '', email: c.email || '' }));",
-   "replace": "  // Oxygen paginates /contacts (500 per page), so walk pages until no new ids\n  // appear. Self-terminating: if the params are ignored the second page repeats\n  // and the dedupe loop stops immediately.\n  const seen = Object.create(null); const all = []; out.pages = 0; out.pageMeta = null;\n  for (let page = 1; page <= 20; page++) {\n    const r2 = await oxyFetch('/contacts?per_page=500&page=' + page);\n    if (!r2.ok) { if (page === 1) out.contactsError = 'HTTP ' + r2.status; break; }\n    if (page === 1 && r2.body && !Array.isArray(r2.body)) out.pageMeta = r2.body.meta || r2.body.links || null;\n    const rows = oxyArr(r2.body); out.pages = page;\n    let added = 0;\n    rows.forEach(c => { const k = String(c.id); if (seen[k]) return; seen[k] = 1; added++;\n      all.push({ id: c.id, name: disp(c), afm: c.vat_number || '', email: c.email || '' }); });\n    if (!rows.length || !added) break;\n  }\n  out.contacts = all;",
-   "count": 1
-  }
- ]
+ "builtAt": "2026-08-07 consolidated into server.js - patch list reset",
+ "patches": []
 }
