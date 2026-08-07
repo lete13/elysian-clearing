@@ -1,7 +1,7 @@
 {
  "baseSha256": "0a8f738558f75e95d1a6ad04f6c6f5dd30cc8e11d43c7c4baefa186e28c760c8",
- "expectedSha256": "7cbe75d26340c2e38454572b4bb2ed3a55b2b4072f7533206393616f05517613",
- "builtAt": "2026-08-06 oxygen: mark capture + pdf + epi-pistosei + paid",
+ "expectedSha256": "7d1857d5d5c5529f6688860c7b618d2c68a3956f9319ffc5d6544c546011edd0",
+ "builtAt": "2026-08-07 oxygen: paginate contacts",
  "patches": [
   {
    "note": "oxygen: poll for the myDATA MARK after issuing so the ledger + report stamp record it",
@@ -25,6 +25,12 @@
    "note": "oxygen: mark clearing documents as paid by default (fee is deducted from the payout)",
    "find": "    taxId, pmId, seq, isPaid: !!b.isPaid,",
    "replace": "    // Clearing fees are settled against the owner's payout, so the document is\n    // marked paid unless the caller explicitly passes isPaid:false.\n    taxId, pmId, seq, isPaid: (b.isPaid === undefined ? true : !!b.isPaid),",
+   "count": 1
+  },
+  {
+   "note": "oxygen: paginate /contacts so owners past the first 500 are searchable",
+   "find": "  out.contacts = await grab('/contacts', c => ({ id: c.id, name: disp(c), afm: c.vat_number || '', email: c.email || '' }));",
+   "replace": "  // Oxygen paginates /contacts (500 per page), so walk pages until no new ids\n  // appear. Self-terminating: if the params are ignored the second page repeats\n  // and the dedupe loop stops immediately.\n  const seen = Object.create(null); const all = []; out.pages = 0; out.pageMeta = null;\n  for (let page = 1; page <= 20; page++) {\n    const r2 = await oxyFetch('/contacts?per_page=500&page=' + page);\n    if (!r2.ok) { if (page === 1) out.contactsError = 'HTTP ' + r2.status; break; }\n    if (page === 1 && r2.body && !Array.isArray(r2.body)) out.pageMeta = r2.body.meta || r2.body.links || null;\n    const rows = oxyArr(r2.body); out.pages = page;\n    let added = 0;\n    rows.forEach(c => { const k = String(c.id); if (seen[k]) return; seen[k] = 1; added++;\n      all.push({ id: c.id, name: disp(c), afm: c.vat_number || '', email: c.email || '' }); });\n    if (!rows.length || !added) break;\n  }\n  out.contacts = all;",
    "count": 1
   }
  ]
