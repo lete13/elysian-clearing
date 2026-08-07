@@ -1,6 +1,31 @@
 {
  "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
- "expectedSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
- "builtAt": "2026-08-07 consolidated into index.html - patch list reset",
- "patches": []
+ "expectedSha256": "4351d8d071227661b7b89da955741ea1f6d1ec91b03aff424d563059b63773f3",
+ "builtAt": "2026-08-07 fix: attachment scope, channel restore, email opens",
+ "patches": [
+  {
+   "note": "Send: fix out-of-scope _period that silently skipped every TAKK/payment attachment",
+   "find": "        const _mt = (S.monthlyTasks && S.monthlyTasks[_period]) || {};",
+   "replace": "        const _pd = st.d.dates.from;\n        const _pm2 = _pd.getFullYear() + '-' + String(_pd.getMonth() + 1).padStart(2, '0');\n        const _mt = (S.monthlyTasks && S.monthlyTasks[_pm2]) || {};",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: capture the channel selection with the confirmed report",
+   "find": "            label: (R.dates && R.dates.lbl) || '',",
+   "replace": "            label: (R.dates && R.dates.lbl) || '',\n            chans: (typeof rptChanSel !== 'undefined' && rptChanSel) ? Array.from(rptChanSel) : null,",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: restore the confirmed channel selection when reopening",
+   "find": "        if (ys) ys.value = p[0];\n      }\n    } catch (e) {}",
+   "replace": "        if (ys) ys.value = p[0];\n      }\n      // Channel pills live only in memory, so a reload silently re-includes channels\n      // the operator had excluded. Restore exactly what was confirmed.\n      if (_snap && _snap.chans && typeof rptChanSel !== 'undefined' && rptChanSel && rptChanSel.clear) {\n        rptChanSel.clear(); _snap.chans.forEach(function (c) { rptChanSel.add(c); });\n      }\n    } catch (e) {}",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: the Email step opens the email itself once the report has rendered",
+   "find": "    setTimeout(function () { try { renderRpt(); } catch (e) {} }, 60);\n  };\n  window.mcBackToClose",
+   "replace": "    setTimeout(function () {\n      try { renderRpt(); } catch (e) {}\n      // Sending: go straight to the email, built from the report just restored.\n      if (wantSend) setTimeout(function () { try { if (typeof emailRpt === 'function') emailRpt(); } catch (e) {} }, 350);\n    }, 60);\n  };\n  window.mcBackToClose",
+   "count": 1
+  }
+ ]
 }
