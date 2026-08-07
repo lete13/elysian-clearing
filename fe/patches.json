@@ -1,7 +1,7 @@
 {
  "baseSha256": "de7b117bc00a180b8a570ee6de17f7f16b6a0e46464b9cadd9fdfdfcf7594229",
- "expectedSha256": "c9287865303dec668f169dd714b61d2b58cbe777ab785a941410cc2b179164a9",
- "builtAt": "2026-08-06 fe v11 (report stage opens the real report)",
+ "expectedSha256": "765e5ec0abc83dc53f22c300cf87861117da6a3e3e63df49007975be5fd1f590",
+ "builtAt": "2026-08-06 fe v12 (persist close stores, month matching, email actually sends)",
  "patches": [
   {
    "note": "Send: attach the TAKK document + payment proof (private) to the owner email",
@@ -55,6 +55,54 @@
    "note": "Monthly Close: Open report button on batch rows",
    "find": "            + ((batchStage === 'takk_issue' || batchStage === 'takk_pay') ? '<button class=\"btn sm\" onclick=\"mcProof(\\'' + esc(a.id) + '\\',\\'' + batchStage + '\\')\">Attach proof</button>' : '')",
    "replace": "            + (batchStage === 'report' ? '<button class=\"btn sm\" onclick=\"mcOpenReport(\\'' + esc(a.id) + '\\')\">Open report</button>' : '')\n            + ((batchStage === 'takk_issue' || batchStage === 'takk_pay') ? '<button class=\"btn sm\" onclick=\"mcProof(\\'' + esc(a.id) + '\\',\\'' + batchStage + '\\')\">Attach proof</button>' : '')",
+   "count": 1
+  },
+  {
+   "note": "Persist monthlyClose + ownerRemit to the shared DB (they were missing from the payload)",
+   "find": "      monthlyTaskDefs: S.monthlyTaskDefs || [],\n      payChk: S.payChk || {marks:{},cfg:{}}",
+   "replace": "      monthlyTaskDefs: S.monthlyTaskDefs || [],\n      monthlyClose: S.monthlyClose || {},\n      ownerRemit: S.ownerRemit || {},\n      payChk: S.payChk || {marks:{},cfg:{}}",
+   "count": 1
+  },
+  {
+   "note": "Load monthlyClose + ownerRemit back from the shared DB",
+   "find": "S.monthlyTaskDefs = data.monthlyTaskDefs || S.monthlyTaskDefs || [];",
+   "replace": "S.monthlyTaskDefs = data.monthlyTaskDefs || S.monthlyTaskDefs || [];S.monthlyClose = data.monthlyClose || S.monthlyClose || {};S.ownerRemit = data.ownerRemit || S.ownerRemit || {};",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: match report locks by range midpoint (lock dates are UTC-shifted)",
+   "find": "    Object.keys(L).forEach(function (k) {\n      var p = k.split('::'); if (p.length < 2) return;\n      if (String(p[1] || '').slice(0, 7) !== mcMonth) return;",
+   "replace": "    Object.keys(L).forEach(function (k) {\n      var p = k.split('::'); if (p.length < 3) return;\n      // Lock dates are stored via toISOString, which shifts a local 1st-of-month\n      // back a day in Athens (UTC+3). Use the midpoint of the range instead.\n      var t0 = Date.parse(p[1]), t1 = Date.parse(p[2]);\n      if (!t0 || !t1) return;\n      var mid = new Date((t0 + t1) / 2);\n      var mk = mid.getUTCFullYear() + '-' + String(mid.getUTCMonth() + 1).padStart(2, '0');\n      if (mk !== mcMonth) return;",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: the Email stage opens the report to send, it is not a checkbox",
+   "find": "  window.mcMark = function (id, key) {\n    var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;",
+   "replace": "  window.mcMark = function (id, key) {\n    var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;\n    // Email is not a checkbox - it is the action that sends and issues the document.\n    if (key === 'email') { mcOpenReport(id, true); return; }",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: mcOpenReport accepts a send intent",
+   "find": "  window.mcOpenReport = function (id) {",
+   "replace": "  window.mcOpenReport = function (id, wantSend) {",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: carry the send intent into the context bar",
+   "find": "    _mcCtx = { id: String(id), name: a.name, month: mcMonth };",
+   "replace": "    _mcCtx = { id: String(id), name: a.name, month: mcMonth, send: !!arguments[1] };",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: context bar offers Send email when that is the stage",
+   "find": "      + '<button class=\"btn sm\" onclick=\"mcBackToClose(false)\">Back</button>'\n      + '<button class=\"btn sm primary\" onclick=\"mcBackToClose(true)\">Report checked &rarr;</button>';",
+   "replace": "      + '<button class=\"btn sm\" onclick=\"mcBackToClose(false)\">Back</button>'\n      + (_mcCtx.send\n        ? '<button class=\"btn sm primary\" onclick=\"mcSendFromReport()\">Send email &rarr;</button>'\n        : '<button class=\"btn sm primary\" onclick=\"mcBackToClose(true)\">Report checked &rarr;</button>');",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: mcSendFromReport triggers the real email flow",
+   "find": "  var _mcPrevRenderRpt = window.renderRpt;",
+   "replace": "  window.mcSendFromReport = function () {\n    if (typeof emailRpt !== 'function') { toast('Open the report first, then use Send email.', 'warn'); return; }\n    emailRpt();\n  };\n  var _mcPrevRenderRpt = window.renderRpt;",
    "count": 1
   }
  ]
