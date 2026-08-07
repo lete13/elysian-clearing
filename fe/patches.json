@@ -76,15 +76,45 @@
    "count": 1
   },
   {
-   "note": "Monthly Close: any completed stage can be reopened (clears it and everything after)",
-   "find": "    // Email is not a checkbox - it is the action that sends and issues the document.\n    if (key === 'email') { mcOpenReport(id, true); return; }\n    if (key === 'takk_issue' || key === 'takk_pay') {\n      if (typeof mtSetMonth === 'function') mtSetMonth(mcMonth);\n      if (typeof mtToggle === 'function') { mtToggle(enc(key + '|' + id)); return; }\n    }\n    var r = mcRec(id, true);\n    if (r.done[key]) { var f = flowOf(a), hit = 0; f.forEach(function (s) { if (s.key === key) hit = 1; if (hit) delete r.done[s.key]; }); }\n    else r.done[key] = { by: who(), at: Date.now() };\n    save(); renderMt();",
-   "replace": "    // Reopening a completed stage: clear it and everything after it. Works for the\n    // auto-detected stages too - the override wins over the evidence until redone.\n    if (isDone(a, key)) {\n      var r0 = mcRec(id, true); if (!r0.undone) r0.undone = {};\n      var f0 = flowOf(a), hit0 = 0;\n      f0.forEach(function (s) { if (s.key === key) hit0 = 1; if (hit0) { delete r0.done[s.key]; r0.undone[s.key] = true; } });\n      save(); renderMt(); return;\n    }\n    var r1 = mcRec(id, true); if (r1.undone) delete r1.undone[key];\n    // Email is not a checkbox - it is the action that sends and issues the document.\n    if (key === 'email') { save(); mcOpenReport(id, true); return; }\n    if (key === 'takk_issue' || key === 'takk_pay') {\n      save();\n      if (typeof mtSetMonth === 'function') mtSetMonth(mcMonth);\n      if (typeof mtToggle === 'function') { mtToggle(enc(key + '|' + id)); return; }\n    }\n    r1.done[key] = { by: who(), at: Date.now() };\n    save(); renderMt();",
+   "note": "Monthly Close: the Email stage opens the report to send, it is not a checkbox",
+   "find": "  window.mcMark = function (id, key) {\n    var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;",
+   "replace": "  window.mcMark = function (id, key) {\n    var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;\n    // Email is not a checkbox - it is the action that sends and issues the document.\n    if (key === 'email') { mcOpenReport(id, true); return; }",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: mcOpenReport accepts a send intent",
+   "find": "  window.mcOpenReport = function (id) {",
+   "replace": "  window.mcOpenReport = function (id, wantSend) {",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: carry the send intent into the context bar",
+   "find": "    _mcCtx = { id: String(id), name: a.name, month: mcMonth };",
+   "replace": "    _mcCtx = { id: String(id), name: a.name, month: mcMonth, send: !!arguments[1] };",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: context bar offers Send email when that is the stage",
+   "find": "      + '<button class=\"btn sm\" onclick=\"mcBackToClose(false)\">Back</button>'\n      + '<button class=\"btn sm primary\" onclick=\"mcBackToClose(true)\">Report checked &rarr;</button>';",
+   "replace": "      + '<button class=\"btn sm\" onclick=\"mcBackToClose(false)\">Back</button>'\n      + (_mcCtx.send\n        ? '<button class=\"btn sm primary\" onclick=\"mcSendFromReport()\">Send email &rarr;</button>'\n        : '<button class=\"btn sm primary\" onclick=\"mcBackToClose(true)\">Report checked &rarr;</button>');",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: mcSendFromReport triggers the real email flow",
+   "find": "  var _mcPrevRenderRpt = window.renderRpt;",
+   "replace": "  window.mcSendFromReport = function () {\n    if (typeof emailRpt !== 'function') { toast('Open the report first, then use Send email.', 'warn'); return; }\n    emailRpt();\n  };\n  var _mcPrevRenderRpt = window.renderRpt;",
    "count": 1
   },
   {
    "note": "Monthly Close: an explicit reopen overrides auto-detection",
    "find": "  function isDone(a, key) {\n    var r = mcRec(a.id), lk;\n    if (r && r.done && r.done[key]) return true;",
    "replace": "  function isDone(a, key) {\n    var r = mcRec(a.id), lk;\n    if (r && r.undone && r.undone[key]) return false;\n    if (r && r.done && r.done[key]) return true;",
+   "count": 1
+  },
+  {
+   "note": "Monthly Close: any completed stage can be reopened (clears it and everything after)",
+   "find": "    // Email is not a checkbox - it is the action that sends and issues the document.\n    if (key === 'email') { mcOpenReport(id, true); return; }\n    if (key === 'takk_issue' || key === 'takk_pay') {\n      if (typeof mtSetMonth === 'function') mtSetMonth(mcMonth);\n      if (typeof mtToggle === 'function') { mtToggle(enc(key + '|' + id)); return; }\n    }\n    var r = mcRec(id, true);\n    if (r.done[key]) { var f = flowOf(a), hit = 0; f.forEach(function (s) { if (s.key === key) hit = 1; if (hit) delete r.done[s.key]; }); }\n    else r.done[key] = { by: who(), at: Date.now() };\n    save(); renderMt();",
+   "replace": "    // Reopening a completed stage: clear it and everything after it. Works for the\n    // auto-detected stages too - the override wins over the evidence until redone.\n    if (isDone(a, key)) {\n      var r0 = mcRec(id, true); if (!r0.undone) r0.undone = {};\n      var f0 = flowOf(a), hit0 = 0;\n      f0.forEach(function (s) { if (s.key === key) hit0 = 1; if (hit0) { delete r0.done[s.key]; r0.undone[s.key] = true; } });\n      save(); renderMt(); return;\n    }\n    var r1 = mcRec(id, true); if (r1.undone) delete r1.undone[key];\n    // Email is not a checkbox - it is the action that sends and issues the document.\n    if (key === 'email') { save(); mcOpenReport(id, true); return; }\n    if (key === 'takk_issue' || key === 'takk_pay') {\n      save();\n      if (typeof mtSetMonth === 'function') mtSetMonth(mcMonth);\n      if (typeof mtToggle === 'function') { mtToggle(enc(key + '|' + id)); return; }\n    }\n    r1.done[key] = { by: who(), at: Date.now() };\n    save(); renderMt();",
    "count": 1
   },
   {
