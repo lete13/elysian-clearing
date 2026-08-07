@@ -858,6 +858,8 @@ async function saveToDb() {
       moOverride: S.moOverride || {},
       monthlyTasks: S.monthlyTasks || {},
       monthlyTaskDefs: S.monthlyTaskDefs || [],
+      monthlyClose: S.monthlyClose || {},
+      ownerRemit: S.ownerRemit || {},
       payChk: S.payChk || {marks:{},cfg:{}}
     };
     const r = await fetch('/api/db/data', {
@@ -897,7 +899,7 @@ async function loadFromDb() {
     S.bks     = data.bks     || S.bks;
     S.exps    = data.exps    || S.exps;
     S.meta    = data.meta    || S.meta    || {};
-    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};S.rptLocks = data.rptLocks || S.rptLocks || {};S.moOverride = data.moOverride || S.moOverride || {};S.monthlyTasks = data.monthlyTasks || S.monthlyTasks || {};S.monthlyTaskDefs = data.monthlyTaskDefs || S.monthlyTaskDefs || [];S.payChk = data.payChk || S.payChk || {marks:{},cfg:{}};
+    S.revenue = data.revenue || S.revenue || {cleaning:{},mgmt:{}};S.daily = data.daily || S.daily || {snapshots:{},tasks:[]};S.cleanOverride = data.cleanOverride || S.cleanOverride || {};S.rptLocks = data.rptLocks || S.rptLocks || {};S.moOverride = data.moOverride || S.moOverride || {};S.monthlyTasks = data.monthlyTasks || S.monthlyTasks || {};S.monthlyTaskDefs = data.monthlyTaskDefs || S.monthlyTaskDefs || [];S.monthlyClose = data.monthlyClose || S.monthlyClose || {};S.ownerRemit = data.ownerRemit || S.ownerRemit || {};S.payChk = data.payChk || S.payChk || {marks:{},cfg:{}};
     _lastDbSave = data._savedAt;
     _dataInitialized = true;
     // Persist loaded state to localStorage
@@ -4687,6 +4689,7 @@ async function _emailSend() {
           _addL('Αμοιβή διαχείρισης', _c.mf);
           _addL('Καθαριότητα', _c.cleanDeduct);
           _addL('Χρήση λογισμικού', _c.fixedCh);
+          _addL(st.isGR ? 'Διάφορα Έξοδα' : 'Various Expenses', _c.totExp);
           const _tot = Math.round(_lines.reduce(function (s, l) { return s + l.net; }, 0) * 100) / 100;
           if (!_lines.length) {
             _oxyNote = 'No Elysian charges to invoice for ' + _period + '.';
@@ -4723,6 +4726,29 @@ async function _emailSend() {
           _oxyNote = 'Invoice issued but its PDF could not be attached.';
         }
       }
+      // TAKK document + payment proof (private only) - pulled from proof storage for this month
+      {
+        const _mt = (S.monthlyTasks && S.monthlyTasks[_period]) || {};
+        const _want = (_apt.profile === 'private'
+          ? [{ t: 'takk_issue', pre: 'TAKK' }, { t: 'takk_pay', pre: 'TAKK-payment' }]
+          : []).concat([{ t: 'remit_pay', pre: 'Owner-payment' }]);
+        const _missing = [];
+        for (const w of _want) {
+          const _e2 = _mt[w.t + '|' + _apt.id];
+          const _list = (_e2 && _e2.proofs) || [];
+          if (!_list.length) { if (!(_e2 && _e2.na)) _missing.push(w.pre); continue; }
+          for (const p of _list) {
+            try {
+              const _b = await fetch('/api/proofs/' + encodeURIComponent(p.id)).then(function (x) { return x.ok ? x.blob() : null; });
+              if (!_b) { _missing.push(w.pre); continue; }
+              const _b64 = await new Promise(function (res) { const rd = new FileReader(); rd.onload = function () { res(String(rd.result).split(',')[1] || ''); }; rd.onerror = function () { res(''); }; rd.readAsDataURL(_b); });
+              if (!_b64) { _missing.push(w.pre); continue; }
+              _atts.push({ filename: w.pre + '-' + (p.name || (p.id + '.pdf')), contentType: p.mime || _b.type || 'application/octet-stream', contentBase64: _b64 });
+            } catch (_x) { _missing.push(w.pre); }
+          }
+        }
+        if (_missing.length) _oxyNote = (_oxyNote ? _oxyNote + ' ' : '') + 'Missing from the email: ' + _missing.join(', ') + '.';
+      }
     } catch (_e) { _oxyNote = 'Oxygen step skipped: ' + _e.message; }
     if (status) status.textContent = 'Sending…';
     const r = await fetch('/api/email/send', {
@@ -4746,6 +4772,31 @@ async function _emailSend() {
         toast('Invoice ' + (_oxyDoc.number || _oxyDoc.invoiceId) + (_oxyDoc.mark ? ' - MARK ' + _oxyDoc.mark : '') + ' attached to the email.', 'ok');
       }
       if (_oxyNote) toast(_oxyNote, 'warn');
+      // --- post-send: Elysian Revenue (cleaning + mgmt) and Owner Remittance ---
+      try {
+        const _P = (st.d && st.d.packets) || [];
+        const _df = st.d.dates.from, _mo = _df.getMonth(), _yr = _df.getFullYear();
+        if (_P.length) {
+          if (!S.revenue) S.revenue = {};
+          if (!S.revenue.cleaning) S.revenue.cleaning = {};
+          if (!S.revenue.mgmt) S.revenue.mgmt = {};
+          if (!S.ownerRemit) S.ownerRemit = {};
+          const _by = localStorage.getItem('elysian_user_name') || '';
+          let _n = 0;
+          _P.forEach(function (p) {
+            const _a = p.a; if (!_a || !_a.id) return;
+            const _k = _a.id + '::' + _yr + '::' + _mo;
+            const _stamp = { aptId: _a.id, aptName: _a.name, mo: _mo, yr: _yr, savedAt: Date.now() };
+            S.revenue.cleaning[_k] = Object.assign({}, _stamp, { amount: p.cleanDeduct || 0 });
+            S.revenue.mgmt[_k] = Object.assign({}, _stamp, { amount: p.mf || 0 });
+            S.ownerRemit[_k] = Object.assign({}, _stamp, { amount: p.payout || 0, by: _by });
+            _n++;
+          });
+          save();
+          if (typeof saveToDb === 'function') saveToDb();
+          toast('Saved to Revenue + Owner Remittance (' + _n + ' propert' + (_n === 1 ? 'y' : 'ies') + ').', 'ok');
+        }
+      } catch (_re) { toast('Emailed, but the Revenue/Remittance save failed: ' + _re.message, 'warn'); }
       const apt = st.d.apt;
       _emailModalClose();
       renderRpt();
@@ -4868,6 +4919,7 @@ function renderAnn(){
           <div style="text-align:right"><div class="lbl">VAT</div><div class="mono" style="font-size:14px;font-weight:500;color:#7C3AED">${fmt(tot.vat)}</div></div>
           <div style="text-align:right"><div class="lbl">Cleaning</div><div class="mono" style="font-size:14px;font-weight:500;color:var(--tx-ok)">${fmt(tot.ci)}</div></div>
           <div style="text-align:right"><div class="lbl">Mgmt fees</div><div class="mono" style="font-size:14px;font-weight:500">${fmt(tot.mf)}</div></div>
+          <div style="text-align:right"><div class="lbl">Remitted</div><div class="mono" style="font-size:14px;font-weight:500;color:#0369A1">${fmt(MONTHS.reduce((s,_,mo)=>s+(((S.ownerRemit||{})[apt.id+'::'+yr+'::'+mo]||{}).amount||0),0))}</div></div>
           <div style="text-align:right"><div class="lbl">Total payout</div><div class="mono" style="font-size:14px;font-weight:500">${fmt(tot.pay)}</div></div>
         </div>
       </div>
@@ -11576,6 +11628,14 @@ loadFromDb()
 #tab-mt .mc-next{display:block;font-size:15px;font-weight:700;margin:2px 0}
 #tab-mt .mc-desc{display:block;font-size:11px;color:var(--tx3)}
 #tab-mt .mc-auto,#tab-mt .mc-proof{display:block;font-size:10px;color:var(--tx3);margin-top:3px;font-style:italic}
+#tab-mt .mc-co{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:11px;color:var(--tx3)}
+#tab-mt .mc-co b{font-size:15px;color:var(--tx)}
+#tab-mt .mc-copill{background:var(--bg);border:1px solid var(--bdr);border-radius:99px;padding:2px 9px;font-size:11px;color:var(--tx)}
+#tab-mt .mc-copill.tot{border-color:var(--acc);font-weight:700}
+#tab-mt .mc-files{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+#tab-mt .mc-file{display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r);padding:3px 4px 3px 9px;font-size:11px;color:var(--tx)}
+#tab-mt .mc-x{background:none;border:0;color:var(--tx3);cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+#tab-mt .mc-x:hover{color:#DC2626}
 #tab-mt .mc-btns{display:flex;gap:7px}
 #tab-mt .mc-upnext{margin-top:12px}
 #tab-mt .mc-uph{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
@@ -11620,16 +11680,19 @@ loadFromDb()
       { key: 'report', label: 'Report', action: 'Check report', desc: 'Verify every element pulled for clearing is correct' },
       { key: 'takk_issue', label: 'TAKK', action: 'Issue TAKK', desc: 'Attach the TAKK document' },
       { key: 'takk_pay', label: 'Pay', action: 'Pay TAKK', desc: 'Attach the payment proof' },
-      { key: 'receipt', label: 'Receipt', action: 'Issue receipt', desc: 'Receipt (APY) issued from Oxygen' },
-      { key: 'email', label: 'Email', action: 'Send email', desc: 'Email the owner - report + receipt attached' }
+      { key: 'remit_pay', label: 'Payment', action: 'Attach payment proof', desc: 'Proof the owner remittance has been paid' },
+      { key: 'email', label: 'Email', action: 'Send email', desc: 'Sends the owner everything and issues the APY at that moment - the last step' },
+      { key: 'receipt', label: 'Receipt', action: 'Issue receipt', desc: 'APY - issued automatically by the send, no separate step' }
     ],
     b2b: [
       { key: 'report', label: 'Report', action: 'Check report', desc: 'Verify every element pulled for clearing is correct' },
-      { key: 'invoice', label: 'Invoice', action: 'Issue invoice', desc: 'Invoice (TPY) issued from Oxygen' },
-      { key: 'email', label: 'Email', action: 'Send email', desc: 'Email the owner - report + invoice attached' }
+      { key: 'remit_pay', label: 'Payment', action: 'Attach payment proof', desc: 'Proof the owner remittance has been paid' },
+      { key: 'email', label: 'Email', action: 'Send email', desc: 'Sends the owner everything and issues the TPY at that moment - the last step' },
+      { key: 'invoice', label: 'Invoice', action: 'Issue invoice', desc: 'TPY - issued automatically by the send, no separate step' }
     ],
     leased: [
       { key: 'report', label: 'Report', action: 'Check report', desc: 'Verify every element pulled for clearing is correct' },
+      { key: 'remit_pay', label: 'Payment', action: 'Attach payment proof', desc: 'Proof the owner remittance has been paid' },
       { key: 'email', label: 'Email', action: 'Send email', desc: 'Email the owner - report attached' }
     ]
   };
@@ -11637,9 +11700,10 @@ loadFromDb()
     { key: 'report', types: ['private', 'b2b', 'leased'] },
     { key: 'takk_issue', types: ['private'] },
     { key: 'takk_pay', types: ['private'] },
+    { key: 'remit_pay', types: ['private', 'b2b', 'leased'] },
+    { key: 'email', types: ['private', 'b2b', 'leased'] },
     { key: 'receipt', types: ['private'] },
-    { key: 'invoice', types: ['b2b'] },
-    { key: 'email', types: ['private', 'b2b', 'leased'] }
+    { key: 'invoice', types: ['b2b'] }
   ];
   var TYPE_LABEL = { private: 'Private', b2b: 'B2B', leased: 'Leased' };
   var TYPE_SHORT = { private: 'Priv', b2b: 'B2B', leased: 'Leas' };
@@ -11670,8 +11734,14 @@ loadFromDb()
   function lockFor(aptId) {
     var L = S.rptLocks || {}, hit = null;
     Object.keys(L).forEach(function (k) {
-      var p = k.split('::'); if (p.length < 2) return;
-      if (String(p[1] || '').slice(0, 7) !== mcMonth) return;
+      var p = k.split('::'); if (p.length < 3) return;
+      // Lock dates are stored via toISOString, which shifts a local 1st-of-month
+      // back a day in Athens (UTC+3). Use the midpoint of the range instead.
+      var t0 = Date.parse(p[1]), t1 = Date.parse(p[2]);
+      if (!t0 || !t1) return;
+      var mid = new Date((t0 + t1) / 2);
+      var mk = mid.getUTCFullYear() + '-' + String(mid.getUTCMonth() + 1).padStart(2, '0');
+      if (mk !== mcMonth) return;
       if (p[0].split('+').indexOf(aptId) < 0) return;
       var v = L[k];
       if (!hit) { hit = v; return; }
@@ -11684,6 +11754,71 @@ loadFromDb()
     var e = st[stage + '|' + aptId];
     return !!(e && (e.done || e.na));
   }
+  // Nights occupied inside the month being closed, split by channel. A stay that
+  // straddles month boundaries only contributes the nights that fall inside it.
+  function mcNights(aptId) {
+    var p = mcMonth.split('-'), yr = parseInt(p[0], 10), mo = parseInt(p[1], 10);
+    var mStart = Date.UTC(yr, mo - 1, 1), mEnd = Date.UTC(yr, mo, 1);
+    var DAY = 86400000;
+    var out = { airbnb: 0, booking: 0, vrbo: 0, direct: 0, total: 0, days: Math.round((mEnd - mStart) / DAY) };
+    (S.bks || []).forEach(function (b) {
+      if (!b || String(b.aptId) !== String(aptId) || b.cancelled) return;
+      var ci = String(b.checkIn || '').split('/'), co = String(b.checkOut || '').split('/');
+      if (ci.length !== 3 || co.length !== 3) return;
+      var t0 = Date.UTC(+ci[2], +ci[1] - 1, +ci[0]), t1 = Date.UTC(+co[2], +co[1] - 1, +co[0]);
+      if (!t0 || !t1) return;
+      var n = Math.round((Math.min(t1, mEnd) - Math.max(t0, mStart)) / DAY);
+      if (!(n > 0)) return;
+      var pl = String(b.platform || '').toLowerCase();
+      if (pl.indexOf('airbnb') >= 0) out.airbnb += n;
+      else if (pl.indexOf('booking') >= 0) out.booking += n;
+      else if (pl.indexOf('vrbo') >= 0 || pl.indexOf('homeaway') >= 0) out.vrbo += n;
+      else out.direct += n;
+      out.total += n;
+    });
+    return out;
+  }
+  // What is owed for the month, built with the report's own engine so the figure
+  // on the Payment step matches the statement the owner receives.
+  function mcRemit(aptId) {
+    try {
+      if (typeof calcAptPacket !== 'function' || typeof getRptBks !== 'function') return null;
+      var a = null; (S.apts || []).forEach(function (x) { if (String(x.id) === String(aptId)) a = x; });
+      if (!a) return null;
+      var p = mcMonth.split('-'), yr = parseInt(p[0], 10), mo = parseInt(p[1], 10) - 1;
+      var from = ds(new Date(yr, mo, 1)), to = ds(new Date(yr, mo + 1, 0));
+      var bks = getRptBks(String(aptId), from, to);
+      var exps = (S.exps || []).filter(function (e) {
+        if (!e.aptId || e.charge === false) return false;
+        var d = e.date ? parseD(e.date) : null;
+        var ok = (d && !isNaN(d)) ? (ds(d) >= from && ds(d) <= to) : true;
+        if (!ok) return false;
+        if (String(e.aptId) === String(aptId)) return true;
+        return e.aptId === '__spl' && (e.splits || []).some(function (s) { return String(s.aptId) === String(aptId) && parseFloat(s.amt) > 0; });
+      });
+      var gea = function (e) {
+        if (e.aptId === '__spl') return (e.splits || []).filter(function (s) { return String(s.aptId) === String(aptId); })
+          .reduce(function (t, s) { return t + (parseFloat(s.amt) || 0); }, 0);
+        if (String(e.aptId) !== String(aptId)) return 0;
+        return parseFloat(e.net || e.total || 0);
+      };
+      var geaVat = function (e) { return e.aptId === '__spl' ? gea(e) * 0.24 : (parseFloat(e.vat) || 0); };
+      return calcAptPacket(a, bks, exps, gea, geaVat, null, 1);
+    } catch (e) { return null; }
+  }
+  // Stages backed by an uploaded proof, handled by the monthly-task machinery.
+  var PROOF_STAGE = { takk_issue: 1, takk_pay: 1, remit_pay: 1 };
+  function takkList(stage, aptId) {
+    var st = (S.monthlyTasks && S.monthlyTasks[mcMonth]) || {};
+    var e = st[stage + '|' + aptId];
+    return (e && e.proofs) ? e.proofs : [];
+  }
+  // Remove an attached proof. Routed through the existing task machinery so the
+  // file is deleted server-side and the line un-ticks when its last proof goes.
+  window.mcDelProof = function (aptId, stage, id, ev) {
+    if (typeof mtSetMonth === 'function') mtSetMonth(mcMonth);
+    if (typeof mtDelProof === 'function') mtDelProof(enc(stage + '|' + aptId), id, ev);
+  };
   function takkProofs(stage, aptId) {
     var st = (S.monthlyTasks && S.monthlyTasks[mcMonth]) || {};
     var e = st[stage + '|' + aptId];
@@ -11691,8 +11826,14 @@ loadFromDb()
   }
   function isDone(a, key) {
     var r = mcRec(a.id), lk;
+    if (r && r.undone && r.undone[key]) return false;
+    // A report is only complete once it has been explicitly confirmed - that is what
+    // captures the remittance figures the Payment step pays against. A generated but
+    // unconfirmed report is not enough to reach Payment.
+    if (key === 'report') return !!(r && r.remit);
     if (r && r.done && r.done[key]) return true;
-    if (key === 'takk_issue' || key === 'takk_pay') return takkDone(key, a.id);
+    if (PROOF_STAGE[key]) return takkDone(key, a.id);
+    if (PROOF_STAGE[key]) return takkDone(key, a.id);
     lk = lockFor(a.id);
     if (!lk) return false;
     if (key === 'report') return true;
@@ -11723,19 +11864,58 @@ loadFromDb()
   function who() { return (localStorage.getItem('elysian_user_name') || 'Team member'); }
   window.mcMark = function (id, key) {
     var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;
-    if (key === 'takk_issue' || key === 'takk_pay') {
+    // Reopening a completed stage: clear it and everything after it. Works for the
+    // auto-detected stages too - the override wins over the evidence until redone.
+    if (isDone(a, key)) {
+      var r0 = mcRec(id, true); if (!r0.undone) r0.undone = {};
+      var f0 = flowOf(a), hit0 = 0;
+      f0.forEach(function (s) { if (s.key === key) hit0 = 1; if (hit0) { delete r0.done[s.key]; r0.undone[s.key] = true; } });
+      save(); renderMt(); return;
+    }
+    var r1 = mcRec(id, true); if (r1.undone) delete r1.undone[key];
+    // Email is not a checkbox - it is the action that sends and issues the document.
+    if (key === 'email') { save(); mcOpenReport(id, true); return; }
+    if (PROOF_STAGE[key]) {
+      save();
       if (typeof mtSetMonth === 'function') mtSetMonth(mcMonth);
       if (typeof mtToggle === 'function') { mtToggle(enc(key + '|' + id)); return; }
     }
-    var r = mcRec(id, true);
-    if (r.done[key]) { var f = flowOf(a), hit = 0; f.forEach(function (s) { if (s.key === key) hit = 1; if (hit) delete r.done[s.key]; }); }
-    else r.done[key] = { by: who(), at: Date.now() };
+    r1.done[key] = { by: who(), at: Date.now() };
     save(); renderMt();
+  };
+  // Complete a stage. Unlike clicking a pill (which toggles), the primary and
+  // Report-checked buttons must never reopen an already-satisfied stage.
+  function mcSetDone(id, key) {
+    var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;
+    var r = mcRec(id, true); if (r.undone) delete r.undone[key];
+    if (key === 'email') { save(); mcOpenReport(id, true); return; }
+    // Report cannot be ticked from here - it has to be confirmed on the report itself.
+    if (key === 'report' && !isDone(a, key)) { save(); mcOpenReport(id); return; }
+    if (isDone(a, key)) { save(); renderMt(); return; }
+    if (PROOF_STAGE[key]) {
+      save();
+      if (typeof mtSetMonth === 'function') mtSetMonth(mcMonth);
+      if (typeof mtToggle === 'function') { mtToggle(enc(key + '|' + id)); return; }
+    }
+    r.done[key] = { by: who(), at: Date.now() };
+    save(); renderMt();
+  }
+  window.mcSetDone = mcSetDone;
+  window.mcStepBack = function (id) {
+    var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;
+    var f = flowOf(a), i = nextIdx(a);
+    if (i <= 0) { toast('Already at the first step.', 'warn'); return; }
+    mcMark(id, f[i - 1].key);
+  };
+  window.mcPrev = function () {
+    var q = queue(); if (q.length < 2) return;
+    var i = 0; q.forEach(function (a, n) { if (a.id === focusId) i = n; });
+    focusId = (q[i - 1] || q[q.length - 1]).id; renderMt();
   };
   window.mcAdvance = function (id) {
     var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;
     var f = flowOf(a), i = nextIdx(a); if (i >= f.length) return;
-    mcMark(id, f[i].key);
+    mcSetDone(id, f[i].key);
   };
   window.mcProof = function (id, key) {
     var a = apts().filter(function (x) { return x.id === id; })[0]; if (!a) return;
@@ -11749,7 +11929,7 @@ loadFromDb()
   };
   window.mcClearStage = function () {
     var list = batchList(); if (!list.length) return;
-    var manual = list.filter(function (a) { return batchStage === 'takk_issue' || batchStage === 'takk_pay'; });
+    var manual = list.filter(function (a) { return !!PROOF_STAGE[batchStage]; });
     if (manual.length) { toast('TAKK lines need a proof each - open them individually.', 'warn'); return; }
     if (!confirm('Mark ' + stageMeta(batchStage).label + ' done for ' + list.length + ' apartments?')) return;
     list.forEach(function (a) { var r = mcRec(a.id, true); r.done[batchStage] = { by: who(), at: Date.now() }; });
@@ -11830,9 +12010,38 @@ loadFromDb()
           }).join('') + '</div>'
           + '<div class="mc-act"><div class="mc-actlbl"><span class="mc-step">Step ' + (i + 1) + ' of ' + f.length + '</span>'
           + '<span class="mc-next">' + esc(s.action) + '</span><span class="mc-desc">' + esc(s.desc) + '</span>'
-          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<span class="mc-proof">' + takkProofs(s.key, cur.id) + ' proof(s) attached</span>' : (AUTO_STAGE[s.key] ? '<span class="mc-auto">detected automatically once done in the app</span>' : ''))
+          + (s.key === 'takk_issue' ? (function () { var co = mcNights(cur.id);
+              return '<span class="mc-co"><b>' + co.total + '</b> of ' + co.days + ' nights booked in ' + esc(mLabel(mcMonth)) + ':'
+                + '<span class="mc-copill">Airbnb ' + co.airbnb + '</span>'
+                + '<span class="mc-copill">Booking ' + co.booking + '</span>'
+                + '<span class="mc-copill">Vrbo ' + co.vrbo + '</span>'
+                + '<span class="mc-copill">Direct ' + co.direct + '</span>'
+                + '<span class="mc-copill tot">Total ' + co.total + '</span></span>'; })() : '')
+          + (s.key === 'remit_pay' ? (function () {
+              var rec = mcRec(cur.id), snap = rec && rec.remit, pk = snap || mcRemit(cur.id);
+              if (!pk) return '<span class="mc-auto">Amount unavailable - open the report to check it.</span>';
+              var b2b = cur.type === 'b2b';
+              var net = snap ? snap.payout : (pk.payout || 0);
+              var tax = snap ? (snap.ct + snap.vat + snap.at) : ((pk.ctDeduct || 0) + (pk.vatDeduct || 0) + (pk.atDeduct || 0));
+              var amt = b2b ? (snap ? snap.b2bRem : (pk.b2bRem || 0)) : net;
+              var lbl = b2b ? 'B2B partner remittance (incl. taxes)' : 'Owner remittance';
+              return '<span class="mc-co"><b>' + fmt(amt) + '</b>' + esc(lbl)
+                + (snap ? ' as confirmed on the report' + (snap.label ? ' (' + esc(snap.label) + ')' : '') : ' for ' + esc(mLabel(mcMonth)))
+                + (b2b && tax > 0.005 ? '<span class="mc-copill">net ' + fmt(net) + '</span><span class="mc-copill">taxes ' + fmt(tax) + '</span>' : '')
+                + (snap ? '' : '<span class="mc-copill">unconfirmed</span>')
+                + '</span>'; })() : '')
+          + (PROOF_STAGE[s.key] ? (function () { var L = takkList(s.key, cur.id);
+              return '<span class="mc-proof">' + (L.length ? L.length + ' attached - all are emailed to the owner' : 'No attachment yet - required before the next step') + '</span>'
+                + (L.length ? '<span class="mc-files">' + L.map(function (p) {
+                    return '<span class="mc-file">' + esc(p.name || ('#' + p.id))
+                      + '<button class="mc-x" title="Remove attachment" onclick="mcDelProof(\'' + esc(cur.id) + '\',\'' + s.key + '\',\'' + esc(String(p.id)) + '\',event)">&times;</button></span>';
+                  }).join('') + '</span>' : ''); })()
+            : (AUTO_STAGE[s.key] ? '<span class="mc-auto">detected automatically once done in the app</span>' : ''))
           + '</div><div class="mc-btns">'
-          + ((s.key === 'takk_issue' || s.key === 'takk_pay') ? '<button class="btn sm" onclick="mcProof(\'' + esc(cur.id) + '\',\'' + s.key + '\')">Attach proof</button>' : '')
+          + (s.key === 'report' ? '<button class="btn sm" onclick="mcOpenReport(\'' + esc(cur.id) + '\')">Open report</button>' : '')
+          + (PROOF_STAGE[s.key] ? '<button class="btn sm" onclick="mcProof(\'' + esc(cur.id) + '\',\'' + s.key + '\')">Attach proof</button>' : '')
+          + (i > 0 ? '<button class="btn sm" onclick="mcStepBack(\'' + esc(cur.id) + '\')">&larr; Undo step</button>' : '')
+          + (Q.length > 1 ? '<button class="btn sm" onclick="mcPrev()">&larr; Previous</button>' : '')
           + (Q.length > 1 ? '<button class="btn sm" onclick="mcSkip()">Skip</button>' : '')
           + '<button class="btn sm primary" onclick="mcAdvance(\'' + esc(cur.id) + '\')">' + (i === f.length - 1 ? 'Finish' : 'Mark done') + ' &rarr;</button>'
           + '</div></div></div>';
@@ -11858,7 +12067,8 @@ loadFromDb()
         + (bl.length ? bl.map(function (a) {
           return '<div class="mc-brow"><span class="mcbadge sm ' + a.type + '">' + TYPE_SHORT[a.type] + '</span><span class="mc-bname">' + esc(a.name) + '</span>'
             + '<span class="mc-spacer"></span>'
-            + ((batchStage === 'takk_issue' || batchStage === 'takk_pay') ? '<button class="btn sm" onclick="mcProof(\'' + esc(a.id) + '\',\'' + batchStage + '\')">Attach proof</button>' : '')
+            + (batchStage === 'report' ? '<button class="btn sm" onclick="mcOpenReport(\'' + esc(a.id) + '\')">Open report</button>' : '')
+            + (PROOF_STAGE[batchStage] ? '<button class="btn sm" onclick="mcProof(\'' + esc(a.id) + '\',\'' + batchStage + '\')">Attach proof</button>' : '')
             + '<button class="btn sm primary" onclick="mcAdvance(\'' + esc(a.id) + '\')">' + esc(stageMeta(batchStage).action) + ' &rarr;</button></div>';
         }).join('') : '<div class="mc-empty">No apartments waiting on this stage.</div>') + '</div>';
     }
@@ -11892,6 +12102,92 @@ loadFromDb()
     h += '<div class="mc-foot"><b>Focus</b> drains the queue one apartment at a time &middot; <b>Batch</b> clears a whole stage &middot; <b>List</b> is the full table. '
       + 'Report, receipt/invoice and email tick themselves from what you do in the app; TAKK lines still need their proof.</div>';
     panel.innerHTML = h;
+  };
+
+  // ---- Report stage: work in the real Reports tab, then come back ----
+  var _mcCtx = null;
+  // Local YYYY-MM-DD - toISOString would shift an Athens date back a day.
+  function _mcYmd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  window.mcOpenReport = function (id, wantSend) {
+    var a = null; (S.apts || []).forEach(function (x) { if (String(x.id) === String(id)) a = x; });
+    if (!a) return;
+    _mcCtx = { id: String(id), name: a.name, month: mcMonth, send: !!arguments[1] };
+    try {
+      if (typeof rptSelectedApts !== 'undefined') rptSelectedApts.length = 0, rptSelectedApts.push(String(id));
+      var sel = document.getElementById('r-apt'); if (sel) sel.value = String(id);
+      // Reopen exactly the report that was confirmed - forcing the calendar month here
+      // would discard a custom period and, with it, the adjustments keyed to that range.
+      var _rec = mcRec(String(id)), _snap = _rec && _rec.remit;
+      var _ff = document.getElementById('r-from'), _tt = document.getElementById('r-to');
+      if (_snap && _snap.from && _snap.to && _ff && _tt) {
+        if (typeof setRptMode === 'function') setRptMode('cu');
+        _ff.value = _snap.from; _tt.value = _snap.to;
+      } else {
+        if (typeof setRptMode === 'function') setRptMode('mo');
+        var p = mcMonth.split('-');
+        var ms = document.getElementById('r-mo'), ys = document.getElementById('r-yr');
+        if (ms) ms.value = String(parseInt(p[1], 10) - 1);
+        if (ys) ys.value = p[0];
+      }
+    } catch (e) {}
+    if (typeof showTab === 'function') showTab('rpt', document.querySelector('.nav-btn[data-tab="rpt"]'));
+    setTimeout(function () { try { renderRpt(); } catch (e) {} }, 60);
+  };
+  window.mcBackToClose = function (markDone) {
+    var c = _mcCtx; _mcCtx = null;
+    var bar = document.getElementById('mc-ctx-bar'); if (bar) bar.remove();
+    if (c && markDone) {
+      // Freeze what the operator just confirmed - the rendered report carries every
+      // adjustment (cleaning count, months, channel pills, custom period), so the
+      // remittance shown later is the agreed figure, not a fresh recomputation.
+      try {
+        var R = window._rpt;
+        var pk = R && (R.packets || []).filter(function (p) { return String(p.a && p.a.id) === String(c.id); })[0];
+        if (pk) {
+          var rec = mcRec(c.id, true);
+          rec.remit = {
+            payout: pk.payout || 0, b2bRem: pk.b2bRem || 0,
+            ct: pk.ctDeduct || 0, vat: pk.vatDeduct || 0, at: pk.atDeduct || 0,
+            from: R.dates && R.dates.from ? _mcYmd(R.dates.from) : '',
+            to: R.dates && R.dates.to ? _mcYmd(R.dates.to) : '',
+            label: (R.dates && R.dates.lbl) || '',
+            at_ms: Date.now(), by: (localStorage.getItem('elysian_user_name') || '')
+          };
+        }
+        else { toast('Could not read the report figures - generate the report, then confirm again.', 'warn'); }
+      } catch (e) { toast('Could not capture the report figures: ' + e.message, 'warn'); }
+      var rr = mcRec(c.id, true); if (rr.undone) delete rr.undone.report;
+      save(); focusId = c.id;
+    }
+    if (typeof showTab === 'function') showTab('mt', document.querySelector('.nav-btn[data-tab="mt"]'));
+    setTimeout(function () { try { renderMt(); } catch (e) {} }, 60);
+  };
+  function mcCtxBar() {
+    var old = document.getElementById('mc-ctx-bar'); if (old) old.remove();
+    if (!_mcCtx) return;
+    var panel = document.getElementById('tab-rpt'); if (!panel) return;
+    var d = document.createElement('div');
+    d.id = 'mc-ctx-bar';
+    d.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--acc);border-radius:var(--r);padding:10px 14px;margin-bottom:14px';
+    d.innerHTML = '<span style="font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px">Monthly Close</span>'
+      + '<span style="font-size:13px;font-weight:600">' + esc(_mcCtx.name) + '</span>'
+      + '<span style="font-size:12px;color:var(--tx3)">' + esc(mLabel(_mcCtx.month)) + ' &middot; check the figures, adjust the cleaning count or switch to a custom period, then continue</span>'
+      + '<span style="flex:1"></span>'
+      + '<button class="btn sm" onclick="mcBackToClose(false)">Back</button>'
+      + (_mcCtx.send
+        ? '<button class="btn sm primary" onclick="mcSendFromReport()">Send email &rarr;</button>'
+        : '<button class="btn sm primary" onclick="mcBackToClose(true)">Report checked &rarr;</button>');
+    panel.insertBefore(d, panel.firstChild);
+  }
+  window.mcSendFromReport = function () {
+    if (typeof emailRpt !== 'function') { toast('Open the report first, then use Send email.', 'warn'); return; }
+    emailRpt();
+  };
+  var _mcPrevRenderRpt = window.renderRpt;
+  window.renderRpt = function () {
+    var r = _mcPrevRenderRpt ? _mcPrevRenderRpt.apply(this, arguments) : undefined;
+    try { mcCtxBar(); } catch (e) {}
+    return r;
   };
 })();
 
