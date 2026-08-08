@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "b8a0bed824a021b2dd4835bfd87ac33518791df828fec6dd35174a189885b93a",
+  "expectedSha256": "3ec28033a37d35435eeb457563f28929123a66012fdc59becc58fef6a9c2bd08",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -96,6 +96,26 @@
       "note": "Send: attachment size guard - skip proofs that would push the email over the server cap, and say so",
       "find": "          for (const p of _list) {\n            try {\n              const _b = await fetch('/api/proofs/' + encodeURIComponent(p.id)).then(function (x) { return x.ok ? x.blob() : null; });\n              if (!_b) { _missing.push(w.pre); continue; }\n              const _b64 = await new Promise(function (res) { const rd = new FileReader(); rd.onload = function () { res(String(rd.result).split(',')[1] || ''); }; rd.onerror = function () { res(''); }; rd.readAsDataURL(_b); });\n",
       "replace": "          for (const p of _list) {\n            try {\n              const _b = await fetch('/api/proofs/' + encodeURIComponent(p.id)).then(function (x) { return x.ok ? x.blob() : null; });\n              if (!_b) { _missing.push(w.pre); continue; }\n              // Attachment budget: the server rejects sends over 20 MB outright, which\n              // would lose the whole email. Skip what does not fit and say so instead.\n              var _usedB = 0;\n              _atts.forEach(function (a) { _usedB += Math.floor((a.contentBase64 || '').length * 3 / 4); });\n              (inline || []).forEach(function (a) { _usedB += Math.floor((a.contentBase64 || '').length * 3 / 4); });\n              if (_usedB + _b.size > 19 * 1024 * 1024) { _missing.push(w.pre + ' (too large for one email - send it separately)'); continue; }\n              const _b64 = await new Promise(function (res) { const rd = new FileReader(); rd.onload = function () { res(String(rd.result).split(',')[1] || ''); }; rd.onerror = function () { res(''); }; rd.readAsDataURL(_b); });\n"
+    },
+    {
+      "note": "Monthly Close: email is the final stage - drop the receipt pseudo-stage (APY issues with the send)",
+      "find": ",\n      { key: 'receipt', label: 'Receipt', action: 'Issue receipt', desc: 'APY - issued automatically by the send, no separate step' }",
+      "replace": ""
+    },
+    {
+      "note": "Monthly Close: email is the final stage - drop the invoice pseudo-stage (TPY issues with the send)",
+      "find": ",\n      { key: 'invoice', label: 'Invoice', action: 'Issue invoice', desc: 'TPY - issued automatically by the send, no separate step' }",
+      "replace": ""
+    },
+    {
+      "note": "Monthly Close: funnel ends at Email - remove receipt/invoice columns",
+      "find": "    { key: 'email', types: ['private', 'b2b', 'leased'] },\n    { key: 'receipt', types: ['private'] },\n    { key: 'invoice', types: ['b2b'] }\n  ];",
+      "replace": "    { key: 'email', types: ['private', 'b2b', 'leased'] }\n  ];"
+    },
+    {
+      "note": "Report lock: preserve email/oxygen stamps through relocks - they drive the Monthly Close ticks",
+      "find": "  S.rptLocks[key] = { savedAt: Date.now(), via: via||'pdf', gross: rpt.m.gross, payout: rpt.payout, base: rpt.m.base };",
+      "replace": "  // Merge instead of overwrite - the email/oxygen stamps on the lock drive the\n  // Monthly Close ticks and must survive later PDF exports and manual relocks.\n  S.rptLocks[key] = Object.assign({}, S.rptLocks[key] || {}, { savedAt: Date.now(), via: via||'pdf', gross: rpt.m.gross, payout: rpt.payout, base: rpt.m.base });"
     }
   ]
 }
