@@ -34,10 +34,12 @@ assert(html.includes('payout: _pks.reduce'), 'grouped report freezes the combine
 assert(html.includes('memberIds: _pks.map'), 'grouped report freezes its member IDs');
 assert(html.includes('cleanOverride: (_cleanKey'), 'cleaning override is captured in the close snapshot');
 assert(html.includes('moOverride: (_moKey'), 'month override is captured in the close snapshot');
-assert(html.includes('monthlyClose: S.monthlyClose || {}'), 'Monthly Close state is saved locally');
+const mcPersistOcc = html.split('monthlyClose: S.monthlyClose || {}').length - 1;
+assert(mcPersistOcc >= 3, `Monthly Close persisted in save(), post-load rewrite and server payload (found ${mcPersistOcc})`);
 assert(html.includes("fetch('/api/proofs?month='"), 'email reads authoritative proof metadata');
 assert(html.includes("String(p.task_key || p.task || '')"), 'email matches proof task keys');
 assert(html.includes("_aptIds.indexOf(String(p.apt_id || p.aptId || ''))"), 'email matches proofs for every report apartment');
+assert(html.includes('(too large for one email'), 'attachment size guard keeps the send under the server cap');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },
