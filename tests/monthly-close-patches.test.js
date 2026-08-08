@@ -40,6 +40,8 @@ assert(html.includes("fetch('/api/proofs?month='"), 'email reads authoritative p
 assert(html.includes("String(p.task_key || p.task || '')"), 'email matches proof task keys');
 assert(html.includes("_aptIds.indexOf(String(p.apt_id || p.aptId || ''))"), 'email matches proofs for every report apartment');
 assert(html.includes('(too large for one email'), 'attachment size guard keeps the send under the server cap');
+assert(html.includes("setApt('${a.id}','ownerEmail3'"), 'configuration accepts up to three owner email addresses');
+assert(html.includes('p.a.ownerEmail3'), 'owner email goes to every configured address');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },

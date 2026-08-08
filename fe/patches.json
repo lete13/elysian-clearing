@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "3ec28033a37d35435eeb457563f28929123a66012fdc59becc58fef6a9c2bd08",
+  "expectedSha256": "df9dfb467b91f77aba5e05b7f4a7e5fe17c50af9553c4883b824bd5b44d32d39",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -116,6 +116,16 @@
       "note": "Report lock: preserve email/oxygen stamps through relocks - they drive the Monthly Close ticks",
       "find": "  S.rptLocks[key] = { savedAt: Date.now(), via: via||'pdf', gross: rpt.m.gross, payout: rpt.payout, base: rpt.m.base };",
       "replace": "  // Merge instead of overwrite - the email/oxygen stamps on the lock drive the\n  // Monthly Close ticks and must survive later PDF exports and manual relocks.\n  S.rptLocks[key] = Object.assign({}, S.rptLocks[key] || {}, { savedAt: Date.now(), via: via||'pdf', gross: rpt.m.gross, payout: rpt.payout, base: rpt.m.base });"
+    },
+    {
+      "note": "Config: up to three owner email addresses per apartment",
+      "find": "            <div><label class=\"lbl\">Owner email</label><input type=\"email\" value=\"${a.ownerEmail||''}\" placeholder=\"email@example.com\" onchange=\"setApt('${a.id}','ownerEmail',this.value)\"></div>",
+      "replace": "            <div><label class=\"lbl\">Owner email</label><input type=\"email\" value=\"${a.ownerEmail||''}\" placeholder=\"email@example.com\" onchange=\"setApt('${a.id}','ownerEmail',this.value)\"></div>\n            <div><label class=\"lbl\">Owner email 2 (optional)</label><input type=\"email\" value=\"${a.ownerEmail2||''}\" placeholder=\"second@email.com\" onchange=\"setApt('${a.id}','ownerEmail2',this.value)\"></div>\n            <div><label class=\"lbl\">Owner email 3 (optional)</label><input type=\"email\" value=\"${a.ownerEmail3||''}\" placeholder=\"third@email.com\" onchange=\"setApt('${a.id}','ownerEmail3',this.value)\"></div>"
+    },
+    {
+      "note": "Send: owner email goes to every configured address (up to three per apartment)",
+      "find": "  return [...new Set(d.packets.map(p => (p.a.ownerEmail || '').trim()).filter(Boolean))].join(', ');",
+      "replace": "  // Every owner address on every apartment in the report - up to three per apartment.\n  return [...new Set(d.packets.flatMap(p => [p.a.ownerEmail, p.a.ownerEmail2, p.a.ownerEmail3]\n    .map(e => String(e || '').trim()).filter(Boolean)))].join(', ');"
     }
   ]
 }
