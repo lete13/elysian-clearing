@@ -1,11 +1,12 @@
 {
   "name": "elysian-clearing",
   "version": "2.0.0",
-  "description": "Elysian Properties \u2014 Clearing Automation Tool",
+  "description": "Elysian Properties — Clearing Automation Tool",
   "main": "server.js",
   "scripts": {
     "start": "node srv-boot.js",
-    "dev": "node srv-boot.js"
+    "dev": "node srv-boot.js",
+    "test": "node tests/monthly-close-patches.test.js"
   },
   "engines": {
     "node": ">=18.0.0",
