@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "de33ff0c90673251367f959184622c6aeb09579ce125ad1e67df971402c12781",
+  "expectedSha256": "5f12d29721d77936d812fa4bebceff3433665500d24db67a3f75929eb826c0d6",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -120,7 +120,7 @@
     {
       "note": "Config: up to three owner email addresses per apartment",
       "find": "            <div><label class=\"lbl\">Owner email</label><input type=\"email\" value=\"${a.ownerEmail||''}\" placeholder=\"email@example.com\" onchange=\"setApt('${a.id}','ownerEmail',this.value)\"></div>",
-      "replace": "            <div><label class=\"lbl\">Owner email</label><input type=\"email\" value=\"${a.ownerEmail||''}\" placeholder=\"email@example.com\" onchange=\"setApt('${a.id}','ownerEmail',this.value)\"></div>\n            <div><label class=\"lbl\">Owner email 2 (optional)</label><input type=\"email\" value=\"${a.ownerEmail2||''}\" placeholder=\"second@email.com\" onchange=\"setApt('${a.id}','ownerEmail2',this.value)\"></div>\n            <div><label class=\"lbl\">Owner email 3 (optional)</label><input type=\"email\" value=\"${a.ownerEmail3||''}\" placeholder=\"third@email.com\" onchange=\"setApt('${a.id}','ownerEmail3',this.value)\"></div>"
+      "replace": "            <div><label class=\"lbl\">Owner email</label><input type=\"email\" value=\"${(a.ownerEmail||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"email@example.com\" onchange=\"setApt('${a.id}','ownerEmail',_emailClean(this.value))\"></div>\n            <div><label class=\"lbl\">Owner email 2 (optional)</label><input type=\"email\" value=\"${(a.ownerEmail2||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"second@email.com\" onchange=\"setApt('${a.id}','ownerEmail2',_emailClean(this.value))\"></div>\n            <div><label class=\"lbl\">Owner email 3 (optional)</label><input type=\"email\" value=\"${(a.ownerEmail3||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"third@email.com\" onchange=\"setApt('${a.id}','ownerEmail3',_emailClean(this.value))\"></div>"
     },
     {
       "note": "Send: owner email goes to every configured address (up to three per apartment)",
@@ -191,6 +191,16 @@
       "note": "PDF: Notes for this period section above the footer",
       "find": "<div style=\"margin-top:14px;padding-top:8px;border-top:.5px solid #e0e0e0;font-size:7.5pt;color:#aaa;display:flex;justify-content:space-between\">\n  <span>Elysian Property Management · Clearing Report</span>",
       "replace": "${_cmNote ? `<div class=\"section\" style=\"margin-top:10px\"><div class=\"sec-title\">Notes for this period · Σημειώσεις περιόδου</div><div style=\"font-size:9.5pt;line-height:1.5;color:#333;white-space:pre-wrap;padding:6px 2px\">${String(_cmNote).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div></div>` : ''}\n<div style=\"margin-top:14px;padding-top:8px;border-top:.5px solid #e0e0e0;font-size:7.5pt;color:#aaa;display:flex;justify-content:space-between\">\n  <span>Elysian Property Management · Clearing Report</span>"
+    },
+    {
+      "note": "Config: _emailClean extracts a plain address from pasted 'Name <addr>' formats",
+      "find": "function setApt(id,f,v){",
+      "replace": "// Owners pasted from mail clients arrive as '\"Name\" <addr>' - keep just the address.\nfunction _emailClean(v){v=String(v||'').trim();const m=v.match(/<([^>]+)>/);if(m)v=m[1];return v.replace(/[\"'<>]/g,'').trim();}\nfunction setApt(id,f,v){"
+    },
+    {
+      "note": "Config: fixed-charge label value is HTML-escaped",
+      "find": "<input type=\"text\" value=\"${f.label}\" placeholder=\"Label\" onchange=\"setFx('${a.id}','${f.id}','label',this.value)\" style=\"flex:1;font-size:13px\">",
+      "replace": "<input type=\"text\" value=\"${String(f.label||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"Label\" onchange=\"setFx('${a.id}','${f.id}','label',this.value)\" style=\"flex:1;font-size:13px\">"
     }
   ]
 }
