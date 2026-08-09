@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "af31926e089ce0d7ee642860718b3072ebb7158198fc91aa2d2de674fe6925ea",
+  "expectedSha256": "4dbf4308550b1d38cbb775d3691818011517bf8611e2a9cfa3d18396969bfb81",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -161,6 +161,26 @@
       "note": "Monthly Close: the Email stage only ticks for sends made after this close's confirmation",
       "find": "    if (key === 'email') return !!lk.email;",
       "replace": "    // An email stamp only counts for THIS close if the send happened after the\n    // report was confirmed - a stale stamp from an earlier test send must not\n    // tick the stage (Pixie: a 4 Aug test send marked the 9 Aug close as sent).\n    if (key === 'email') return !!(lk.email && r && r.remit && lk.email.at >= (r.remit.at_ms || 0));"
+    },
+    {
+      "note": "Monthly Close: comments box on the focus card, saved with the close record",
+      "find": "          + '<button class=\"btn sm primary\" onclick=\"mcAdvance(\\'' + esc(cur.id) + '\\')\">' + (i === f.length - 1 ? 'Finish' : 'Mark done') + ' &rarr;</button>'\n          + '</div></div></div>';",
+      "replace": "          + '<button class=\"btn sm primary\" onclick=\"mcAdvance(\\'' + esc(cur.id) + '\\')\">' + (i === f.length - 1 ? 'Finish' : 'Mark done') + ' &rarr;</button>'\n          + '</div>'\n          + '<div style=\"margin-top:10px\"><div class=\"lbl\" style=\"margin-bottom:4px\">Comments for the owner email (optional)</div>'\n          + '<textarea rows=\"2\" placeholder=\"e.g. Boiler repair deducted this month\" onchange=\"mcSetComment(\\'' + esc(cur.id) + '\\', this.value)\" style=\"width:100%;font-size:12px;padding:7px;border-radius:var(--r);border:1px solid var(--bdr);background:var(--bg);color:var(--tx);resize:vertical;font-family:inherit\">' + esc(((mcRec(cur.id) || {}).comments) || '') + '</textarea></div>'\n          + '</div></div>';"
+    },
+    {
+      "note": "Monthly Close: mcSetComment stores the comment on the close record",
+      "find": "  window.mcProof = function (id, key) {",
+      "replace": "  window.mcSetComment = function (id, v) {\n    var r = mcRec(String(id), true); r.comments = String(v || '').trim(); save();\n  };\n  window.mcProof = function (id, key) {"
+    },
+    {
+      "note": "Monthly Close: the Email step carries the close comment into the send window",
+      "find": "      if (wantSend) setTimeout(function () { try { if (typeof emailRpt === 'function') emailRpt(); } catch (e) {} }, 350);",
+      "replace": "      if (wantSend) setTimeout(function () { try {\n        var _rc = mcRec(String(id)); window._mcEmailComment = (_rc && _rc.comments) || '';\n        if (typeof emailRpt === 'function') emailRpt();\n      } catch (e) {} }, 350);"
+    },
+    {
+      "note": "Send: close comments appear as a Notes section in the owner message",
+      "find": "  const introDefault = L.intro(L.propPhrase(d), d.dates.lbl);",
+      "replace": "  let introDefault = L.intro(L.propPhrase(d), d.dates.lbl);\n  // Comments written on the Monthly Close card ride into the owner message,\n  // still editable here before sending. Newlines become <br> in the body.\n  if (window._mcEmailComment) {\n    introDefault += '\\n\\nNotes for this period:\\n' + window._mcEmailComment;\n    window._mcEmailComment = '';\n  }"
     }
   ]
 }
