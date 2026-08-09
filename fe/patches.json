@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "86b3c6dc77e0e1da3551c9b5221d7b5d496b303be442693fd00362af494acd43",
+  "expectedSha256": "2a69ec00a13f94e89e49a1f986cc68992ccf1b05aa43a736caee6c0a57be8982",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -151,6 +151,11 @@
       "note": "Annual Tracker: Remitted total in the footer",
       "find": "          <td class=\"mono\" style=\"text-align:right;background:#0F1E2E;color:#C9A84C;font-weight:500\">${fmt(tot.mf)}</td>\n        </tr></tfoot>",
       "replace": "          <td class=\"mono\" style=\"text-align:right;background:#0F1E2E;color:#C9A84C;font-weight:500\">${fmt(tot.mf)}</td>\n          <td class=\"mono\" style=\"text-align:right;background:#0F1E2E;color:#38BDF8;font-weight:500\">${fmt(tot.rem)}</td>\n        </tr></tfoot>"
+    },
+    {
+      "note": "Config: Add fixed charge works on apartments created before the field existed",
+      "find": "function addFx(id){const a=S.apts.find(x=>x.id===id);if(a){a.fixedCharges.push({id:gid(),label:'',amount:''});save();renderCfg();}}",
+      "replace": "function addFx(id){const a=S.apts.find(x=>x.id===id);if(a){if(!Array.isArray(a.fixedCharges))a.fixedCharges=[];a.fixedCharges.push({id:gid(),label:'',amount:''});save();renderCfg();}}"
     }
   ]
 }
