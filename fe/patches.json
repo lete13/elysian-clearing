@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "4dbf4308550b1d38cbb775d3691818011517bf8611e2a9cfa3d18396969bfb81",
+  "expectedSha256": "de33ff0c90673251367f959184622c6aeb09579ce125ad1e67df971402c12781",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -181,6 +181,16 @@
       "note": "Send: close comments appear as a Notes section in the owner message",
       "find": "  const introDefault = L.intro(L.propPhrase(d), d.dates.lbl);",
       "replace": "  let introDefault = L.intro(L.propPhrase(d), d.dates.lbl);\n  // Comments written on the Monthly Close card ride into the owner message,\n  // still editable here before sending. Newlines become <br> in the body.\n  if (window._mcEmailComment) {\n    introDefault += '\\n\\nNotes for this period:\\n' + window._mcEmailComment;\n    window._mcEmailComment = '';\n  }"
+    },
+    {
+      "note": "PDF: read the Monthly Close comment for this apartment and month",
+      "find": "  const _valErrors = validateReport(packets, cmb, bks);",
+      "replace": "  // Comment written on the Monthly Close card for this apartment+month (if any).\n  let _cmNote = '';\n  try {\n    const _cmM = dates.from.getFullYear() + '-' + String(dates.from.getMonth() + 1).padStart(2, '0');\n    _cmNote = String(((((S.monthlyClose || {})[_cmM] || {})[apt.id] || {}).comments) || '').trim();\n  } catch (_e) {}\n  const _valErrors = validateReport(packets, cmb, bks);"
+    },
+    {
+      "note": "PDF: Notes for this period section above the footer",
+      "find": "<div style=\"margin-top:14px;padding-top:8px;border-top:.5px solid #e0e0e0;font-size:7.5pt;color:#aaa;display:flex;justify-content:space-between\">\n  <span>Elysian Property Management · Clearing Report</span>",
+      "replace": "${_cmNote ? `<div class=\"section\" style=\"margin-top:10px\"><div class=\"sec-title\">Notes for this period · Σημειώσεις περιόδου</div><div style=\"font-size:9.5pt;line-height:1.5;color:#333;white-space:pre-wrap;padding:6px 2px\">${String(_cmNote).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div></div>` : ''}\n<div style=\"margin-top:14px;padding-top:8px;border-top:.5px solid #e0e0e0;font-size:7.5pt;color:#aaa;display:flex;justify-content:space-between\">\n  <span>Elysian Property Management · Clearing Report</span>"
     }
   ]
 }
