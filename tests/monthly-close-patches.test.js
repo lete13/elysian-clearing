@@ -48,6 +48,10 @@ assert(html.includes('if(!Array.isArray(a.fixedCharges))a.fixedCharges=[];'), 'A
 assert(html.includes('lk.email.at >= (r.remit.at_ms || 0)'), 'Email stage ignores stamps older than this close\'s confirmation');
 assert(html.includes('mcSetComment'), 'close card has a comments box saved to the close record');
 assert(html.includes('Notes for this period:'), 'close comments ride into the owner email message');
+assert(html.includes('id="mc-searchbox"'), 'search bar renders in Focus view too');
+assert(html.includes('QF.forEach'), 'Focus queue narrows to the search matches');
+assert(html.includes('class="mc-pace'), 'daily pace chip renders in the close header');
+assert(html.includes("new Date(parseInt(p[0], 10), parseInt(p[1], 10), 10)"), 'pace deadline is the 10th of the month after the close month');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },

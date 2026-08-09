@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "5f12d29721d77936d812fa4bebceff3433665500d24db67a3f75929eb826c0d6",
+  "expectedSha256": "186105dbf092ba29717bf24e4349f5a075671a6375771df0fb34667145d18b3d",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -201,6 +201,61 @@
       "note": "Config: fixed-charge label value is HTML-escaped",
       "find": "<input type=\"text\" value=\"${f.label}\" placeholder=\"Label\" onchange=\"setFx('${a.id}','${f.id}','label',this.value)\" style=\"flex:1;font-size:13px\">",
       "replace": "<input type=\"text\" value=\"${String(f.label||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"Label\" onchange=\"setFx('${a.id}','${f.id}','label',this.value)\" style=\"flex:1;font-size:13px\">"
+    },
+    {
+      "note": "Close header: styles for the daily pace chip",
+      "find": "#tab-mt .mc-sel,#tab-mt .mc-search{background:var(--bg);border:1px solid var(--bdr);color:var(--tx);border-radius:var(--r);padding:6px 9px;font-size:12px}",
+      "replace": "#tab-mt .mc-sel,#tab-mt .mc-search{background:var(--bg);border:1px solid var(--bdr);color:var(--tx);border-radius:var(--r);padding:6px 9px;font-size:12px}\n#tab-mt .mc-pace{margin-left:auto;background:var(--bg);border:1px solid #C9A84C55;color:#C9A84C;border-radius:20px;padding:4px 11px;font-size:11.5px;white-space:nowrap}\n#tab-mt .mc-pace b{font-weight:700}\n#tab-mt .mc-pace.ok{border-color:#05966955;color:#059669}\n#tab-mt .mc-pace.late{border-color:#DC262655;color:#DC2626}"
+    },
+    {
+      "note": "Close header: compute apartments-per-day needed to send everything by the 10th",
+      "find": "    var pct = tot ? Math.round(done / tot * 100) : 0;",
+      "replace": "    var pct = tot ? Math.round(done / tot * 100) : 0;\n    // Pace to target: every clearing sent by the 10th of the month AFTER the close\n    // month (July's close runs 1-10 August). Calendar days, today included.\n    var _pace = (function () {\n      var p = mcMonth.split('-');\n      var dl = new Date(parseInt(p[0], 10), parseInt(p[1], 10), 10);\n      var nw = new Date(), t0 = new Date(nw.getFullYear(), nw.getMonth(), nw.getDate());\n      var dLeft = Math.floor((dl - t0) / 86400000) + 1;\n      var left = tot - done;\n      var lbl = '10 ' + (MONTHS_L[dl.getMonth()] || '').slice(0, 3) + (dl.getFullYear() !== nw.getFullYear() ? ' ' + dl.getFullYear() : '');\n      if (left <= 0) return '<span class=\"mc-pace ok\">&#10003; all sent &middot; target ' + lbl + '</span>';\n      if (dLeft > 0) return '<span class=\"mc-pace\"><b>' + Math.ceil(left / dLeft) + ' / day</b> to send ' + left + ' by ' + lbl + ' &middot; ' + dLeft + (dLeft === 1 ? ' day' : ' days') + ' left</span>';\n      return '<span class=\"mc-pace late\">' + left + ' still open &middot; past the ' + lbl + ' target</span>';\n    })();"
+    },
+    {
+      "note": "Close header: pace chip shown next to the legend",
+      "find": "' + (tot - done - doing) + ' not started</span></div></div>'",
+      "replace": "' + (tot - done - doing) + ' not started</span>' + _pace + '</div></div>'"
+    },
+    {
+      "note": "Focus view: search bar in the toolbar (was List-only)",
+      "find": "      + (view === 'list' ? '<input class=\"mc-search\" placeholder=\"Search name or owner...\" value=\"' + esc(search) + '\" oninput=\"mcSearch(this.value)\">' : '')",
+      "replace": "      + (view === 'list' || view === 'focus' ? '<input class=\"mc-search\" id=\"mc-searchbox\" placeholder=\"Search name or owner...\" value=\"' + esc(search) + '\" oninput=\"mcSearch(this.value)\">' : '')"
+    },
+    {
+      "note": "Search: typing keeps keyboard focus through re-renders",
+      "find": "  window.mcSearch = function (v) { search = v; renderMt(); };",
+      "replace": "  window.mcSearch = function (v) {\n    search = v; renderMt();\n    // renderMt rebuilds the panel, which drops keyboard focus - hand it back.\n    var el = document.getElementById('mc-searchbox');\n    if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} }\n  };"
+    },
+    {
+      "note": "Focus view: the queue narrows to apartments matching the search",
+      "find": "    if (view === 'focus') {\n      var cur = null;\n      Q.forEach(function (a) { if (a.id === focusId) cur = a; });\n      if (!cur) cur = Q[0] || null;",
+      "replace": "    if (view === 'focus') {\n      // The search narrows the focus queue by name or owner - type to jump anywhere.\n      var q0 = (search || '').trim().toLowerCase();\n      var QF = q0 ? Q.filter(function (a) { return a.name.toLowerCase().indexOf(q0) >= 0 || (a.owner || '').toLowerCase().indexOf(q0) >= 0; }) : Q;\n      var cur = null;\n      QF.forEach(function (a) { if (a.id === focusId) cur = a; });\n      if (!cur) cur = QF[0] || null;"
+    },
+    {
+      "note": "Focus view: match counter in the progress row while searching",
+      "find": "      h += '<div class=\"mc-fq\"><span><b>' + done + '</b> sent &middot; <b>' + Q.length + '</b> to go</span>'",
+      "replace": "      h += '<div class=\"mc-fq\"><span><b>' + done + '</b> sent &middot; <b>' + Q.length + '</b> to go' + (q0 ? ' &middot; <b>' + QF.length + '</b> match' : '') + '</span>'"
+    },
+    {
+      "note": "Focus view: no-match message instead of the all-closed banner",
+      "find": "      if (!cur) {\n        h += '<div class=\"mc-alldone\"><div class=\"mc-check\">&#10003;</div><div class=\"mc-adt\">Everything closed for ' + esc(mLabel(mcMonth)) + '</div><div class=\"mc-ads\">Nothing left in the queue.</div></div>';\n      } else {",
+      "replace": "      if (!cur && q0) {\n        h += '<div class=\"mc-empty\">No open apartment matches &quot;' + esc(search.trim()) + '&quot; - sent ones live in the List view.</div>';\n      } else if (!cur) {\n        h += '<div class=\"mc-alldone\"><div class=\"mc-check\">&#10003;</div><div class=\"mc-adt\">Everything closed for ' + esc(mLabel(mcMonth)) + '</div><div class=\"mc-ads\">Nothing left in the queue.</div></div>';\n      } else {"
+    },
+    {
+      "note": "Focus view: Up next lists only matching apartments",
+      "find": "        var up = Q.filter(function (a) { return a.id !== cur.id; }).slice(0, 4);\n        if (up.length) {\n          h += '<div class=\"mc-upnext\"><div class=\"mc-uph\">Up next &middot; ' + (Q.length - 1) + ' more</div>'",
+      "replace": "        var up = QF.filter(function (a) { return a.id !== cur.id; }).slice(0, 4);\n        if (up.length) {\n          h += '<div class=\"mc-upnext\"><div class=\"mc-uph\">Up next &middot; ' + (QF.length - 1) + ' more</div>'"
+    },
+    {
+      "note": "Focus view: Previous cycles within the search matches",
+      "find": "  window.mcPrev = function () {\n    var q = queue(); if (q.length < 2) return;",
+      "replace": "  window.mcPrev = function () {\n    var q = queue(), _s = (search || '').trim().toLowerCase();\n    if (_s) q = q.filter(function (a) { return a.name.toLowerCase().indexOf(_s) >= 0 || (a.owner || '').toLowerCase().indexOf(_s) >= 0; });\n    if (q.length < 2) return;"
+    },
+    {
+      "note": "Focus view: Skip cycles within the search matches",
+      "find": "  window.mcSkip = function () {\n    var q = queue(); if (q.length < 2) return;",
+      "replace": "  window.mcSkip = function () {\n    var q = queue(), _s = (search || '').trim().toLowerCase();\n    if (_s) q = q.filter(function (a) { return a.name.toLowerCase().indexOf(_s) >= 0 || (a.owner || '').toLowerCase().indexOf(_s) >= 0; });\n    if (q.length < 2) return;"
     }
   ]
 }
