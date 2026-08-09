@@ -42,6 +42,8 @@ assert(html.includes("_aptIds.indexOf(String(p.apt_id || p.aptId || ''))"), 'ema
 assert(html.includes('(too large for one email'), 'attachment size guard keeps the send under the server cap');
 assert(html.includes("setApt('${a.id}','ownerEmail3'"), 'configuration accepts up to three owner email addresses');
 assert(html.includes('p.a.ownerEmail3'), 'owner email goes to every configured address');
+assert(html.includes("rem:s.rem+m.rem"), 'Annual Tracker totals the cleared owner remittance');
+assert(html.includes('${m.rem?fmt(m.rem)'), 'Annual Tracker shows the cleared remittance per month');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },

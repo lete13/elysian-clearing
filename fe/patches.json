@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "df9dfb467b91f77aba5e05b7f4a7e5fe17c50af9553c4883b824bd5b44d32d39",
+  "expectedSha256": "86b3c6dc77e0e1da3551c9b5221d7b5d496b303be442693fd00362af494acd43",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -126,6 +126,31 @@
       "note": "Send: owner email goes to every configured address (up to three per apartment)",
       "find": "  return [...new Set(d.packets.map(p => (p.a.ownerEmail || '').trim()).filter(Boolean))].join(', ');",
       "replace": "  // Every owner address on every apartment in the report - up to three per apartment.\n  return [...new Set(d.packets.flatMap(p => [p.a.ownerEmail, p.a.ownerEmail2, p.a.ownerEmail3]\n    .map(e => String(e || '').trim()).filter(Boolean)))].join(', ');"
+    },
+    {
+      "note": "Annual Tracker: month rows carry the cleared owner remittance",
+      "find": "      return{mo,n:bks.length,gross:m.gross,ct:m.ct,vat:m.vat,at:m.at,base:m.base,pay:m.totPay,ci:m.configCl,mf:Math.max(0,m.base)*rate};",
+      "replace": "      const rem=(((S.ownerRemit||{})[apt.id+'::'+yr+'::'+mo])||{}).amount||0;\n      return{mo,n:bks.length,gross:m.gross,ct:m.ct,vat:m.vat,at:m.at,base:m.base,pay:m.totPay,ci:m.configCl,mf:Math.max(0,m.base)*rate,rem};"
+    },
+    {
+      "note": "Annual Tracker: totals include the cleared remittance",
+      "find": "    const tot=mos.reduce((s,m)=>({gross:s.gross+m.gross,ct:s.ct+m.ct,vat:s.vat+m.vat,at:s.at+m.at,pay:s.pay+m.pay,ci:s.ci+m.ci,mf:s.mf+m.mf}),{gross:0,ct:0,vat:0,at:0,pay:0,ci:0,mf:0});",
+      "replace": "    const tot=mos.reduce((s,m)=>({gross:s.gross+m.gross,ct:s.ct+m.ct,vat:s.vat+m.vat,at:s.at+m.at,pay:s.pay+m.pay,ci:s.ci+m.ci,mf:s.mf+m.mf,rem:s.rem+m.rem}),{gross:0,ct:0,vat:0,at:0,pay:0,ci:0,mf:0,rem:0});"
+    },
+    {
+      "note": "Annual Tracker: Remitted column header",
+      "find": "          <th class=\"r\">Fee base</th><th class=\"r\">Payout</th><th class=\"r\">Cleaning</th><th class=\"r\">Mgmt fee</th>",
+      "replace": "          <th class=\"r\">Fee base</th><th class=\"r\">Payout</th><th class=\"r\">Cleaning</th><th class=\"r\">Mgmt fee</th><th class=\"r\" style=\"color:#0369A1\">Remitted</th>"
+    },
+    {
+      "note": "Annual Tracker: Remitted cell per month (cleared amount from the close)",
+      "find": "          <td class=\"mono\" style=\"text-align:right\">${fmt(m.mf)}</td>\n        </tr>`).join('')}</tbody>",
+      "replace": "          <td class=\"mono\" style=\"text-align:right\">${fmt(m.mf)}</td>\n          <td class=\"mono\" style=\"text-align:right;color:#0369A1;font-weight:${m.rem>0?600:400}\">${m.rem?fmt(m.rem):'\\u2014'}</td>\n        </tr>`).join('')}</tbody>"
+    },
+    {
+      "note": "Annual Tracker: Remitted total in the footer",
+      "find": "          <td class=\"mono\" style=\"text-align:right;background:#0F1E2E;color:#C9A84C;font-weight:500\">${fmt(tot.mf)}</td>\n        </tr></tfoot>",
+      "replace": "          <td class=\"mono\" style=\"text-align:right;background:#0F1E2E;color:#C9A84C;font-weight:500\">${fmt(tot.mf)}</td>\n          <td class=\"mono\" style=\"text-align:right;background:#0F1E2E;color:#38BDF8;font-weight:500\">${fmt(tot.rem)}</td>\n        </tr></tfoot>"
     }
   ]
 }
