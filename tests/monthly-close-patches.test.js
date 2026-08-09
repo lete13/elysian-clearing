@@ -45,6 +45,7 @@ assert(html.includes('p.a.ownerEmail3'), 'owner email goes to every configured a
 assert(html.includes("rem:s.rem+m.rem"), 'Annual Tracker totals the cleared owner remittance');
 assert(html.includes('${m.rem?fmt(m.rem)'), 'Annual Tracker shows the cleared remittance per month');
 assert(html.includes('if(!Array.isArray(a.fixedCharges))a.fixedCharges=[];'), 'Add fixed charge works on pre-field apartments');
+assert(html.includes('lk.email.at >= (r.remit.at_ms || 0)'), 'Email stage ignores stamps older than this close\'s confirmation');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },

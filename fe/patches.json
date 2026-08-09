@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "2a69ec00a13f94e89e49a1f986cc68992ccf1b05aa43a736caee6c0a57be8982",
+  "expectedSha256": "af31926e089ce0d7ee642860718b3072ebb7158198fc91aa2d2de674fe6925ea",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -156,6 +156,11 @@
       "note": "Config: Add fixed charge works on apartments created before the field existed",
       "find": "function addFx(id){const a=S.apts.find(x=>x.id===id);if(a){a.fixedCharges.push({id:gid(),label:'',amount:''});save();renderCfg();}}",
       "replace": "function addFx(id){const a=S.apts.find(x=>x.id===id);if(a){if(!Array.isArray(a.fixedCharges))a.fixedCharges=[];a.fixedCharges.push({id:gid(),label:'',amount:''});save();renderCfg();}}"
+    },
+    {
+      "note": "Monthly Close: the Email stage only ticks for sends made after this close's confirmation",
+      "find": "    if (key === 'email') return !!lk.email;",
+      "replace": "    // An email stamp only counts for THIS close if the send happened after the\n    // report was confirmed - a stale stamp from an earlier test send must not\n    // tick the stage (Pixie: a 4 Aug test send marked the 9 Aug close as sent).\n    if (key === 'email') return !!(lk.email && r && r.remit && lk.email.at >= (r.remit.at_ms || 0));"
     }
   ]
 }
