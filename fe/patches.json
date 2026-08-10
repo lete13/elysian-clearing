@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "186105dbf092ba29717bf24e4349f5a075671a6375771df0fb34667145d18b3d",
+  "expectedSha256": "3cf30bd44bfc3746406deae17bd6c015cdfe2d8da732f286bc931229f4eb4b00",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -256,6 +256,46 @@
       "note": "Focus view: Skip cycles within the search matches",
       "find": "  window.mcSkip = function () {\n    var q = queue(); if (q.length < 2) return;",
       "replace": "  window.mcSkip = function () {\n    var q = queue(), _s = (search || '').trim().toLowerCase();\n    if (_s) q = q.filter(function (a) { return a.name.toLowerCase().indexOf(_s) >= 0 || (a.owner || '').toLowerCase().indexOf(_s) >= 0; });\n    if (q.length < 2) return;"
+    },
+    {
+      "note": "Send: helpers to build a fixed, predictable attachment filename",
+      "find": "function _emailPdfName(d) {\n  const per = d.dates.from.toISOString().slice(0, 10) + '_' + d.dates.to.toISOString().slice(0, 10);\n  const who = d.packets.length > 1 ? d.packets.length + '-Properties' : _emailSlug(d.apt.name);\n  return 'Elysian_Clearing_' + who + '_' + per + '.pdf';\n}",
+      "replace": "function _emailPdfName(d) {\n  const per = d.dates.from.toISOString().slice(0, 10) + '_' + d.dates.to.toISOString().slice(0, 10);\n  const who = d.packets.length > 1 ? d.packets.length + '-Properties' : _emailSlug(d.apt.name);\n  return 'Elysian_Clearing_' + who + '_' + per + '.pdf';\n}\n\n// Every non-report attachment (invoice, TAKK, payment proofs) gets this same\n// fixed shape instead of whatever the uploader's phone/scanner named the file -\n// so attachments sort and identify themselves the same way every month.\nfunction _emailAttExt(name, mime) {\n  const m = /\\.([a-zA-Z0-9]{2,5})$/.exec(String(name || ''));\n  if (m) return m[1].toLowerCase();\n  const map = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/heic': 'heic', 'image/heif': 'heic', 'image/webp': 'webp' };\n  return map[String(mime || '').toLowerCase()] || 'pdf';\n}\nfunction _emailAttName(kind, aptName, period, ext, suffix) {\n  return 'Elysian_' + kind + '_' + _emailSlug(aptName) + '_' + period + (suffix ? '_' + _emailSlug(String(suffix)) : '') + '.' + ext;\n}"
+    },
+    {
+      "note": "Send: track whether declining the invoice step should cancel the whole send",
+      "find": "let _oxyDoc = null, _oxyNote = '';",
+      "replace": "let _oxyDoc = null, _oxyNote = '', _abortSend = false;"
+    },
+    {
+      "note": "Send: period used by every attachment's fixed filename",
+      "find": "      const _k = window._rptLockKey;",
+      "replace": "      const _k = window._rptLockKey;\n      const _attPer = (function () { const d0 = st.d.dates.from; return d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0'); })();"
+    },
+    {
+      "note": "Send: declining Issue invoice cancels the whole send (Elysian Ithaki: email went out with no invoice after Cancel was pressed on this dialog)",
+      "find": "              } else {\n                _oxyNote = 'Invoice not issued (cancelled).';\n              }",
+      "replace": "              } else {\n                _oxyNote = 'Invoice not issued (cancelled).';\n                _abortSend = true;\n              }"
+    },
+    {
+      "note": "Send: stop before the fetch when the invoice step was declined - the email must not go out on its own",
+      "find": "    } catch (_e) { _oxyNote = 'Oxygen step skipped: ' + _e.message; }\n    if (status) status.textContent = 'Sending…';",
+      "replace": "    } catch (_e) { _oxyNote = 'Oxygen step skipped: ' + _e.message; }\n    if (_abortSend) {\n      if (status) status.textContent = 'Send cancelled - the invoice was not issued, so the email was not sent either. Click Send email when ready.';\n      if (btn) { btn.disabled = false; btn.textContent = '📨 Send email'; }\n      return;\n    }\n    if (status) status.textContent = 'Sending…';"
+    },
+    {
+      "note": "Send: invoice attachment uses the fixed naming scheme, keeping the document number",
+      "find": "          _atts.push({ filename: (_apt.profile === 'b2b' ? 'TPY' : 'APY') + '-' + (_oxyDoc.number || _oxyDoc.invoiceId) + '.pdf', contentType: 'application/pdf', contentBase64: _pf.base64 });",
+      "replace": "          _atts.push({ filename: _emailAttName(_apt.profile === 'b2b' ? 'TPY' : 'APY', _apt.name, _attPer, 'pdf', _oxyDoc.number || _oxyDoc.invoiceId), contentType: 'application/pdf', contentBase64: _pf.base64 });"
+    },
+    {
+      "note": "Send: proof attachments get a fixed name instead of the uploaded filename; index suffix if more than one per type",
+      "find": "          if (!_list.length) {\n            const _allNa = _aptIds.every(function (aid) { const _en = _mt[w.t + '|' + aid]; return !!(_en && _en.na); });\n            if (!_allNa) _missing.push(w.pre);\n            continue;\n          }\n          for (const p of _list) {",
+      "replace": "          if (!_list.length) {\n            const _allNa = _aptIds.every(function (aid) { const _en = _mt[w.t + '|' + aid]; return !!(_en && _en.na); });\n            if (!_allNa) _missing.push(w.pre);\n            continue;\n          }\n          let _attIdx = 0;\n          for (const p of _list) {"
+    },
+    {
+      "note": "Send: proof attachment push uses the fixed filename builder",
+      "find": "              _atts.push({ filename: w.pre + '-' + (p.name || (p.id + '.pdf')), contentType: p.mime || _b.type || 'application/octet-stream', contentBase64: _b64 });",
+      "replace": "              _attIdx++;\n              _atts.push({ filename: _emailAttName(w.pre, _apt.name, _attPer, _emailAttExt(p.name, p.mime || _b.type), _attIdx > 1 ? _attIdx : ''), contentType: p.mime || _b.type || 'application/octet-stream', contentBase64: _b64 });"
     }
   ]
 }
