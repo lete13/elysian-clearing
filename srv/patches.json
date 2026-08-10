@@ -1,6 +1,6 @@
 {
  "baseSha256": "7d1857d5d5c5529f6688860c7b618d2c68a3956f9319ffc5d6544c546011edd0",
- "expectedSha256": "e4ce2d9a8628ed92567ba01b5cf1e0de1593b5b0403169f5679ae3dbe056ff81",
+ "expectedSha256": "04eb3deb713cbf6f6e4e279b2441a142eac8355f7ca7d73af5521a1f8277b1c3",
  "builtAt": "2026-08-07 consolidated into server.js - patch list reset",
  "patches": [
   {
@@ -12,13 +12,17 @@
    "note": "Cash Flow: store the largest in/out movements with counterparties (identify the Eurobank sweeps)",
    "find": "  internals.sort((a, b) => a.d < b.d ? 1 : -1);",
    "replace": "  internals.sort((a, b) => a.d < b.d ? 1 : -1);\n  // Diagnostics: biggest movements with their counterparties - used to identify\n  // the internal Eurobank sweep transfers and tune VIVA_INTERNAL_IBANS.\n  const _outs = txs.filter(t => t.amount < 0).sort((a, b) => a.amount - b.amount).slice(0, 15).map(t => ({ d: pcvISO(pcvDay0(t.date)), amount: t.amount, counterpart: String(t.counterpart || '').slice(0, 70), typeId: t.typeId, subTypeId: t.subTypeId }));\n  const _ins = txs.filter(t => t.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 10).map(t => ({ d: pcvISO(pcvDay0(t.date)), amount: t.amount, counterpart: String(t.counterpart || '').slice(0, 70), typeId: t.typeId, subTypeId: t.subTypeId }));",
-  
    "count": 1
   },
   {
    "note": "Cash Flow: topOut/topIn stored on the record",
    "find": "    internals: internals.slice(0, 40),",
    "replace": "    internals: internals.slice(0, 40),\n    topOut: _outs, topIn: _ins,"
+  },
+  {
+   "note": "Cash Flow: internal = transfer to the company's OWN account (counterparty names ELYSIAN) - any-Eurobank matching would wrongly exclude owner remittances",
+   "find": "  return /^gr\\\\d{2}026/.test(c) || c.includes('eurobank');",
+   "replace": "  // Own-account transfers carry the company's own name in the counterparty\n  // ('IBAN - ELYSIAN PROPERTIES ...'). Matching any Eurobank IBAN would be wrong:\n  // owners who bank with Eurobank (e.g. Votsala IKE) receive real remittances.\n  return c.includes('elysian') || c.includes('eurobank');"
   }
  ]
 }
