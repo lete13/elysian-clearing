@@ -74,6 +74,10 @@ assert(html.includes("name==='cash'"), 'showTab dispatches the Cash Flow rendere
 assert(html.includes('function renderCash()'), 'Cash Flow renderer exists');
 assert(html.includes('Exclude internal transfers (Eurobank)'), 'internal-transfer toggle present');
 assert(html.includes("fetch('/api/viva/cashflow')"), 'Cash Flow reads the server cache');
+assert(html.includes('function cfSetW(n)'), 'Cash Flow chart has a range setter');
+assert(html.includes('Math.min(window._cfW||60,days.length)'), 'chart window follows the selected range');
+assert(html.includes('[30,60,90,130].filter'), 'range options offered up to the cached window');
+assert(!html.includes('const W=Math.min(60,days.length)'), 'hard-coded 60-day chart window is gone');
 
 // ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
 const srvSpec = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches.json'), 'utf8'));
