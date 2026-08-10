@@ -58,6 +58,12 @@ assert(html.includes('function _emailAttName('), 'fixed attachment-name builder 
 assert(html.includes('function _emailAttExt('), 'attachment extension guesser exists');
 assert(html.includes('_emailAttName(_apt.profile'), 'invoice attachment uses the fixed naming scheme');
 assert(html.includes('_emailAttName(w.pre, _apt.name, _attPer'), 'proof attachments use the fixed naming scheme');
+assert(html.includes("pre: 'TAKK_Issuance'"), 'TAKK issuance document kind named TAKK_Issuance');
+assert(html.includes("pre: 'TAKK_Payment'"), 'TAKK payment document kind named TAKK_Payment');
+assert(html.includes("pre: 'Payment_Proof'"), 'owner payment document kind named Payment_Proof');
+assert(html.includes('fmt(-ea)'), 'expense rows formatted with their real sign (credit notes)');
+assert(html.includes("' (credit)'"), 'PDF marks credit-note expense lines');
+assert(!html.includes("'-'+fmt(ea)"), 'no hard-coded minus prefixes left on screen expense rows');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },
