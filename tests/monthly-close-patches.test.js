@@ -52,6 +52,12 @@ assert(html.includes('id="mc-searchbox"'), 'search bar renders in Focus view too
 assert(html.includes('QF.forEach'), 'Focus queue narrows to the search matches');
 assert(html.includes('class="mc-pace'), 'daily pace chip renders in the close header');
 assert(html.includes("new Date(parseInt(p[0], 10), parseInt(p[1], 10), 10)"), 'pace deadline is the 10th of the month after the close month');
+assert(html.includes('_abortSend = true'), 'declining the invoice step is recorded to cancel the send');
+assert(html.includes('if (_abortSend) {'), 'send actually stops before the fetch when the invoice step is declined');
+assert(html.includes('function _emailAttName('), 'fixed attachment-name builder exists');
+assert(html.includes('function _emailAttExt('), 'attachment extension guesser exists');
+assert(html.includes('_emailAttName(_apt.profile'), 'invoice attachment uses the fixed naming scheme');
+assert(html.includes('_emailAttName(w.pre, _apt.name, _attPer'), 'proof attachments use the fixed naming scheme');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },
