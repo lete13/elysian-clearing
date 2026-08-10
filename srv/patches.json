@@ -1,6 +1,6 @@
 {
  "baseSha256": "7d1857d5d5c5529f6688860c7b618d2c68a3956f9319ffc5d6544c546011edd0",
- "expectedSha256": "04eb3deb713cbf6f6e4e279b2441a142eac8355f7ca7d73af5521a1f8277b1c3",
+ "expectedSha256": "0a1ea592836a99414bc65911f2f1309e18013d5fefe6231d24a6f218bac5eccc",
  "builtAt": "2026-08-07 consolidated into server.js - patch list reset",
  "patches": [
   {
@@ -23,6 +23,41 @@
    "note": "Cash Flow: internal = transfer to the company's OWN account (counterparty names ELYSIAN) - any-Eurobank matching would wrongly exclude owner remittances",
    "find": "  return /^gr\\\\d{2}026/.test(c) || c.includes('eurobank');",
    "replace": "  // Own-account transfers carry the company's own name in the counterparty\n  // ('IBAN - ELYSIAN PROPERTIES ...'). Matching any Eurobank IBAN would be wrong:\n  // owners who bank with Eurobank (e.g. Votsala IKE) receive real remittances.\n  return c.includes('elysian') || c.includes('eurobank');"
+  },
+  {
+   "note": "Cash Flow: history window configurable via VIVA_CASHFLOW_DAYS",
+   "find": "const CF_DAYS = 130;",
+   "replace": "const CF_DAYS = Math.max(30, Math.min(1200, parseInt(process.env.VIVA_CASHFLOW_DAYS || '', 10) || 130));"
+  },
+  {
+   "note": "Cash Flow: cfRefresh accepts a per-run span override",
+   "find": "async function cfRefresh(trigger) {",
+   "replace": "async function cfRefresh(trigger, daysOverride) {"
+  },
+  {
+   "note": "Cash Flow: the span drives the fetch window",
+   "find": "  const from = pcvAdd(pcvDay0(now), -CF_DAYS);",
+   "replace": "  const _span = Math.max(30, Math.min(1200, parseInt(daysOverride, 10) || CF_DAYS));\n  const from = pcvAdd(pcvDay0(now), -_span);"
+  },
+  {
+   "note": "Cash Flow: the day buckets follow the span",
+   "find": "  for (let i = 0; i <= CF_DAYS; i++) { const d = pcvAdd(from, i); byDay[pcvISO(d)] = { d: pcvISO(d), inc: 0, exp: 0, intIn: 0, intOut: 0 }; }",
+   "replace": "  for (let i = 0; i <= _span; i++) { const d = pcvAdd(from, i); byDay[pcvISO(d)] = { d: pcvISO(d), inc: 0, exp: 0, intIn: 0, intOut: 0 }; }"
+  },
+  {
+   "note": "Cash Flow: record reports the span it covered, plus the first day that actually had activity",
+   "find": "    txCount: txs.length, typeHisto,",
+   "replace": "    txCount: txs.length, typeHisto, spanDays: _span,\n    firstActive: (Object.values(byDay).filter(r => r.inc || r.exp).sort((a, b) => a.d < b.d ? -1 : 1)[0] || {}).d || null,"
+  },
+  {
+   "note": "Cash Flow: refresh accepts ?days=N and gets a longer timeout for big windows",
+   "find": "      cfRefresh('manual'),\n      new Promise((_, rej) => setTimeout(() => rej(new Error('Viva cash-flow refresh did not finish within 120 s - check the [viva] lines in the Railway logs.')), 120000)),",
+   "replace": "      cfRefresh('manual', req.query && req.query.days),\n      new Promise((_, rej) => setTimeout(() => rej(new Error('Viva cash-flow refresh did not finish in time - check the [viva] lines in the Railway logs.')), 240000)),"
+  },
+  {
+   "note": "Viva Search: raise the page cap so multi-year windows are not silently truncated",
+   "find": "for (let page = 1; page <= 40; page++) {",
+   "replace": "for (let page = 1; page <= 200; page++) {"
   }
  ]
 }
