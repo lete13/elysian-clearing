@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "5a83143e1dde48fc15d8a1e394170c417291dad4eb9310a9a808ff46c5ab6361",
+  "expectedSha256": "4938d9e229f18eaa11cf2cd103055b9f1116fd39a6faca1f0c8aa8299a8b8015",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -326,6 +326,21 @@
       "note": "PDF: expense totals formatted with their real sign",
       "find": "          <td style=\"text-align:right\"><b>-${fmt(totExp)}</b></td>\n          ${_hasVat?`<td style=\"text-align:right;color:#D97706\"><b>-${fmt(expVat)}</b></td><td style=\"text-align:right;color:#c0392b\"><b>-${fmt(totExpIncl)}</b></td>`:''}",
       "replace": "          <td style=\"text-align:right\"><b>${fmt(-totExp)}</b></td>\n          ${_hasVat?`<td style=\"text-align:right;color:#D97706\"><b>${fmt(-expVat)}</b></td><td style=\"text-align:right;color:#c0392b\"><b>${fmt(-totExpIncl)}</b></td>`:''}"
+    },
+    {
+      "note": "Expenses: expToggleMonth expands/collapses a month group",
+      "find": "function renderExp(){",
+      "replace": "function expToggleMonth(k){if(!window._expOpen)window._expOpen=new Set();if(window._expOpen.has(k))window._expOpen.delete(k);else window._expOpen.add(k);renderExp();}\nfunction renderExp(){"
+    },
+    {
+      "note": "Expenses: rows bucketed per month (newest first, latest month open by default)",
+      "find": "  document.getElementById('exp-body').innerHTML=fe.map(e=>{",
+      "replace": "  // Month groups with expand/collapse. The open set lives for the session;\n  // an active search opens everything so matches are never hidden.\n  if(!window._expOpen){window._expOpen=new Set();window._expOpenInit=false;}\n  const _mKey=e=>{const p=String(e.date||'').split('/');return p.length===3?p[2]+'-'+p[1]:'0000-00';};\n  const _mLbl=k=>{if(k==='0000-00')return 'No date';const p=k.split('-');const M=['January','February','March','April','May','June','July','August','September','October','November','December'];return (M[(parseInt(p[1],10)||1)-1]||'?')+' '+p[0];};\n  const _grp={};fe.forEach(e=>{const k=_mKey(e);(_grp[k]=_grp[k]||[]).push(e);});\n  const _mks=Object.keys(_grp).sort().reverse();\n  if(!window._expOpenInit){window._expOpenInit=true;if(_mks.length)window._expOpen.add(_mks[0]);}\n  const _qOpen=!!(document.getElementById('exp-q')?.value||'').trim();\n  const _row=e=>{"
+    },
+    {
+      "note": "Expenses: month header rows with totals; collapsed months hide their rows",
+      "find": "      <td><button class=\"btn danger sm\" onclick=\"delExp('${e.id}')\">✕</button></td>\n    </tr>`;\n  }).join('');",
+      "replace": "      <td><button class=\"btn danger sm\" onclick=\"delExp('${e.id}')\">✕</button></td>\n    </tr>`;\n  };\n  document.getElementById('exp-body').innerHTML=_mks.map(k=>{\n    const list=_grp[k].slice().sort((a,b)=>(parseInt(a.date,10)||0)-(parseInt(b.date,10)||0));\n    const open=_qOpen||window._expOpen.has(k);\n    const mt=list.reduce((s,e)=>s+(e.total||0),0);\n    const hdr=`<tr onclick=\"expToggleMonth('${k}')\" style=\"cursor:pointer;background:#0F1E2E\" title=\"${open?'Click to collapse':'Click to expand'}\">\n      <td colspan=\"9\" style=\"padding:8px 14px\">\n        <span style=\"display:inline-flex;align-items:center;gap:8px;color:#C9A84C;font-weight:700;font-size:12px\">\n          <span style=\"display:inline-block;transition:transform .15s;transform:rotate(${open?90:0}deg)\">&#9654;</span>\n          ${_mLbl(k)}\n          <span style=\"font-weight:400;color:rgba(255,255,255,.55)\">· ${list.length} expense${list.length===1?'':'s'} · ${fmt(mt)}</span>\n        </span>\n      </td><td style=\"text-align:right;padding:8px 14px;color:rgba(255,255,255,.45);font-size:11px\">${open?'collapse':'expand'}</td>\n    </tr>`;\n    return hdr+(open?list.map(_row).join(''):'');\n  }).join('');"
     }
   ]
 }

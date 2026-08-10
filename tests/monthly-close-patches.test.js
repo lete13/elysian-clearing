@@ -64,6 +64,10 @@ assert(html.includes("pre: 'Payment_Proof'"), 'owner payment document kind named
 assert(html.includes('fmt(-ea)'), 'expense rows formatted with their real sign (credit notes)');
 assert(html.includes("' (credit)'"), 'PDF marks credit-note expense lines');
 assert(!html.includes("'-'+fmt(ea)"), 'no hard-coded minus prefixes left on screen expense rows');
+assert(html.includes('function expToggleMonth(k)'), 'Expenses tab has a month-group toggle');
+assert(html.includes("window._expOpen.add(_mks[0])"), 'latest expense month opens by default');
+assert(html.includes('expToggleMonth(\'${k}\')'), 'month header rows toggle their group');
+assert(html.includes('_qOpen||window._expOpen.has(k)'), 'search opens all expense month groups');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },
