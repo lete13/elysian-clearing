@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "4938d9e229f18eaa11cf2cd103055b9f1116fd39a6faca1f0c8aa8299a8b8015",
+  "expectedSha256": "cffc658a28b174983ae924491232ee6746c79ca4ca4411f753b90b7e194d52f8",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -341,6 +341,146 @@
       "note": "Expenses: month header rows with totals; collapsed months hide their rows",
       "find": "      <td><button class=\"btn danger sm\" onclick=\"delExp('${e.id}')\">✕</button></td>\n    </tr>`;\n  }).join('');",
       "replace": "      <td><button class=\"btn danger sm\" onclick=\"delExp('${e.id}')\">✕</button></td>\n    </tr>`;\n  };\n  document.getElementById('exp-body').innerHTML=_mks.map(k=>{\n    const list=_grp[k].slice().sort((a,b)=>(parseInt(a.date,10)||0)-(parseInt(b.date,10)||0));\n    const open=_qOpen||window._expOpen.has(k);\n    const mt=list.reduce((s,e)=>s+(e.total||0),0);\n    const hdr=`<tr onclick=\"expToggleMonth('${k}')\" style=\"cursor:pointer;background:#0F1E2E\" title=\"${open?'Click to collapse':'Click to expand'}\">\n      <td colspan=\"9\" style=\"padding:8px 14px\">\n        <span style=\"display:inline-flex;align-items:center;gap:8px;color:#C9A84C;font-weight:700;font-size:12px\">\n          <span style=\"display:inline-block;transition:transform .15s;transform:rotate(${open?90:0}deg)\">&#9654;</span>\n          ${_mLbl(k)}\n          <span style=\"font-weight:400;color:rgba(255,255,255,.55)\">· ${list.length} expense${list.length===1?'':'s'} · ${fmt(mt)}</span>\n        </span>\n      </td><td style=\"text-align:right;padding:8px 14px;color:rgba(255,255,255,.45);font-size:11px\">${open?'collapse':'expand'}</td>\n    </tr>`;\n    return hdr+(open?list.map(_row).join(''):'');\n  }).join('');"
+    },
+    {
+      "note": "Cash Flow: Tools menu entry",
+      "find": "        <button class=\"nav-dd-item\" id=\"nav-pay\" data-tab=\"pay\" onclick=\"navDdGo('pay')\">💳 Payments Check</button>",
+      "replace": "        <button class=\"nav-dd-item\" id=\"nav-pay\" data-tab=\"pay\" onclick=\"navDdGo('pay')\">💳 Payments Check</button>\n        <button class=\"nav-dd-item\" id=\"nav-cash\" data-tab=\"cash\" onclick=\"navDdGo('cash')\">💶 Cash Flow</button>"
+    },
+    {
+      "note": "Cash Flow: tab panel",
+      "find": "<div id=\"tab-pay\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>",
+      "replace": "<div id=\"tab-pay\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n<div id=\"tab-cash\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>"
+    },
+    {
+      "note": "Cash Flow: showTab renders the tab",
+      "find": "    else if(name==='log'){renderLog();}",
+      "replace": "    else if(name==='log'){renderLog();}\n    else if(name==='cash'){renderCash();}"
+    },
+    {
+      "note": "Cash Flow: renderer - MA table (15/30/60d), internal-transfer toggle + list, SVG chart of 30d MAs and net position",
+      "find": "function navDdToggle(e){",
+      "replace": "// ── Cash Flow tab (Viva) ──────────────────────────────────────────────────
+window._cfX = window._cfX !== false;   // exclude internal Eurobank transfers (default ON)
+function cfEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');}
+async function cfRefreshNow(btn){
+  if(btn){btn.disabled=true;btn.textContent='Refreshing from Viva…';}
+  try{
+    const r=await fetch('/api/viva/cashflow/refresh',{method:'POST'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.ok){toast('Cash-flow refresh failed: '+(j.error||('HTTP '+r.status)),'err');}
+    else toast('Cash flow refreshed — '+j.txCount+' transactions.','ok');
+  }catch(e){toast('Cash-flow refresh failed: '+e.message,'err');}
+  renderCash();
+}
+function renderCash(){
+  const panel=document.getElementById('tab-cash');if(!panel)return;
+  panel.innerHTML='<div class=\"card\" style=\"padding:24px;color:var(--tx3)\">Loading cash flow…</div>';
+  fetch('/api/viva/cashflow').then(r=>r.json()).then(res=>{
+    const rec=res&&res.data;
+    let h='<div class=\"card\" style=\"padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap\">'
+      +'<div style=\"font-weight:700;font-size:15px\">💶 Cash Flow <span style=\"font-weight:400;color:var(--tx3);font-size:12px\">Viva business account · income vs expenses</span></div>'
+      +'<div style=\"flex:1\"></div>'
+      +(rec?'<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer\"><input type=\"checkbox\" '+(window._cfX?'checked':'')+' onchange=\"window._cfX=this.checked;renderCash()\"> Exclude internal transfers (Eurobank)</label>':'')
+      +'<button class=\"btn sm primary\" onclick=\"cfRefreshNow(this)\">↻ Refresh now</button>'
+      +'</div>';
+    if(!res||!res.ok){panel.innerHTML=h+'<div class=\"card\" style=\"padding:24px;color:var(--tx-err)\">'+cfEsc((res&&res.error)||'Could not reach the server.')+'</div>';return;}
+    if(!rec){
+      panel.innerHTML=h+'<div class=\"card\" style=\"padding:28px;text-align:center;color:var(--tx3)\">'
+        +(res.configured
+          ?'No cash-flow data yet. Press <b>Refresh now</b> to pull the last 130 days from Viva.<br><span style=\"font-size:12px\">It will then refresh itself every morning at 06:00.</span>'
+          :'Viva credentials are not configured on the server (VIVA_TX_USER / VIVA_TX_PASS in Railway → Variables — the same ones the Payments Check uses).')
+        +'</div>';
+      return;
+    }
+    const X=window._cfX;
+    const days=rec.days||[];
+    const inc=days.map(r=>Math.max(0,(r.inc||0)-(X?(r.intIn||0):0)));
+    const exp=days.map(r=>Math.max(0,(r.exp||0)-(X?(r.intOut||0):0)));
+    const L=days.length-1;
+    const maN=(arr,n)=>{if(days.length<n)return null;let s=0;for(let j=days.length-n;j<days.length;j++)s+=arr[j];return s/n;};
+    const rows=[15,30,60].map(n=>({n,i:maN(inc,n),e:maN(exp,n)}));
+    const fm2=v=>v==null?'—':fmt(v);
+    // KPI-ish summary strip
+    const upd=new Date(rec.updatedAt);
+    h+='<div class=\"card\" style=\"padding:0;overflow:hidden;margin-bottom:12px\">'
+      +'<div style=\"padding:10px 16px;background:#0F1E2E;color:#C9A84C;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em\">Daily moving averages'+(X?' · internal transfers excluded':' · internal transfers included')+'</div>'
+      +'<table style=\"width:100%;border-collapse:collapse;font-size:13px\">'
+      +'<thead><tr style=\"background:var(--bg2)\"><th style=\"text-align:left;padding:8px 16px;font-size:11px;color:var(--tx3)\"></th>'
+      +rows.map(r=>'<th style=\"text-align:right;padding:8px 16px;font-size:11px;color:var(--tx3)\">'+r.n+'-day avg / day</th>').join('')
+      +'</tr></thead><tbody>'
+      +'<tr><td style=\"padding:8px 16px;font-weight:600;color:#059669\">Income</td>'+rows.map(r=>'<td class=\"mono\" style=\"text-align:right;padding:8px 16px;color:#059669\">'+fm2(r.i)+'</td>').join('')+'</tr>'
+      +'<tr style=\"border-top:.5px solid var(--bdr)\"><td style=\"padding:8px 16px;font-weight:600;color:var(--tx-err)\">Expenses</td>'+rows.map(r=>'<td class=\"mono\" style=\"text-align:right;padding:8px 16px;color:var(--tx-err)\">'+fm2(r.e)+'</td>').join('')+'</tr>'
+      +'<tr style=\"border-top:.5px solid var(--bdr);background:var(--bg2)\"><td style=\"padding:8px 16px;font-weight:700;color:#C9A84C\">Net</td>'+rows.map(r=>{const v=(r.i==null||r.e==null)?null:r.i-r.e;return '<td class=\"mono\" style=\"text-align:right;padding:8px 16px;font-weight:700;color:'+(v!=null&&v<0?'var(--tx-err)':'#C9A84C')+'\">'+fm2(v)+'</td>';}).join('')+'</tr>'
+      +'<tr style=\"border-top:.5px solid var(--bdr)\"><td style=\"padding:6px 16px;font-size:11px;color:var(--tx3)\">Period totals</td>'+rows.map(r=>'<td class=\"mono\" style=\"text-align:right;padding:6px 16px;font-size:11px;color:var(--tx3)\">'+(r.i==null?'—':fmt(r.i*r.n)+' in · '+fmt(r.e*r.n)+' out')+'</td>').join('')+'</tr>'
+      +'</tbody></table></div>';
+    if(rec.creditsOnly)h+='<div class=\"card\" style=\"padding:10px 16px;margin-bottom:12px;background:#FEF3C7;color:#92400E;font-size:12px\">⚠ Viva returned incoming payments only on the last refresh — expense figures are incomplete. Check the [viva] lines in the Railway logs.</div>';
+    // ── Chart: 30-day MAs + cumulative net position (last 60 days) ──
+    const m30i=[],m30e=[];
+    for(let i=0;i<days.length;i++){
+      if(i<29){m30i.push(null);m30e.push(null);continue;}
+      let a=0,b=0;for(let j=i-29;j<=i;j++){a+=inc[j];b+=exp[j];}
+      m30i.push(a/30);m30e.push(b/30);
+    }
+    const cum=[];let c0=0;
+    for(let i=0;i<days.length;i++){c0+=inc[i]-exp[i];cum.push(c0);}
+    const W=Math.min(60,days.length);
+    const s0=days.length-W;
+    const chI=m30i.slice(s0),chE=m30e.slice(s0),chN=cum.slice(s0),chD=days.slice(s0);
+    const CW=920,CH=300,PL=64,PR=78,PT=16,PB=30;
+    const iw=CW-PL-PR,ih=CH-PT-PB;
+    const lMax=Math.max(1,...chI.filter(v=>v!=null),...chE.filter(v=>v!=null))*1.12;
+    const rMin=Math.min(0,...chN),rMax=Math.max(1,...chN);
+    const rPad=(rMax-rMin)*0.08||1;
+    const rLo=rMin-rPad,rHi=rMax+rPad;
+    const sx=i=>PL+iw*(W<2?0:i/(W-1));
+    const syL=v=>PT+ih*(1-v/lMax);
+    const syR=v=>PT+ih*(1-(v-rLo)/(rHi-rLo));
+    const pth=(vals,sy)=>{let d='',pen=false;for(let i=0;i<vals.length;i++){const v=vals[i];if(v==null){pen=false;continue;}d+=(pen?'L':'M')+sx(i).toFixed(1)+' '+sy(v).toFixed(1);pen=true;}return d;};
+    const fmk=v=>{const a=Math.abs(v);return (v<0?'-':'')+(a>=1000?(a/1000).toFixed(1)+'k':a.toFixed(0));};
+    let grid='';
+    for(let g=0;g<=4;g++){
+      const y=PT+ih*g/4;
+      grid+='<line x1=\"'+PL+'\" y1=\"'+y+'\" x2=\"'+(CW-PR)+'\" y2=\"'+y+'\" stroke=\"var(--bdr)\" stroke-width=\"0.5\"/>'
+        +'<text x=\"'+(PL-6)+'\" y=\"'+(y+3)+'\" text-anchor=\"end\" font-size=\"9\" fill=\"var(--tx3)\">'+fmk(lMax*(1-g/4))+'</text>'
+        +'<text x=\"'+(CW-PR+6)+'\" y=\"'+(y+3)+'\" text-anchor=\"start\" font-size=\"9\" fill=\"#C9A84C\">'+fmk(rHi-(rHi-rLo)*g/4)+'</text>';
+    }
+    let xl='';
+    for(let i=0;i<W;i+=Math.max(1,Math.floor(W/5))){
+      const p=chD[i].d.split('-');
+      xl+='<text x=\"'+sx(i)+'\" y=\"'+(CH-8)+'\" text-anchor=\"middle\" font-size=\"9\" fill=\"var(--tx3)\">'+p[2]+'/'+p[1]+'</text>';
+    }
+    const zy=(0>=rLo&&0<=rHi)?'<line x1=\"'+PL+'\" y1=\"'+syR(0)+'\" x2=\"'+(CW-PR)+'\" y2=\"'+syR(0)+'\" stroke=\"#C9A84C55\" stroke-width=\"0.7\" stroke-dasharray=\"4 3\"/>':'';
+    h+='<div class=\"card\" style=\"padding:16px 18px;margin-bottom:12px\">'
+      +'<div style=\"display:flex;gap:16px;align-items:center;margin-bottom:8px;font-size:11.5px;flex-wrap:wrap\">'
+      +'<b style=\"font-size:12.5px\">Last '+W+' days</b>'
+      +'<span style=\"color:#059669\">━ Income 30d avg</span><span style=\"color:#DC2626\">━ Expenses 30d avg</span>'
+      +'<span style=\"color:#C9A84C\">━ Net position (cumulative since '+cfEsc(rec.from)+', right axis)</span>'
+      +'</div>'
+      +'<svg viewBox=\"0 0 '+CW+' '+CH+'\" style=\"width:100%;height:auto;display:block\">'
+      +grid+zy+xl
+      +'<path d=\"'+pth(chN,syR)+'\" fill=\"none\" stroke=\"#C9A84C\" stroke-width=\"1.6\" opacity=\"0.9\"/>'
+      +'<path d=\"'+pth(chI,syL)+'\" fill=\"none\" stroke=\"#059669\" stroke-width=\"2\"/>'
+      +'<path d=\"'+pth(chE,syL)+'\" fill=\"none\" stroke=\"#DC2626\" stroke-width=\"2\"/>'
+      +'</svg>'
+      +'<div style=\"font-size:10.5px;color:var(--tx3);margin-top:6px\">Left axis: € per day (30-day moving average). Right axis: cumulative net (income − expenses'+(X?', internal transfers excluded':'')+') since '+cfEsc(rec.from)+'.</div>'
+      +'</div>';
+    // ── Internal transfers list (what the toggle excludes) ──
+    const ints=rec.internals||[];
+    h+='<div class=\"card\" style=\"padding:14px 18px;margin-bottom:12px\">'
+      +'<details'+(ints.length?'':' ')+'><summary style=\"cursor:pointer;font-size:12.5px;font-weight:600\">Internal transfers detected ('+ints.length+') — tagged as Eurobank/own-account moves</summary>'
+      +(ints.length?'<table style=\"width:100%;border-collapse:collapse;font-size:12px;margin-top:8px\"><thead><tr style=\"color:var(--tx3);font-size:10px;text-transform:uppercase\"><th style=\"text-align:left;padding:4px 8px\">Date</th><th style=\"text-align:left;padding:4px 8px\">Counterparty</th><th style=\"text-align:right;padding:4px 8px\">Amount</th></tr></thead><tbody>'
+        +ints.map(t=>'<tr style=\"border-top:.5px solid var(--bdr)\"><td style=\"padding:4px 8px;white-space:nowrap\">'+cfEsc(t.d)+'</td><td style=\"padding:4px 8px\">'+cfEsc(t.counterpart||'—')+'</td><td class=\"mono\" style=\"text-align:right;padding:4px 8px;color:'+(t.amount<0?'var(--tx-err)':'#059669')+'\">'+fmt(t.amount)+'</td></tr>').join('')
+        +'</tbody></table>'
+        :'<div style=\"font-size:12px;color:var(--tx3);margin-top:6px\">None found in this window.</div>')
+      +'<div style=\"font-size:11px;color:var(--tx3);margin-top:8px\">Detection: counterparty IBAN starting GR··026 (Eurobank) or naming “Eurobank”. To pin the exact account(s), set <b>VIVA_INTERNAL_IBANS</b> in Railway → Variables (comma-separated IBANs or fragments).</div>'
+      +'</details></div>';
+    h+='<div style=\"font-size:11.5px;color:var(--tx3);padding:0 4px\">Window '+cfEsc(rec.from)+' → '+cfEsc(rec.to)+' · '+(rec.txCount||0)+' transactions · last refreshed '+upd.toLocaleString('el-GR')+' ('+cfEsc(rec.trigger||'')+') · auto-refreshes daily at 06:00 (Athens).</div>';
+    panel.innerHTML=h;
+  }).catch(e=>{panel.innerHTML='<div class=\"card\" style=\"padding:24px;color:var(--tx-err)\">Cash flow failed to load: '+cfEsc(e.message)+'</div>';});
+}
+
+function navDdToggle(e){"
     }
   ]
 }

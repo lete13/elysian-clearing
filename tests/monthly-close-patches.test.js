@@ -68,6 +68,28 @@ assert(html.includes('function expToggleMonth(k)'), 'Expenses tab has a month-gr
 assert(html.includes("window._expOpen.add(_mks[0])"), 'latest expense month opens by default');
 assert(html.includes('expToggleMonth(\'${k}\')'), 'month header rows toggle their group');
 assert(html.includes('_qOpen||window._expOpen.has(k)'), 'search opens all expense month groups');
+assert(html.includes('id="nav-cash"'), 'Cash Flow appears in the Tools menu');
+assert(html.includes('id="tab-cash"'), 'Cash Flow tab panel exists');
+assert(html.includes("name==='cash'"), 'showTab dispatches the Cash Flow renderer');
+assert(html.includes('function renderCash()'), 'Cash Flow renderer exists');
+assert(html.includes('Exclude internal transfers (Eurobank)'), 'internal-transfer toggle present');
+assert(html.includes("fetch('/api/viva/cashflow')"), 'Cash Flow reads the server cache');
+
+// ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
+const srvSpec = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches.json'), 'utf8'));
+let srv = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+assert.strictEqual(crypto.createHash('sha256').update(srv).digest('hex'), srvSpec.baseSha256, 'server.js base hash');
+for (const [index, patch] of srvSpec.patches.entries()) {
+  const count = srv.split(patch.find).length - 1;
+  assert.strictEqual(count, patch.count || 1, `server patch ${index + 1} (${patch.note}) anchor count`);
+  srv = srv.split(patch.find).join(patch.replace);
+}
+assert.strictEqual(crypto.createHash('sha256').update(srv).digest('hex'), srvSpec.expectedSha256, 'effective server hash');
+new vm.Script(srv, { filename: 'server.effective.js' });
+assert(srv.includes("app.get('/api/viva/cashflow'"), 'cashflow read endpoint exists');
+assert(srv.includes("app.post('/api/viva/cashflow/refresh'"), 'cashflow refresh endpoint exists');
+assert(srv.includes('function cfCronTick'), 'cashflow 06:00 scheduler exists');
+assert(srv.includes('cfIsInternal'), 'internal Eurobank transfer tagging exists');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },
