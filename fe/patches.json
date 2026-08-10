@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "3cf30bd44bfc3746406deae17bd6c015cdfe2d8da732f286bc931229f4eb4b00",
+  "expectedSha256": "5a83143e1dde48fc15d8a1e394170c417291dad4eb9310a9a808ff46c5ab6361",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -296,6 +296,36 @@
       "note": "Send: proof attachment push uses the fixed filename builder",
       "find": "              _atts.push({ filename: w.pre + '-' + (p.name || (p.id + '.pdf')), contentType: p.mime || _b.type || 'application/octet-stream', contentBase64: _b64 });",
       "replace": "              _attIdx++;\n              _atts.push({ filename: _emailAttName(w.pre, _apt.name, _attPer, _emailAttExt(p.name, p.mime || _b.type), _attIdx > 1 ? _attIdx : ''), contentType: p.mime || _b.type || 'application/octet-stream', contentBase64: _b64 });"
+    },
+    {
+      "note": "Send: proof document kinds named TAKK_Issuance / TAKK_Payment / Payment_Proof",
+      "find": "        const _want = (_apt.profile === 'private'\n          ? [{ t: 'takk_issue', pre: 'TAKK' }, { t: 'takk_pay', pre: 'TAKK-payment' }]\n          : []).concat([{ t: 'remit_pay', pre: 'Owner-payment' }]);",
+      "replace": "        const _want = (_apt.profile === 'private'\n          ? [{ t: 'takk_issue', pre: 'TAKK_Issuance' }, { t: 'takk_pay', pre: 'TAKK_Payment' }]\n          : []).concat([{ t: 'remit_pay', pre: 'Payment_Proof' }]);"
+    },
+    {
+      "note": "Report: negative expense lines (credit notes) are tagged CREDIT",
+      "find": "        +'<div style=\"font-size:12px;color:var(--tx)\">'+(e.supp||e.desc||'Expense')+(e.aptId==='__spl'?' (split)':'')+'</div>'",
+      "replace": "        +'<div style=\"font-size:12px;color:var(--tx)\">'+(e.supp||e.desc||'Expense')+(e.aptId==='__spl'?' (split)':'')+(ea<0?' <span style=\"color:#059669;font-size:10px;font-weight:600\">CREDIT</span>':'')+'</div>'"
+    },
+    {
+      "note": "Report: expense row amounts carry their real sign - a stored credit no longer prints --75,00",
+      "find": "        +(hasVat\n          ?'<div style=\"font-family:var(--mono);font-size:12px;text-align:right\">-'+fmt(ea)+'</div>'\n           +'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;color:#D97706\">-'+fmt(eaVat)+'</div>'\n           +'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;color:var(--tx-err);font-weight:500\">-'+fmt(ea+eaVat)+'</div>'\n          :'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;color:var(--tx-err)\">-'+fmt(ea)+'</div>')",
+      "replace": "        +(hasVat\n          ?'<div style=\"font-family:var(--mono);font-size:12px;text-align:right\">'+fmt(-ea)+'</div>'\n           +'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;color:#D97706\">'+fmt(-eaVat)+'</div>'\n           +'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;color:'+(ea+eaVat<0?'#059669':'var(--tx-err)')+';font-weight:500\">'+fmt(-(ea+eaVat))+'</div>'\n          :'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;color:'+(ea<0?'#059669':'var(--tx-err)')+'\">'+fmt(-ea)+'</div>')"
+    },
+    {
+      "note": "Report: expense totals formatted with their real sign",
+      "find": "      +(hasVat\n        ?'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;font-weight:600\">-'+fmt(totExp)+'</div>'\n         +'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;font-weight:600;color:#D97706\">-'+fmt(expVat)+'</div>'\n         +'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;font-weight:700;color:var(--tx-err)\">-'+fmt(totExpIncl)+'</div>'\n        :'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;font-weight:700;color:var(--tx-err)\">-'+fmt(totExp)+'</div>')",
+      "replace": "      +(hasVat\n        ?'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;font-weight:600\">'+fmt(-totExp)+'</div>'\n         +'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;font-weight:600;color:#D97706\">'+fmt(-expVat)+'</div>'\n         +'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;font-weight:700;color:var(--tx-err)\">'+fmt(-totExpIncl)+'</div>'\n        :'<div style=\"font-family:var(--mono);font-size:12px;text-align:right;font-weight:700;color:var(--tx-err)\">'+fmt(-totExp)+'</div>')"
+    },
+    {
+      "note": "PDF: expense rows carry their real sign; credit notes marked; negative VAT shown",
+      "find": "          <td style=\"text-align:right;color:#c0392b\">-${fmt(ea)}</td>\n          ${_hasVat?`<td style=\"text-align:right;color:#D97706\">${eaVat>0?'-'+fmt(eaVat):'—'}</td><td style=\"text-align:right;font-weight:600;color:#c0392b\">-${fmt(ea+eaVat)}</td>`:''}",
+      "replace": "          <td style=\"text-align:right;color:${ea<0?'#059669':'#c0392b'}\">${fmt(-ea)}${ea<0?' (credit)':''}</td>\n          ${_hasVat?`<td style=\"text-align:right;color:#D97706\">${eaVat?fmt(-eaVat):'—'}</td><td style=\"text-align:right;font-weight:600;color:${ea+eaVat<0?'#059669':'#c0392b'}\">${fmt(-(ea+eaVat))}</td>`:''}"
+    },
+    {
+      "note": "PDF: expense totals formatted with their real sign",
+      "find": "          <td style=\"text-align:right\"><b>-${fmt(totExp)}</b></td>\n          ${_hasVat?`<td style=\"text-align:right;color:#D97706\"><b>-${fmt(expVat)}</b></td><td style=\"text-align:right;color:#c0392b\"><b>-${fmt(totExpIncl)}</b></td>`:''}",
+      "replace": "          <td style=\"text-align:right\"><b>${fmt(-totExp)}</b></td>\n          ${_hasVat?`<td style=\"text-align:right;color:#D97706\"><b>${fmt(-expVat)}</b></td><td style=\"text-align:right;color:#c0392b\"><b>${fmt(-totExpIncl)}</b></td>`:''}"
     }
   ]
 }
