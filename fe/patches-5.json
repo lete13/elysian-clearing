@@ -1,0 +1,72 @@
+{
+  "baseSha256": "a8934e8b06c432d67fa3c9082fa86521c6f0083e8870e3eb3f8952282ac18dfb",
+  "expectedSha256": "94e58c3825e231e00f826fc0146d0e9c05b0a4af65a09a74ce4670d4e11cb7f4",
+  "builtAt": "2026-08-11T11:28:47Z",
+  "patches": [
+    {
+      "note": "define --acc (the Monthly Close accent) - it was used 8x but never declared",
+      "find": "      --r:8px; --rl:12px;\n",
+      "replace": "      --r:8px; --rl:12px;\n      --acc:#C9A84C;\n"
+    },
+    {
+      "note": "List rows look clickable when they can be opened",
+      "find": "#tab-mt .mc-lrow.jump{box-shadow:0 0 0 2px var(--acc)}",
+      "replace": "#tab-mt .mc-lrow.jump{box-shadow:0 0 0 2px var(--acc)}\n#tab-mt .mc-lrow.click{cursor:pointer;transition:border-color .12s,background .12s}\n#tab-mt .mc-lrow.click:hover{border-color:var(--acc);background:var(--bg)}"
+    },
+    {
+      "note": "mcOpen: jump from the List straight into Focus on one apartment",
+      "find": "  window.mcFocus = function (id) { focusId = id; renderMt(); };",
+      "replace": "  window.mcFocus = function (id) { focusId = id; renderMt(); };\n  // Clicking an apartment in the List opens it in Focus. Only queue members can\n  // be focused - sent and skipped ones are not in Q, so the card has no step to\n  // show and Focus would silently land on somebody else.\n  window.mcOpen = function (id) {\n    var a = pool().filter(function (x) { return x.id === id; })[0];\n    if (!a || complete(a) || mcSkipped(a.id)) return;\n    focusId = id; view = 'focus'; renderMt();\n    try { document.getElementById('tab-mt').scrollIntoView({ block: 'start' }); } catch (e) {}\n  };"
+    },
+    {
+      "note": "the row itself carries the click target",
+      "find": "        return '<div class=\"mc-lrow' + (cp ? ' done' : '') + (r && r.flag ? ' flagged' : '') + (a.id === focusId ? ' jump' : '') + '\">'",
+      "replace": "        var _op = !cp && !mcSkipped(a.id);\n        return '<div class=\"mc-lrow' + (cp ? ' done' : '') + (r && r.flag ? ' flagged' : '') + (a.id === focusId ? ' jump' : '') + (_op ? ' click' : '') + '\"'\n          + (_op ? ' title=\"Open in Focus\" onclick=\"mcOpen(\\'' + esc(a.id) + '\\')\"' : '') + '>'"
+    },
+    {
+      "note": "the flag button must not also open the row",
+      "find": "'<button class=\"mc-flag tiny' + (r && r.flag ? ' on' : '') + '\" onclick=\"mcFlag(\\'' + esc(a.id) + '\\')\">&#9873;</button>'",
+      "replace": "'<button class=\"mc-flag tiny' + (r && r.flag ? ' on' : '') + '\" onclick=\"event.stopPropagation();mcFlag(\\'' + esc(a.id) + '\\')\">&#9873;</button>'"
+    },
+    {
+      "note": "nor the advance arrow",
+      "find": "<button class=\"btn sm primary\" onclick=\"mcAdvance(\\'' + esc(a.id) + '\\')\">&rarr;</button></span>'",
+      "replace": "<button class=\"btn sm primary\" onclick=\"event.stopPropagation();mcAdvance(\\'' + esc(a.id) + '\\')\">&rarr;</button></span>'"
+    },
+    {
+      "note": "say so in the footer legend",
+      "find": "<b>List</b> is the full table. ",
+      "replace": "<b>List</b> is the full table - click a row to open it in Focus. "
+    }
+  ],
+  "assertions": [
+    {
+      "has": "--acc:#C9A84C",
+      "note": "the Monthly Close accent colour is actually defined"
+    },
+    {
+      "has": "window.mcOpen = function (id)",
+      "note": "List rows have an opener"
+    },
+    {
+      "has": "onclick=\"mcOpen(",
+      "note": "the row markup calls it"
+    },
+    {
+      "has": "#tab-mt .mc-lrow.click{cursor:pointer",
+      "note": "clickable rows look clickable"
+    },
+    {
+      "has": "event.stopPropagation();mcFlag",
+      "note": "flagging does not open the row"
+    },
+    {
+      "has": "event.stopPropagation();mcAdvance",
+      "note": "advancing does not open the row"
+    },
+    {
+      "hasNot": "(a.id === focusId ? ' jump' : '') + '\">'",
+      "note": "the inert row markup is gone"
+    }
+  ]
+}
