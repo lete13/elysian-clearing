@@ -76,8 +76,10 @@ assert(html.includes('Exclude internal transfers (Eurobank)'), 'internal-transfe
 assert(html.includes("fetch('/api/viva/cashflow')"), 'Cash Flow reads the server cache');
 assert(html.includes('function cfSetW(n)'), 'Cash Flow chart has a range setter');
 assert(html.includes('Math.min(window._cfW||60,days.length)'), 'chart window follows the selected range');
-assert(html.includes('[30,60,90,130].filter'), 'range options offered up to the cached window');
+assert(html.includes('[30,60,90,180,365].filter(n=>n<days.length)'), 'range options adapt to the cached history');
+assert(html.includes("_wOpts.push(days.length);"), 'an All option covering the whole cache is offered');
 assert(!html.includes('const W=Math.min(60,days.length)'), 'hard-coded 60-day chart window is gone');
+assert(!html.includes('pull the last 130 days'), 'empty-state copy no longer promises a fixed 130 days');
 
 // ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
 const srvSpec = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches.json'), 'utf8'));
@@ -94,6 +96,10 @@ assert(srv.includes("app.get('/api/viva/cashflow'"), 'cashflow read endpoint exi
 assert(srv.includes("app.post('/api/viva/cashflow/refresh'"), 'cashflow refresh endpoint exists');
 assert(srv.includes('function cfCronTick'), 'cashflow 06:00 scheduler exists');
 assert(srv.includes('cfIsInternal'), 'internal Eurobank transfer tagging exists');
+assert(srv.includes("|| 730));"), 'cash-flow window defaults to the full ~2-year span');
+assert(srv.includes('const _rows = _fi > 0 ? _allRows.slice(_fi) : _allRows;'), 'empty lead-in trimmed from the cache');
+assert(srv.includes("cfRefresh('manual', req.query && req.query.days)"), 'refresh honours a ?days= override');
+assert(!srv.includes('for (let page = 1; page <= 40; page++)'), 'Search page cap raised beyond 40');
 
 const packets = [
   { payout: 100, b2bRem: 110, ctDeduct: 3, vatDeduct: 2, atDeduct: 1 },
