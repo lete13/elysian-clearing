@@ -1,0 +1,71 @@
+{
+ "baseSha256": "b7976e4938bee88e355411e0637d5e3f1165f05f055e680a0196d8bdbd042bf6",
+ "expectedSha256": "a216354b08a6ee23dacc84e0cd9ae7ebf42b3d5da743fa72341e23b9b4d396e7",
+ "builtAt": "2026-08-11 Leads: searchable archive, two-year retention, bounded first Meta import",
+ "assertions": [
+  {
+   "has": "archiveRetentionMonths: 24",
+   "note": "archive keeps two years by default"
+  },
+  {
+   "has": "metaSinceDate: ''",
+   "note": "the first Meta import can be bounded by date"
+  },
+  {
+   "has": "const q = String(req.query.q || '').trim().toLowerCase();",
+   "note": "the lead list takes a search term"
+  },
+  {
+   "has": "lower(coalesce(archive_reason,'')) LIKE $1",
+   "note": "search covers the archive reason"
+  },
+  {
+   "has": "where + qWhere",
+   "note": "the search is actually applied to the query"
+  },
+  {
+   "has": "async function leadRetentionSweep(",
+   "note": "retention sweep exists"
+  },
+  {
+   "has": "archive retention: older than",
+   "note": "the sweep records why on the timeline"
+  },
+  {
+   "has": "apt_id IS NULL",
+   "note": "converted leads are never swept"
+  }
+ ],
+ "patches": [
+  {
+   "note": "Leads: archive keeps two years and the first Meta import is bounded",
+   "find": "  archiveUndoDays: 30,",
+   "replace": "  archiveUndoDays: 30,\n  archiveRetentionMonths: 24,  // archived leads are kept two years, then tombstoned\n  // The first Meta pull would otherwise sweep in every lead the account has ever\n  // had (374 sat in Leads Center when this was built) and hand the whole backlog\n  // out at once. This floor bounds it; set it to the date you actually want to\n  // start from, or clear it once the backlog has been dealt with.\n  metaSinceDate: '',           // 'YYYY-MM-DD' - nothing older than this is imported",
+   "count": 1
+  },
+  {
+   "note": "Leads: the list is searchable across name, contact, form, campaign and archive reason",
+   "find": "    const where = view === 'archived' ? 'archived_at IS NOT NULL' : view === 'all' ? 'TRUE' : 'archived_at IS NULL';",
+   "replace": "    const where = view === 'archived' ? 'archived_at IS NOT NULL' : view === 'all' ? 'TRUE' : 'archived_at IS NULL';\n    // Free-text search. Matters most on the archive, which holds two years of\n    // leads: without it, finding \"that owner in Glyfada from last spring\" means\n    // scrolling. Erased tombstones hold no personal data so they simply miss.\n    const q = String(req.query.q || '').trim().toLowerCase();\n    const qWhere = q ? ` AND (\n        lower(coalesce(full_name,'')) LIKE $1 OR lower(coalesce(email,'')) LIKE $1\n        OR regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g') LIKE $1\n        OR lower(coalesce(form_name,'')) LIKE $1 OR lower(coalesce(campaign,'')) LIKE $1\n        OR lower(coalesce(archive_reason,'')) LIKE $1 OR lower(coalesce(owner,'')) LIKE $1 )` : '';\n    const qArgs = q ? ['%' + q.replace(/[%_]/g, '') + '%'] : [];",
+   "count": 1
+  },
+  {
+   "note": "Leads: the list query runs the search",
+   "find": "    const r = await pool.query('SELECT * FROM leads WHERE ' + where + ' ORDER BY COALESCE(created_time, updated_at) DESC LIMIT 2000');",
+   "replace": "    const r = await pool.query('SELECT * FROM leads WHERE ' + where + qWhere + ' ORDER BY COALESCE(created_time, updated_at) DESC LIMIT 2000', qArgs);",
+   "count": 1
+  },
+  {
+   "note": "Leads: the Meta pull never reaches back past the configured start date",
+   "find": "  const sinceSec = Math.floor(((sinceRow && sinceRow.lastRunMs) || (Date.now() - 7 * 864e5)) / 1000) - 600;   // 10 min overlap",
+   "replace": "  let sinceSec = Math.floor(((sinceRow && sinceRow.lastRunMs) || (Date.now() - 7 * 864e5)) / 1000) - 600;   // 10 min overlap\n  // Never import anything older than metaSinceDate. Without this the very first\n  // pull imports the account's entire history in one go and the assignment rule\n  // shares the whole backlog out before anyone has looked at it.\n  if (cfg.metaSinceDate) {\n    const floor = Math.floor(new Date(cfg.metaSinceDate + 'T00:00:00Z').getTime() / 1000);\n    if (isFinite(floor) && floor > sinceSec) sinceSec = floor;\n  }",
+   "count": 1
+  },
+  {
+   "note": "Leads: daily sweep tombstones archived leads past the retention window",
+   "find": "// Every 5 minutes. Silent and harmless until Meta is configured.",
+   "replace": "// Retention: archived leads are kept for archiveRetentionMonths (two years by\n// default) and then tombstoned - personal data removed, the row kept so the\n// funnel history stays intact. Converted leads are never touched. Runs once a\n// day, claim-the-date guarded like the other crons.\nasync function leadRetentionSweep() {\n  if (!pool) return;\n  await ensureLeadTables();\n  const cfg = await leadCfg();\n  const months = parseInt(cfg.archiveRetentionMonths, 10);\n  if (!isFinite(months) || months <= 0) return;\n  const r = await pool.query(\n    `UPDATE leads SET full_name = NULL, email = NULL, phone = NULL, raw = '{}'::jsonb,\n            fields = '{}'::jsonb, meta_lead_id = NULL, status = 'erased',\n            events = events || $1::jsonb, updated_at = NOW()\n       WHERE archived_at IS NOT NULL AND apt_id IS NULL AND status <> 'erased'\n         AND archived_at < NOW() - ($2 || ' months')::interval\n       RETURNING id`,\n    [JSON.stringify([leadEvent('erased', 'system', 'archive retention: older than ' + months + ' months')]), String(months)]);\n  if (r.rows.length) console.log('[leads] retention sweep tombstoned ' + r.rows.length + ' archived lead(s)');\n}\nsetInterval(async function () {\n  try {\n    if (!pool) return;\n    const a = vivaAthensNow();\n    if (a.hour !== 4) return;                       // quiet hour\n    const k = 'leads_retention_state';\n    const q = await pool.query('SELECT data FROM app_data WHERE key = $1', [k]);\n    const d = (q.rows[0] && q.rows[0].data) || {};\n    if (d.lastDate === a.date) return;\n    d.lastDate = a.date;\n    await pool.query(`INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb)\n                      ON CONFLICT (key) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`, [k, JSON.stringify(d)]);\n    await leadRetentionSweep();\n  } catch (e) { console.error('[leads] retention sweep error:', e.message); }\n}, 30 * 60 * 1000);\n\n// Every 5 minutes. Silent and harmless until Meta is configured.",
+   "count": 1
+  }
+ ]
+}
