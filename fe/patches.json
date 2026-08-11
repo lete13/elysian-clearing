@@ -1,6 +1,6 @@
 {
   "baseSha256": "ac76ef89647694eb04b2394bad03eeca8ba6630e3bbae63d609b6e5e337780cc",
-  "expectedSha256": "d1cf7323c5bf31f9a344a648275dae67494498772f83d597877d1c7f6dc6f06f",
+  "expectedSha256": "ec9eda9c3b761be3bf5c4c138ebb258878ed383ad6461d345036141620649d9d",
   "builtAt": "2026-08-07 grouped apartments clear as one unit",
   "patches": [
     {
@@ -370,12 +370,17 @@
     {
       "note": "Cash Flow: chart window honours the selected range and builds the selector",
       "find": "    const W=Math.min(60,days.length);",
-      "replace": "    // Charted window, chosen by the operator. The data cache always holds ~130\n    // days, so every option below is served from the same refresh.\n    const W=Math.min(window._cfW||60,days.length);\n    const _wOpts=[30,60,90,130].filter(n=>n<=days.length);\n    if(!_wOpts.length)_wOpts.push(days.length);\n    const _wsel=_wOpts.map(n=>{const on=W===Math.min(n,days.length);\n      return '<button onclick=\"cfSetW('+n+')\" title=\"Chart the last '+n+' days\" style=\"cursor:pointer;padding:2px 10px;font-size:11px;border-radius:12px;border:1px solid '+(on?'#C9A84C':'var(--bdr)')+';background:'+(on?'#C9A84C':'transparent')+';color:'+(on?'#0F1E2E':'var(--tx3)')+';font-weight:'+(on?700:400)+'\">'+n+'d</button>';}).join('');"
+      "replace": "    // Charted window, chosen by the operator. The cache holds every day since\n    // the account's first transaction, so every option is one refresh away.\n    const W=Math.min(window._cfW||60,days.length);\n    const _wOpts=[30,60,90,180,365].filter(n=>n<days.length);\n    _wOpts.push(days.length);\n    const _wsel=_wOpts.map(n=>{const on=W===Math.min(n,days.length);\n      const lbl=n===days.length?('All ('+Math.round(n/30.4)+'m)'):(n+'d');\n      return '<button onclick=\"cfSetW('+n+')\" title=\"Chart the last '+n+' days\" style=\"cursor:pointer;padding:2px 10px;font-size:11px;border-radius:12px;border:1px solid '+(on?'#C9A84C':'var(--bdr)')+';background:'+(on?'#C9A84C':'transparent')+';color:'+(on?'#0F1E2E':'var(--tx3)')+';font-weight:'+(on?700:400)+'\">'+lbl+'</button>';}).join('');"
     },
     {
       "note": "Cash Flow: range buttons rendered next to the chart title",
       "find": "      +'<b style=\"font-size:12.5px\">Last '+W+' days</b>'",
       "replace": "      +'<b style=\"font-size:12.5px\">Last '+W+' days</b>'\n      +'<span style=\"display:inline-flex;gap:4px\">'+_wsel+'</span>'"
+    },
+    {
+      "note": "Cash Flow: empty-state copy no longer promises a fixed 130 days",
+      "find": "to pull the last 130 days from Viva.",
+      "replace": "to pull the full account history from Viva."
     }
   ]
 }
