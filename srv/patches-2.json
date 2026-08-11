@@ -1,0 +1,25 @@
+{
+ "baseSha256": "ddd713b8756087dced56b02b7c540ef5c1146bb1ee59246131de4b705e53d917",
+ "expectedSha256": "fb86a1506c5b62f5951356f02d5a757b2681e3700352cbd63d91d2a312991c90",
+ "builtAt": "2026-08-10 FE release chain (fe/patches-N.json)",
+ "patches": [
+  {
+   "note": "FE bootstrap: apply the fe/patches-N.json release chain after the base file",
+   "find": "    fsB.writeFileSync(idx, html);\n",
+   "replace": "    // Release chain: fe/patches-2.json, fe/patches-3.json ... Each file starts\n    // where the previous one ended (its baseSha256 is the previous file's\n    // expectedSha256), so a release is a small new file instead of a rewrite of\n    // one ever-growing patches.json. Any mismatch throws and the whole set is\n    // discarded, exactly as before.\n    let chainSha = sha, chainOps = ops.length, chainBuilt = spec.builtAt || '';\n    for (let cn = 2; cn <= 20; cn++) {\n      const cf = path.join(__dirname, 'fe', 'patches-' + cn + '.json');\n      if (!fsB.existsSync(cf)) break;\n      const cs = JSON.parse(fsB.readFileSync(cf, 'utf8'));\n      const cops = cs.patches || [];\n      if (cs.baseSha256 && cs.baseSha256 !== chainSha) throw new Error('fe/patches-' + cn + '.json base ' + String(cs.baseSha256).slice(0, 12) + ' does not continue the chain (' + chainSha.slice(0, 12) + ')');\n      cops.forEach((p, i) => {\n        const n = html.split(p.find).length - 1;\n        const want = p.count || 1;\n        if (n !== want) throw new Error('fe/patches-' + cn + '.json patch #' + (i + 1) + (p.note ? ' (' + p.note + ')' : '') + ': anchor found ' + n + 'x, expected ' + want + 'x');\n        html = html.split(p.find).join(p.replace);\n      });\n      chainSha = sha256(html);\n      if (cs.expectedSha256 && cs.expectedSha256 !== chainSha) throw new Error('fe/patches-' + cn + '.json result ' + chainSha.slice(0, 12) + ' does not match its expected ' + String(cs.expectedSha256).slice(0, 12));\n      chainOps += cops.length;\n      if (cs.builtAt) chainBuilt = cs.builtAt;\n    }\n    fsB.writeFileSync(idx, html);\n",
+   "count": 1
+  },
+  {
+   "note": "FE bootstrap: report the whole chain in /api/fe-info",
+   "find": "    Object.assign(FE_INFO, { source: 'repo-file+patches', patches: ops.length, bytes: Buffer.byteLength(html), sha256: sha, builtAt: spec.builtAt || '' });",
+   "replace": "    Object.assign(FE_INFO, { source: 'repo-file+patches', patches: chainOps, bytes: Buffer.byteLength(html), sha256: chainSha, builtAt: chainBuilt });",
+   "count": 1
+  },
+  {
+   "note": "FE bootstrap: boot log reports the whole chain",
+   "find": "console.log('  FE: applied ' + ops.length + ' patch(es) to index.html (' + FE_INFO.bytes + ' bytes, sha256 ' + sha.slice(0, 12)",
+   "replace": "console.log('  FE: applied ' + chainOps + ' patch(es) to index.html (' + FE_INFO.bytes + ' bytes, sha256 ' + chainSha.slice(0, 12)",
+   "count": 1
+  }
+ ]
+}
