@@ -19,11 +19,26 @@ for (let n = 2; n <= 20; n++) {
   chainFiles.push(`patches-${n}.json`);
 }
 
+// A chain file may carry its own `assertions` — [{has|hasNot, note}] checked
+// against the final effective output. Feature checks then ship WITH the release
+// that introduces them, instead of this file growing on every deploy.
+const declared = [];
+function collect(file, spec) {
+  (spec.assertions || []).forEach(a => declared.push({ file, ...a }));
+}
+function checkDeclared(text, kind) {
+  declared.filter(a => a.file.startsWith(kind)).forEach(a => {
+    if (a.has) assert(text.includes(a.has), `${a.file}: ${a.note}`);
+    if (a.hasNot) assert(!text.includes(a.hasNot), `${a.file}: ${a.note}`);
+  });
+}
+
 let spec = null;
 let sha = crypto.createHash('sha256').update(html).digest('hex');
 let patchCount = 0;
 for (const file of chainFiles) {
   spec = JSON.parse(fs.readFileSync(path.join(root, 'fe', file), 'utf8'));
+  collect('fe/' + file, spec);
   assert.strictEqual(spec.baseSha256, sha, `${file} continues the chain`);
   for (const [index, patch] of spec.patches.entries()) {
     const count = html.split(patch.find).length - 1;
@@ -35,6 +50,7 @@ for (const file of chainFiles) {
   patchCount += spec.patches.length;
 }
 assert(chainFiles.length >= 2, 'the release chain is in use');
+checkDeclared(html, 'fe/');
 
 const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
   .map(match => match[1])
@@ -108,6 +124,7 @@ assert(html.includes('!complete(a) && !mcSkipped(a.id)'), 'skipped apartments le
 assert(html.includes('if (mcSkipped(a.id)) { skipN += n; return; }'), 'skipped apartments are never counted as sent');
 assert(html.includes('var _need = Math.max(0, tot - skipN);'), 'progress measures what actually needs clearing');
 
+
 // ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
 const srvChain = ['patches.json'];
 for (let n = 2; n <= 20; n++) {
@@ -119,6 +136,7 @@ let srvSha = crypto.createHash('sha256').update(srv).digest('hex');
 let srvCount = 0;
 for (const file of srvChain) {
   const srvSpec = JSON.parse(fs.readFileSync(path.join(root, 'srv', file), 'utf8'));
+  collect('srv/' + file, srvSpec);
   assert.strictEqual(srvSpec.baseSha256, srvSha, `srv/${file} continues the chain`);
   for (const [index, patch] of srvSpec.patches.entries()) {
     const count = srv.split(patch.find).length - 1;
@@ -130,6 +148,7 @@ for (const file of srvChain) {
   srvCount += srvSpec.patches.length;
 }
 new vm.Script(srv, { filename: 'server.effective.js' });
+checkDeclared(srv, 'srv/');
 assert(srv.includes("app.get('/api/viva/cashflow'"), 'cashflow read endpoint exists');
 assert(srv.includes("app.post('/api/viva/cashflow/refresh'"), 'cashflow refresh endpoint exists');
 assert(srv.includes('function cfCronTick'), 'cashflow 06:00 scheduler exists');
@@ -165,4 +184,4 @@ const packets = [
 assert.strictEqual(packets.reduce((sum, packet) => sum + (packet.payout || 0), 0), 350);
 assert.strictEqual(packets.reduce((sum, packet) => sum + (packet.b2bRem || 0), 0), 385);
 
-console.log(`monthly-close patches OK: ${patchCount} patches in ${chainFiles.length} chain file(s), ${scripts.length} scripts, ${sha}; server: ${srvCount} patches in ${srvChain.length} chain file(s), ${srvSha}`);
+console.log(`monthly-close patches OK: ${patchCount} patches in ${chainFiles.length} chain file(s), ${scripts.length} scripts, ${declared.length} declared checks, ${sha}; server: ${srvCount} patches in ${srvChain.length} chain file(s), ${srvSha}`);

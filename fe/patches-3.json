@@ -1,0 +1,103 @@
+{
+  "baseSha256": "f6a0c7ce38a49ff4a36c381547ab33e7240d1373c5d2154baef918827c9e167b",
+  "expectedSha256": "d68e67e4ec5dad4a51f8fffc5e8db03956c24d3d691a37432c6f3e0537523736",
+  "builtAt": "2026-08-11 Property Info: readable portfolio columns + owner contacts",
+  "assertions": [
+    {
+      "has": "short: 'Extinguisher'",
+      "note": "fire extinguisher has its own portfolio column head"
+    },
+    {
+      "has": "short: 'Smoke alarm'",
+      "note": "smoke detector has its own portfolio column head"
+    },
+    {
+      "has": "short: 'Emergency nos.'",
+      "note": "emergency phones have their own portfolio column head"
+    },
+    {
+      "has": "short: 'Exit signs'",
+      "note": "exit signage has its own portfolio column head"
+    },
+    {
+      "hasNot": "_esc(it.label.split(' ')[0])",
+      "note": "portfolio heads no longer take the first word of the label"
+    },
+    {
+      "has": "_esc(it.short || it.label)",
+      "note": "portfolio heads render the short label"
+    },
+    {
+      "has": "function _ownerEmails(",
+      "note": "owner emails are read from the Configuration fields"
+    },
+    {
+      "has": "window.pinfoOwnerPhone",
+      "note": "owner phone can be saved from Property Info"
+    },
+    {
+      "has": "function _ownerBlockHtml(",
+      "note": "the property page shows an owner contact block"
+    },
+    {
+      "has": "function _ownerTableHtml(",
+      "note": "the portfolio overview lists owner contacts"
+    },
+    {
+      "has": "_ownerTableHtml(apts);",
+      "note": "the owner contacts list renders under the matrix"
+    },
+    {
+      "has": "Owner phone (optional)",
+      "note": "Configuration gained an owner phone field"
+    },
+    {
+      "has": "setApt('${a.id}','ownerPhone'",
+      "note": "the Configuration phone field writes to the apartment"
+    }
+  ],
+  "patches": [
+    {
+      "note": "Property Info: distinct short column heads (two \"Fire\" and two \"Emergency\" columns before)",
+      "find": "  const COMPLIANCE_ITEMS = [\n    { id: 'ama', label: 'ΑΜΑ (registry number)', type: 'ama' },\n    { id: 'liability_insurance', label: 'Liability insurance' },\n    { id: 'disinfection', label: 'Disinfection / rodent control' },\n    { id: 'smoke_detector', label: 'Fire alarm / smoke detector' },\n    { id: 'fire_extinguisher', label: 'Fire extinguisher' },\n    { id: 'first_aid', label: 'First aid kit' },\n    { id: 'emergency_phones', label: 'Emergency phones', optional: true },\n    { id: 'electrical_cert', label: 'Electrical safety certificate' },\n    { id: 'exit_signage', label: 'Emergency exit signage & lighting' },\n  ];",
+      "replace": "  // `short` is the portfolio-table column head. Without it the table took the\n  // first word of each label, which produced two \"Fire\" columns and two\n  // \"Emergency\" columns - unreadable. Every short must be distinct.\n  const COMPLIANCE_ITEMS = [\n    { id: 'ama', label: 'ΑΜΑ (registry number)', short: 'ΑΜΑ', type: 'ama' },\n    { id: 'liability_insurance', label: 'Liability insurance', short: 'Insurance' },\n    { id: 'disinfection', label: 'Disinfection / rodent control', short: 'Pest control' },\n    { id: 'smoke_detector', label: 'Fire alarm / smoke detector', short: 'Smoke alarm' },\n    { id: 'fire_extinguisher', label: 'Fire extinguisher', short: 'Extinguisher' },\n    { id: 'first_aid', label: 'First aid kit', short: 'First aid' },\n    { id: 'emergency_phones', label: 'Emergency phones', short: 'Emergency nos.', optional: true },\n    { id: 'electrical_cert', label: 'Electrical safety certificate', short: 'Electrical' },\n    { id: 'exit_signage', label: 'Emergency exit signage & lighting', short: 'Exit signs' },\n  ];",
+      "count": 1
+    },
+    {
+      "note": "Portfolio overview: column heads use the short label and may wrap instead of being cut",
+      "find": "style=\"padding:6px 4px;font-size:10px;color:var(--tx3);border-bottom:1px solid var(--bdr2);max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\">' + _esc(it.label.split(' ')[0]) + '</th>'",
+      "replace": "style=\"padding:6px 5px;font-size:10px;color:var(--tx3);border-bottom:1px solid var(--bdr2);width:86px;white-space:normal;line-height:1.25;vertical-align:bottom\">' + _esc(it.short || it.label) + '</th>'",
+      "count": 1
+    },
+    {
+      "note": "Portfolio overview: wider table now the heads are readable",
+      "find": "min-width:820px",
+      "replace": "min-width:900px",
+      "count": 1
+    },
+    {
+      "note": "Property Info: owner-contact helpers and the phone field writer",
+      "find": "  window.pinfoMatrixGo = function (id) { pinfoSelectRental(id); };",
+      "replace": "  // Owner contact.\n  // Emails are owned by Configuration (ownerEmail / 2 / 3) and only shown here.\n  // The phone number is new and lives on the apartment beside them, so the rest\n  // of the app can use it too. Saved on blur; no re-render, so typing is safe.\n  function _ownerEmails(a) {\n    return [a && a.ownerEmail, a && a.ownerEmail2, a && a.ownerEmail3]\n      .map(function (e) { return String(e || '').trim(); }).filter(Boolean);\n  }\n  function _telHref(v) { return String(v || '').replace(/[^+0-9]/g, ''); }\n  window.pinfoOwnerPhone = function (aptId, v) {\n    const a = (S.apts || []).filter(function (x) { return x.id === aptId; })[0];\n    if (!a) return;\n    const nv = String(v || '').trim();\n    if (nv === String(a.ownerPhone || '')) return;\n    a.ownerPhone = nv; save();\n    if (typeof logChange === 'function') logChange('Property Info', 'Owner phone', a.name + ' → ' + (nv || '(cleared)'));\n    if (typeof toast === 'function') toast(nv ? 'Phone saved for ' + a.name + '.' : 'Phone cleared for ' + a.name + '.', 'ok');\n  };\n  function _ownerBlockHtml(a) {\n    const es = _ownerEmails(a);\n    return '<div class=\"card\" style=\"margin-top:14px\">' +\n      '<div style=\"font-size:14px;font-weight:700;color:var(--tx)\">Owner contact</div>' +\n      '<div style=\"font-size:11px;color:var(--tx3);margin:2px 0 10px\">Emails come from Configuration - edit them there. The phone number is saved as soon as you leave the field.</div>' +\n      '<div style=\"display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start\">' +\n      '<div style=\"min-width:240px\"><div style=\"font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--tx3);margin-bottom:4px\">' +\n      (a.ownerName ? _esc(a.ownerName) + ' · ' : '') + 'Email' + (es.length === 1 ? '' : 's') + '</div>' +\n      (es.length ? es.map(function (e) { return '<div style=\"font-size:13px;padding:1px 0\"><a href=\"mailto:' + _esc(e) + '\" style=\"color:#C9A84C;text-decoration:none\">' + _esc(e) + '</a></div>'; }).join('')\n                 : '<div style=\"font-size:12px;color:var(--tx-err)\">No owner email set in Configuration</div>') +\n      '</div>' +\n      '<div><div style=\"font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--tx3);margin-bottom:4px\">Phone</div>' +\n      '<input type=\"tel\" value=\"' + _esc(a.ownerPhone || '') + '\" placeholder=\"+30 69…\" onchange=\"pinfoOwnerPhone(\\'' + _esc(a.id) + '\\',this.value)\" style=\"' + IN + ';width:200px\">' +\n      (a.ownerPhone ? '<a href=\"tel:' + _esc(_telHref(a.ownerPhone)) + '\" style=\"color:#C9A84C;font-size:12px;text-decoration:none;margin-left:8px\">call</a>' : '') +\n      '</div></div></div>';\n  }\n  function _ownerTableHtml(apts) {\n    const missing = apts.filter(function (a) { return !_ownerEmails(a).length; }).length;\n    const noPhone = apts.filter(function (a) { return !String(a.ownerPhone || '').trim(); }).length;\n    const rows = apts.map(function (a) {\n      const es = _ownerEmails(a);\n      return '<tr style=\"border-bottom:1px solid var(--bdr)\">' +\n        '<td style=\"padding:5px 8px;font-size:12px;white-space:nowrap\">' + _esc(a.name) + '</td>' +\n        '<td style=\"padding:5px 8px;font-size:11px;color:var(--tx3);white-space:nowrap\">' + _esc(a.ownerName || '') + '</td>' +\n        '<td style=\"padding:5px 8px;font-size:12px\">' + (es.length\n          ? es.map(function (e) { return '<a href=\"mailto:' + _esc(e) + '\" style=\"color:#C9A84C;text-decoration:none\">' + _esc(e) + '</a>'; }).join('<span style=\"color:var(--tx3)\"> · </span>')\n          : '<span style=\"color:var(--tx-err)\">no email</span>') + '</td>' +\n        '<td style=\"padding:4px 8px;white-space:nowrap\"><input type=\"tel\" value=\"' + _esc(a.ownerPhone || '') + '\" placeholder=\"+30 …\" onchange=\"pinfoOwnerPhone(\\'' + _esc(a.id) + '\\',this.value)\" style=\"' + IN + ';width:160px;font-size:12px;padding:4px 7px\">' +\n        (a.ownerPhone ? '<a href=\"tel:' + _esc(_telHref(a.ownerPhone)) + '\" style=\"color:#C9A84C;font-size:11px;text-decoration:none;margin-left:6px\">call</a>' : '') + '</td></tr>';\n    }).join('');\n    return '<div class=\"card\" style=\"margin-top:14px;padding:0;overflow:auto\">' +\n      '<div style=\"padding:12px 14px 8px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap\">' +\n      '<div style=\"font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx2)\">Owner contacts</div>' +\n      '<div style=\"font-size:11px;color:var(--tx3)\">emails from Configuration · phone editable here' +\n      (missing ? ' · <span style=\"color:var(--tx-err)\">' + missing + ' without an email</span>' : '') +\n      (noPhone ? ' · <span style=\"color:var(--tx-warn)\">' + noPhone + ' without a phone</span>' : '') + '</div></div>' +\n      '<table style=\"border-collapse:collapse;width:100%;min-width:760px\">' +\n      '<tr><th style=\"text-align:left;padding:6px 8px;font-size:10px;color:var(--tx3);border-bottom:1px solid var(--bdr2)\">Apartment</th>' +\n      '<th style=\"text-align:left;padding:6px 8px;font-size:10px;color:var(--tx3);border-bottom:1px solid var(--bdr2)\">Owner</th>' +\n      '<th style=\"text-align:left;padding:6px 8px;font-size:10px;color:var(--tx3);border-bottom:1px solid var(--bdr2)\">Email(s)</th>' +\n      '<th style=\"text-align:left;padding:6px 8px;font-size:10px;color:var(--tx3);border-bottom:1px solid var(--bdr2)\">Phone</th></tr>' +\n      rows + '</table></div>';\n  }\n  window.pinfoMatrixGo = function (id) { pinfoSelectRental(id); };",
+      "count": 1
+    },
+    {
+      "note": "Portfolio overview: owner contacts list under the compliance matrix",
+      "find": "— click any cell to open that apartment.</div>';",
+      "replace": "— click any cell to open that apartment.</div>' +\n      _ownerTableHtml(apts);",
+      "count": 1
+    },
+    {
+      "note": "Property Info: owner contact block on the property page",
+      "find": "        _complianceBoardHtml();",
+      "replace": "        _ownerBlockHtml((S.apts || []).filter(function (x) { return x.id === _selRentalId; })[0] || {}) +\n        _complianceBoardHtml();",
+      "count": 1
+    },
+    {
+      "note": "Configuration: owner phone next to the owner emails",
+      "find": "placeholder=\"third@email.com\" onchange=\"setApt('${a.id}','ownerEmail3',_emailClean(this.value))\"></div>",
+      "replace": "placeholder=\"third@email.com\" onchange=\"setApt('${a.id}','ownerEmail3',_emailClean(this.value))\"></div>\n            <div><label class=\"lbl\">Owner phone (optional)</label><input type=\"tel\" value=\"${(a.ownerPhone||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"+30 69…\" onchange=\"setApt('${a.id}','ownerPhone',this.value.trim())\"></div>",
+      "count": 1
+    }
+  ]
+}
