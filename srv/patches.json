@@ -1,6 +1,6 @@
 {
  "baseSha256": "7d1857d5d5c5529f6688860c7b618d2c68a3956f9319ffc5d6544c546011edd0",
- "expectedSha256": "0a1ea592836a99414bc65911f2f1309e18013d5fefe6231d24a6f218bac5eccc",
+ "expectedSha256": "ddd713b8756025b0ac0b1e5eeb1bb1b7ba3a9e2e0d2b5b06a2ed6a20e5d29b3f",
  "builtAt": "2026-08-07 consolidated into server.js - patch list reset",
  "patches": [
   {
@@ -27,7 +27,7 @@
   {
    "note": "Cash Flow: history window configurable via VIVA_CASHFLOW_DAYS",
    "find": "const CF_DAYS = 130;",
-   "replace": "const CF_DAYS = Math.max(30, Math.min(1200, parseInt(process.env.VIVA_CASHFLOW_DAYS || '', 10) || 130));"
+   "replace": "// Full history: Viva serves everything back to the account's first transaction\n// (26 Feb 2025). The empty lead-in is trimmed below, so this is an upper bound.\nconst CF_DAYS = Math.max(30, Math.min(1200, parseInt(process.env.VIVA_CASHFLOW_DAYS || '', 10) || 730));"
   },
   {
    "note": "Cash Flow: cfRefresh accepts a per-run span override",
@@ -58,6 +58,11 @@
    "note": "Viva Search: raise the page cap so multi-year windows are not silently truncated",
    "find": "for (let page = 1; page <= 40; page++) {",
    "replace": "for (let page = 1; page <= 200; page++) {"
+  },
+  {
+   "note": "Cash Flow: trim the empty lead-in so the cache holds exactly the real history",
+   "find": "  const rec = {\n    updatedAt: now.toISOString(), trigger, creditsOnly, lastCronDate: prevCron,\n    from: pcvISO(from), to: pcvISO(pcvDay0(now)),\n    txCount: txs.length, typeHisto, spanDays: _span,\n    firstActive: (Object.values(byDay).filter(r => r.inc || r.exp).sort((a, b) => a.d < b.d ? -1 : 1)[0] || {}).d || null,\n    days: Object.values(byDay).sort((a, b) => a.d < b.d ? -1 : 1),",
+   "replace": "  // The account's first transaction is its real start - drop the flat zero days\n  // before it so a wide window does not carry months of dead space.\n  const _allRows = Object.values(byDay).sort((a, b) => a.d < b.d ? -1 : 1);\n  const _fi = _allRows.findIndex(r => r.inc || r.exp);\n  const _rows = _fi > 0 ? _allRows.slice(_fi) : _allRows;\n  const rec = {\n    updatedAt: now.toISOString(), trigger, creditsOnly, lastCronDate: prevCron,\n    from: _rows.length ? _rows[0].d : pcvISO(from), to: pcvISO(pcvDay0(now)),\n    txCount: txs.length, typeHisto, spanDays: _span, requestedFrom: pcvISO(from),\n    firstActive: _fi >= 0 ? _allRows[_fi].d : null,\n    days: _rows,"
   }
  ]
 }
