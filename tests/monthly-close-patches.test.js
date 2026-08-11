@@ -80,6 +80,16 @@ assert(html.includes('[30,60,90,180,365].filter(n=>n<days.length)'), 'range opti
 assert(html.includes("_wOpts.push(days.length);"), 'an All option covering the whole cache is offered');
 assert(!html.includes('const W=Math.min(60,days.length)'), 'hard-coded 60-day chart window is gone');
 assert(!html.includes('pull the last 130 days'), 'empty-state copy no longer promises a fixed 130 days');
+assert(html.includes("var MC_SKIP_PW = '2026';"), 'skip-month action is password gated');
+assert(html.includes('window.mcNotNeeded'), 'Not-needed-this-month action exists');
+assert(html.includes('window.mcUndoNotNeeded'), 'a skipped month can be undone');
+assert(html.includes("a.type === 'private'"), 'private apartments get the TAKK reminder');
+assert(html.includes('The TAKK still has to be issued'), 'TAKK warning text present');
+assert(html.includes('function mcPrevSkipped(id)'), 'previous-month skip lookup exists');
+assert(html.includes('skipped</span>'), 'previous-month skip is flagged on the focus card');
+assert(html.includes('!complete(a) && !mcSkipped(a.id)'), 'skipped apartments leave the queue');
+assert(html.includes('if (mcSkipped(a.id)) { skipN += n; return; }'), 'skipped apartments are never counted as sent');
+assert(html.includes('var _need = Math.max(0, tot - skipN);'), 'progress measures what actually needs clearing');
 
 // ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
 const srvSpec = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches.json'), 'utf8'));
