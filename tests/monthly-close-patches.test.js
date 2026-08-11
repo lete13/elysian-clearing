@@ -143,6 +143,15 @@ assert(srv.includes('does not continue the chain'), 'a chain file that does not 
 assert(srv.includes('patches: chainOps'), '/api/fe-info reports the whole chain');
 assert(srv.includes("console.log('  FE: applied ' + chainOps + ' patch(es)") && srv.includes("' bytes, sha256 ' + chainSha.slice(0, 12)"), 'boot log reports the whole chain');
 
+assert(srv.includes("app.get('/api/rental-info'"), 'Property Info portfolio endpoint exists');
+assert(srv.includes("app.get('/api/rental-info/:id'"), 'Property Info read endpoint exists');
+assert(srv.includes("app.post('/api/rental-info/:id'"), 'Property Info save endpoint exists (the tab 404d without it)');
+assert(srv.includes('CREATE TABLE IF NOT EXISTS rental_info'), 'rental_info table is self-healing like proof_files');
+assert(srv.includes('ON CONFLICT (rental_id) DO UPDATE'), 'saving one apartment upserts its own row');
+assert(srv.includes('function riShape('), 'saved records are shaped, so junk fields cannot land in the column');
+assert(srv.includes("app.get('/api/whoami'"), 'whoami endpoint exists');
+assert(html.includes("fetch('/api/rental-info/'"), 'the Property Info tab is the client of those endpoints');
+
 const boot = fs.readFileSync(path.join(root, 'srv-boot.js'), 'utf8');
 new vm.Script('(function(exports,require,module,__filename,__dirname){\n' + boot.replace(/^#![^\n]*\n/, '') + '\n})', { filename: 'srv-boot.js' });
 assert(boot.includes("'patches-' + n + '.json'"), 'srv-boot walks the server release chain');
