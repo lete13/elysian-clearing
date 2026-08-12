@@ -1,0 +1,33 @@
+{
+ "baseSha256": "684f0973552ce171357acc66560a931244756c29e6afa94f96397e042e5b16aa",
+ "expectedSha256": "66e0f84a91a38e116a1a55e3a586434aa135fdb4af1ba35c651c7eeffa22b110",
+ "builtAt": "2026-08-12 Leads: erasing a lead clears its property details too",
+ "assertions": [
+  {
+   "has": "property_address = NULL, property_size = NULL, property_type = NULL",
+   "note": "erase scrubs the property columns"
+  },
+  {
+   "has": "WHERE status = 'erased' AND property_address IS NOT NULL",
+   "note": "already-erased tombstones are cleaned up"
+  },
+  {
+   "has": "an address is personal data",
+   "note": "the reason is recorded next to the code"
+  }
+ ],
+ "patches": [
+  {
+   "note": "Leads: erasing a lead also clears the property details it volunteered",
+   "find": "      `UPDATE leads SET full_name = NULL, email = NULL, phone = NULL, raw = '{}'::jsonb, fields = '{}'::jsonb,\n              meta_lead_id = NULL, status = 'erased', archived_at = COALESCE(archived_at, NOW()),\n              events = $2::jsonb, updated_at = NOW() WHERE id = $1`, [id, ev]);",
+   "replace": "      `UPDATE leads SET full_name = NULL, email = NULL, phone = NULL, raw = '{}'::jsonb, fields = '{}'::jsonb,\n              meta_lead_id = NULL, status = 'erased', archived_at = COALESCE(archived_at, NOW()),\n              -- an address is personal data, and a 3-bed 85 m2 maisonette in a named\n              -- suburb re-identifies its owner even without the street. \"Personal data\n              -- removed\" has to mean these too, not just the name and the phone.\n              property_address = NULL, property_size = NULL, property_type = NULL,\n              bedrooms = NULL, bathrooms = NULL, bedrooms_n = NULL, bathrooms_n = NULL,\n              events = $2::jsonb, updated_at = NOW() WHERE id = $1`, [id, ev]);",
+   "count": 1
+  },
+  {
+   "note": "Leads: tombstones erased before that fix are cleaned up as well",
+   "find": "  _leadsReady = true;",
+   "replace": "  // Leads erased between the property columns shipping and the line above being\n  // fixed kept their address. Clear those too - idempotent, matches nothing after\n  // the first boot.\n  await pool.query(`\n    UPDATE leads SET property_address = NULL, property_size = NULL, property_type = NULL,\n                     bedrooms = NULL, bathrooms = NULL, bedrooms_n = NULL, bathrooms_n = NULL\n     WHERE status = 'erased' AND property_address IS NOT NULL;\n  `);\n  _leadsReady = true;",
+   "count": 1
+  }
+ ]
+}
