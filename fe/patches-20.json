@@ -1,0 +1,65 @@
+{
+ "baseSha256": "712c02a6459578ed86989fe1d74ddd4ef7c70a3e109f1b04f62cc8c7eed52e0a",
+ "expectedSha256": "1a3a367464dcdfa0e20c719e5d92d15159d19289e0d5c815464c5e116b6f2ee8",
+ "builtAt": "2026-08-12 Leads: fix name overlap — .tt collided with the toggle switch",
+ "assertions": [
+  {
+   "has": "ld-task-name",
+   "note": "task title uses ld-task-name"
+  },
+  {
+   "has": "ld-task-sub",
+   "note": "task subtitle uses ld-task-sub"
+  },
+  {
+   "has": "ld-task-side",
+   "note": "task actions column renamed"
+  },
+  {
+   "has": "ld-task-btns",
+   "note": "task buttons row renamed"
+  },
+  {
+   "has": "font-synthesis:none",
+   "note": "no synthetic bold double-drawing names"
+  },
+  {
+   "hasNot": "#tab-leads .ld-task .tt{",
+   "note": "leads no longer targets the toggle .tt class"
+  },
+  {
+   "has": "'<div class=\"ld-task-name\">'",
+   "note": "task card emits ld-task-name"
+  },
+  {
+   "hasNot": "'<div class=\"tt\">'",
+   "note": "task card no longer emits class tt"
+  }
+ ],
+ "patches": [
+  {
+   "note": "Leads: stop using .tt/.ts/.tm — they collide with the toggle switch",
+   "find": "#tab-leads .ld-task .tt{font-weight:650;font-size:14px}\n#tab-leads .ld-task .ts{font-size:12px;color:var(--tx2);margin-top:2px}\n#tab-leads .ld-task .tm{font-size:11.5px;color:var(--tx3);margin-top:4px}\n#tab-leads .ld-task .ta{display:flex;flex-direction:column;align-items:flex-end;gap:6px}\n#tab-leads .ld-task .tc{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}\n#tab-leads .ld-task .tc a,#tab-leads .ld-task .tc button{font-size:11px;padding:4px 9px}\n#tab-leads .ld-task-main{min-width:0}",
+   "replace": "#tab-leads .ld-task-name{font-weight:600;font-size:15px;line-height:1.35;font-synthesis:none;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n#tab-leads .ld-task-sub{font-size:12px;color:var(--tx2);margin-top:3px;line-height:1.4}\n#tab-leads .ld-task-meta{font-size:11.5px;color:var(--tx3);margin-top:4px;line-height:1.4}\n#tab-leads .ld-task-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}\n#tab-leads .ld-task-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}\n#tab-leads .ld-task-btns a,#tab-leads .ld-task-btns button{font-size:11px;padding:4px 9px}\n#tab-leads .ld-task-main{min-width:0;overflow:hidden}",
+   "count": 1
+  },
+  {
+   "note": "Leads: mobile stack uses renamed side column",
+   "find": "@media(max-width:720px){\n  #tab-leads .ld-task{grid-template-columns:1fr}\n  #tab-leads .ld-task .ta{align-items:stretch}\n  #tab-leads .ld-assign{align-items:stretch}\n}",
+   "replace": "@media(max-width:720px){\n  #tab-leads .ld-task{grid-template-columns:1fr}\n  #tab-leads .ld-task-side{align-items:stretch}\n  #tab-leads .ld-assign{align-items:stretch}\n}",
+   "count": 1
+  },
+  {
+   "note": "Leads: task card markup uses ld-task-name (not the toggle .tt)",
+   "find": "  function taskCard(l) {\n    var st = slaState(l);\n    var nx = nextAction(l);\n    var where = [l.property_address, l.property_size].filter(Boolean).join(' · ');\n    var tel = l.phone ? String(l.phone).replace(/[^0-9+]/g, '') : '';\n    var sla = slaLabel(l);\n    var ownerOpts = '<option value=\"\"' + (!l.owner ? ' selected' : '') + '>— unassigned —</option>' +\n      (cfg.team || []).map(function (t) {\n        return '<option value=\"' + esc(t.key) + '\"' + (l.owner === t.key ? ' selected' : '') + '>' + esc(displayName(t.key) || t.name) + '</option>';\n      }).join('');\n    return '<div class=\"ld-task ' + st + '\" role=\"button\" tabindex=\"0\" onclick=\"ldOpen(' + l.id + ')\"' +\n      ' onkeydown=\"if(event.key===\\'Enter\\'||event.key===\\' \\'){event.preventDefault();ldOpen(' + l.id + ')}\">' +\n      '<div class=\"ld-task-main\">' +\n        '<div class=\"tt\">' + esc(prettyPerson(l.full_name) || '(no name)') + '</div>' +\n        '<div class=\"ts\"><span class=\"ld-pipe\">' + esc(pipelinePos(l)) + '</span>' +\n          (where ? '<span class=\"ld-sep\">·</span><span>' + esc(where) + '</span>' : '') + '</div>' +\n        '<div class=\"tm\">Arrived ' + since(l.created_time || l.updated_at) +\n          (sla ? ' · <span class=\"ld-sla ' + st + '\">' + esc(sla) + '</span>' : '') + '</div>' +\n        '<div class=\"ld-nextline\">Next: <b>' + esc(nx.hint) + '</b></div>' +\n      '</div>' +\n      '<div class=\"ta\">' +\n        '<label class=\"ld-assign\" onclick=\"event.stopPropagation()\"><span>Assigned to</span>' +\n          '<select class=\"ld-in\" onchange=\"ldOwner(' + l.id + ', this.value)\">' + ownerOpts + '</select></label>' +\n        '<div class=\"tc\">' +\n          (l.phone ? '<a class=\"btn sm\" href=\"tel:' + esc(tel) + '\" onclick=\"event.stopPropagation()\">Call</a>' : '') +\n          (l.email ? '<a class=\"btn sm\" href=\"mailto:' + esc(l.email) + '\" onclick=\"event.stopPropagation()\">Email</a>' : '') +\n          (nx.stage ? '<button class=\"btn sm primary\" onclick=\"event.stopPropagation();ldStage(' + l.id + ',\\'' + nx.stage + '\\')\">' + esc(nx.done) + '</button>' : '') +\n        '</div>' +\n      '</div></div>';\n  }\n\n",
+   "replace": "  function taskCard(l) {\n    var st = slaState(l);\n    var nx = nextAction(l);\n    var where = [l.property_address, l.property_size].filter(Boolean).join(' · ');\n    var tel = l.phone ? String(l.phone).replace(/[^0-9+]/g, '') : '';\n    var sla = slaLabel(l);\n    var ownerOpts = '<option value=\"\"' + (!l.owner ? ' selected' : '') + '>— unassigned —</option>' +\n      (cfg.team || []).map(function (t) {\n        return '<option value=\"' + esc(t.key) + '\"' + (l.owner === t.key ? ' selected' : '') + '>' + esc(displayName(t.key) || t.name) + '</option>';\n      }).join('');\n    return '<div class=\"ld-task ' + st + '\" role=\"button\" tabindex=\"0\" onclick=\"ldOpen(' + l.id + ')\"' +\n      ' onkeydown=\"if(event.key===\\'Enter\\'||event.key===\\' \\'){event.preventDefault();ldOpen(' + l.id + ')}\">' +\n      '<div class=\"ld-task-main\">' +\n        '<div class=\"ld-task-name\">' + esc(prettyPerson(l.full_name) || '(no name)') + '</div>' +\n        '<div class=\"ts\"><span class=\"ld-pipe\">' + esc(pipelinePos(l)) + '</span>' +\n          (where ? '<span class=\"ld-sep\">·</span><span>' + esc(where) + '</span>' : '') + '</div>' +\n        '<div class=\"tm\">Arrived ' + since(l.created_time || l.updated_at) +\n          (sla ? ' · <span class=\"ld-sla ' + st + '\">' + esc(sla) + '</span>' : '') + '</div>' +\n        '<div class=\"ld-nextline\">Next: <b>' + esc(nx.hint) + '</b></div>' +\n      '</div>' +\n      '<div class=\"ld-task-side\">' +\n        '<label class=\"ld-assign\" onclick=\"event.stopPropagation()\"><span>Assigned to</span>' +\n          '<select class=\"ld-in\" onchange=\"ldOwner(' + l.id + ', this.value)\">' + ownerOpts + '</select></label>' +\n        '<div class=\"ld-task-btns\">' +\n          (l.phone ? '<a class=\"btn sm\" href=\"tel:' + esc(tel) + '\" onclick=\"event.stopPropagation()\">Call</a>' : '') +\n          (l.email ? '<a class=\"btn sm\" href=\"mailto:' + esc(l.email) + '\" onclick=\"event.stopPropagation()\">Email</a>' : '') +\n          (nx.stage ? '<button class=\"btn sm primary\" onclick=\"event.stopPropagation();ldStage(' + l.id + ',\\'' + nx.stage + '\\')\">' + esc(nx.done) + '</button>' : '') +\n        '</div>' +\n      '</div></div>';\n  }\n\n",
+   "count": 1
+  },
+  {
+   "note": "Leads: prettyPerson keeps a single clean name line",
+   "find": "  function prettyPerson(name) {\n    var s = String(name || '').trim().replace(/\\s+/g, ' ');\n    if (!s) return '';\n    // Meta sometimes dumps ALL CAPS or all lowercase.\n    if (s === s.toUpperCase() || s === s.toLowerCase()) {\n      return s.toLowerCase().replace(/(^|[\\s'\\-])(\\S)/g, function (_, a, b) { return a + b.toUpperCase(); });\n    }\n    return s;\n  }",
+   "replace": "  function prettyPerson(name) {\n    var s = String(name || '').replace(/[\\u0000-\\u001F\\u007F\\u2028\\u2029]+/g, ' ').trim();\n    // One line only — Meta/forms sometimes paste an address under the name.\n    s = s.split(/\\n|\\r|\\|/)[0].trim().replace(/\\s+/g, ' ');\n    if (!s) return '';\n    // Meta sometimes dumps ALL CAPS or all lowercase.\n    if (s === s.toUpperCase() || s === s.toLowerCase()) {\n      s = s.toLowerCase().replace(/(^|[\\s'\\-])(\\S)/g, function (_, a, b) { return a + b.toUpperCase(); });\n    }\n    return s;\n  }",
+   "count": 1
+  }
+ ]
+}
