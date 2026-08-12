@@ -30,16 +30,16 @@
  ],
  "assertions": [
   {
-   "has": "allowed.indexOf('management') < 0) return (allowed.indexOf(p) >= 0) ? p : allowed[0]",
-   "note": "dual-role users switch among their workspaces"
+   "has": "function hasComponent(t, kind)",
+   "note": "nav is a set of components, not a single workspace"
   },
   {
-   "has": "wsAllowed.length > 1",
-   "note": "switcher shows when the account has more than one profile"
+   "has": "Accounting + Operations",
+   "note": "dual-role Home shows both component sets at once"
   },
   {
-   "has": "o.hidden = wsAllowed.indexOf('management') < 0 && wsAllowed.indexOf(o.value) < 0",
-   "note": "Admin option hidden unless the account is Admin"
+   "hasNot": "wsAllowed.length > 1",
+   "note": "dual-role users no longer get a workspace switcher"
   },
   {
    "has": "profiles: Array.isArray(j.profiles)",
