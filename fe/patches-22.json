@@ -1,0 +1,45 @@
+{
+ "baseSha256": "6e6aa6ae81a1bc76b72b1ba0a8426fb5824c7234d4ca867b5c99cc11a210c845",
+ "expectedSha256": "5138ee36e075aaece12e3f20e6bf21fe511e4b8efa04df4c628e61225a037cac",
+ "builtAt": "2026-08-12 Leads: finish task-card class rename + harden name styles",
+ "assertions": [
+  {
+   "has": "class=\"ld-task-sub\"",
+   "note": "subtitle uses ld-task-sub"
+  },
+  {
+   "has": "class=\"ld-task-meta\"",
+   "note": "meta line uses ld-task-meta"
+  },
+  {
+   "hasNot": "<div class=\"ts\">",
+   "note": "no leftover ts div on task cards"
+  },
+  {
+   "hasNot": "<div class=\"tm\">",
+   "note": "no leftover tm div on task cards"
+  },
+  {
+   "has": "isolation:isolate",
+   "note": "task card creates its own stacking context"
+  },
+  {
+   "has": "width:auto;height:auto;max-width:100%",
+   "note": "name cannot inherit the 34x18 toggle box"
+  }
+ ],
+ "patches": [
+  {
+   "note": "Leads: finish renaming leftover .ts / .tm on the task card",
+   "find": "        '<div class=\"ld-task-name\">' + esc(prettyPerson(l.full_name) || '(no name)') + '</div>' +\n        '<div class=\"ts\"><span class=\"ld-pipe\">' + esc(pipelinePos(l)) + '</span>' +\n          (where ? '<span class=\"ld-sep\">·</span><span>' + esc(where) + '</span>' : '') + '</div>' +\n        '<div class=\"tm\">Arrived ' + since(l.created_time || l.updated_at) +\n          (sla ? ' · <span class=\"ld-sla ' + st + '\">' + esc(sla) + '</span>' : '') + '</div>' +\n        '<div class=\"ld-nextline\">Next: <b>' + esc(nx.hint) + '</b></div>' +",
+   "replace": "        '<div class=\"ld-task-name\">' + esc(prettyPerson(l.full_name) || '(no name)') + '</div>' +\n        '<div class=\"ld-task-sub\"><span class=\"ld-pipe\">' + esc(pipelinePos(l)) + '</span>' +\n          (where ? '<span class=\"ld-sep\">·</span><span>' + esc(where) + '</span>' : '') + '</div>' +\n        '<div class=\"ld-task-meta\">Arrived ' + since(l.created_time || l.updated_at) +\n          (sla ? ' · <span class=\"ld-sla ' + st + '\">' + esc(sla) + '</span>' : '') + '</div>' +\n        '<div class=\"ld-nextline\">Next: <b>' + esc(nx.hint) + '</b></div>' +",
+   "count": 1
+  },
+  {
+   "note": "Leads: harden task-name styles so nothing can crush the title",
+   "find": "#tab-leads .ld-task-name{font-weight:600;font-size:15px;line-height:1.35;font-synthesis:none;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n#tab-leads .ld-task-sub{font-size:12px;color:var(--tx2);margin-top:3px;line-height:1.4}\n#tab-leads .ld-task-meta{font-size:11.5px;color:var(--tx3);margin-top:4px;line-height:1.4}\n#tab-leads .ld-task-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}\n#tab-leads .ld-task-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}\n#tab-leads .ld-task-btns a,#tab-leads .ld-task-btns button{font-size:11px;padding:4px 9px}\n#tab-leads .ld-task-main{min-width:0;overflow:hidden}",
+   "replace": "#tab-leads .ld-task{align-items:start;background:var(--bg2);isolation:isolate}\n#tab-leads .ld-task-main{min-width:0;overflow:hidden;position:relative;z-index:1}\n#tab-leads .ld-task-name{display:block;position:relative;z-index:1;width:auto;height:auto;max-width:100%;margin:0;padding:0;border:0;border-radius:0;flex-shrink:1;font-weight:600;font-size:15px;line-height:1.4;font-synthesis:none;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--tx);background:transparent}\n#tab-leads .ld-task-sub{display:block;font-size:12px;color:var(--tx2);margin-top:4px;line-height:1.45}\n#tab-leads .ld-task-meta{display:block;font-size:11.5px;color:var(--tx3);margin-top:4px;line-height:1.45}\n#tab-leads .ld-task-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;position:relative;z-index:1}\n#tab-leads .ld-task-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}\n#tab-leads .ld-task-btns a,#tab-leads .ld-task-btns button{font-size:11px;padding:4px 9px}\n#tab-leads .ld-pipe{display:inline;font-weight:600;color:var(--tx)}",
+   "count": 1
+  }
+ ]
+}
