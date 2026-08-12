@@ -1,0 +1,171 @@
+{
+  "baseSha256": "05fd735096e593b2b03e16532b49d32654ec1f4399b1712b68acc64bde9f7bff",
+  "expectedSha256": "19ab46ee0d71cc49abe197a990d0a0255a06aeb4d76fd34ec0b94a52d82f648b",
+  "builtAt": "2026-08-12 Daily Ops priority/late/sofa auto-comments (red), kind pills, Property Info sleeping config — rebased after team-tasks took patches-11",
+  "patches": [
+    {
+      "note": "Daily Ops: kind buttons use short text labels instead of emoji",
+      "find": "var OPS_KINDS = [\n  { key: 'isMaintenance', manual: 'maintenanceManual', label: 'MAINTENANCE', bg: '#FEF3C7',\n    chip: 'background:#FDE68A;color:#92400E', on: '#92400E', icon: '🔧',\n    title: 'Maintenance / housekeeping block - no guest turnover',\n    re: /(\\b(maintenance|housekeeping)\\b|συντήρηση)/i },\n  { key: 'isPreparation', manual: 'preparationManual', label: 'PREPARATION', bg: '#FDF2F8',\n    chip: 'background:#FBCFE8;color:#9D174D', on: '#9D174D', icon: '🧹',\n    title: 'Preparation block - no guest turnover',\n    re: /(\\b(prep(aration|aring|s)?)\\b|προετοιμασ[ίι]α)/i },\n  { key: 'isExtended', manual: 'extendedManual', label: 'EXTENDED', bg: '#F3F4F6',\n    chip: 'background:#E5E7EB;color:#4B5563', on: '#4B5563', icon: '⇄',\n    title: 'Same guest checking out and back in the same day - no turnover needed',\n    re: /(\\b(extend(ed|s|ing)?|extension)\\b|παρ[αά]ταση)/i },\n];",
+      "replace": "var OPS_KINDS = [\n  { key: 'isMaintenance', manual: 'maintenanceManual', label: 'MAINTENANCE', bg: '#FEF3C7',\n    chip: 'background:#FDE68A;color:#92400E', on: '#92400E', icon: 'Mnt',\n    title: 'Maintenance / housekeeping block - no guest turnover',\n    re: /(\\b(maintenance|housekeeping)\\b|συντήρηση)/i },\n  { key: 'isPreparation', manual: 'preparationManual', label: 'PREPARATION', bg: '#FDF2F8',\n    chip: 'background:#FBCFE8;color:#9D174D', on: '#9D174D', icon: 'Prep',\n    title: 'Preparation block - no guest turnover',\n    re: /(\\b(prep(aration|aring|s)?)\\b|προετοιμασ[ίι]α)/i },\n  { key: 'isExtended', manual: 'extendedManual', label: 'EXTENDED', bg: '#F3F4F6',\n    chip: 'background:#E5E7EB;color:#4B5563', on: '#4B5563', icon: 'Ext',\n    title: 'Same guest checking out and back in the same day - no turnover needed',\n    re: /(\\b(extend(ed|s|ing)?|extension)\\b|παρ[αά]ταση)/i },\n];",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: managed auto-comments (late / priority / sofa) + Property Info cache",
+      "find": "// ── State update helpers ───────────────────────────────────────────────────────\n\nlet _opsRows = [];\nlet _opsNotes = '';\n\nfunction opsSetRow(i, field, val) {\n  if (!_opsRows[i]) return;\n  _opsRows[i][field] = val;\n}",
+      "replace": "// ── State update helpers ───────────────────────────────────────────────────────\n\nlet _opsRows = [];\nlet _opsNotes = '';\n// Property Info cache for Daily Ops auto-comments (base capacity → sofa prep).\nlet _opsRentalInfo = null;\nlet _opsRentalInfoLoading = false;\nconst OPS_TAG_LATE = 'Late Checkout: 12:00';\nconst OPS_TAG_PRIORITY = 'PRIORITY';\nconst OPS_TAG_SOFA1 = 'Prepare 1 sofa bed';\nconst OPS_TAG_SOFA2 = 'Prepare 2 sofa beds';\n\nfunction _opsSplitComments(c) {\n  return String(c || '').split(/\\s*[·|;]\\s*|\\n+/).map(function (s) { return s.trim(); }).filter(Boolean);\n}\nfunction _opsJoinComments(parts) {\n  return parts.filter(Boolean).join(' · ');\n}\nfunction _opsSetManagedComment(row, tag, on) {\n  if (!row) return;\n  const parts = _opsSplitComments(row.comments).filter(function (p) {\n    if (p === tag) return false;\n    if ((tag === OPS_TAG_SOFA1 || tag === OPS_TAG_SOFA2) && (p === OPS_TAG_SOFA1 || p === OPS_TAG_SOFA2)) return false;\n    return true;\n  });\n  if (on) parts.push(tag);\n  row.comments = _opsJoinComments(parts);\n}\nfunction _opsAptHouseRules(row) {\n  const id = row && (row.aptId || '');\n  const fromCache = (id && _opsRentalInfo && _opsRentalInfo[id] && _opsRentalInfo[id].houseRules) || {};\n  const apt = (typeof _opsAptOf === 'function') ? _opsAptOf(row) : {};\n  const base = (fromCache.base_capacity != null && fromCache.base_capacity !== '')\n    ? fromCache.base_capacity\n    : (apt && apt.baseCapacity);\n  return Object.assign({}, fromCache, { base_capacity: base });\n}\nfunction _opsApplySofaComment(row) {\n  if (!row) return;\n  const hr = _opsAptHouseRules(row);\n  const base = parseInt(hr.base_capacity, 10);\n  const people = parseInt(row.people, 10);\n  if (!isFinite(base) || base <= 0 || !isFinite(people) || people <= 0) {\n    _opsSetManagedComment(row, OPS_TAG_SOFA1, false);\n    _opsSetManagedComment(row, OPS_TAG_SOFA2, false);\n    return;\n  }\n  const excess = people - base;\n  if (excess >= 2) _opsSetManagedComment(row, OPS_TAG_SOFA2, true);\n  else if (excess >= 1) _opsSetManagedComment(row, OPS_TAG_SOFA1, true);\n  else {\n    _opsSetManagedComment(row, OPS_TAG_SOFA1, false);\n    _opsSetManagedComment(row, OPS_TAG_SOFA2, false);\n  }\n}\nfunction _opsApplySofaCommentsAll() {\n  (_opsRows || []).forEach(_opsApplySofaComment);\n}\nfunction _opsPrefetchRentalInfo() {\n  if (_opsRentalInfo || _opsRentalInfoLoading) return;\n  _opsRentalInfoLoading = true;\n  fetch('/api/rental-info').then(function (r) { return r.ok ? r.json() : {}; }).then(function (data) {\n    _opsRentalInfo = data || {};\n    _opsRentalInfoLoading = false;\n    _opsApplySofaCommentsAll();\n    const tbody = document.getElementById('ops-tbody');\n    if (tbody && _opsRows && _opsRows.length) {\n      tbody.innerHTML = _opsRows.map(function (row, idx) { return _opsBuildRow(row, idx); }).join('');\n      if (typeof _opsAutoSave === 'function') _opsAutoSave();\n    }\n  }).catch(function () { _opsRentalInfo = {}; _opsRentalInfoLoading = false; });\n}\n\nfunction opsSetRow(i, field, val) {\n  if (!_opsRows[i]) return;\n  _opsRows[i][field] = val;\n  if (field === 'people') {\n    _opsApplySofaComment(_opsRows[i]);\n    const tbody = document.getElementById('ops-tbody');\n    const tr = tbody && tbody.children[i];\n    const inp = tr && tr.querySelector('input[data-field=\"comments\"]');\n    if (inp) inp.value = _opsRows[i].comments || '';\n  }\n}",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: Late CO writes Late Checkout: 12:00; Priority writes PRIORITY",
+      "find": "function opsToggleLate(i) {\n  if (!_opsRows[i]) return;\n  _opsRows[i].lateCheckout = !_opsRows[i].lateCheckout;\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');\n}",
+      "replace": "function opsToggleLate(i) {\n  if (!_opsRows[i]) return;\n  _opsRows[i].lateCheckout = !_opsRows[i].lateCheckout;\n  _opsSetManagedComment(_opsRows[i], OPS_TAG_LATE, !!_opsRows[i].lateCheckout);\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}\nfunction opsTogglePriority(i) {\n  if (!_opsRows[i]) return;\n  _opsRows[i].isPriority = !_opsRows[i].isPriority;\n  _opsSetManagedComment(_opsRows[i], OPS_TAG_PRIORITY, !!_opsRows[i].isPriority);\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: Late + Priority (red) + sofa badges; PRIORITY/SOFA badges on the apt name",
+      "find": "  const lBg  = row.lateCheckout ? '#FEF3C7' : 'transparent';\n  const lClr = row.lateCheckout ? '#92400E' : '#9CA3AF';\n  const lBrd = row.lateCheckout ? '1.5px solid #F59E0B' : '1px solid #ddd';\n  const lTxt = row.lateCheckout ? '\\u26a0 LATE CO' : 'Late CO';\n  return `<tr style=\"background:${_rowBg};${_rowBrd}\">\n    <td style=\"padding:4px 6px;border:1px solid #ddd;text-align:center;font-size:11px;color:#666\">${i+1}</td>\n    <td style=\"padding:4px 8px;border:1px solid #ddd;font-size:12px;font-weight:600;color:${_kind ? '#9CA3AF' : '#1a1a2e'}${_kind ? ';text-decoration:line-through' : ''}\">${row.aptName}${_kind ? ' <span style=\"text-decoration:none;' + _kind.chip + ';font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"' + _kind.title + '\">' + _kind.label + '</span>' : ''}${row.isOwner ? ' <span style=\"background:#FCD34D;color:#7C2D12;font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle;border:1px solid #DC2626\" title=\"Owner stay or block - prepare the apartment as normal\">OWNER</span>' : ''}${(function(){const l = window.aptAreaLabel ? window.aptAreaLabel(_opsAptOf(row)) : ''; return l ? '<div style=\"font-size:10px;font-weight:400;color:#9CA3AF;text-decoration:none\" title=\"Area - sets the order of this list\">' + l + '</div>' : '';})()}</td>\n    <td style=\"padding:4px 6px;border:1px solid #ddd;text-align:center\">\n      <button onclick=\"opsToggleLate(${i})\"\n        style=\"background:${lBg};border:${lBrd};border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;color:${lClr};cursor:pointer;white-space:nowrap;font-family:inherit\">\n        ${lTxt}\n      </button>\n    </td>",
+      "replace": "  const lBg  = row.lateCheckout ? '#FEF3C7' : 'transparent';\n  const lClr = row.lateCheckout ? '#92400E' : '#9CA3AF';\n  const lBrd = row.lateCheckout ? '1.5px solid #F59E0B' : '1px solid #E5E7EB';\n  const lTxt = row.lateCheckout ? 'Late 12:00' : 'Late CO';\n  const pOn  = !!row.isPriority;\n  const pBg  = pOn ? '#DC2626' : 'transparent';\n  const pClr = pOn ? '#fff' : '#DC2626';\n  const pBrd = pOn ? '1.5px solid #DC2626' : '1px solid #FECACA';\n  const _sofaOn = /Prepare [12] sofa bed/.test(String(row.comments || ''));\n  const _sofaLabel = /Prepare 2 sofa beds/.test(String(row.comments || '')) ? '2 SOFAS' : (_sofaOn ? '1 SOFA' : '');\n  const _cRed = pOn || _sofaOn;\n  return `<tr style=\"background:${_rowBg};${_rowBrd}\">\n    <td style=\"padding:4px 6px;border:1px solid #ddd;text-align:center;font-size:11px;color:#666\">${i+1}</td>\n    <td style=\"padding:4px 8px;border:1px solid #ddd;font-size:12px;font-weight:600;color:${_kind ? '#9CA3AF' : '#1a1a2e'}${_kind ? ';text-decoration:line-through' : ''}\">${row.aptName}${_kind ? ' <span style=\"text-decoration:none;' + _kind.chip + ';font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"' + _kind.title + '\">' + _kind.label + '</span>' : ''}${row.isOwner ? ' <span style=\"background:#FCD34D;color:#7C2D12;font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle;border:1px solid #DC2626\" title=\"Owner stay or block - prepare the apartment as normal\">OWNER</span>' : ''}${pOn ? ' <span style=\"background:#DC2626;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"Priority clean\">PRIORITY</span>' : ''}${_sofaOn ? ' <span style=\"background:#DC2626;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"Guests exceed base capacity — prepare sofa bed(s)\">' + _sofaLabel + '</span>' : ''}${(function(){const l = window.aptAreaLabel ? window.aptAreaLabel(_opsAptOf(row)) : ''; return l ? '<div style=\"font-size:10px;font-weight:400;color:#9CA3AF;text-decoration:none\" title=\"Area - sets the order of this list\">' + l + '</div>' : '';})()}</td>\n    <td style=\"padding:4px 4px;border:1px solid #ddd;text-align:center;white-space:nowrap\">\n      <button onclick=\"opsToggleLate(${i})\" title=\"Late checkout — adds Late Checkout: 12:00 to comments\"\n        style=\"background:${lBg};border:${lBrd};border-radius:4px;padding:3px 7px;font-size:10px;font-weight:700;color:${lClr};cursor:pointer;white-space:nowrap;font-family:inherit;margin:1px\">\n        ${lTxt}\n      </button>\n      <button onclick=\"opsTogglePriority(${i})\" title=\"Priority — adds PRIORITY to comments\"\n        style=\"background:${pBg};border:${pBrd};border-radius:4px;padding:3px 7px;font-size:10px;font-weight:700;color:${pClr};cursor:pointer;white-space:nowrap;font-family:inherit;margin:1px\">\n        ${pOn ? 'Priority' : 'Pri'}\n      </button>\n    </td>",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: Priority and sofa-prep comments render in red",
+      "find": "    <td style=\"padding:4px 4px;border:1px solid #ddd\">\n      <input type=\"text\" value=\"${row.comments||''}\" data-field=\"comments\"\n        oninput=\"opsSetRow(${i},'comments',this.value);_opsAutoSave()\"\n        placeholder=\"\"\n        style=\"width:100%;box-sizing:border-box;border:none;background:transparent;font-size:12px;outline:none;color:#1a1a2e\">\n    </td>",
+      "replace": "    <td style=\"padding:4px 4px;border:1px solid #ddd\">\n      <input type=\"text\" value=\"${row.comments||''}\" data-field=\"comments\"\n        oninput=\"opsSetRow(${i},'comments',this.value);_opsAutoSave()\"\n        placeholder=\"\"\n        style=\"width:100%;box-sizing:border-box;border:none;background:transparent;font-size:12px;outline:none;color:${_cRed ? '#DC2626' : '#1a1a2e'};font-weight:${_cRed ? '700' : '400'}\">\n    </td>",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: restyle kind buttons as compact text pills",
+      "find": "      ${OPS_KINDS.map(function (k) {\n        const on = !!row[k.key];\n        return '<button onclick=\"_opsSetKind(' + i + ',\\'' + k.key + '\\')\" title=\"' + (on ? 'Marked ' + k.label.toLowerCase() + ' - click to undo' : 'Mark as ' + k.label.toLowerCase()) + '\"' +\n          ' style=\"background:' + (on ? k.on : 'none') + ';border:' + (on ? 'none' : '1px solid #E5E7EB') + ';border-radius:4px;cursor:pointer;color:' + (on ? '#fff' : '#9CA3AF') + ';font-size:10px;font-weight:700;line-height:1;padding:3px 5px;vertical-align:middle\">' + k.icon + '</button>';\n      }).join('')}\n      <button onclick=\"opsRemoveRow(${i})\"\n        title=\"Remove from today's list\"\n        style=\"background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:18px;line-height:1;padding:0;vertical-align:middle\"",
+      "replace": "      ${OPS_KINDS.map(function (k) {\n        const on = !!row[k.key];\n        return '<button onclick=\"_opsSetKind(' + i + ',\\'' + k.key + '\\')\" title=\"' + (on ? 'Marked ' + k.label.toLowerCase() + ' - click to undo' : 'Mark as ' + k.label.toLowerCase()) + '\"' +\n          ' style=\"background:' + (on ? k.on : '#F9FAFB') + ';border:1px solid ' + (on ? k.on : '#E5E7EB') + ';border-radius:5px;cursor:pointer;color:' + (on ? '#fff' : '#6B7280') + ';font-size:9px;font-weight:700;letter-spacing:.02em;line-height:1;padding:4px 6px;min-width:34px;vertical-align:middle;margin:0 1px\">' + k.icon + '</button>';\n      }).join('')}\n      <button onclick=\"opsRemoveRow(${i})\"\n        title=\"Remove from today's list\"\n        style=\"background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:18px;line-height:1;padding:0;vertical-align:middle\"",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: widen the kind-actions column for the text pills",
+      "find": "    <td style=\"padding:4px 4px;border:1px solid #ddd;text-align:center;width:104px;white-space:nowrap\">\n      ${OPS_KINDS.map(function (k) {",
+      "replace": "    <td style=\"padding:4px 4px;border:1px solid #ddd;text-align:center;width:148px;white-space:nowrap\">\n      ${OPS_KINDS.map(function (k) {",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: header renamed Late / Pri for the two flag buttons",
+      "find": "<th style=\"padding:7px 8px;border:1px solid #374151;text-align:center;white-space:nowrap;width:80px\">Late CO</th>",
+      "replace": "<th style=\"padding:7px 8px;border:1px solid #374151;text-align:center;white-space:nowrap;width:118px\" title=\"Late checkout and priority flags\">Late / Pri</th>",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: load Property Info and apply sofa-prep comments on render",
+      "find": "function renderOps() {\n  const el = document.getElementById('tab-ops');\n  if (!el) return;\n  _opsEnsure();\n  if (!_opsDate) _opsDate = _opsTodayStr();\n\n  const { rows, notes, savedAt } = _opsLoadData(_opsDate);\n  _opsRows  = rows;\n  _opsNotes = notes;",
+      "replace": "function renderOps() {\n  const el = document.getElementById('tab-ops');\n  if (!el) return;\n  _opsEnsure();\n  if (!_opsDate) _opsDate = _opsTodayStr();\n  if (typeof _opsPrefetchRentalInfo === 'function') _opsPrefetchRentalInfo();\n\n  const { rows, notes, savedAt } = _opsLoadData(_opsDate);\n  _opsRows  = rows;\n  _opsNotes = notes;\n  _opsApplySofaCommentsAll();",
+      "count": 1
+    },
+    {
+      "note": "Property Info: Base capacity + sleeping configuration above Max guests",
+      "find": "      const maxGuestsSel = (function () {\n        const cur = _cur.houseRules.maximum_guests || '';\n        let opts = '';\n        for (let n = 1; n <= 15; n++) opts += '<option value=\"' + n + '\"' + (String(cur) === String(n) ? ' selected' : '') + '>' + n + '</option>';\n        return '<div style=\"display:flex;align-items:center;gap:8px;padding:4px 0\"><span style=\"min-width:150px;font-size:12px;color:var(--tx3)\">Max guests</span>' +\n          '<select onchange=\"pinfoRule(\\'maximum_guests\\',this.value)\" style=\"' + IN + '\"><option value=\"\">—</option>' + opts + '</select></div>';\n      })();",
+      "replace": "      const _numOpts = function (cur, max) {\n        let opts = '';\n        for (let n = 0; n <= max; n++) opts += '<option value=\"' + n + '\"' + (String(cur) === String(n) ? ' selected' : '') + '>' + n + '</option>';\n        return opts;\n      };\n      const baseCapSel = (function () {\n        const cur = _cur.houseRules.base_capacity || '';\n        let opts = '';\n        for (let n = 1; n <= 15; n++) opts += '<option value=\"' + n + '\"' + (String(cur) === String(n) ? ' selected' : '') + '>' + n + '</option>';\n        return '<div style=\"display:flex;align-items:center;gap:8px;padding:4px 0\"><span style=\"min-width:150px;font-size:12px;color:var(--tx3)\">Base capacity</span>' +\n          '<select onchange=\"pinfoRule(\\'base_capacity\\',this.value)\" style=\"' + IN + '\"><option value=\"\">—</option>' + opts + '</select>' +\n          '<span style=\"font-size:11px;color:var(--tx3)\">beds before sofa prep</span></div>';\n      })();\n      const sleepCfg = (function () {\n        const hr = _cur.houseRules || {};\n        const row = function (key, label, max) {\n          const cur = (hr[key] == null || hr[key] === '') ? '0' : String(hr[key]);\n          return '<div style=\"display:flex;align-items:center;gap:8px;padding:3px 0\"><span style=\"min-width:150px;font-size:12px;color:var(--tx3)\">' + label + '</span>' +\n            '<select onchange=\"pinfoRule(\\'' + key + '\\',this.value)\" style=\"width:72px;' + IN + '\">' + _numOpts(cur, max) + '</select></div>';\n        };\n        return '<div style=\"padding:8px 0 6px;border-top:.5px solid var(--bdr2);border-bottom:.5px solid var(--bdr2);margin:6px 0 8px\">' +\n          '<div style=\"font-size:11px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px\">Sleeping configuration</div>' +\n          row('beds_double', 'Double beds', 5) +\n          row('beds_single', 'Single beds', 6) +\n          row('sofa_bed_2p', 'Sofa bed (2 ppl)', 3) +\n          row('sofa_bed_1p', 'Sofa bed (1 ppl)', 3) +\n          '</div>';\n      })();\n      const maxGuestsSel = (function () {\n        const cur = _cur.houseRules.maximum_guests || '';\n        let opts = '';\n        for (let n = 1; n <= 15; n++) opts += '<option value=\"' + n + '\"' + (String(cur) === String(n) ? ' selected' : '') + '>' + n + '</option>';\n        return '<div style=\"display:flex;align-items:center;gap:8px;padding:4px 0\"><span style=\"min-width:150px;font-size:12px;color:var(--tx3)\">Max guests</span>' +\n          '<select onchange=\"pinfoRule(\\'maximum_guests\\',this.value)\" style=\"' + IN + '\"><option value=\"\">—</option>' + opts + '</select></div>';\n      })();",
+      "count": 1
+    },
+    {
+      "note": "Property Info: render base capacity and sleeping config in the House rules column",
+      "find": "'<div style=\"margin-bottom:22px\">' + maxGuestsSel + minStayRow + '</div>' +",
+      "replace": "'<div style=\"margin-bottom:22px\">' + baseCapSel + sleepCfg + maxGuestsSel + minStayRow + '</div>' +",
+      "count": 1
+    },
+    {
+      "note": "Property Info: mirror base capacity onto the apartment + Daily Ops cache",
+      "find": "  window.pinfoRule = function (k, val) { _cur.houseRules[k] = val; _dirty = true; _markDirty(); };",
+      "replace": "  window.pinfoRule = function (k, val) {\n    _cur.houseRules[k] = val; _dirty = true; _markDirty();\n    // Mirror capacity onto the apartment record so Daily Ops sofa comments\n    // update without waiting for another rental-info fetch.\n    if (k === 'base_capacity' && _selRentalId && window.S && Array.isArray(S.apts)) {\n      const apt = S.apts.find(function (a) { return a.id === _selRentalId; });\n      if (apt) { apt.baseCapacity = val; if (typeof save === 'function') save(); }\n    }\n    if (typeof _opsRentalInfo !== 'undefined' && _opsRentalInfo && _selRentalId) {\n      _opsRentalInfo[_selRentalId] = _opsRentalInfo[_selRentalId] || {};\n      _opsRentalInfo[_selRentalId].houseRules = Object.assign({}, (_opsRentalInfo[_selRentalId].houseRules || {}), _cur.houseRules);\n    }\n  };",
+      "count": 1
+    },
+    {
+      "note": "Property Info: after save, refresh the Daily Ops rental-info cache",
+      "find": "      if (r.ok) {\n        _dirty = false;\n        if (_all) _all[_selRentalId] = JSON.parse(payload);\n        if (!silent && typeof toast === 'function') toast('Saved.', 'ok');\n        renderPropInfo();\n        if (window._cmplRefresh) window._cmplRefresh();\n        return;\n      }",
+      "replace": "      if (r.ok) {\n        _dirty = false;\n        if (_all) _all[_selRentalId] = JSON.parse(payload);\n        if (typeof _opsRentalInfo !== 'undefined') {\n          _opsRentalInfo = _opsRentalInfo || {};\n          _opsRentalInfo[_selRentalId] = JSON.parse(payload);\n        }\n        if (_selRentalId && window.S && Array.isArray(S.apts)) {\n          const apt = S.apts.find(function (a) { return a.id === _selRentalId; });\n          if (apt && _cur.houseRules) apt.baseCapacity = _cur.houseRules.base_capacity || '';\n          if (apt && typeof save === 'function') save();\n        }\n        if (!silent && typeof toast === 'function') toast('Saved.', 'ok');\n        renderPropInfo();\n        if (window._cmplRefresh) window._cmplRefresh();\n        return;\n      }",
+      "count": 1
+    }
+  ],
+  "assertions": [
+    {
+      "has": "icon: 'Mnt'",
+      "note": "maintenance kind uses Mnt label"
+    },
+    {
+      "has": "icon: 'Prep'",
+      "note": "preparation kind uses Prep label"
+    },
+    {
+      "has": "icon: 'Ext'",
+      "note": "extended kind uses Ext label"
+    },
+    {
+      "has": "OPS_TAG_LATE",
+      "note": "late checkout auto-comment tag declared"
+    },
+    {
+      "has": "OPS_TAG_PRIORITY",
+      "note": "priority auto-comment tag declared"
+    },
+    {
+      "has": "OPS_TAG_SOFA1",
+      "note": "sofa prep auto-comment tags declared"
+    },
+    {
+      "has": "function opsTogglePriority(i)",
+      "note": "priority toggle exists"
+    },
+    {
+      "has": "Late Checkout: 12:00",
+      "note": "late checkout comment text"
+    },
+    {
+      "has": "Prepare 2 sofa beds",
+      "note": "two-sofa prep comment text"
+    },
+    {
+      "has": "base_capacity",
+      "note": "base capacity field present"
+    },
+    {
+      "has": "beds_double",
+      "note": "double beds sleeping config"
+    },
+    {
+      "has": "sofa_bed_2p",
+      "note": "2-person sofa bed config"
+    },
+    {
+      "has": "sofa_bed_1p",
+      "note": "1-person sofa bed config"
+    },
+    {
+      "has": "Sleeping configuration",
+      "note": "sleeping configuration section label"
+    },
+    {
+      "has": "_opsPrefetchRentalInfo",
+      "note": "Daily Ops loads Property Info for sofa comments"
+    },
+    {
+      "has": "Late / Pri",
+      "note": "flags column header"
+    },
+    {
+      "has": "background:#DC2626;color:#fff",
+      "note": "Priority/sofa badges use solid red"
+    },
+    {
+      "has": "_cRed ? '#DC2626'",
+      "note": "comments input turns red for priority/sofa"
+    },
+    {
+      "has": "pClr = pOn ? '#fff' : '#DC2626'",
+      "note": "Priority button uses red"
+    },
+    {
+      "hasNot": "icon: '🔧'",
+      "note": "emoji wrench icon removed from kinds"
+    },
+    {
+      "hasNot": "icon: '🧹'",
+      "note": "emoji broom icon removed from kinds"
+    }
+  ]
+}
