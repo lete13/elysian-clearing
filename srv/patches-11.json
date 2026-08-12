@@ -1,0 +1,31 @@
+{
+ "baseSha256": "9b39b3448798d0b8520c17c8c08b76d743a33c9bb584975e212fb74e92fdc240",
+ "expectedSha256": "e0126517d886a60cc793d12dd2579c8ef6450404391d1fce0360c2149793a3df",
+ "builtAt": "2026-08-12 Meta: say which permissions the token is missing instead of what failed downstream",
+ "assertions": [
+  {
+   "has": "const perm = await metaCall('/me/permissions', 'limit=100');",
+   "note": "the token is asked what it can do"
+  },
+  {
+   "has": "const NEEDED = ['leads_retrieval', 'pages_show_list', 'pages_read_engagement', 'pages_manage_ads', 'ads_management'];",
+   "note": "the five it needs are named"
+  },
+  {
+   "has": "out.missing = NEEDED.filter(",
+   "note": "the missing ones are worked out, not guessed at"
+  },
+  {
+   "has": "a token only carries what was selected at the moment it was made",
+   "note": "the fix is spelled out"
+  }
+ ],
+ "patches": [
+  {
+   "note": "Meta: the status endpoint reports which permissions the token actually carries",
+   "find": "  if (!out.configured) return res.status(503).json(Object.assign(out, { error: 'No META_PAGE_TOKEN set.' }));\n  try {",
+   "replace": "  if (!out.configured) return res.status(503).json(Object.assign(out, { error: 'No META_PAGE_TOKEN set.' }));\n  try {\n    // Ask Meta what this token can actually do before diagnosing anything else.\n    // A token generated in the Explorer without ticking the boxes carries only\n    // public_profile, and every later failure is downstream of that.\n    const NEEDED = ['leads_retrieval', 'pages_show_list', 'pages_read_engagement', 'pages_manage_ads', 'ads_management'];\n    const perm = await metaCall('/me/permissions', 'limit=100');\n    if (!perm.error) {\n      const rows = perm.data.data || [];\n      const granted = rows.filter(function (p) { return p.status === 'granted'; }).map(function (p) { return p.permission; });\n      const declined = rows.filter(function (p) { return p.status !== 'granted'; }).map(function (p) { return p.permission; });\n      out.granted = granted;\n      if (declined.length) out.declined = declined;\n      out.missing = NEEDED.filter(function (p) { return granted.indexOf(p) === -1; });\n      if (out.missing.length) return res.status(502).json(Object.assign(out, {\n        error: 'The token is missing ' + out.missing.length + ' of the permissions this needs: ' + out.missing.join(', ') + '.',\n        hint: 'Regenerate it in the Graph API Explorer with those boxes ticked - a token only carries what was selected at the moment it was made.' }));\n    }",
+   "count": 1
+  }
+ ]
+}

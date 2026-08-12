@@ -1,219 +1,73 @@
 {
-  "builtAt": "2026-08-12 role Home dashboards (Operations / Accounting / Admin), sidebar nav with Tabler icons, light/dark theme (synced via DB)",
-  "baseSha256": "58016d85dc509f881c4d0d0029543875ed0279623c6331fcd78d90be2f499877",
-  "expectedSha256": "8da7b76fe60f8f32477514bd0bea58edf667e59afd33238d5925513f46687ad6",
-  "patches": [
-    {
-      "note": "theme+sidebar+home CSS",
-      "find": "      --acc:#C9A84C;\n    }",
-      "replace": "      --acc:#C9A84C;\n    }\n    /* ===== Elysian brand theme tokens + sidebar + Home (patches-8) ===== */\n    html{--gold:#b8974c;--side-bg:#0F1E2E;--side-tx:rgba(255,255,255,.82);--side-active-bg:rgba(184,151,76,.18);--th-bg:#0F1E2E;--th-tx:#c9a84c;--card:var(--bg)}\n    html[data-theme=\"dark\"]{\n      --bg:#16181d;--bg2:#1e2127;--bg3:#0e0f12;\n      --bg-ok:#13291d;--bg-err:#2a1614;--bg-warn:#2a2411;\n      --tx:#e8e5de;--tx2:#b3aea2;--tx3:#8b8678;\n      --tx-ok:#4ade80;--tx-err:#f87171;--tx-warn:#fbbf24;\n      --bdr:rgba(255,255,255,.12);--bdr2:rgba(255,255,255,.22);\n      --side-bg:#0b0d11;--th-bg:#0b0d11;--th-tx:#c9a84c;--card:#1e2127;\n    }\n    html[data-theme=\"dark\"] body{background:var(--bg3)}\n    html[data-theme=\"dark\"] .tbl th{background:var(--th-bg);color:var(--th-tx)}\n    html[data-theme=\"dark\"] .tbl tr:hover td{background:var(--bg2)}\n    html[data-theme=\"dark\"] .btn.primary{background:#243447;border-color:#243447;color:#fff}\n    html[data-theme=\"dark\"] .btn.gold{background:var(--gold);border-color:var(--gold);color:#141414}\n    html[data-theme=\"dark\"] input[type=text],html[data-theme=\"dark\"] input[type=number],html[data-theme=\"dark\"] input[type=date],html[data-theme=\"dark\"] input[type=email],html[data-theme=\"dark\"] select,html[data-theme=\"dark\"] textarea{background:var(--bg2);color:var(--tx)}\n    html[data-theme=\"dark\"] .card{background:var(--card)}\n    html[data-theme=\"dark\"] .kpi{background:var(--bg2)}\n    /* ===== Sidebar (transform the existing #hdr into a left rail) ===== */\n    #hdr{flex-direction:column!important;align-items:stretch!important;gap:0!important;width:216px!important;height:100vh!important;position:fixed!important;top:0!important;left:0!important;overflow-y:auto!important;padding:0 0 12px 0!important;background:var(--side-bg)!important;border-bottom:none!important;border-right:1px solid var(--gold)!important;z-index:200!important}\n    #hdr-brand{padding:16px 16px 12px 16px!important;flex-direction:row!important;align-items:center!important;gap:10px!important}\n    #hdr-rule{display:none!important}\n    #hdr nav{flex-direction:column!important;gap:0!important;align-items:stretch!important;width:100%}\n    #hdr .nav-btn{width:100%!important;justify-content:flex-start!important;text-align:left!important;border-bottom:none!important;padding:9px 16px!important;font-size:13px!important;gap:0;display:flex;align-items:center}\n    #hdr .nav-btn.active{border-bottom:none!important;border-left:3px solid var(--gold)!important;background:var(--side-active-bg)!important;color:var(--gold)!important;font-weight:600}\n    #hdr .nav-dd{flex-direction:column!important;width:100%;align-items:stretch}\n    #hdr .nav-dd-menu{position:static!important;box-shadow:none!important;border:none!important;background:transparent!important;min-width:0!important;padding:0 0 4px 12px!important;border-radius:0!important;top:auto;right:auto}\n    #hdr>div[style*=\"margin-left:auto\"]{margin-left:0!important;margin-top:auto!important;flex-direction:column!important;align-items:stretch!important;gap:8px!important;padding:12px 12px 0 12px!important;border-top:1px solid rgba(255,255,255,.08)}\n    #hdr #nav-profile{width:100%}\n    #hdr #hdr-props{text-align:left!important}\n    #main-content{margin-left:216px!important}\n    @media print{#hdr{display:none!important}#main-content{margin-left:0!important}}\n    /* ===== Sidebar nav icons (Tabler webfont, via ::before) ===== */\n    #hdr .nav-btn::before,#hdr .nav-dd-item::before,#hdr #nav-tools::before{font-family:\"tabler-icons\";font-weight:400;font-style:normal;margin-right:10px;font-size:16px;opacity:.92;display:inline-block;width:18px;text-align:center;line-height:1}\n    #hdr .nav-btn[data-tab=\"home\"]::before{content:\"\\eac1\"}\n    #hdr .nav-btn[data-tab=\"dash\"]::before{content:\"\\f02c\"}\n    #hdr .nav-btn[data-tab=\"leads\"]::before{content:\"\\eb35\"}\n    #hdr .nav-btn[data-tab=\"bk\"]::before{content:\"\\ea53\"}\n    #hdr .nav-btn[data-tab=\"exp\"]::before{content:\"\\edfd\"}\n    #hdr .nav-btn[data-tab=\"cfg\"]::before{content:\"\\eb20\"}\n    #hdr .nav-btn[data-tab=\"rpt\"]::before{content:\"\\ede7\"}\n    #hdr .nav-btn[data-tab=\"ann\"]::before{content:\"\\ea5c\"}\n    #hdr .nav-btn[data-tab=\"mt\"]::before{content:\"\\f074\"}\n    #hdr .nav-btn[data-tab=\"rev\"]::before{content:\"\\eb82\"}\n    #hdr .nav-btn[data-tab=\"ops\"]::before{content:\"\\ea52\"}\n    #hdr .nav-btn[data-tab=\"perf\"]::before{content:\"\\ea59\"}\n    #hdr .nav-btn[data-tab=\"pinfo\"]::before{content:\"\\eb34\"}\n    #hdr #nav-tools::before{content:\"\\eb40\"}\n    #hdr .nav-dd-item[data-tab=\"hhapi\"]::before{content:\"\\ebd9\"}\n    #hdr .nav-dd-item[data-tab=\"imports\"]::before{content:\"\\ea96\"}\n    #hdr .nav-dd-item[data-tab=\"co\"]::before{content:\"\\efad\"}\n    #hdr .nav-dd-item[data-tab=\"pay\"]::before{content:\"\\ea84\"}\n    #hdr .nav-dd-item[data-tab=\"cash\"]::before{content:\"\\ea55\"}\n    #hdr .nav-dd-item[data-tab=\"log\"]::before{content:\"\\ebea\"}\n    /* ===== Home (role dashboard) ===== */\n    .home-h{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px}\n    .home-title{font-size:22px;font-weight:600;color:var(--tx)}\n    .home-sub{font-size:13px;color:var(--tx2);margin-top:2px}\n    .home-rolepill{background:var(--side-active-bg);color:var(--gold);border:1px solid var(--gold);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;white-space:nowrap}\n    .home-today{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}\n    .home-chip{display:flex;align-items:center;gap:10px;background:var(--card);border:.5px solid var(--bdr);border-radius:var(--rl);padding:11px 15px;cursor:pointer;transition:border-color .12s}\n    .home-chip:hover{border-color:var(--gold)}\n    .home-chip>i{color:var(--gold);font-size:20px}\n    .home-chip .n{font-size:20px;font-weight:600;color:var(--tx);line-height:1}\n    .home-chip .l{font-size:12px;color:var(--tx2)}\n    .home-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:20px}\n    .home-card{background:var(--card);border:.5px solid var(--bdr);border-radius:var(--rl);padding:15px;cursor:pointer;transition:all .12s;display:flex;gap:12px;align-items:flex-start}\n    .home-card:hover{border-color:var(--gold);transform:translateY(-1px)}\n    .home-card>i{font-size:22px;color:var(--gold);line-height:1}\n    .home-card .hc-t{font-weight:600;color:var(--tx);font-size:14px}\n    .home-card .hc-d{font-size:12px;color:var(--tx2);margin-top:3px;line-height:1.35}\n    .home-panel{background:var(--card);border:.5px solid var(--bdr);border-radius:var(--rl);padding:16px;margin-bottom:18px}\n    .home-panel h3{font-size:13px;font-weight:600;color:var(--tx);margin:0 0 10px 0;display:flex;align-items:center;gap:8px}\n    .home-panel h3>i{color:var(--gold);font-size:17px}\n    .home-panel .lnk{margin-left:auto;font-size:12px;color:var(--gold);cursor:pointer;font-weight:600}\n    .mc-bar{height:10px;border-radius:6px;background:var(--bg3);overflow:hidden;margin:6px 0 4px 0}\n    .mc-bar>span{display:block;height:100%;background:var(--gold)}\n    .mc-meta{font-size:12px;color:var(--tx2)}\n    .chk-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:.5px solid var(--bdr);font-size:13px;color:var(--tx);cursor:pointer}\n    .chk-row:last-child{border-bottom:none}\n    .chk-row>i{font-size:17px}\n    .chk-row .st{margin-left:auto;font-size:12px;font-weight:600}\n    .chk-ok{color:var(--tx-ok)}.chk-warn{color:var(--tx-warn)}\n    .home-bucket{margin-bottom:16px}\n    .home-bucket h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--tx2);margin:0 0 8px 0;display:flex;align-items:center;gap:8px}\n    .home-bucket .cnt{background:var(--bg3);border:.5px solid var(--bdr);border-radius:20px;padding:1px 8px;font-size:11px;color:var(--tx2)}\n    .home-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border:.5px solid var(--bdr);border-radius:var(--r);margin-bottom:6px;background:var(--card);cursor:pointer;transition:border-color .12s}\n    .home-row:hover{border-color:var(--gold)}\n    .home-row .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}\n    .home-row .rl{flex:1;min-width:0;overflow:hidden}\n    .home-row .rl b{font-weight:600;color:var(--tx);font-size:13px}\n    .home-row .rl span{color:var(--tx2);font-size:12px;margin-left:6px}\n    .home-row .rt{font-size:11px;color:var(--tx3);white-space:nowrap}\n    .home-empty{color:var(--tx3);font-size:13px;padding:14px;border:1px dashed var(--bdr);border-radius:var(--r);text-align:center}",
-      "count": 1
-    },
-    {
-      "note": "home nav button",
-      "find": "    <button class=\"nav-btn active\" data-tab=\"dash\" onclick=\"showTab('dash',this)\">Dashboard</button>",
-      "replace": "    <button class=\"nav-btn\" data-tab=\"home\" onclick=\"showTab('home',this)\" id=\"nav-home\">Home</button>\n    <button class=\"nav-btn active\" data-tab=\"dash\" onclick=\"showTab('dash',this)\">Dashboard</button>",
-      "count": 1
-    },
-    {
-      "note": "theme toggle button",
-      "find": "  <div style=\"margin-left:auto;display:flex;align-items:center;gap:14px\">\n",
-      "replace": "  <div style=\"margin-left:auto;display:flex;align-items:center;gap:14px\">\n    <button id=\"theme-toggle\" class=\"btn sm\" onclick=\"toggleTheme()\" title=\"Switch light / dark\" style=\"border-color:#b8974c66;color:#b8974c;background:transparent;width:100%;justify-content:center\"><i class=\"ti ti-moon\"></i> Dark mode</button>\n",
-      "count": 1
-    },
-    {
-      "note": "role labels",
-      "find": "      <option value=\"management\">👔 Management</option>\n      <option value=\"accountant\">🧾 Accountant</option>\n      <option value=\"operator\">🛎 Operator</option>",
-      "replace": "      <option value=\"management\">Admin</option>\n      <option value=\"accountant\">Accounting</option>\n      <option value=\"operator\">Operations</option>",
-      "count": 1
-    },
-    {
-      "note": "home panel",
-      "find": "<div id=\"tab-dash\" class=\"tab-panel active\">",
-      "replace": "<div id=\"tab-home\" class=\"tab-panel\"></div>\n\n<div id=\"tab-dash\" class=\"tab-panel active\">",
-      "count": 1
-    },
-    {
-      "note": "main-content id",
-      "find": "<div style=\"padding:24px;max-width:1480px;margin:0 auto\">",
-      "replace": "<div id=\"main-content\" style=\"padding:24px;max-width:1480px;margin:0 auto\">",
-      "count": 1
-    },
-    {
-      "note": "showTab home dispatch",
-      "find": "    if(name==='dash')renderDash();",
-      "replace": "    if(name==='home'){if(typeof renderHome==='function')renderHome();}\n    else if(name==='dash')renderDash();",
-      "count": 1
-    },
-    {
-      "note": "apply shows home",
-      "find": "      const show = (prof.tabs === 'all' || prof.tabs.includes(t)) && (typeof accTab !== 'function' || accTab(t));",
-      "replace": "      const show = (t === 'home' || prof.tabs === 'all' || prof.tabs.includes(t)) && (typeof accTab !== 'function' || accTab(t));",
-      "count": 1
-    },
-    {
-      "note": "apply allows home on fallback",
-      "find": "    const allowed = t => (typeof accTab !== 'function' || accTab(t)) && ((PROFILES[name].tabs === 'all'",
-      "replace": "    const allowed = t => t === 'home' || (typeof accTab !== 'function' || accTab(t)) && ((PROFILES[name].tabs === 'all'",
-      "count": 1
-    },
-    {
-      "note": "workspace toast labels",
-      "find": "      const L = { operator: '🛎 Operator workspace', accountant: '🧾 Accountant workspace', management: '👔 Management workspace' };",
-      "replace": "      const L = { operator: 'Operations workspace', accountant: 'Accounting workspace', management: 'Admin workspace' };",
-      "count": 1
-    },
-    {
-      "note": "icon leads",
-      "find": "id=\"nav-leads\">🎯 Leads</button>",
-      "replace": "id=\"nav-leads\">Leads</button>",
-      "count": 1
-    },
-    {
-      "note": "icon mt",
-      "find": "id=\"nav-mt\">📋 Monthly Tasks</button>",
-      "replace": "id=\"nav-mt\">Monthly Tasks</button>",
-      "count": 1
-    },
-    {
-      "note": "icon rev",
-      "find": "id=\"nav-rev\">💰 Elysian Revenue</button>",
-      "replace": "id=\"nav-rev\">Elysian Revenue</button>",
-      "count": 1
-    },
-    {
-      "note": "icon ops",
-      "find": "id=\"nav-ops\">🗓 Daily Ops</button>",
-      "replace": "id=\"nav-ops\">Daily Ops</button>",
-      "count": 1
-    },
-    {
-      "note": "icon perf",
-      "find": "id=\"nav-perf\">📊 Performance</button>",
-      "replace": "id=\"nav-perf\">Performance</button>",
-      "count": 1
-    },
-    {
-      "note": "icon pinfo",
-      "find": "id=\"nav-pinfo\">🏷 Property Info</button>",
-      "replace": "id=\"nav-pinfo\">Property Info</button>",
-      "count": 1
-    },
-    {
-      "note": "icon tools",
-      "find": "onclick=\"navDdToggle(event)\">🧰 Tools<span",
-      "replace": "onclick=\"navDdToggle(event)\">Tools<span",
-      "count": 1
-    },
-    {
-      "note": "icon hhapi",
-      "find": "onclick=\"navDdGo('hhapi')\">🔌 Hosthub API</button>",
-      "replace": "onclick=\"navDdGo('hhapi')\">Hosthub API</button>",
-      "count": 1
-    },
-    {
-      "note": "icon imports",
-      "find": "onclick=\"navDdGo('imports')\">📥 Imports</button>",
-      "replace": "onclick=\"navDdGo('imports')\">Imports</button>",
-      "count": 1
-    },
-    {
-      "note": "icon co",
-      "find": "onclick=\"navDdGo('co')\">🧳 Checkout Tracker</button>",
-      "replace": "onclick=\"navDdGo('co')\">Checkout Tracker</button>",
-      "count": 1
-    },
-    {
-      "note": "icon pay",
-      "find": "onclick=\"navDdGo('pay')\">💳 Payments Check</button>",
-      "replace": "onclick=\"navDdGo('pay')\">Payments Check</button>",
-      "count": 1
-    },
-    {
-      "note": "icon cash",
-      "find": "onclick=\"navDdGo('cash')\">💶 Cash Flow</button>",
-      "replace": "onclick=\"navDdGo('cash')\">Cash Flow</button>",
-      "count": 1
-    },
-    {
-      "note": "icon log",
-      "find": "onclick=\"navDdGo('log')\">🕘 Change Log</button>",
-      "replace": "onclick=\"navDdGo('log')\">Change Log</button>",
-      "count": 1
-    },
-    {
-      "note": "loadFromDb applyPrefs hook",
-      "find": "    renderDash(); renderCfg(); renderBk(); renderExp();",
-      "replace": "    renderDash(); renderCfg(); renderBk(); renderExp();\n    if(typeof applyPrefs==='function')applyPrefs(); if(typeof renderHome==='function'&&document.getElementById('tab-home')&&document.getElementById('tab-home').classList.contains('active'))renderHome();",
-      "count": 1
-    },
-    {
-      "note": "injected home/theme/role JS",
-      "find": "  window.applyNavProfile = apply;\n  apply();\n})();",
-      "replace": "  window.applyNavProfile = apply;\n  apply();\n})();\n;(function(){\n  'use strict';\n  var CID=null;\n  function clientId(){ try{ CID=localStorage.getItem('e_client'); if(!CID){ CID='c'+Math.random().toString(36).slice(2,10); localStorage.setItem('e_client',CID);} }catch(e){ CID=CID||'c0'; } return CID; }\n  function prefKey(){ return (window._ACC && window._ACC.user) ? ('u:'+window._ACC.user) : ('c:'+clientId()); }\n  function prefsBag(){ if(typeof S==='undefined')return {}; S.meta=S.meta||{}; S.meta.uiPrefs=S.meta.uiPrefs||{}; return S.meta.uiPrefs; }\n  function curRole(){ try{ var p=localStorage.getItem('nav_profile'); return ['operator','accountant','management'].indexOf(p)>=0?p:'management'; }catch(e){ return 'management'; } }\n  function curTheme(){ try{ return localStorage.getItem('e_theme')==='dark'?'dark':'light'; }catch(e){ return 'light'; } }\n  function setTheme(t){ t=(t==='dark')?'dark':'light'; try{document.documentElement.setAttribute('data-theme',t);}catch(e){} try{localStorage.setItem('e_theme',t);}catch(e){} var b=document.getElementById('theme-toggle'); if(b) b.innerHTML=(t==='dark')?'<i class=\"ti ti-sun\"></i> Light mode':'<i class=\"ti ti-moon\"></i> Dark mode'; }\n  window.toggleTheme=function(){ var t=(curTheme()==='dark')?'light':'dark'; setTheme(t); var bag=prefsBag(),k=prefKey(); bag[k]=bag[k]||{}; bag[k].theme=t; try{ if(typeof save==='function') save(); }catch(e){} if(typeof toast==='function') toast(t==='dark'?'Dark theme':'Light theme'); };\n  var _origSetProfile=window.setNavProfile;\n  window.setNavProfile=function(v){ try{ if(_origSetProfile) _origSetProfile(v); }catch(e){} var bag=prefsBag(),k=prefKey(); bag[k]=bag[k]||{}; bag[k].role=curRole(); try{ if(typeof save==='function') save(); }catch(e){} if(isHomeActive()) window.renderHome(); };\n  window.applyPrefs=function(){ try{ var mine=prefsBag()[prefKey()]; if(mine){ if(mine.role && mine.role!==curRole()){ try{localStorage.setItem('nav_profile',mine.role);}catch(e){} if(typeof applyNavProfile==='function') applyNavProfile(); } if(mine.theme && mine.theme!==curTheme()) setTheme(mine.theme); } setTheme(curTheme()); var sel=document.getElementById('nav-profile'); if(sel) sel.value=curRole(); }catch(e){} };\n  window.hgo=function(tab){ try{ var b=document.getElementById('nav-'+tab)||document.querySelector('.nav-btn[data-tab=\"'+tab+'\"]'); if(typeof showTab==='function') showTab(tab,b); }catch(e){} };\n  function isHomeActive(){ var h=document.getElementById('tab-home'); return !!(h && h.classList.contains('active')); }\n  function pad(n){ return (n<10?'0':'')+n; }\n  function todayMid(){ var d=new Date(); return new Date(d.getFullYear(),d.getMonth(),d.getDate()); }\n  function parseDate(s){ if(!s) return null; if(s instanceof Date) return new Date(s.getFullYear(),s.getMonth(),s.getDate()); s=String(s).trim(); var m=s.match(/^(\\d{4})-(\\d{2})-(\\d{2})/); if(m) return new Date(+m[1],+m[2]-1,+m[3]); m=s.match(/^(\\d{1,2})[\\/.](\\d{1,2})[\\/.](\\d{4})/); if(m) return new Date(+m[3],+m[2]-1,+m[1]); var d=new Date(s); return isNaN(d.getTime())?null:new Date(d.getFullYear(),d.getMonth(),d.getDate()); }\n  function dbetween(a,b){ return Math.round((b-a)/86400000); }\n  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }\n  function bucketOf(d,today){ if(!d) return null; var n=dbetween(today,d); if(n<0) return 'overdue'; if(n===0) return 'today'; if(n<=3) return 'soon'; if(n<=7) return 'week'; return null; }\n  function fmtShort(d){ if(!d) return ''; var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return d.getDate()+' '+m[d.getMonth()]; }\n  function card(icon,title,desc,tab){ return '<div class=\"home-card\" onclick=\"hgo(\\''+tab+'\\')\"><i class=\"ti '+icon+'\"></i><div><div class=\"hc-t\">'+title+'</div><div class=\"hc-d\">'+desc+'</div></div></div>'; }\n\n  window.renderHome=function(){\n    var el=document.getElementById('tab-home'); if(!el) return;\n    var role=curRole();\n    var roleLabel={operator:'Operations',accountant:'Accounting',management:'Admin'}[role]||'Admin';\n    var today=todayMid();\n    var apts=(typeof S!=='undefined'&&Array.isArray(S.apts))?S.apts:[];\n    var bks=(typeof S!=='undefined'&&Array.isArray(S.bks))?S.bks:[];\n    var tasks=(typeof S!=='undefined'&&S.daily&&Array.isArray(S.daily.tasks))?S.daily.tasks:[];\n    function aptName(b){ if(b&&b.aptName) return b.aptName; var a=apts.filter(function(x){return x.id===(b&&b.aptId);})[0]; return a?a.name:((b&&b.aptId)||'Property'); }\n    var isOps=(role==='operator'), isAcc=(role==='accountant'), isAdmin=(role==='management');\n    var showOps=!isAcc, showAcc=!isOps;\n\n    // ----- dated operational items (tasks + check-ins/outs) -----\n    var items=[];\n    function add(d,label,sub,tab){ items.push({date:d,bucket:bucketOf(d,today),label:label,sub:sub||'',tab:tab}); }\n    var coToday=0,ciToday=0,openTasks=0;\n    if(showOps){\n      try{ tasks.forEach(function(t){ if(!t||t.completed) return; openTasks++; var d=parseDate(t.createdDate||t.date||t.due); var label=t.text||t.label||t.title||t.note||'Operations task'; if(bucketOf(d,today)) add(d,label,t.aptName||'','ops'); }); }catch(e){}\n      try{ bks.forEach(function(b){ var co=parseDate(b.checkOut); if(co&&dbetween(today,co)===0) coToday++; if(bucketOf(co,today)) add(co,'Checkout · '+aptName(b),b.guestName||'','ops'); }); }catch(e){}\n      try{ bks.forEach(function(b){ var ci=parseDate(b.checkIn); if(ci&&dbetween(today,ci)===0) ciToday++; if(bucketOf(ci,today)) add(ci,'Check-in · '+aptName(b),b.guestName||'','ops'); }); }catch(e){}\n    }\n    var order=['overdue','today','soon','week'];\n    var titles={overdue:'Overdue',today:'Today',soon:'Next 3 days',week:'This week'};\n    var dot={overdue:'var(--tx-err)',today:'var(--gold)',soon:'#3b82f6',week:'var(--tx3)'};\n    var byB={overdue:[],today:[],soon:[],week:[]};\n    items.forEach(function(it){ if(it.bucket&&byB[it.bucket]) byB[it.bucket].push(it); });\n    order.forEach(function(k){ byB[k].sort(function(a,b){ return (a.date&&b.date)?(a.date-b.date):0; }); });\n    var urgent=byB.overdue.length+byB.today.length;\n\n    var h='';\n    h+='<div class=\"home-h\"><div><div class=\"home-title\">Welcome back</div><div class=\"home-sub\">Your tasks to close in the coming days'+(urgent?(' — <b style=\"color:var(--tx-err)\">'+urgent+'</b> need attention now'):(showOps?' — you\\'re all caught up':''))+'.</div></div><div class=\"home-rolepill\">'+esc(roleLabel)+' workspace</div></div>';\n\n    // ----- Operations: today's operations summary -----\n    if(showOps){\n      h+='<div class=\"home-today\">';\n      h+='<div class=\"home-chip\" onclick=\"hgo(\\'ops\\')\"><i class=\"ti ti-logout\"></i><div><div class=\"n\">'+coToday+'</div><div class=\"l\">Checkouts today</div></div></div>';\n      h+='<div class=\"home-chip\" onclick=\"hgo(\\'ops\\')\"><i class=\"ti ti-login\"></i><div><div class=\"n\">'+ciToday+'</div><div class=\"l\">Check-ins today</div></div></div>';\n      h+='<div class=\"home-chip\" onclick=\"hgo(\\'ops\\')\"><i class=\"ti ti-list-check\"></i><div><div class=\"n\">'+openTasks+'</div><div class=\"l\">Open ops tasks</div></div></div>';\n      h+='</div>';\n    }\n\n    // ----- Action cards (role-specific) -----\n    var cards='';\n    if(isOps){\n      cards+=card('ti-calendar-event','Daily operations','Turnovers, check-ins &amp; tasks','ops');\n      cards+=card('ti-chart-bar','Performance','Occupancy &amp; pricing snapshot','perf');\n      cards+=card('ti-tag','Property info','Amenities, rules &amp; compliance','pinfo');\n    } else if(isAcc){\n      cards+=card('ti-checklist','Monthly close','Review &amp; clear each property','mt');\n      cards+=card('ti-shield-check','Compliance health','Profiles, owners &amp; Law 5170','pinfo');\n      cards+=card('ti-cash','Payments to chase','Reconcile received payouts','pay');\n      cards+=card('ti-file-analytics','Owner reports','Prepare &amp; send statements','rpt');\n    } else {\n      cards+=card('ti-checklist','Monthly close','Review &amp; clear each property','mt');\n      cards+=card('ti-cash','Payments to chase','Reconcile received payouts','pay');\n      cards+=card('ti-file-analytics','Owner reports','Prepare &amp; send statements','rpt');\n      cards+=card('ti-calendar-event','Daily operations','Turnovers, check-ins &amp; tasks','ops');\n      cards+=card('ti-chart-bar','Performance','Occupancy &amp; pricing snapshot','perf');\n      cards+=card('ti-tag','Property info','Amenities, rules &amp; compliance','pinfo');\n    }\n    h+='<div class=\"home-cards\">'+cards+'</div>';\n\n    // ----- Accounting: month-close progress + compliance checklist -----\n    if(showAcc){\n      var total=apts.length;\n      var closed=0;\n      try{ var mc=(typeof S!=='undefined'&&S.monthlyClose)?S.monthlyClose:{}; var ym=today.getFullYear()+'-'+pad(today.getMonth()+1);\n        apts.forEach(function(a){ if(mc[ym+'|'+a.id]||mc[a.id+'|'+ym]) closed++; });\n        if(closed===0 && mc[ym] && typeof mc[ym]==='object') closed=Object.keys(mc[ym]).length;\n      }catch(e){}\n      var pct=total?Math.round(closed/total*100):0;\n      h+='<div class=\"home-panel\"><h3><i class=\"ti ti-checklist\"></i> Monthly close — '+today.toLocaleString('en',{month:'long'})+' '+today.getFullYear()+'<span class=\"lnk\" onclick=\"hgo(\\'mt\\')\">Open Monthly Tasks →</span></h3>';\n      h+='<div class=\"mc-bar\"><span style=\"width:'+pct+'%\"></span></div>';\n      h+='<div class=\"mc-meta\"><b>'+closed+'</b> of <b>'+total+'</b> properties cleared'+(total?(' · '+Math.max(0,total-closed)+' still to close'):'')+'</div></div>';\n\n      // compliance checklist (defensive from configured properties)\n      var withProfile=apts.filter(function(a){return a&&a.profile;}).length;\n      var withOwner=apts.filter(function(a){return a&&(a.ownerEmail||a.ownerEmail2||a.ownerEmail3);}).length;\n      function chk(label,ok,detail,tab){ return '<div class=\"chk-row\" onclick=\"hgo(\\''+tab+'\\')\"><i class=\"ti '+(ok?'ti-circle-check chk-ok':'ti-alert-triangle chk-warn')+'\"></i>'+label+'<span class=\"st '+(ok?'chk-ok':'chk-warn')+'\">'+detail+'</span></div>'; }\n      h+='<div class=\"home-panel\"><h3><i class=\"ti ti-shield-check\"></i> Compliance health<span class=\"lnk\" onclick=\"hgo(\\'pinfo\\')\">Property info →</span></h3>';\n      h+=chk('Property profiles set (Private / B2B / Leased)', total>0&&withProfile>=total, withProfile+'/'+total, 'cfg');\n      h+=chk('Owner email on file', total>0&&withOwner>=total, withOwner+'/'+total, 'cfg');\n      h+=chk('Law 5170/2025 documents & house rules', false, 'Review', 'pinfo');\n      h+='</div>';\n    }\n\n    // ----- Operational buckets (dated) -----\n    if(showOps){\n      var any=false;\n      order.forEach(function(k){\n        var rows=byB[k]; if(!rows.length) return; any=true;\n        h+='<div class=\"home-bucket\"><h3><span class=\"dot\" style=\"background:'+dot[k]+'\"></span>'+titles[k]+' <span class=\"cnt\">'+rows.length+'</span></h3>';\n        rows.slice(0,12).forEach(function(it){\n          h+='<div class=\"home-row\" onclick=\"hgo(\\''+it.tab+'\\')\"><span class=\"dot\" style=\"background:'+dot[k]+'\"></span><div class=\"rl\"><b>'+esc(it.label)+'</b>'+(it.sub?'<span>'+esc(it.sub)+'</span>':'')+'</div><div class=\"rt\">'+(it.date?fmtShort(it.date):'')+'</div></div>';\n        });\n        if(rows.length>12) h+='<div class=\"home-empty\" style=\"border:none;text-align:left;padding:6px 2px\">+ '+(rows.length-12)+' more</div>';\n        h+='</div>';\n      });\n      if(!any) h+='<div class=\"home-empty\">No dated operational tasks in the next 7 days.</div>';\n    }\n    el.innerHTML=h;\n  };\n  function boot(){ try{ applyPrefs(); }catch(e){} try{ var nb=document.getElementById('nav-home'); if(nb && typeof showTab==='function') showTab('home', nb); }catch(e){} }\n  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();\n})();",
-      "count": 1
-    }
-  ],
-  "assertions": [
-    {
-      "has": "id=\"nav-home\"",
-      "note": "Home nav item present"
-    },
-    {
-      "has": "id=\"tab-home\"",
-      "note": "Home panel present"
-    },
-    {
-      "has": "window.renderHome=function()",
-      "note": "Home renderer defined"
-    },
-    {
-      "has": "window.toggleTheme=function()",
-      "note": "theme toggle defined"
-    },
-    {
-      "has": "id=\"theme-toggle\"",
-      "note": "theme toggle button present"
-    },
-    {
-      "has": "html[data-theme=\"dark\"]",
-      "note": "dark theme tokens present"
-    },
-    {
-      "has": "<option value=\"management\">Admin</option>",
-      "note": "Management renamed to Admin"
-    },
-    {
-      "has": "<option value=\"operator\">Operations</option>",
-      "note": "Operator renamed to Operations"
-    },
-    {
-      "has": "<option value=\"accountant\">Accounting</option>",
-      "note": "Accountant renamed to Accounting"
-    },
-    {
-      "has": "if(name==='home')",
-      "note": "showTab dispatches Home"
-    },
-    {
-      "has": "S.meta.uiPrefs",
-      "note": "prefs synced through meta"
-    },
-    {
-      "has": "Compliance health",
-      "note": "Accounting compliance checklist present"
-    },
-    {
-      "has": "Checkouts today",
-      "note": "Operations today summary present"
-    },
-    {
-      "has": ".nav-btn[data-tab=\"dash\"]::before",
-      "note": "sidebar nav icons via Tabler webfont"
-    },
-    {
-      "hasNot": "id=\"nav-ops\">🗓 Daily Ops",
-      "note": "nav emojis replaced by icons"
-    }
-  ]
+ "baseSha256": "58016d85dc509f881c4d0d0029543875ed0279623c6331fcd78d90be2f499877",
+ "expectedSha256": "d3fe104cc35e43f80c1d794c06bb93511eb32db9bf6883f6694566f83532afd9",
+ "builtAt": "2026-08-12 Leads: restore straight from the archive row",
+ "assertions": [
+  {
+   "has": "ld-restore",
+   "note": "the archive row carries its own Restore control"
+  },
+  {
+   "has": "onclick=\"event.stopPropagation();ldArchive(' + l.id + ',1)\"",
+   "note": "restoring does not also open the ticket"
+  },
+  {
+   "has": "role=\"button\" tabindex=\"0\"",
+   "note": "the row is still keyboard reachable after becoming a div"
+  },
+  {
+   "has": "a button inside a button is not valid HTML",
+   "note": "why the row stopped being a button is written down"
+  },
+  {
+   "has": "if (v === 'archive') listMode = true;",
+   "note": "the archive opens as rows"
+  },
+  {
+   "has": "ld-why",
+   "note": "the archive reason is visible without opening the ticket"
+  },
+  {
+   "hasNot": "'<button class=\"ld-lrow\" onclick=\"ldOpen('",
+   "note": "no nested-button markup left behind"
+  }
+ ],
+ "patches": [
+  {
+   "note": "Leads: an archived lead can be restored from the row you found it on",
+   "find": "    return rows.map(function (l) {\n      var st = slaState(l);\n      return '<button class=\"ld-lrow\" onclick=\"ldOpen(' + l.id + ')\">' +\n        '<span class=\"ld-dot\" style=\"background:' + (st === 'late' ? '#DC2626' : st === 'soon' ? '#D97706' : 'var(--bdr)') + '\"></span>' +\n        '<span class=\"ld-lname\">' + esc(l.full_name || '(no name)') + '</span>' +\n        '<span class=\"ld-lsub\">' + esc([l.property_address, l.property_size].filter(Boolean).join(' · ') || l.email || '') + '</span>' +\n        '<span class=\"ld-stage\">' + esc(LABEL[l.stage] || l.stage) + '</span>' +\n        '<span class=\"ld-own\">' + esc(l.owner ? teamName(l.owner) : '—') + '</span>' +\n        '<span class=\"ld-lago\">' + ago(l.created_time || l.updated_at) + '</span>' +\n        '</button>';\n    }).join('');",
+   "replace": "    return rows.map(function (l) {\n      var st = slaState(l);\n      var arch = !!l.archived_at;\n      // A div rather than a button, because the Restore control is itself a\n      // button and a button inside a button is not valid HTML - Chrome drops it.\n      return '<div class=\"ld-lrow\" role=\"button\" tabindex=\"0\" onclick=\"ldOpen(' + l.id + ')\"' +\n        ' onkeydown=\"if(event.key===\\'Enter\\'||event.key===\\' \\'){event.preventDefault();ldOpen(' + l.id + ')}\">' +\n        '<span class=\"ld-dot\" style=\"background:' + (st === 'late' ? '#DC2626' : st === 'soon' ? '#D97706' : 'var(--bdr)') + '\"></span>' +\n        '<span class=\"ld-lname\">' + esc(l.full_name || '(no name)') + '</span>' +\n        '<span class=\"ld-lsub\">' +\n          esc([l.property_address, l.property_size].filter(Boolean).join(' · ') || l.email || '') +\n          (arch && l.archive_reason ? '<span class=\"ld-why\"> — ' + esc(l.archive_reason) + '</span>' : '') +\n        '</span>' +\n        '<span class=\"ld-stage\">' + esc(LABEL[l.stage] || l.stage) + '</span>' +\n        '<span class=\"ld-own\">' + esc(l.owner ? teamName(l.owner) : '—') + '</span>' +\n        '<span class=\"ld-lago\">' + ago(l.created_time || l.updated_at) + '</span>' +\n        (arch ? '<button class=\"btn sm ld-restore\" title=\"Put this lead back on the board\"' +\n          ' onclick=\"event.stopPropagation();ldArchive(' + l.id + ',1)\">↩ Restore</button>' : '') +\n        '</div>';\n    }).join('');",
+   "count": 1
+  },
+  {
+   "note": "Leads: the archive opens as a list, since a board of one stage is not a board",
+   "find": "  window.ldView = function (v) { view = v; openId = null; sheet = null; reload(); };",
+   "replace": "  window.ldView = function (v) {\n    view = v; openId = null; sheet = null;\n    // The archive is read as rows - a board of everything-stuck-at-one-stage is\n    // not a board, and the Restore control lives on the row.\n    if (v === 'archive') listMode = true; else if (v === 'board') listMode = false;\n    reload();\n  };",
+   "count": 1
+  },
+  {
+   "note": "Leads: ... and the board/list choice is remembered per view",
+   "find": "  var view = 'board', search = '', openId = null, sheet = null, editProp = false;",
+   "replace": "  var view = 'board', search = '', openId = null, sheet = null, editProp = false, listMode = false;",
+   "count": 1
+  },
+  {
+   "note": "Leads: the archive renders as rows",
+   "find": "      : view === 'board' ? boardHtml() : listHtml()) +",
+   "replace": "      : (view === 'board' && !listMode) ? boardHtml() : listHtml()) +",
+   "count": 1
+  },
+  {
+   "note": "Leads: a restored lead says where it went",
+   "find": "      if (restore) { toast('Restored.'); reload(); return; }",
+   "replace": "      if (restore) {\n        var l2 = lead(id);\n        toast('Restored' + (l2 && l2.owner ? ' to ' + teamName(l2.owner) : '') + ' — back on the board.');\n        reload(); return;\n      }",
+   "count": 1
+  },
+  {
+   "note": "Leads: the restore control and the archive reason have somewhere to live",
+   "find": "#tab-leads .ld-lago{font-size:10.5px;color:var(--tx3);min-width:44px;text-align:right}",
+   "replace": "#tab-leads .ld-lago{font-size:10.5px;color:var(--tx3);min-width:44px;text-align:right}\n#tab-leads .ld-lrow{cursor:pointer}\n#tab-leads .ld-lrow:focus-visible{outline:2px solid #C9A84C;outline-offset:1px}\n#tab-leads .ld-why{color:var(--tx3);font-style:italic}\n#tab-leads .ld-restore{padding:3px 9px;font-size:11px;white-space:nowrap}\n#tab-leads .ld-restore:hover{border-color:#059669;color:#059669}",
+   "count": 1
+  }
+ ]
 }

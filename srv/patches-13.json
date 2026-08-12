@@ -1,0 +1,53 @@
+{
+ "baseSha256": "3f89f53fabecbcdd658e2a0fdedcbd06e9c988ac38739384cb05e5d7d035efbf",
+ "expectedSha256": "988509e70f2f51ef8aef01b83949b0236b381d310c59cbca29b17eb48f5b29c2",
+ "builtAt": "2026-08-12 Meta: a backfill starts at the date floor, and an empty run stops moving the watermark",
+ "assertions": [
+  {
+   "has": "async function metaPull(trigger, opts) {",
+   "note": "a pull can be given options"
+  },
+  {
+   "has": "if (opts && opts.backfill && isFinite(floorSec)) sinceSec = floorSec;",
+   "note": "backfill starts at metaSinceDate whatever the watermark says"
+  },
+  {
+   "has": "lastRunMs: forms.length ? Date.now() :",
+   "note": "a run that saw no forms cannot advance the watermark"
+  },
+  {
+   "has": "req.body && req.body.backfill ? 'backfill' : 'manual'",
+   "note": "the endpoint exposes it, and the timeline records which it was"
+  },
+  {
+   "has": "sixty days of backfill silently became ten minutes",
+   "note": "the reason is written down next to the fix"
+  }
+ ],
+ "patches": [
+  {
+   "note": "Meta: a pull can be told to start from the floor rather than the watermark",
+   "find": "async function metaPull(trigger) {",
+   "replace": "async function metaPull(trigger, opts) {",
+   "count": 1
+  },
+  {
+   "note": "Meta: ... and backfill means exactly that",
+   "find": "  // Never import anything older than metaSinceDate. Without this the very first\n  // pull imports the account's entire history in one go and the assignment rule\n  // shares the whole backlog out before anyone has looked at it.\n  if (cfg.metaSinceDate) {\n    const floor = Math.floor(new Date(cfg.metaSinceDate + 'T00:00:00Z').getTime() / 1000);\n    if (isFinite(floor) && floor > sinceSec) sinceSec = floor;\n  }",
+   "replace": "  // Never import anything older than metaSinceDate. Without this the very first\n  // pull imports the account's entire history in one go and the assignment rule\n  // shares the whole backlog out before anyone has looked at it.\n  const floorSec = cfg.metaSinceDate\n    ? Math.floor(new Date(cfg.metaSinceDate + 'T00:00:00Z').getTime() / 1000) : null;\n  // Normally the floor only moves the window forward - it is a guard, not a\n  // target. A backfill is the deliberate opposite: start at the floor whatever\n  // the watermark says. Safe to repeat as often as you like, because leadIngest\n  // is idempotent on meta_lead_id and a re-seen lead costs nothing.\n  if (opts && opts.backfill && isFinite(floorSec)) sinceSec = floorSec;\n  else if (isFinite(floorSec) && floorSec > sinceSec) sinceSec = floorSec;",
+   "count": 1
+  },
+  {
+   "note": "Meta: a run that found no forms does not get to move the watermark",
+   "find": "  const state = { lastRunMs: Date.now(), trigger: trigger, forms: forms.length, seen: seen, created: created,\n                  page: { id: page.id, name: page.name } };",
+   "replace": "  // A run that found no forms looked at nothing, so it has no business claiming\n  // everything up to now has been seen. Recording it as the watermark is how\n  // sixty days of backfill silently became ten minutes.\n  const state = { lastRunMs: forms.length ? Date.now() : ((sinceRow && sinceRow.lastRunMs) || 0),\n                  trigger: trigger, forms: forms.length, seen: seen, created: created,\n                  page: { id: page.id, name: page.name } };",
+   "count": 1
+  },
+  {
+   "note": "Meta: the endpoint takes backfill",
+   "find": "    res.json({ ok: true, state: await metaPull('manual') });",
+   "replace": "    res.json({ ok: true, state: await metaPull(req.body && req.body.backfill ? 'backfill' : 'manual',\n                                                { backfill: !!(req.body && req.body.backfill) }) });",
+   "count": 1
+  }
+ ]
+}

@@ -1,0 +1,111 @@
+{
+ "baseSha256": "8b3d63d29a6282f0d8ae525dae149e011fa18a5a8183548529603826cdf86791",
+ "expectedSha256": "9b39b3448798d0b8520c17c8c08b76d743a33c9bb584975e212fb74e92fdc240",
+ "builtAt": "2026-08-12 Meta: fix the metaGet name collision, and accept a User token as well as a Page token",
+ "assertions": [
+  {
+   "has": "async function metaCall(path, qs, token) {",
+   "note": "the added helper no longer shadows the original metaGet"
+  },
+  {
+   "has": "async function metaGet(url) {",
+   "note": "the original one-argument metaGet is intact"
+  },
+  {
+   "has": "async function metaResolvePage()",
+   "note": "either token shape resolves to a Page"
+  },
+  {
+   "has": "return (_metaPage = { id: me.data.id, name: me.data.name, token: META_TOKEN, kind: 'page' });",
+   "note": "a Page token is used directly"
+  },
+  {
+   "has": "const acc = await metaCall('/me/accounts', 'fields=id,name,access_token&limit=100');",
+   "note": "a User token finds its Pages, each with its own token"
+  },
+  {
+   "has": "const PTOK = page.token;",
+   "note": "the pull uses the resolved Page token"
+  },
+  {
+   "has": "metaPageId: '',",
+   "note": "a Page can be named when there are several"
+  },
+  {
+   "hasNot": "metaGet(META_API + '/me/leadgen_forms",
+   "note": "nothing asks a user for leadgen_forms any more"
+  },
+  {
+   "has": "This looks like a User token, but it cannot list the Pages it manages",
+   "note": "the missing-permission case says which permission"
+  }
+ ],
+ "patches": [
+  {
+   "note": "Meta: the helper I added no longer collides with the one that was already there",
+   "find": "async function metaGet(path, qs) {",
+   "replace": "async function metaCall(path, qs) {",
+   "count": 1
+  },
+  {
+   "note": "Meta: ... and the status endpoint calls it by its new name",
+   "find": "    const me = await metaGet('/me', 'fields=id,name');",
+   "replace": "    const me = await metaCall('/me', 'fields=id,name');",
+   "count": 1
+  },
+  {
+   "note": "Meta: accept a User token as well as a Page token",
+   "find": "// Is the token real, does it still work, and can it actually see the forms?",
+   "replace": "// A Page token answers /me with the Page. A User token answers with the person,\n// and the Pages they manage hang off /me/accounts - each with its own Page token\n// attached, which is the documented way to get one. Resolve either shape to\n// {id, name, token} so nothing downstream has to care which was pasted in.\nlet _metaPage = null;\nasync function metaResolvePage() {\n  if (_metaPage) return _metaPage;\n  const me = await metaCall('/me', 'fields=id,name');\n  if (me.error) return { error: me.error, code: me.code };\n  // Only a Page has leadgen_forms, so that is the test for which kind this is.\n  const probe = await metaCall('/' + me.data.id + '/leadgen_forms', 'limit=1');\n  if (!probe.error) return (_metaPage = { id: me.data.id, name: me.data.name, token: META_TOKEN, kind: 'page' });\n  const acc = await metaCall('/me/accounts', 'fields=id,name,access_token&limit=100');\n  if (acc.error) return { error: acc.error, code: acc.code,\n    hint: 'This looks like a User token, but it cannot list the Pages it manages - pages_show_list is missing.' };\n  const pages = acc.data.data || [];\n  if (!pages.length) return { error: 'That token manages no Pages.',\n    hint: 'It is a User token for ' + me.data.name + ', and pages_show_list returned nothing. Check the token was made for the right person.' };\n  const cfg = await leadCfg();\n  const want = String(cfg.metaPageId || '').trim();\n  const hit = want ? pages.filter(function (p) { return String(p.id) === want; })[0] : (pages.length === 1 ? pages[0] : null);\n  if (!hit) return { error: want ? 'Page ' + want + ' is not one this token manages.' : 'This token manages ' + pages.length + ' Pages - say which one.',\n    pages: pages.map(function (p) { return { id: p.id, name: p.name }; }),\n    hint: 'Set metaPageId in the leads config to the right one.' };\n  return (_metaPage = { id: hit.id, name: hit.name, token: hit.access_token, kind: 'page-via-user', via: me.data.name });\n}\n// Is the token real, does it still work, and can it actually see the forms?",
+   "count": 1
+  },
+  {
+   "note": "Meta: the status endpoint reports the resolved Page, not the raw token holder",
+   "find": "    out.token = { id: me.data.id, name: me.data.name };\n    const f = await metaGet('/' + me.data.id + '/leadgen_forms', 'fields=id,name,leads_count,status&limit=50');\n    if (f.error) return res.status(502).json(Object.assign(out, { error: f.error, code: f.code,\n      hint: 'The token works but cannot list lead forms - leads_retrieval and pages_show_list are the usual missing ones.' }));\n    out.forms = (f.data.data || []).map(function (x) { return { id: x.id, name: x.name, leads: x.leads_count, status: x.status }; });",
+   "replace": "    out.token = { id: me.data.id, name: me.data.name };\n    const page = await metaResolvePage();\n    if (page.error) return res.status(502).json(Object.assign(out, page));\n    out.page = { id: page.id, name: page.name, tokenKind: page.kind };\n    const f = await metaCall('/' + page.id + '/leadgen_forms', 'fields=id,name,leads_count,status&limit=50', page.token);\n    if (f.error) return res.status(502).json(Object.assign(out, { error: f.error, code: f.code,\n      hint: 'The Page resolved but its lead forms are not readable - leads_retrieval and pages_show_list are the usual missing ones.' }));\n    out.forms = (f.data.data || []).map(function (x) { return { id: x.id, name: x.name, leads: x.leads_count, status: x.status }; });",
+   "count": 1
+  },
+  {
+   "note": "Meta: a call can use the Page token rather than the configured one",
+   "find": "async function metaCall(path, qs) {\n  const url = META_API + path + '?' + qs + '&access_token=' + encodeURIComponent(META_TOKEN);",
+   "replace": "async function metaCall(path, qs, token) {\n  const tok = token || META_TOKEN;\n  const url = META_API + path + '?' + qs + '&access_token=' + encodeURIComponent(tok);",
+   "count": 1
+  },
+  {
+   "note": "Meta: and the token scrubbing covers whichever one was used",
+   "find": "  catch (e) { return { error: 'Could not reach ' + safe + ' (' + e.message.replace(META_TOKEN, '[token]') + ')' }; }",
+   "replace": "  catch (e) { return { error: 'Could not reach ' + safe + ' (' + e.message.split(tok).join('[token]').split(META_TOKEN).join('[token]') + ')' }; }",
+   "count": 1
+  },
+  {
+   "note": "Meta: ... including in a non-JSON body",
+   "find": "    return { error: 'Meta answered ' + r.status + ' with something that is not JSON: ' +\n      body.slice(0, 120).replace(META_TOKEN, '[token]') };",
+   "replace": "    return { error: 'Meta answered ' + r.status + ' with something that is not JSON: ' +\n      body.slice(0, 120).split(tok).join('[token]').split(META_TOKEN).join('[token]') };",
+   "count": 1
+  },
+  {
+   "note": "Meta: the pull resolves the Page as well, and uses its token",
+   "find": "  let forms = (cfg.metaFormIds || []).map(function (id) { return { id: String(id), name: null }; });\n  if (!forms.length) {\n    const fj = await metaGet(META_API + '/me/leadgen_forms?limit=100&fields=id,name&access_token=' + encodeURIComponent(META_TOKEN));\n    forms = (fj.data || []).map(function (f) { return { id: f.id, name: f.name }; });\n  }",
+   "replace": "  const page = await metaResolvePage();\n  if (page.error) throw new Error(page.error + (page.hint ? ' — ' + page.hint : ''));\n  const PTOK = page.token;\n  let forms = (cfg.metaFormIds || []).map(function (id) { return { id: String(id), name: null }; });\n  if (!forms.length) {\n    const fj = await metaGet(META_API + '/' + page.id + '/leadgen_forms?limit=100&fields=id,name&access_token=' + encodeURIComponent(PTOK));\n    forms = (fj.data || []).map(function (f) { return { id: f.id, name: f.name }; });\n  }",
+   "count": 1
+  },
+  {
+   "note": "Meta: the per-form lead fetch uses the Page token too",
+   "find": "      '&access_token=' + encodeURIComponent(META_TOKEN);",
+   "replace": "      '&access_token=' + encodeURIComponent(PTOK);",
+   "count": 1
+  },
+  {
+   "note": "Meta: the sync log says which Page it read",
+   "find": "  const state = { lastRunMs: Date.now(), trigger: trigger, forms: forms.length, seen: seen, created: created };",
+   "replace": "  const state = { lastRunMs: Date.now(), trigger: trigger, forms: forms.length, seen: seen, created: created,\n                  page: { id: page.id, name: page.name } };",
+   "count": 1
+  },
+  {
+   "note": "Meta: a Page can be named when the token manages more than one",
+   "find": "  metaFormIds: [],              // empty = every form the token can see",
+   "replace": "  metaFormIds: [],              // empty = every form the token can see\n  metaPageId: '',               // only needed when a User token manages several Pages",
+   "count": 1
+  }
+ ]
+}
