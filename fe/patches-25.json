@@ -58,12 +58,12 @@
    "note": "Michalis is on the Operations team"
   },
   {
-   "has": "window._ACC.profile ? [window._ACC.profile] : null",
-   "note": "account profile list is used to pick the workspace"
+   "has": "window.accHasRole",
+   "note": "roles grant components; dual-role accounts see the union"
   },
   {
-   "has": "wsAllowed.length > 1",
-   "note": "switcher shows for Admin or for accounts with more than one workspace"
+   "has": "sel.style.display = accIsAdmin() ? '' : 'none'",
+   "note": "the component switcher is Admin-only"
   },
   {
    "has": "profile: j.profile",
@@ -74,8 +74,8 @@
    "note": "You-are picker locks to the login name"
   },
   {
-   "has": "const showMoney = prof !== 'operator';",
-   "note": "Popi still sees money"
+   "has": "window.accHasRole('accountant')",
+   "note": "Accounting (and dual-role) still see money"
   }
  ]
 }
