@@ -1,0 +1,49 @@
+{
+ "baseSha256": "8d437953863a5bd434fe097b942281084cc8c7bf19882662f28d2d0a36a93ded",
+ "expectedSha256": "6275ee0e26cfda24a6445c562b0c4b7cabd20fe2d270ed67ef9d3a848d916be2",
+ "builtAt": "2026-08-12 dual workspace: Popi/George/John Accounting+Operations",
+ "patches": [
+  {
+   "note": "parseUsers: profiles[] so an account can hold Accounting and Operations",
+   "find": "function parseUsers(raw) {\n  try {\n    const j = JSON.parse(raw || '[]');\n    const TABS = {\n      management: 'all',\n      accountant: ['home','dash','leads','mt','rpt','exp','ann','perf','pinfo','imports','pay'],\n      operator:   ['home','dash','leads','ops','perf','pinfo','co'],\n    };\n    return Array.isArray(j) ? j.filter(u => u && u.user && u.pass).map(u => {\n      let profile = String(u.profile || u.role || '').toLowerCase();\n      if (profile === 'admin' || profile === 'management') profile = 'management';\n      else if (profile === 'accounting' || profile === 'accountant') profile = 'accountant';\n      else if (profile === 'operations' || profile === 'operator') profile = 'operator';\n      else if (u.access === 'all') profile = 'management';\n      else profile = 'operator';\n      return { user: String(u.user), pass: String(u.pass), profile: profile, access: TABS[profile] };\n    }) : [];\n  } catch (e) { console.error('[auth] USERS_JSON parse error:', e.message); return []; }\n}\n",
+   "replace": "function parseUsers(raw) {\n  try {\n    const j = JSON.parse(raw || '[]');\n    const TABS = {\n      management: 'all',\n      accountant: ['home','dash','leads','mt','rpt','exp','ann','perf','pinfo','imports','pay'],\n      operator:   ['home','dash','leads','ops','perf','pinfo','co'],\n    };\n    function normProfile(p) {\n      p = String(p || '').toLowerCase();\n      if (p === 'admin' || p === 'management') return 'management';\n      if (p === 'accounting' || p === 'accountant') return 'accountant';\n      if (p === 'operations' || p === 'operator') return 'operator';\n      return '';\n    }\n    return Array.isArray(j) ? j.filter(u => u && u.user && u.pass).map(u => {\n      let profiles = [];\n      if (Array.isArray(u.profiles) && u.profiles.length) {\n        profiles = u.profiles.map(normProfile).filter(Boolean);\n      } else {\n        const one = normProfile(u.profile || u.role) || (u.access === 'all' ? 'management' : 'operator');\n        profiles = [one];\n      }\n      const seen = {};\n      profiles = profiles.filter(function (p) { if (seen[p]) return false; seen[p] = 1; return true; });\n      if (!profiles.length) profiles = ['operator'];\n      const profile = profiles[0];\n      let access = 'all';\n      if (profiles.indexOf('management') < 0) {\n        const tabs = [];\n        profiles.forEach(function (p) {\n          const t = TABS[p];\n          if (Array.isArray(t)) t.forEach(function (x) { if (tabs.indexOf(x) < 0) tabs.push(x); });\n        });\n        access = tabs;\n      }\n      return { user: String(u.user), pass: String(u.pass), profile: profile, profiles: profiles, access: access };\n    }) : [];\n  } catch (e) { console.error('[auth] USERS_JSON parse error:', e.message); return []; }\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Auth request carries the full profiles list",
+   "find": "if (acct) { req.acctUser = acct.user; req.acctAccess = acct.access; req.acctProfile = acct.profile; return next(); }\n    if (APP_PASSWORD && pw === APP_PASSWORD) { req.acctUser = u || 'admin'; req.acctAccess = 'all'; req.acctProfile = 'management'; return next(); }",
+   "replace": "if (acct) { req.acctUser = acct.user; req.acctAccess = acct.access; req.acctProfile = acct.profile; req.acctProfiles = acct.profiles; return next(); }\n    if (APP_PASSWORD && pw === APP_PASSWORD) { req.acctUser = u || 'admin'; req.acctAccess = 'all'; req.acctProfile = 'management'; req.acctProfiles = ['management']; return next(); }",
+   "count": 1
+  },
+  {
+   "note": "Boot log names every workspace on the account",
+   "find": "if (USERS.length) console.log('  ✓  Accounts:', USERS.map(u => u.user + ' (' + u.profile + ')').join(', '));",
+   "replace": "if (USERS.length) console.log('  ✓  Accounts:', USERS.map(u => u.user + ' (' + (u.profiles || [u.profile]).join('+') + ')').join(', '));",
+   "count": 1
+  },
+  {
+   "note": "whoami returns profiles[]",
+   "find": "app.get('/api/whoami', (req, res) => {\n  if (!APP_PASSWORD && !USERS.length) return res.json({ user: null });\n  res.json({\n    user: req.acctUser || null,\n    access: req.acctAccess || 'all',\n    profile: req.acctProfile || 'management',\n    mode: USERS.length ? 'users' : 'legacy'\n  });\n});\n",
+   "replace": "app.get('/api/whoami', (req, res) => {\n  if (!APP_PASSWORD && !USERS.length) return res.json({ user: null });\n  res.json({\n    user: req.acctUser || null,\n    access: req.acctAccess || 'all',\n    profile: req.acctProfile || 'management',\n    profiles: req.acctProfiles || [req.acctProfile || 'management'],\n    mode: USERS.length ? 'users' : 'legacy'\n  });\n});\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function normProfile(p)",
+   "note": "profile names are normalised"
+  },
+  {
+   "has": "u.profiles",
+   "note": "USERS_JSON can list more than one workspace"
+  },
+  {
+   "has": "req.acctProfiles",
+   "note": "profiles list is on the request"
+  },
+  {
+   "has": "profiles: req.acctProfiles",
+   "note": "whoami returns every workspace the account may open"
+  }
+ ]
+}

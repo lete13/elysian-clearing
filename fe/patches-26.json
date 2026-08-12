@@ -1,0 +1,49 @@
+{
+ "baseSha256": "7a2106c1756e06c54e985b817b70827e44431fecc4df79621bb98c05903e329a",
+ "expectedSha256": "5af847650b141fc4c3b48b7c96ebd7df223e4d565d2d94b8a831ff305d000d04",
+ "builtAt": "2026-08-12 dual workspace switcher for accounts with Accounting+Operations",
+ "patches": [
+  {
+   "note": "Workspace: allowed profiles from the account; dual-role users can switch",
+   "find": "    if (window._ACC && window._ACC.profile && window._ACC.profile !== 'management') return window._ACC.profile;",
+   "replace": "    const allowed = (window._ACC && Array.isArray(window._ACC.profiles) && window._ACC.profiles.length) ? window._ACC.profiles : (window._ACC && window._ACC.profile ? [window._ACC.profile] : null);\n    if (allowed && allowed.indexOf('management') < 0) return (allowed.indexOf(p) >= 0) ? p : allowed[0];",
+   "count": 1
+  },
+  {
+   "note": "Show the workspace switcher when the account has more than one profile (or is Admin)",
+   "find": "    if (sel) sel.style.display = (window._ACC && window._ACC.profile && window._ACC.profile !== 'management') ? 'none' : '';",
+   "replace": "    const wsAllowed = (window._ACC && Array.isArray(window._ACC.profiles) && window._ACC.profiles.length) ? window._ACC.profiles : (window._ACC && window._ACC.profile ? [window._ACC.profile] : null);\n    const canSwitch = !wsAllowed || wsAllowed.indexOf('management') >= 0 || wsAllowed.length > 1;\n    if (sel) sel.style.display = canSwitch ? '' : 'none';\n    if (sel && wsAllowed) Array.prototype.forEach.call(sel.options, function (o) {\n      o.hidden = wsAllowed.indexOf('management') < 0 && wsAllowed.indexOf(o.value) < 0;\n    });",
+   "count": 1
+  },
+  {
+   "note": "Dashboard cards follow the chosen workspace among the account's allowed profiles",
+   "find": "return (window._ACC && window._ACC.profile && window._ACC.profile !== 'management') ? window._ACC.profile : base;",
+   "replace": "var allowed = (window._ACC && Array.isArray(window._ACC.profiles) && window._ACC.profiles.length) ? window._ACC.profiles : (window._ACC && window._ACC.profile ? [window._ACC.profile] : null); if (allowed && allowed.indexOf('management') < 0) return (allowed.indexOf(base) >= 0) ? base : allowed[0]; return base;",
+   "count": 1
+  },
+  {
+   "note": "whoami stores the list of workspaces this account may open",
+   "find": "window._ACC = { user: j.user, access: j.access || 'all', profile: j.profile || (j.access === 'all' ? 'management' : 'operator'), mode: j.mode };",
+   "replace": "window._ACC = { user: j.user, access: j.access || 'all', profile: j.profile || (j.access === 'all' ? 'management' : 'operator'), profiles: Array.isArray(j.profiles) && j.profiles.length ? j.profiles : [j.profile || (j.access === 'all' ? 'management' : 'operator')], mode: j.mode };",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "allowed.indexOf('management') < 0) return (allowed.indexOf(p) >= 0) ? p : allowed[0]",
+   "note": "dual-role users switch among their workspaces"
+  },
+  {
+   "has": "wsAllowed.length > 1",
+   "note": "switcher shows when the account has more than one profile"
+  },
+  {
+   "has": "o.hidden = wsAllowed.indexOf('management') < 0 && wsAllowed.indexOf(o.value) < 0",
+   "note": "Admin option hidden unless the account is Admin"
+  },
+  {
+   "has": "profiles: Array.isArray(j.profiles)",
+   "note": "client stores the allowed workspaces"
+  }
+ ]
+}
