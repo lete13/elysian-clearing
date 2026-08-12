@@ -1,0 +1,23 @@
+{
+ "baseSha256": "05fd735096e593b2b03e16532b49d32654ec1f4399b1712b68acc64bde9f7bff",
+ "expectedSha256": "6f31ea3ae325679670200ea83462b52e7845df27fd298fa47c2a728bdf6a60b9",
+ "builtAt": "2026-08-12 Add Kostas with Operations profile to the team identity list",
+ "assertions": [
+  {
+   "has": "{name:'Kostas',role:'operator'}",
+   "note": "Kostas is on the team with the Operations profile"
+  },
+  {
+   "has": "{name:'John',role:'operator'},{name:'Kostas',role:'operator'}]",
+   "note": "Kostas is added alongside George and John, not replacing them"
+  }
+ ],
+ "patches": [
+  {
+   "note": "Add Kostas to the identity list with the Operations profile",
+   "find": "var TEAM=[{name:'Lefteris',role:'management'},{name:'Popi',role:'accountant'},{name:'George',role:'operator'},{name:'John',role:'operator'}];",
+   "replace": "var TEAM=[{name:'Lefteris',role:'management'},{name:'Popi',role:'accountant'},{name:'George',role:'operator'},{name:'John',role:'operator'},{name:'Kostas',role:'operator'}];",
+   "count": 1
+  }
+ ]
+}
