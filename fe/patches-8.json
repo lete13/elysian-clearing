@@ -1,0 +1,119 @@
+{
+  "builtAt": "2026-08-12 role-based Home dashboard, sidebar nav, light/dark theme (synced via DB)",
+  "baseSha256": "58016d85dc509f881c4d0d0029543875ed0279623c6331fcd78d90be2f499877",
+  "expectedSha256": "53be3c3958af4a4a768fbb34f713bce458b122276c48c2d88f408d22d9be3bd6",
+  "patches": [
+    {
+      "note": "theme+sidebar+home CSS",
+      "find": "      --acc:#C9A84C;\n    }",
+      "replace": "      --acc:#C9A84C;\n    }\n    /* ===== Elysian brand theme tokens + sidebar + Home (patches-8) ===== */\n    html{--gold:#b8974c;--side-bg:#0F1E2E;--side-tx:rgba(255,255,255,.82);--side-active-bg:rgba(184,151,76,.18);--th-bg:#0F1E2E;--th-tx:#c9a84c;--card:var(--bg)}\n    html[data-theme=\"dark\"]{\n      --bg:#16181d;--bg2:#1e2127;--bg3:#0e0f12;\n      --bg-ok:#13291d;--bg-err:#2a1614;--bg-warn:#2a2411;\n      --tx:#e8e5de;--tx2:#b3aea2;--tx3:#8b8678;\n      --tx-ok:#4ade80;--tx-err:#f87171;--tx-warn:#fbbf24;\n      --bdr:rgba(255,255,255,.12);--bdr2:rgba(255,255,255,.22);\n      --side-bg:#0b0d11;--th-bg:#0b0d11;--th-tx:#c9a84c;--card:#1e2127;\n    }\n    html[data-theme=\"dark\"] body{background:var(--bg3)}\n    html[data-theme=\"dark\"] .tbl th{background:var(--th-bg);color:var(--th-tx)}\n    html[data-theme=\"dark\"] .tbl tr:hover td{background:var(--bg2)}\n    html[data-theme=\"dark\"] .btn.primary{background:#243447;border-color:#243447;color:#fff}\n    html[data-theme=\"dark\"] .btn.gold{background:var(--gold);border-color:var(--gold);color:#141414}\n    html[data-theme=\"dark\"] input[type=text],html[data-theme=\"dark\"] input[type=number],html[data-theme=\"dark\"] input[type=date],html[data-theme=\"dark\"] input[type=email],html[data-theme=\"dark\"] select,html[data-theme=\"dark\"] textarea{background:var(--bg2);color:var(--tx)}\n    html[data-theme=\"dark\"] .card{background:var(--card)}\n    html[data-theme=\"dark\"] .kpi{background:var(--bg2)}\n    /* ===== Sidebar (transform the existing #hdr into a left rail) ===== */\n    #hdr{flex-direction:column!important;align-items:stretch!important;gap:0!important;width:216px!important;height:100vh!important;position:fixed!important;top:0!important;left:0!important;overflow-y:auto!important;padding:0 0 12px 0!important;background:var(--side-bg)!important;border-bottom:none!important;border-right:1px solid var(--gold)!important;z-index:200!important}\n    #hdr-brand{padding:16px 16px 12px 16px!important;flex-direction:row!important;align-items:center!important;gap:10px!important}\n    #hdr-rule{display:none!important}\n    #hdr nav{flex-direction:column!important;gap:0!important;align-items:stretch!important;width:100%}\n    #hdr .nav-btn{width:100%!important;justify-content:flex-start!important;text-align:left!important;border-bottom:none!important;padding:9px 16px!important;font-size:13px!important;gap:8px;display:flex;align-items:center}\n    #hdr .nav-btn.active{border-bottom:none!important;border-left:3px solid var(--gold)!important;background:var(--side-active-bg)!important;color:var(--gold)!important;font-weight:600}\n    #hdr .nav-dd{flex-direction:column!important;width:100%;align-items:stretch}\n    #hdr .nav-dd-menu{position:static!important;box-shadow:none!important;border:none!important;background:transparent!important;min-width:0!important;padding:0 0 4px 12px!important;border-radius:0!important;top:auto;right:auto}\n    #hdr>div[style*=\"margin-left:auto\"]{margin-left:0!important;margin-top:auto!important;flex-direction:column!important;align-items:stretch!important;gap:8px!important;padding:12px 12px 0 12px!important;border-top:1px solid rgba(255,255,255,.08)}\n    #hdr #nav-profile{width:100%}\n    #hdr #hdr-props{text-align:left!important}\n    #main-content{margin-left:216px!important}\n    @media print{#hdr{display:none!important}#main-content{margin-left:0!important}}\n    /* ===== Home (role dashboard) ===== */\n    .home-h{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px}\n    .home-title{font-size:22px;font-weight:600;color:var(--tx)}\n    .home-sub{font-size:13px;color:var(--tx2);margin-top:2px}\n    .home-rolepill{background:var(--side-active-bg);color:var(--gold);border:1px solid var(--gold);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;white-space:nowrap}\n    .home-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:22px}\n    .home-card{background:var(--card);border:.5px solid var(--bdr);border-radius:var(--rl);padding:15px;cursor:pointer;transition:all .12s;display:flex;gap:12px;align-items:flex-start}\n    .home-card:hover{border-color:var(--gold);transform:translateY(-1px)}\n    .home-card>i{font-size:22px;color:var(--gold);line-height:1}\n    .home-card .hc-t{font-weight:600;color:var(--tx);font-size:14px}\n    .home-card .hc-d{font-size:12px;color:var(--tx2);margin-top:3px;line-height:1.35}\n    .home-bucket{margin-bottom:16px}\n    .home-bucket h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--tx2);margin:0 0 8px 0;display:flex;align-items:center;gap:8px}\n    .home-bucket .cnt{background:var(--bg3);border:.5px solid var(--bdr);border-radius:20px;padding:1px 8px;font-size:11px;color:var(--tx2)}\n    .home-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border:.5px solid var(--bdr);border-radius:var(--r);margin-bottom:6px;background:var(--card);cursor:pointer;transition:border-color .12s}\n    .home-row:hover{border-color:var(--gold)}\n    .home-row .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}\n    .home-row .rl{flex:1;min-width:0;overflow:hidden}\n    .home-row .rl b{font-weight:600;color:var(--tx);font-size:13px}\n    .home-row .rl span{color:var(--tx2);font-size:12px;margin-left:6px}\n    .home-row .rt{font-size:11px;color:var(--tx3);white-space:nowrap}\n    .home-empty{color:var(--tx3);font-size:13px;padding:14px;border:1px dashed var(--bdr);border-radius:var(--r);text-align:center}",
+      "count": 1
+    },
+    {
+      "note": "home nav button",
+      "find": "    <button class=\"nav-btn active\" data-tab=\"dash\" onclick=\"showTab('dash',this)\">Dashboard</button>",
+      "replace": "    <button class=\"nav-btn\" data-tab=\"home\" onclick=\"showTab('home',this)\" id=\"nav-home\"><i class=\"ti ti-home\"></i> Home</button>\n    <button class=\"nav-btn active\" data-tab=\"dash\" onclick=\"showTab('dash',this)\">Dashboard</button>",
+      "count": 1
+    },
+    {
+      "note": "theme toggle button",
+      "find": "  <div style=\"margin-left:auto;display:flex;align-items:center;gap:14px\">\n",
+      "replace": "  <div style=\"margin-left:auto;display:flex;align-items:center;gap:14px\">\n    <button id=\"theme-toggle\" class=\"btn sm\" onclick=\"toggleTheme()\" title=\"Switch light / dark\" style=\"border-color:#b8974c66;color:#b8974c;background:transparent\"><i class=\"ti ti-moon\"></i></button>\n",
+      "count": 1
+    },
+    {
+      "note": "role labels",
+      "find": "      <option value=\"management\">👔 Management</option>\n      <option value=\"accountant\">🧾 Accountant</option>\n      <option value=\"operator\">🛎 Operator</option>",
+      "replace": "      <option value=\"management\">👔 Executive</option>\n      <option value=\"accountant\">🧾 Accounting</option>\n      <option value=\"operator\">🛎 Operations</option>",
+      "count": 1
+    },
+    {
+      "note": "home panel",
+      "find": "<div id=\"tab-dash\" class=\"tab-panel active\">",
+      "replace": "<div id=\"tab-home\" class=\"tab-panel\"></div>\n\n<div id=\"tab-dash\" class=\"tab-panel active\">",
+      "count": 1
+    },
+    {
+      "note": "main-content id",
+      "find": "<div style=\"padding:24px;max-width:1480px;margin:0 auto\">",
+      "replace": "<div id=\"main-content\" style=\"padding:24px;max-width:1480px;margin:0 auto\">",
+      "count": 1
+    },
+    {
+      "note": "showTab home dispatch",
+      "find": "    if(name==='dash')renderDash();",
+      "replace": "    if(name==='home'){if(typeof renderHome==='function')renderHome();}\n    else if(name==='dash')renderDash();",
+      "count": 1
+    },
+    {
+      "note": "apply shows home",
+      "find": "      const show = (prof.tabs === 'all' || prof.tabs.includes(t)) && (typeof accTab !== 'function' || accTab(t));",
+      "replace": "      const show = (t === 'home' || prof.tabs === 'all' || prof.tabs.includes(t)) && (typeof accTab !== 'function' || accTab(t));",
+      "count": 1
+    },
+    {
+      "note": "apply allows home on fallback",
+      "find": "    const allowed = t => (typeof accTab !== 'function' || accTab(t)) && ((PROFILES[name].tabs === 'all'",
+      "replace": "    const allowed = t => t === 'home' || (typeof accTab !== 'function' || accTab(t)) && ((PROFILES[name].tabs === 'all'",
+      "count": 1
+    },
+    {
+      "note": "loadFromDb applyPrefs hook",
+      "find": "    renderDash(); renderCfg(); renderBk(); renderExp();",
+      "replace": "    renderDash(); renderCfg(); renderBk(); renderExp();\n    if(typeof applyPrefs==='function')applyPrefs(); if(typeof renderHome==='function'&&document.getElementById('tab-home')&&document.getElementById('tab-home').classList.contains('active'))renderHome();",
+      "count": 1
+    },
+    {
+      "note": "injected home/theme/role JS",
+      "find": "  window.applyNavProfile = apply;\n  apply();\n})();",
+      "replace": "  window.applyNavProfile = apply;\n  apply();\n})();\n;(function(){\n  'use strict';\n  var CID=null;\n  function clientId(){ try{ CID=localStorage.getItem('e_client'); if(!CID){ CID='c'+Math.random().toString(36).slice(2,10); localStorage.setItem('e_client',CID);} }catch(e){ CID=CID||'c0'; } return CID; }\n  function prefKey(){ return (window._ACC && window._ACC.user) ? ('u:'+window._ACC.user) : ('c:'+clientId()); }\n  function prefsBag(){ if(typeof S==='undefined')return {}; S.meta=S.meta||{}; S.meta.uiPrefs=S.meta.uiPrefs||{}; return S.meta.uiPrefs; }\n  function curRole(){ try{ var p=localStorage.getItem('nav_profile'); return ['operator','accountant','management'].indexOf(p)>=0?p:'management'; }catch(e){ return 'management'; } }\n  function curTheme(){ try{ return localStorage.getItem('e_theme')==='dark'?'dark':'light'; }catch(e){ return 'light'; } }\n  function setTheme(t){ t=(t==='dark')?'dark':'light'; try{document.documentElement.setAttribute('data-theme',t);}catch(e){} try{localStorage.setItem('e_theme',t);}catch(e){} var b=document.getElementById('theme-toggle'); if(b) b.innerHTML=(t==='dark')?'<i class=\"ti ti-sun\"></i>':'<i class=\"ti ti-moon\"></i>'; }\n  window.toggleTheme=function(){ var t=(curTheme()==='dark')?'light':'dark'; setTheme(t); var bag=prefsBag(),k=prefKey(); bag[k]=bag[k]||{}; bag[k].theme=t; try{ if(typeof save==='function') save(); }catch(e){} if(typeof toast==='function') toast(t==='dark'?'Dark theme':'Light theme'); };\n  var _origSetProfile=window.setNavProfile;\n  window.setNavProfile=function(v){ try{ if(_origSetProfile) _origSetProfile(v); }catch(e){} var bag=prefsBag(),k=prefKey(); bag[k]=bag[k]||{}; bag[k].role=curRole(); try{ if(typeof save==='function') save(); }catch(e){} if(isHomeActive()) window.renderHome(); };\n  window.applyPrefs=function(){ try{ var mine=prefsBag()[prefKey()]; if(mine){ if(mine.role && mine.role!==curRole()){ try{localStorage.setItem('nav_profile',mine.role);}catch(e){} if(typeof applyNavProfile==='function') applyNavProfile(); } if(mine.theme && mine.theme!==curTheme()) setTheme(mine.theme); } setTheme(curTheme()); var sel=document.getElementById('nav-profile'); if(sel) sel.value=curRole(); }catch(e){} };\n  function isHomeActive(){ var h=document.getElementById('tab-home'); return !!(h && h.classList.contains('active')); }\n  // date helpers\n  function todayMid(){ var d=new Date(); return new Date(d.getFullYear(),d.getMonth(),d.getDate()); }\n  function parseDate(s){ if(!s) return null; if(s instanceof Date) return new Date(s.getFullYear(),s.getMonth(),s.getDate()); s=String(s).trim(); var m=s.match(/^(\\d{4})-(\\d{2})-(\\d{2})/); if(m) return new Date(+m[1],+m[2]-1,+m[3]); m=s.match(/^(\\d{1,2})[\\/.](\\d{1,2})[\\/.](\\d{4})/); if(m) return new Date(+m[3],+m[2]-1,+m[1]); var d=new Date(s); return isNaN(d.getTime())?null:new Date(d.getFullYear(),d.getMonth(),d.getDate()); }\n  function dbetween(a,b){ return Math.round((b-a)/86400000); }\n  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }\n  function bucketOf(d,today){ if(!d) return null; var n=dbetween(today,d); if(n<0) return 'overdue'; if(n===0) return 'today'; if(n<=3) return 'soon'; if(n<=7) return 'week'; return null; }\n  function fmtShort(d){ if(!d) return ''; var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return d.getDate()+' '+m[d.getMonth()]; }\n  window.renderHome=function(){\n    var el=document.getElementById('tab-home'); if(!el) return;\n    var role=curRole();\n    var roleLabel={operator:'Operations',accountant:'Accounting',management:'Executive'}[role]||'Executive';\n    var today=todayMid();\n    var apts=(typeof S!=='undefined'&&Array.isArray(S.apts))?S.apts:[];\n    var bks=(typeof S!=='undefined'&&Array.isArray(S.bks))?S.bks:[];\n    var tasks=(typeof S!=='undefined'&&S.daily&&Array.isArray(S.daily.tasks))?S.daily.tasks:[];\n    function aptName(b){ if(b&&b.aptName) return b.aptName; var a=apts.filter(function(x){return x.id===(b&&b.aptId);})[0]; return a?a.name:((b&&b.aptId)||'Property'); }\n    var showOps=(role!=='accountant'), showAcc=(role!=='operator');\n    var items=[];\n    function add(d,kind,label,sub,tab){ items.push({date:d,bucket:bucketOf(d,today),kind:kind,label:label,sub:sub||'',tab:tab}); }\n    if(showOps){\n      try{ tasks.forEach(function(t){ if(!t||t.completed) return; var d=parseDate(t.createdDate||t.date||t.due); var label=t.text||t.label||t.title||t.note||'Operations task'; if(bucketOf(d,today)) add(d,'task',label,t.aptName||'','ops'); }); }catch(e){}\n      try{ bks.forEach(function(b){ var co=parseDate(b.checkOut); if(bucketOf(co,today)) add(co,'checkout','Checkout · '+aptName(b),b.guestName||'','ops'); }); }catch(e){}\n      try{ bks.forEach(function(b){ var ci=parseDate(b.checkIn); if(bucketOf(ci,today)) add(ci,'checkin','Check-in · '+aptName(b),b.guestName||'','ops'); }); }catch(e){}\n    }\n    var order=['overdue','today','soon','week'];\n    var titles={overdue:'Overdue',today:'Today',soon:'Next 3 days',week:'This week'};\n    var dot={overdue:'var(--tx-err)',today:'var(--gold)',soon:'#3b82f6',week:'var(--tx3)'};\n    var byB={overdue:[],today:[],soon:[],week:[]};\n    items.forEach(function(it){ if(it.bucket&&byB[it.bucket]) byB[it.bucket].push(it); });\n    order.forEach(function(k){ byB[k].sort(function(a,b){ return (a.date&&b.date)?(a.date-b.date):0; }); });\n    var urgent=byB.overdue.length+byB.today.length;\n    // action cards (role-based deep links)\n    var cards=[];\n    if(showAcc){\n      cards.push({i:'ti ti-checklist',t:'Monthly close',d:apts.length+' properties to review &amp; clear',tab:'mt'});\n      cards.push({i:'ti ti-cash-banknote',t:'Payments to chase',d:'Reconcile received payouts',tab:'pay'});\n      cards.push({i:'ti ti-file-invoice',t:'Owner reports',d:'Prepare &amp; send monthly statements',tab:'rpt'});\n    }\n    if(showOps){\n      cards.push({i:'ti ti-calendar-event',t:'Daily operations',d:'Turnovers, check-ins &amp; tasks',tab:'ops'});\n      cards.push({i:'ti ti-home-cog',t:'Property info',d:'Amenities, rules &amp; compliance',tab:'pinfo'});\n    }\n    var h='';\n    h+='<div class=\"home-h\"><div><div class=\"home-title\">Welcome back</div><div class=\"home-sub\">Your tasks to close in the coming days'+(urgent?(' — <b style=\"color:var(--tx-err)\">'+urgent+'</b> need attention now'):' — you\\'re all caught up')+'.</div></div><div class=\"home-rolepill\">'+esc(roleLabel)+' workspace</div></div>';\n    h+='<div class=\"home-cards\">';\n    cards.forEach(function(c){ h+='<div class=\"home-card\" onclick=\"showTab(\\''+c.tab+'\\',document.querySelector(\\'.nav-btn[data-tab=\\\\\\''+c.tab+'\\\\\\']\\')||document.getElementById(\\'nav-'+c.tab+'\\'))\"><i class=\"'+c.i+'\"></i><div><div class=\"hc-t\">'+c.t+'</div><div class=\"hc-d\">'+c.d+'</div></div></div>'; });\n    h+='</div>';\n    var any=false;\n    order.forEach(function(k){\n      var rows=byB[k]; if(!rows.length) return; any=true;\n      h+='<div class=\"home-bucket\"><h3><span class=\"dot\" style=\"background:'+dot[k]+'\"></span>'+titles[k]+' <span class=\"cnt\">'+rows.length+'</span></h3>';\n      rows.slice(0,12).forEach(function(it){\n        h+='<div class=\"home-row\" onclick=\"showTab(\\''+it.tab+'\\',document.getElementById(\\'nav-'+it.tab+'\\')||document.querySelector(\\'.nav-btn[data-tab=\\\\\\''+it.tab+'\\\\\\']\\'))\"><span class=\"dot\" style=\"background:'+dot[k]+'\"></span><div class=\"rl\"><b>'+esc(it.label)+'</b>'+(it.sub?'<span>'+esc(it.sub)+'</span>':'')+'</div><div class=\"rt\">'+(it.date?fmtShort(it.date):'')+'</div></div>';\n      });\n      if(rows.length>12) h+='<div class=\"home-empty\" style=\"border:none;text-align:left;padding:6px 2px\">+ '+(rows.length-12)+' more</div>';\n      h+='</div>';\n    });\n    if(!any){ h+='<div class=\"home-empty\">No dated tasks in the next 7 days. Use the cards above to jump into your areas.</div>'; }\n    el.innerHTML=h;\n  };\n  function boot(){ try{ applyPrefs(); }catch(e){} try{ var nb=document.getElementById('nav-home'); if(nb && typeof showTab==='function') showTab('home', nb); }catch(e){} }\n  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();\n})();",
+      "count": 1
+    }
+  ],
+  "assertions": [
+    {
+      "has": "id=\"nav-home\"",
+      "note": "Home nav item present"
+    },
+    {
+      "has": "id=\"tab-home\"",
+      "note": "Home panel present"
+    },
+    {
+      "has": "window.renderHome=function()",
+      "note": "Home renderer defined"
+    },
+    {
+      "has": "window.toggleTheme=function()",
+      "note": "theme toggle defined"
+    },
+    {
+      "has": "id=\"theme-toggle\"",
+      "note": "theme toggle button present"
+    },
+    {
+      "has": "html[data-theme=\"dark\"]",
+      "note": "dark theme tokens present"
+    },
+    {
+      "has": "🛎 Operations",
+      "note": "Operations role label"
+    },
+    {
+      "has": "🧾 Accounting",
+      "note": "Accounting role label"
+    },
+    {
+      "has": "👔 Executive",
+      "note": "Executive role label"
+    },
+    {
+      "has": "if(name==='home')",
+      "note": "showTab dispatches Home"
+    },
+    {
+      "has": "S.meta.uiPrefs",
+      "note": "prefs synced through meta"
+    }
+  ]
+}
