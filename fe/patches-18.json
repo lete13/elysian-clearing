@@ -1,0 +1,53 @@
+{
+  "baseSha256": "760ffb3196431bef0c2c042d1f7b6e69c32eac5ae9d0dd2c14f71911fd50a7cc",
+  "expectedSha256": "34d0f6431407e7c64e7b2fd0e159bf67966b6d6f51bab0ad67a320f7b15b5058",
+  "builtAt": "2026-08-12 Daily Ops: same-day check-ins auto-flag as Priority",
+  "patches": [
+    {
+      "note": "Daily Ops: auto-PRIORITY for same-day check-ins (with manual override)",
+      "find": "function _opsApplySofaCommentsAll() {\n  (_opsRows || []).forEach(_opsApplySofaComment);\n}\nfunction _opsPrefetchRentalInfo() {",
+      "replace": "function _opsApplySofaCommentsAll() {\n  (_opsRows || []).forEach(_opsApplySofaComment);\n}\n// Same-day check-in (Ναι) → Priority automatically. Manual Pri clicks set\n// priorityManual and always win over the auto rule.\nfunction _opsApplySameDayPriority(row) {\n  if (!row) return;\n  if (row.priorityManual === true) {\n    row.isPriority = true;\n    _opsSetManagedComment(row, OPS_TAG_PRIORITY, true);\n    return;\n  }\n  if (row.priorityManual === false) {\n    row.isPriority = false;\n    _opsSetManagedComment(row, OPS_TAG_PRIORITY, false);\n    return;\n  }\n  const auto = row.checkinSameDay === 'yes' && !row.isCheckinOnly && !_opsIsSpecial(row);\n  row.isPriority = !!auto;\n  _opsSetManagedComment(row, OPS_TAG_PRIORITY, !!auto);\n}\nfunction _opsApplySameDayPriorityAll() {\n  (_opsRows || []).forEach(_opsApplySameDayPriority);\n}\nfunction _opsPrefetchRentalInfo() {",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: apply same-day priority on render",
+      "find": "  _opsRows  = rows;\n  _opsNotes = notes;\n  _opsApplySofaCommentsAll();",
+      "replace": "  _opsRows  = rows;\n  _opsNotes = notes;\n  _opsApplySofaCommentsAll();\n  if (typeof _opsApplySameDayPriorityAll === 'function') _opsApplySameDayPriorityAll();",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: Pri toggle records priorityManual so auto rule does not fight it",
+      "find": "function opsTogglePriority(i) {\n  if (!_opsRows[i]) return;\n  _opsRows[i].isPriority = !_opsRows[i].isPriority;\n  _opsSetManagedComment(_opsRows[i], OPS_TAG_PRIORITY, !!_opsRows[i].isPriority);\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}",
+      "replace": "function opsTogglePriority(i) {\n  if (!_opsRows[i]) return;\n  _opsRows[i].isPriority = !_opsRows[i].isPriority;\n  _opsRows[i].priorityManual = !!_opsRows[i].isPriority;\n  _opsSetManagedComment(_opsRows[i], OPS_TAG_PRIORITY, !!_opsRows[i].isPriority);\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops: re-evaluate priority when same-day check-in cell is toggled",
+      "find": "function opsToggleCheckin(i) {\n  if (!_opsRows[i]) return;\n  const cycle = { yes:'no', no:'unknown', unknown:'yes' };\n  _opsRows[i].checkinSameDay = cycle[_opsRows[i].checkinSameDay] || 'unknown';\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) { tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join(''); }\n}",
+      "replace": "function opsToggleCheckin(i) {\n  if (!_opsRows[i]) return;\n  const cycle = { yes:'no', no:'unknown', unknown:'yes' };\n  _opsRows[i].checkinSameDay = cycle[_opsRows[i].checkinSameDay] || 'unknown';\n  // Changing Ναι/Όχι clears a prior manual Pri lock so auto same-day rule re-applies.\n  delete _opsRows[i].priorityManual;\n  if (typeof _opsApplySameDayPriority === 'function') _opsApplySameDayPriority(_opsRows[i]);\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) { tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join(''); }\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}",
+      "count": 1
+    }
+  ],
+  "assertions": [
+    {
+      "has": "function _opsApplySameDayPriority(row)",
+      "note": "same-day priority helper exists"
+    },
+    {
+      "has": "_opsApplySameDayPriorityAll()",
+      "note": "same-day priority applied on render"
+    },
+    {
+      "has": "row.checkinSameDay === 'yes'",
+      "note": "Ναι same-day check-in drives auto priority"
+    },
+    {
+      "has": "priorityManual",
+      "note": "manual Pri override flag"
+    },
+    {
+      "has": "delete _opsRows[i].priorityManual",
+      "note": "toggling same-day check-in resets manual Pri lock"
+    }
+  ]
+}
