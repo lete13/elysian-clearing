@@ -1,0 +1,41 @@
+{
+ "baseSha256": "acfdb37081fb58fd72ea69ef7258ba9ad017c196bb720546d4c18fe96421da4a",
+ "expectedSha256": "8d437953863a5bd434fe097b942281084cc8c7bf19882662f28d2d0a36a93ded",
+ "builtAt": "2026-08-12 per-user accounts (USERS_JSON) with Admin/Accounting/Operations profiles",
+ "patches": [
+  {
+   "note": "Auth: USERS_JSON personal accounts with profile, APP_PASSWORD remains master fallback",
+   "find": "const APP_PASSWORD   = process.env.APP_PASSWORD   || '';\nconst SERVER_API_KEY = process.env.HOSTHUB_API_KEY || '';\n\nif (APP_PASSWORD) {\n  app.use((req, res, next) => {\n    if (req.path === '/health' || req.path === '/api/fe-info') return next();\n    const auth = req.headers['authorization'] || '';\n    const b64  = auth.replace(/^Basic\\s+/i, '');\n    const [, pw] = Buffer.from(b64, 'base64').toString().split(':');\n    if (pw === APP_PASSWORD) return next();\n    res.set('WWW-Authenticate', 'Basic realm=\"Elysian Clearing\"');\n    res.status(401).send('Authentication required');\n  });\n}\n\n",
+   "replace": "const APP_PASSWORD   = process.env.APP_PASSWORD   || '';\nconst SERVER_API_KEY = process.env.HOSTHUB_API_KEY || '';\n\nfunction parseUsers(raw) {\n  try {\n    const j = JSON.parse(raw || '[]');\n    const TABS = {\n      management: 'all',\n      accountant: ['home','dash','leads','mt','rpt','exp','ann','perf','pinfo','imports','pay'],\n      operator:   ['home','dash','leads','ops','perf','pinfo','co'],\n    };\n    return Array.isArray(j) ? j.filter(u => u && u.user && u.pass).map(u => {\n      let profile = String(u.profile || u.role || '').toLowerCase();\n      if (profile === 'admin' || profile === 'management') profile = 'management';\n      else if (profile === 'accounting' || profile === 'accountant') profile = 'accountant';\n      else if (profile === 'operations' || profile === 'operator') profile = 'operator';\n      else if (u.access === 'all') profile = 'management';\n      else profile = 'operator';\n      return { user: String(u.user), pass: String(u.pass), profile: profile, access: TABS[profile] };\n    }) : [];\n  } catch (e) { console.error('[auth] USERS_JSON parse error:', e.message); return []; }\n}\nconst USERS = parseUsers(process.env.USERS_JSON);\nif (USERS.length) console.log('  ✓  Accounts:', USERS.map(u => u.user + ' (' + u.profile + ')').join(', '));\n\nif (APP_PASSWORD || USERS.length) {\n  app.use((req, res, next) => {\n    if (req.path === '/health' || req.path === '/api/fe-info') return next();\n    const b64 = (req.headers['authorization'] || '').replace(/^Basic\\s+/i, '');\n    let u = '', pw = '';\n    try { const s = Buffer.from(b64, 'base64').toString(); const i = s.indexOf(':'); u = i < 0 ? '' : s.slice(0, i); pw = i < 0 ? s : s.slice(i + 1); } catch (e) {}\n    const acct = USERS.find(x => x.user.toLowerCase() === String(u).toLowerCase() && x.pass === pw);\n    if (acct) { req.acctUser = acct.user; req.acctAccess = acct.access; req.acctProfile = acct.profile; return next(); }\n    if (APP_PASSWORD && pw === APP_PASSWORD) { req.acctUser = u || 'admin'; req.acctAccess = 'all'; req.acctProfile = 'management'; return next(); }\n    res.set('WWW-Authenticate', 'Basic realm=\"Elysian Command Center\"');\n    res.status(401).send('Authentication required');\n  });\n}\n\n",
+   "count": 1
+  },
+  {
+   "note": "whoami: return the signed-in user, profile and tab access",
+   "find": "app.get('/api/whoami', (req, res) => {\n  if (!APP_PASSWORD) return res.json({ user: null });\n  let user = '';\n  try { user = Buffer.from(String(req.headers['authorization'] || '').replace(/^Basic\\s+/i, ''), 'base64').toString().split(':')[0] || ''; } catch (e) {}\n  res.json({ user: user || 'Elysian', access: 'all', mode: 'legacy' });\n});",
+   "replace": "app.get('/api/whoami', (req, res) => {\n  if (!APP_PASSWORD && !USERS.length) return res.json({ user: null });\n  res.json({\n    user: req.acctUser || null,\n    access: req.acctAccess || 'all',\n    profile: req.acctProfile || 'management',\n    mode: USERS.length ? 'users' : 'legacy'\n  });\n});\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function parseUsers(raw)",
+   "note": "USERS_JSON parser present"
+  },
+  {
+   "has": "process.env.USERS_JSON",
+   "note": "accounts come from Railway USERS_JSON"
+  },
+  {
+   "has": "req.acctProfile",
+   "note": "profile is attached to the request"
+  },
+  {
+   "has": "mode: USERS.length ? 'users' : 'legacy'",
+   "note": "whoami distinguishes personal accounts from the shared password"
+  },
+  {
+   "has": "profile: req.acctProfile",
+   "note": "whoami returns the workspace profile"
+  }
+ ]
+}
