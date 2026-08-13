@@ -43,4 +43,6 @@ npm run pull:platform-invoices -- --month=2026-07 --channel=all --out=/tmp/pi-ou
 npm run pull:platform-invoices -- --month=2026-07 --channel=booking --out=/tmp/pi-out
 ```
 
-Selectors are best-effort; MFA/captcha is detected and reported. First live pass may need selector tuning against a real host session. Chromium is installed via `postinstall` / Railway `buildCommand`.
+Selectors are best-effort; MFA/captcha is detected and reported. First live pass may need selector tuning against a real host session.
+
+**Deploy:** Railway uses the `Dockerfile` based on `mcr.microsoft.com/playwright` (Chromium + system libs). Nixpacks alone is not enough — the browser needs `libglib` and related packages.
