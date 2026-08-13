@@ -1,7 +1,7 @@
 [build]
-builder = "nixpacks"
-buildCommand = "npm install && npx playwright install chromium"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand  = "node srv-boot.js"
+startCommand = "node srv-boot.js"
 restartPolicyType = "always"
