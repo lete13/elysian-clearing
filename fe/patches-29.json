@@ -1,0 +1,93 @@
+{
+  "baseSha256": "7dfc6d9820640feb07b3fbbfec20c8ac9280cf07952a497d23f8e1f48f7c2f1a",
+  "expectedSha256": "3155c87318c7060907c5b6b1e0e937ce44649abc95fe5b4674b6e4d0d5abe29b",
+  "builtAt": "2026-08-13 Daily Ops: apt addresses + driver routes from schedule into comments",
+  "patches": [
+    {
+      "note": "Daily Ops: apartment address helpers",
+      "find": "function _opsAptOf(row) {\n  return (S.apts || []).find(function (a) { return a.id === row.aptId; }) ||\n         (S.apts || []).find(function (a) { return a.name === row.aptName; }) || { name: row.aptName };\n}",
+      "replace": "function _opsAptOf(row) {\n  return (S.apts || []).find(function (a) { return a.id === row.aptId; }) ||\n         (S.apts || []).find(function (a) { return a.name === row.aptName; }) || { name: row.aptName };\n}\nfunction _opsAptAddress(aptOrRow) {\n  const apt = aptOrRow && (aptOrRow.aptName != null || aptOrRow.aptId != null)\n    ? _opsAptOf(aptOrRow) : (aptOrRow || {});\n  const street = String(apt.address || apt.street || '').trim();\n  const city = String(apt.city || '').trim();\n  if (street && city) {\n    const low = street.toLowerCase();\n    if (low.indexOf(city.toLowerCase()) >= 0) return street;\n    return street + ', ' + city;\n  }\n  return street || city || '';\n}\nfunction _opsAptTitle(row) {\n  const name = String((row && (row.aptName || row.name)) || '');\n  const addr = _opsAptAddress(row);\n  return addr ? (name + ' (' + addr + ')') : name;\n}",
+      "count": 1
+    },
+    {
+      "note": "Daily Ops list shows Name (address)",
+      "find": "\">${row.aptName}${_kind ? ' <span style=\"text-decoration:none;' + _kind.chip + ';font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"' + _kind.title + '\">' + _kind.label + '</span>' : ''}",
+      "replace": "\">${(typeof _opsAptTitle === 'function' ? _opsAptTitle(row) : row.aptName)}${_kind ? ' <span style=\"text-decoration:none;' + _kind.chip + ';font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"' + _kind.title + '\">' + _kind.label + '</span>' : ''}",
+      "count": 1
+    },
+    {
+      "note": "Cleaning schedule shows Name (address)",
+      "find": "'<div style=\"font-weight:700;font-size:13px;' + (done ? 'color:#9CA3AF;text-decoration:line-through' : 'color:#111827') + '\">' + esc(r.aptName || '') + '</div>' +",
+      "replace": "'<div style=\"font-weight:700;font-size:13px;' + (done ? 'color:#9CA3AF;text-decoration:line-through' : 'color:#111827') + '\">' + esc((typeof _opsAptTitle === 'function') ? _opsAptTitle(r) : (r.aptName || '')) + '</div>' +",
+      "count": 1
+    },
+    {
+      "note": "Property Info: editable street address on apartment",
+      "find": "  window.pinfoOwnerPhone = function (aptId, v) {\n    const a = (S.apts || []).filter(function (x) { return x.id === aptId; })[0];\n    if (!a) return;\n    const nv = String(v || '').trim();\n    if (nv === String(a.ownerPhone || '')) return;\n    a.ownerPhone = nv; save();\n    if (typeof logChange === 'function') logChange('Property Info', 'Owner phone', a.name + ' → ' + (nv || '(cleared)'));\n    if (typeof toast === 'function') toast(nv ? 'Phone saved for ' + a.name + '.' : 'Phone cleared for ' + a.name + '.', 'ok');\n  };",
+      "replace": "  window.pinfoOwnerPhone = function (aptId, v) {\n    const a = (S.apts || []).filter(function (x) { return x.id === aptId; })[0];\n    if (!a) return;\n    const nv = String(v || '').trim();\n    if (nv === String(a.ownerPhone || '')) return;\n    a.ownerPhone = nv; save();\n    if (typeof logChange === 'function') logChange('Property Info', 'Owner phone', a.name + ' → ' + (nv || '(cleared)'));\n    if (typeof toast === 'function') toast(nv ? 'Phone saved for ' + a.name + '.' : 'Phone cleared for ' + a.name + '.', 'ok');\n  };\n  window.pinfoAddress = function (aptId, v) {\n    const a = (S.apts || []).filter(function (x) { return x.id === aptId; })[0];\n    if (!a) return;\n    const nv = String(v || '').trim();\n    if (nv === String(a.address || '')) return;\n    a.address = nv; save();\n    if (typeof logChange === 'function') logChange('Property Info', 'Address', a.name + ' → ' + (nv || '(cleared)'));\n    if (typeof toast === 'function') toast(nv ? 'Address saved for ' + a.name + '.' : 'Address cleared for ' + a.name + '.', 'ok');\n  };",
+      "count": 1
+    },
+    {
+      "note": "Property Info UI: street address field",
+      "find": "  function _ownerBlockHtml(a) {\n    const es = _ownerEmails(a);\n    return '<div class=\"card\" style=\"margin-top:14px\">' +\n      '<div style=\"font-size:14px;font-weight:700;color:var(--tx)\">Owner contact</div>' +\n      '<div style=\"font-size:11px;color:var(--tx3);margin:2px 0 10px\">Emails come from Configuration - edit them there. The phone number is saved as soon as you leave the field.</div>' +\n      '<div style=\"display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start\">' +",
+      "replace": "  function _ownerBlockHtml(a) {\n    const es = _ownerEmails(a);\n    return '<div class=\"card\" style=\"margin-top:14px\">' +\n      '<div style=\"font-size:14px;font-weight:700;color:var(--tx)\">Owner contact</div>' +\n      '<div style=\"font-size:11px;color:var(--tx3);margin:2px 0 10px\">Emails come from Configuration - edit them there. Phone and street address save as soon as you leave the field. Address shows on Daily Ops as Name (street, city).</div>' +\n      '<div style=\"margin:0 0 12px\"><div style=\"font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--tx3);margin-bottom:4px\">Street address</div>' +\n      '<input type=\"text\" value=\"' + _esc(a.address || '') + '\" placeholder=\"e.g. Makri 19\" onchange=\"pinfoAddress(\\'' + _esc(a.id) + '\\',this.value)\" style=\"' + IN + ';width:min(420px,100%)\">' +\n      (a.city ? '<span style=\"margin-left:8px;font-size:12px;color:var(--tx3)\">' + _esc(a.city) + '</span>' : '') +\n      '</div>' +\n      '<div style=\"display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start\">' +",
+      "count": 1
+    },
+    {
+      "note": "Driver routes: assign schedule apartments + comment tags",
+      "find": "function opsSetDailyExtra(block, idx, val) {\n  _opsEnsure();\n  if (!S.daily.extra[_opsDate]) S.daily.extra[_opsDate] = {};\n  if (!S.daily.extra[_opsDate][block]) S.daily.extra[_opsDate][block] = {};\n  S.daily.extra[_opsDate][block][idx] = val;\n  if (block === 'adeies') _opsSyncAdeiaRange(idx);\n  if (typeof save === 'function') save();\n}",
+      "replace": "function opsSetDailyExtra(block, idx, val) {\n  _opsEnsure();\n  if (!S.daily.extra[_opsDate]) S.daily.extra[_opsDate] = {};\n  if (!S.daily.extra[_opsDate][block]) S.daily.extra[_opsDate][block] = {};\n  const prev = S.daily.extra[_opsDate][block][idx];\n  S.daily.extra[_opsDate][block][idx] = val;\n  if (block === 'adeies') _opsSyncAdeiaRange(idx);\n  if (block === 'odigoi' && String(prev || '') !== String(val || '')) {\n    _opsRewriteDriverRouteComments(idx, prev, val);\n  }\n  if (typeof save === 'function') save();\n}\nfunction _opsDriverRouteTag(driverName) {\n  const n = String(driverName || '').trim();\n  return n ? ('Route: ' + n) : '';\n}\nfunction _opsDriverRoutes(idx) {\n  _opsEnsure();\n  const bag = S.daily.extra[_opsDate] || {};\n  if (!bag.odigoiRoutes) bag.odigoiRoutes = {};\n  if (!Array.isArray(bag.odigoiRoutes[idx])) bag.odigoiRoutes[idx] = [];\n  return bag.odigoiRoutes[idx];\n}\nfunction _opsScheduleAptOptions() {\n  const seen = new Set();\n  const out = [];\n  function push(r) {\n    if (!r || (typeof _opsIsCleanStub === 'function' && _opsIsCleanStub(r))) return;\n    if (r.isExtended || r.isPreparation || r.isMaintenance) return;\n    const key = String(r.aptId || r.aptName || '');\n    if (!key || seen.has(key)) return;\n    seen.add(key);\n    out.push({ key: key, name: r.aptName || key, title: (typeof _opsAptTitle === 'function') ? _opsAptTitle(r) : (r.aptName || key) });\n  }\n  (_opsRows || []).forEach(push);\n  (_opsCleanExtras || []).forEach(push);\n  out.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });\n  return out;\n}\nfunction _opsRewriteDriverRouteComments(idx, oldName, newName) {\n  const routes = _opsDriverRoutes(idx);\n  const oldTag = _opsDriverRouteTag(oldName);\n  const newTag = _opsDriverRouteTag(newName);\n  routes.forEach(function (stop) {\n    const row = _opsFindRow(stop.key) || (_opsRows || []).find(function (r) { return r.aptName === stop.name; });\n    if (!row) return;\n    if (oldTag) _opsSetManagedComment(row, oldTag, false);\n    if (newTag) _opsSetManagedComment(row, newTag, true);\n  });\n}\nfunction opsAddDriverRoute(idx, aptKey) {\n  if (!aptKey) return;\n  const opts = _opsScheduleAptOptions();\n  const hit = opts.find(function (o) { return o.key === aptKey; });\n  if (!hit) return;\n  const routes = _opsDriverRoutes(idx);\n  if (routes.some(function (s) { return s.key === aptKey; })) return;\n  routes.push({ key: hit.key, name: hit.name });\n  const driver = String(((S.daily.extra[_opsDate] || {}).odigoi || {})[idx] || '').trim();\n  const row = _opsFindRow(aptKey);\n  const tag = _opsDriverRouteTag(driver || ('Driver ' + (idx + 1)));\n  if (row && tag && typeof _opsSetManagedComment === 'function') {\n    _opsSetManagedComment(row, tag, true);\n  }\n  if (typeof save === 'function') save();\n  if (typeof renderOps === 'function') renderOps();\n}\nfunction opsRemoveDriverRoute(idx, stopIdx) {\n  const routes = _opsDriverRoutes(idx);\n  const stop = routes[stopIdx];\n  if (!stop) return;\n  routes.splice(stopIdx, 1);\n  const driver = String(((S.daily.extra[_opsDate] || {}).odigoi || {})[idx] || '').trim();\n  const row = _opsFindRow(stop.key);\n  const tag = _opsDriverRouteTag(driver || ('Driver ' + (idx + 1)));\n  if (row && tag && typeof _opsSetManagedComment === 'function') {\n    _opsSetManagedComment(row, tag, false);\n  }\n  if (typeof save === 'function') save();\n  if (typeof renderOps === 'function') renderOps();\n}",
+      "count": 1
+    },
+    {
+      "note": "Drivers at bottom with route apartment picker",
+      "find": "  const imatismosBlock = '<div style=\"background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:12px 12px 10px;min-width:200px;flex:1\">' +\n    '<div style=\"font-size:12px;font-weight:800;color:#111827;margin:0 0 4px;letter-spacing:.02em\">Ιματισμός</div>' +\n    subTable('Χολαργός', 'imatismos_cholargos', 1) +\n    subTable('Θεσσαλονίκη', 'imatismos_thess', 1) +\n    '</div>';\n  const dailyBlocks = '<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid #E5E7EB\">' +\n    blockTable('Ρεπό', 'repo', 5) +\n    blockTable('Άδειες', 'adeies', 5) +\n    blockTable('Οδηγοί / Μεταφορείς', 'odigoi', 2) +\n    imatismosBlock +\n    '</div>';\n\n",
+      "replace": "  const imatismosBlock = '<div style=\"background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:12px 12px 10px;min-width:200px;flex:1\">' +\n    '<div style=\"font-size:12px;font-weight:800;color:#111827;margin:0 0 4px;letter-spacing:.02em\">Ιματισμός</div>' +\n    subTable('Χολαργός', 'imatismos_cholargos', 1) +\n    subTable('Θεσσαλονίκη', 'imatismos_thess', 1) +\n    '</div>';\n  const scheduleOpts = (typeof _opsScheduleAptOptions === 'function') ? _opsScheduleAptOptions() : [];\n  function driversBlock() {\n    const n = rowCount('odigoi', 2);\n    let rows = '';\n    for (let k = 0; k < n; k++) {\n      const driver = String((dailyExtra.odigoi && dailyExtra.odigoi[k]) || '');\n      const routes = ((dailyExtra.odigoiRoutes && dailyExtra.odigoiRoutes[k]) || []);\n      const chips = routes.map(function (s, si) {\n        const label = s.name || s.key;\n        return '<span style=\"display:inline-flex;align-items:center;gap:4px;background:#111827;color:#fff;font-size:11px;font-weight:700;padding:4px 8px;border-radius:8px;margin:2px 4px 2px 0\">' +\n          esc(label) +\n          '<button type=\"button\" onclick=\"opsRemoveDriverRoute(' + k + ',' + si + ')\" style=\"border:none;background:transparent;color:#FCA5A5;cursor:pointer;font-weight:800;padding:0;line-height:1\">×</button></span>';\n      }).join('');\n      const optHtml = ['<option value=\\\"\\\">+ διαμέρισμα στη διαδρομή…</option>'].concat(\n        scheduleOpts.map(function (o) {\n          const taken = routes.some(function (s) { return s.key === o.key; });\n          return '<option value=\\\"' + esc(o.key) + '\\\"' + (taken ? ' disabled' : '') + '>' + esc(o.title || o.name) + '</option>';\n        })\n      ).join('');\n      rows += '<div style=\"border:1px solid #E5E7EB;border-radius:10px;background:#fff;padding:10px 12px;margin-bottom:8px\">' +\n        '<div style=\"display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px\">' +\n        '<span style=\"font-size:11px;font-weight:800;color:#6B7280;min-width:64px\">ΟΔΗΓΟΣ ' + (k + 1) + '</span>' +\n        '<input type=\"text\" list=\"ops-cleaners-datalist\" value=\"' + esc(driver) + '\" placeholder=\"όνομα οδηγού…\" ' +\n        'onchange=\"opsSetDailyExtra(\\'odigoi\\',' + k + ',this.value)\" onblur=\"opsSetDailyExtra(\\'odigoi\\',' + k + ',this.value)\" ' +\n        'style=\"flex:1;min-width:160px;border:1px solid #E5E7EB;border-radius:8px;background:#FAFAFA;font-size:13px;font-weight:700;outline:none;color:#111827;padding:6px 8px;box-sizing:border-box\">' +\n        '</div>' +\n        '<div style=\"font-size:10px;font-weight:700;color:#6B7280;letter-spacing:.04em;margin:0 0 4px\">ΔΙΑΔΡΟΜΗ</div>' +\n        '<div style=\"margin:0 0 6px\">' + (chips || '<span style=\"font-size:11px;color:#9CA3AF\">καμία στάση ακόμη</span>') + '</div>' +\n        '<select onchange=\"opsAddDriverRoute(' + k + ',this.value); this.value=\\'\\'\" ' +\n        'style=\"width:100%;max-width:420px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;font-size:12px;padding:6px 8px;cursor:pointer\">' +\n        optHtml + '</select></div>';\n    }\n    return '<div style=\"margin-top:14px;padding-top:14px;border-top:2px solid #111827\">' +\n      '<div style=\"display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px\">' +\n      '<div style=\"font-size:13px;font-weight:900;color:#111827;letter-spacing:.04em\">ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ</div>' +\n      '<div style=\"font-size:11px;color:#6B7280\">επίλεξε διαμερίσματα από το σημερινό πρόγραμμα — γράφεται στα σχόλια ως Route: όνομα</div>' +\n      '</div>' + rows +\n      '<button onclick=\"opsAddDailyRow(\\'odigoi\\')\" style=\"margin-top:2px;font-size:11px;padding:3px 10px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;cursor:pointer;color:#4B5563\">+ οδηγός</button>' +\n      '</div>';\n  }\n  const dailyBlocks = '<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid #E5E7EB\">' +\n    blockTable('Ρεπό', 'repo', 5) +\n    blockTable('Άδειες', 'adeies', 5) +\n    imatismosBlock +\n    '</div>' +\n    driversBlock();\n\n",
+      "count": 1
+    },
+    {
+      "note": "Route comments highlighted as chips",
+      "find": "      const hot = p === OPS_TAG_PRIORITY || OPS_LONG_RE.test(p) || /sofa bed/i.test(p) || p === OPS_TAG_LATE;",
+      "replace": "      const hot = p === OPS_TAG_PRIORITY || OPS_LONG_RE.test(p) || /sofa bed/i.test(p) || p === OPS_TAG_LATE || /^Route:/i.test(p);",
+      "count": 1
+    }
+  ],
+  "assertions": [
+    {
+      "has": "function _opsAptAddress(aptOrRow)",
+      "note": "address helper"
+    },
+    {
+      "has": "function _opsAptTitle(row)",
+      "note": "Name (address) title helper"
+    },
+    {
+      "has": "window.pinfoAddress",
+      "note": "Property Info address editor"
+    },
+    {
+      "has": "function opsAddDriverRoute(idx, aptKey)",
+      "note": "add apartment to driver route"
+    },
+    {
+      "has": "function opsRemoveDriverRoute(idx, stopIdx)",
+      "note": "remove apartment from driver route"
+    },
+    {
+      "has": "ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ",
+      "note": "drivers section at bottom of schedule"
+    },
+    {
+      "has": "+ διαμέρισμα στη διαδρομή…",
+      "note": "schedule apartment picker for routes"
+    },
+    {
+      "has": "'Route: ' + n",
+      "note": "route comment tag format"
+    },
+    {
+      "has": "/^Route:/i.test(p)",
+      "note": "route chips highlighted"
+    }
+  ]
+}
