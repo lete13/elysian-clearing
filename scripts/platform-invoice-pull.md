@@ -71,9 +71,19 @@ AIRBNB_HOST_EMAIL='…' AIRBNB_HOST_PASSWORD='…' \
 
 ## Automated collect
 
-1. **Sync Hosthub** so bookings carry `reservationId`.
-2. **Connect Airbnb once** if password login hits OTP.
-3. Platform Invoices → Expect (codes listed) → Collect → **Pull Airbnb (Hosthub codes)**.
-4. Review → Ship.
+1. **Sync Hosthub** so bookings carry `reservationId` (Expect can also backfill from Hosthub).
+2. **Connect Airbnb once** (required when password login hits OTP, or when Pull says session expired):
 
-If Pull returns 0 PDFs, reconnect Airbnb and confirm Hosthub codes are present — do not treat monthly manual PDF upload as the process.
+```bash
+cd elysian-clearing
+AIRBNB_HOST_EMAIL='…' AIRBNB_HOST_PASSWORD='…' \
+  node scripts/platform-invoice-save-session.js --channel=airbnb --headed
+```
+
+Complete OTP in the Chromium window. When Hosting → Reservations is open, press Enter in the terminal.  
+Copy the printed JSON (or the `AIRBNB_STORAGE_STATE_B64=…` line).  
+In the app: Platform Invoices → Collect → **Connect Airbnb** → paste → then **Pull Airbnb (Hosthub codes)**.
+
+3. Review → Ship.
+
+If Pull returns 0 PDFs with “session expired”, Connect Airbnb again (sessions expire) — do not fall back to monthly manual PDF upload.

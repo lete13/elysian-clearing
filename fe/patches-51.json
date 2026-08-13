@@ -1,0 +1,27 @@
+{
+ "baseSha256": "aac205057cdd312cc862c6f1b3385fdf01ae5ecaa427d357ef17491556b1b3e7",
+ "expectedSha256": "f0a6e3d45133826e606124028e1f0f7807b26748ad2c21984065edb1b84fb346",
+ "builtAt": "2026-08-13 Airbnb session reconnect guidance",
+ "patches": [
+  {
+   "note": "Pull: show reconnectHint when Airbnb session expired",
+   "find": "      if (n === 0) {\n        msg('Airbnb pull saved 0 PDFs from ' + airbnbReservations.length + ' Hosthub code(s)' +\n          (errTxt ? (' — ' + errTxt) : '') +\n          ' — Connect Airbnb if login was blocked, then Pull again', false);\n      } else {\n        msg('Pulled ' + n + ' Airbnb PDF(s) from ' + (r.airbnbCodes || airbnbReservations.length) + ' Hosthub code(s)' +\n          (errTxt ? (' · notes: ' + errTxt) : ''), true);\n      }",
+   "replace": "      if (n === 0) {\n        var expired = /session expired|reconnect Airbnb|OTP|Connect Airbnb session/i.test(errTxt + ' ' + (r.reconnectHint || ''));\n        msg('Airbnb pull saved 0 PDFs from ' + airbnbReservations.length + ' Hosthub code(s)' +\n          (errTxt ? (' — ' + errTxt) : '') +\n          (r.reconnectHint ? (' — ' + r.reconnectHint) : (expired ? ' — click Connect Airbnb (one-time laptop session), then Pull again' : '')), false);\n      } else {\n        msg('Pulled ' + n + ' Airbnb PDF(s) from ' + (r.airbnbCodes || airbnbReservations.length) + ' Hosthub code(s)' +\n          (errTxt ? (' · notes: ' + errTxt) : ''), true);\n      }"
+  },
+  {
+   "note": "Collect: show laptop Connect Airbnb steps when session missing",
+   "find": "  function piSessionHtml(st) {\n    st = st || PI.status || {};\n    var a = st.airbnbSession || {};\n    var b = st.bookingSession || {};\n    function chip(ok, label, when) {\n      return '<span style=\"margin-right:10px\">' +\n        (ok ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>' : '<span style=\"color:var(--tx-err,#b91c1c)\">○</span>') +\n        ' ' + label +\n        (when ? (' <span style=\"color:var(--tx3);font-size:11px\">(' + when + ')</span>') : '') +\n        '</span>';\n    }\n    return '<div style=\"font-weight:600;margin-bottom:4px\">Portal sessions</div>' +\n      '<div>' + chip(!!a.connected, 'Airbnb', a.updatedAt ? String(a.updatedAt).slice(0, 16).replace('T', ' ') : '') +\n      chip(!!b.connected, 'Booking.com', b.updatedAt ? String(b.updatedAt).slice(0, 16).replace('T', ' ') : '') + '</div>' +\n      '<div style=\"margin-top:6px;color:var(--tx3);font-size:11.5px\">Pull uses these sessions automatically and refreshes them after a successful login. One-time Connect only when captcha/OTP appears.</div>';\n  }\n  window.piRenderSessions = function () {\n    var el = document.getElementById('pi-session-status');\n    if (el) el.innerHTML = piSessionHtml(PI.status);\n  };\n",
+   "replace": "  function piSessionHtml(st) {\n    st = st || PI.status || {};\n    var a = st.airbnbSession || {};\n    var b = st.bookingSession || {};\n    function chip(ok, label, when) {\n      return '<span style=\"margin-right:10px\">' +\n        (ok ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>' : '<span style=\"color:var(--tx-err,#b91c1c)\">○</span>') +\n        ' ' + label +\n        (when ? (' <span style=\"color:var(--tx3);font-size:11px\">(' + when + ')</span>') : '') +\n        '</span>';\n    }\n    var needAirbnb = !a.connected;\n    return '<div style=\"font-weight:600;margin-bottom:4px\">Portal sessions</div>' +\n      '<div>' + chip(!!a.connected, 'Airbnb', a.updatedAt ? String(a.updatedAt).slice(0, 16).replace('T', ' ') : '') +\n      chip(!!b.connected, 'Booking.com', b.updatedAt ? String(b.updatedAt).slice(0, 16).replace('T', ' ') : '') + '</div>' +\n      (needAirbnb\n        ? ('<div style=\"margin-top:8px;padding:8px 10px;border:1px solid #b91c1c55;border-radius:8px;background:#b91c1c0d;color:var(--tx);font-size:12px;line-height:1.45\">' +\n           '<b>Airbnb session required.</b> On a laptop with a display:<br>' +\n           '<code style=\"font-size:11px\">AIRBNB_HOST_EMAIL=… AIRBNB_HOST_PASSWORD=… node scripts/platform-invoice-save-session.js --channel=airbnb --headed</code><br>' +\n           'Complete OTP in the browser → press Enter → copy the printed JSON → click <b>Connect Airbnb</b> and paste → <b>Pull Airbnb</b>.' +\n           '</div>')\n        : '<div style=\"margin-top:6px;color:var(--tx3);font-size:11.5px\">Airbnb session connected. Pull uses it automatically.</div>');\n  }\n"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Airbnb session required",
+   "note": "connect banner"
+  },
+  {
+   "has": "reconnectHint",
+   "note": "uses API hint"
+  }
+ ]
+}

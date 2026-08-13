@@ -1,0 +1,36 @@
+{
+ "baseSha256": "114969a41db76f7593675dde539e05fbc143013e744b2ff22c567d3a7ba4de58",
+ "expectedSha256": "7533b68fdbba001b97f333ff58e7cf629ade9b3878f4524c284475b0caaad6c3",
+ "builtAt": "2026-08-13 Clear expired Airbnb session + reconnect hint",
+ "patches": [
+  {
+   "note": "Clear expired Airbnb/Booking portal sessions from vault",
+   "find": "async function piSessionMeta(channel) {\n  const row = await piLoadPortalSession(channel);\n  if (!row || !row.storageState) return { connected: false };\n  return { connected: true, updatedAt: row.updatedAt || null, updatedBy: row.updatedBy || null };\n}",
+   "replace": "async function piSessionMeta(channel) {\n  const row = await piLoadPortalSession(channel);\n  if (!row || !row.storageState) return { connected: false };\n  return { connected: true, updatedAt: row.updatedAt || null, updatedBy: row.updatedBy || null };\n}\nasync function piClearPortalSession(channel) {\n  const ch = String(channel || '').toLowerCase();\n  if (ch !== 'airbnb' && ch !== 'booking') return false;\n  const key = 'pi_portal_session_' + ch;\n  if (pool) {\n    try { await pool.query('DELETE FROM app_data WHERE key=$1', [key]); return true; }\n    catch (e) { console.error('[platform-invoices] clear session', e.message); return false; }\n  }\n  return false;\n}\nfunction piErrorsIndicateExpiredSession(errors, channel) {\n  const ch = String(channel || '').toLowerCase();\n  return (errors || []).some(function (e) {\n    if (String((e && e.channel) || '').toLowerCase() !== ch) return false;\n    const msg = String((e && (e.error || e.hint || '')) || '');\n    return /session expired|reconnect .*session|Connect Airbnb session|OTP blocked|captcha\\/unusual|MFA\\/OTP/i.test(msg);\n  });\n}"
+  },
+  {
+   "note": "Do not refresh vault from worker when session expired",
+   "find": "    // Refresh sessions from worker output files even if zero PDFs (auth may have succeeded)\n    try {\n      for (const ch of ['airbnb', 'booking']) {\n        const p = pathMod.join(sessionDir, ch + '.json');\n        if (fsMod.existsSync(p)) {\n          const st = JSON.parse(fsMod.readFileSync(p, 'utf8'));\n          await piSavePortalSession(ch, st, 'portal-pull-refresh');\n        }\n      }\n    } catch (e) { console.error('[platform-invoices] session refresh', e.message); }",
+   "replace": "    // Refresh sessions only when the channel did not report an expired/blocked login\n    try {\n      let earlyErrors = [];\n      try { earlyErrors = (JSON.parse(stdout.trim().split('\\n').filter(Boolean).pop() || '{}').errors) || []; } catch (e2) {}\n      for (const ch of ['airbnb', 'booking']) {\n        if (piErrorsIndicateExpiredSession(earlyErrors, ch)) continue;\n        const p = pathMod.join(sessionDir, ch + '.json');\n        if (fsMod.existsSync(p)) {\n          const st = JSON.parse(fsMod.readFileSync(p, 'utf8'));\n          await piSavePortalSession(ch, st, 'portal-pull-refresh');\n        }\n      }\n    } catch (e) { console.error('[platform-invoices] session refresh', e.message); }"
+  },
+  {
+   "note": "Pull response clears expired session + reconnectHint",
+   "find": "    try { fsMod.rmSync(sessionDir, { recursive: true, force: true }); } catch (e) {}\n    res.json({\n      ok: saved.length > 0,\n      month,\n      saved,\n      errors: result.errors || [],\n      workerOk: !!result.ok,\n      exitCode: code,\n      airbnbCodes: result.airbnbCodes || airbnbReservations.length || (Array.isArray(b.airbnbReservations) ? b.airbnbReservations.length : 0),\n      airbnbSource: (airbnbResolveMeta && airbnbResolveMeta.source) || (Array.isArray(b.airbnbReservations) && b.airbnbReservations.length ? 'client' : undefined),\n      sessions: {\n        airbnb: !!(await piSessionMeta('airbnb')).connected,\n        booking: !!(await piSessionMeta('booking')).connected\n      }\n    });",
+   "replace": "    try { fsMod.rmSync(sessionDir, { recursive: true, force: true }); } catch (e) {}\n    const pullErrors = result.errors || [];\n    const cleared = [];\n    try {\n      if (piErrorsIndicateExpiredSession(pullErrors, 'airbnb')) {\n        if (await piClearPortalSession('airbnb')) cleared.push('airbnb');\n      }\n      if (piErrorsIndicateExpiredSession(pullErrors, 'booking')) {\n        if (await piClearPortalSession('booking')) cleared.push('booking');\n      }\n    } catch (e) { console.error('[platform-invoices] clear expired session', e.message); }\n    res.json({\n      ok: saved.length > 0,\n      month,\n      saved,\n      errors: pullErrors,\n      workerOk: !!result.ok,\n      exitCode: code,\n      airbnbCodes: result.airbnbCodes || airbnbReservations.length || (Array.isArray(b.airbnbReservations) ? b.airbnbReservations.length : 0),\n      airbnbSource: (airbnbResolveMeta && airbnbResolveMeta.source) || (Array.isArray(b.airbnbReservations) && b.airbnbReservations.length ? 'client' : undefined),\n      sessionsCleared: cleared,\n      sessions: {\n        airbnb: !!(await piSessionMeta('airbnb')).connected,\n        booking: !!(await piSessionMeta('booking')).connected\n      },\n      reconnectHint: cleared.indexOf('airbnb') >= 0\n        ? 'Airbnb session cleared. On a laptop run: node scripts/platform-invoice-save-session.js --channel=airbnb --headed — then Collect → Connect Airbnb and paste the JSON. Then Pull again.'\n        : undefined\n    });"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piClearPortalSession",
+   "note": "clear helper"
+  },
+  {
+   "has": "sessionsCleared",
+   "note": "cleared in response"
+  },
+  {
+   "has": "reconnectHint",
+   "note": "hint for laptop connect"
+  }
+ ]
+}
