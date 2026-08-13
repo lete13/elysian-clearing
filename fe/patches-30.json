@@ -1,0 +1,93 @@
+{
+  "baseSha256": "3155c87318c7060907c5b6b1e0e937ce44649abc95fe5b4674b6e4d0d5abe29b",
+  "expectedSha256": "2e627860836c022ddf96c03016261403deeb947761906312a73717a00f11e863",
+  "builtAt": "2026-08-13 leads welcome email + redesigned EN/GR brochures",
+  "patches": [
+    {
+      "note": "Leads: Welcome email button on the ticket contact row",
+      "find": "      // contact — big tap targets, and real mailto:/tel: so a phone can act on them\n      '<div class=\"ld-contact\">' +\n        (l.email ? '<a class=\"ld-cbtn\" href=\"mailto:' + esc(l.email) + '\">✉ ' + esc(l.email) + '</a>' : '') +\n        (l.phone ? '<a class=\"ld-cbtn\" href=\"tel:' + esc(String(l.phone).replace(/[^0-9+]/g, '')) + '\">📞 ' + esc(l.phone) + '</a>' : '') +\n        (!l.email && !l.phone ? '<span style=\"font-size:12px;color:var(--tx3)\">No contact details on this lead.</span>' : '') +\n      '</div>' +",
+      "replace": "      // contact — big tap targets, and real mailto:/tel: so a phone can act on them.\n      // Welcome email is the first-touch composer (brochure attached).\n      '<div class=\"ld-contact\">' +\n        (l.email ? '<a class=\"ld-cbtn\" href=\"mailto:' + esc(l.email) + '\">✉ ' + esc(l.email) + '</a>' : '') +\n        (l.phone ? '<a class=\"ld-cbtn\" href=\"tel:' + esc(String(l.phone).replace(/[^0-9+]/g, '')) + '\">📞 ' + esc(l.phone) + '</a>' : '') +\n        (l.email ? '<button type=\"button\" class=\"ld-cbtn ld-welcome\" onclick=\"ldWelcome(' + l.id + ')\">✉ Welcome email</button>' : '') +\n        (!l.email && !l.phone ? '<span style=\"font-size:12px;color:var(--tx3)\">No contact details on this lead.</span>' : '') +\n      '</div>' +",
+      "count": 1
+    },
+    {
+      "note": "Leads: first-contact next action is send welcome email",
+      "find": "    new:            { hint: 'Call or email them',           done: 'Mark contacted',   stage: 'contacted' },\n    to_contact:     { hint: 'Call or email them',           done: 'Mark contacted',   stage: 'contacted' },",
+      "replace": "    new:            { hint: 'Send the welcome email',       done: 'Mark contacted',   stage: 'contacted' },\n    to_contact:     { hint: 'Send the welcome email',       done: 'Mark contacted',   stage: 'contacted' },",
+      "count": 1
+    },
+    {
+      "note": "Leads: To contact stage hint names the welcome email",
+      "find": "{ key: 'to_contact',    label: 'To contact',    hint: 'Assigned, welcome email drafted' },",
+      "replace": "{ key: 'to_contact',    label: 'To contact',    hint: 'Assigned — send welcome email with brochure' },",
+      "count": 1
+    },
+    {
+      "note": "Leads: welcome button + composer modal styles",
+      "find": "#tab-leads .ld-cbtn:hover{border-color:#C9A84C}\n#tab-leads .ld-kv{display:grid;grid-template-columns:150px 1fr;gap:5px 12px;font-size:12px}",
+      "replace": "#tab-leads .ld-cbtn:hover{border-color:#C9A84C}\n#tab-leads .ld-cbtn.ld-welcome{cursor:pointer;background:#0F1E2E;color:#C9A84C;border-color:#0F1E2E;font-weight:600}\n#tab-leads .ld-cbtn.ld-welcome:hover{background:#16283A;border-color:#C9A84C}\n#ld-wel-ov{position:fixed;inset:0;background:rgba(15,30,46,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}\n#ld-wel-ov .ld-wel{background:var(--bg,#fff);border:1px solid var(--bdr,#e5e5e5);border-radius:12px;width:min(640px,100%);max-height:92vh;overflow:auto;box-shadow:0 18px 50px rgba(0,0,0,.28)}\n#ld-wel-ov .ld-wel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--bdr,#e5e5e5)}\n#ld-wel-ov .ld-wel-h h3{margin:0;font-size:15px}\n#ld-wel-ov .ld-wel-b{padding:14px 16px;display:flex;flex-direction:column;gap:10px}\n#ld-wel-ov label{font-size:11px;color:var(--tx3,#888);display:block;margin-bottom:3px}\n#ld-wel-ov input,#ld-wel-ov textarea,#ld-wel-ov select{width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--bdr,#ddd);border-radius:8px;background:var(--bg2,#fafafa);color:var(--tx,#1a1a1a)}\n#ld-wel-ov textarea{min-height:170px;resize:vertical;line-height:1.45}\n#ld-wel-ov .ld-wel-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}\n#ld-wel-ov .ld-wel-att{font-size:12px;color:var(--tx2,#555);padding:8px 10px;border:1px dashed var(--bdr,#ddd);border-radius:8px;background:var(--bg2,#fafafa)}\n#ld-wel-ov .ld-wel-f{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--bdr,#e5e5e5)}\n#tab-leads .ld-kv{display:grid;grid-template-columns:150px 1fr;gap:5px 12px;font-size:12px}",
+      "count": 1
+    },
+    {
+      "note": "Leads: welcome email composer (GR/EN) with matching brochure attach",
+      "find": "  window.ldStage = function (id, stage) {\n    var l = lead(id); if (!l || l.stage === stage) return;\n    var body = { stage: stage, by: who() };",
+      "replace": "  // Welcome email composer — first touch on Contact, brochure attached.\n  function ldWelEsc(s) {\n    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n  }\n  function ldWelFirstName(full) {\n    var n = String(full || '').trim();\n    if (!n) return '';\n    return n.split(/\\s+/)[0];\n  }\n  function ldWelTemplates(l, lang) {\n    var name = ldWelFirstName(l.full_name) || (lang === 'EN' ? 'there' : '');\n    var greet = lang === 'EN'\n      ? ('Dear ' + (name === 'there' ? 'Owner' : name) + ',')\n      : ('Αγαπητέ/ή' + (name ? (' ' + name) : '') + ',');\n    var subject = lang === 'EN'\n      ? 'Welcome to Elysian Properties'\n      : 'Καλωσήρθατε στην Elysian Properties';\n    var body = lang === 'EN'\n      ? (greet + '\\n\\n'\n        + 'Thank you for your interest in property management with Elysian Properties.\\n\\n'\n        + 'Please find attached our company brochure with the management packages we offer '\n        + '(Essential, Signature and Elite) and the hospitality services behind them — '\n        + 'dynamic pricing, 24/7 guest support, professional cleaning and transparent pass-through costs.\\n\\n'\n        + 'We would be glad to schedule a short call to discuss your property and the right package.\\n\\n'\n        + 'Kind regards,\\n'\n        + 'Elysian Properties\\n'\n        + '+30 210 260 2749\\n'\n        + 'info@elysianproperties.eu\\n'\n        + 'elysianproperties.eu')\n      : (greet + '\\n\\n'\n        + 'Σας ευχαριστούμε για το ενδιαφέρον σας για τη διαχείριση του ακινήτου σας με την Elysian Properties.\\n\\n'\n        + 'Επισυνάπτουμε το εταιρικό μας brochure με τα πακέτα διαχείρισης (Essential, Signature και Elite) '\n        + 'και τις υπηρεσίες φιλοξενίας που προσφέρουμε — δυναμική τιμολόγηση, 24/7 εξυπηρέτηση επισκεπτών, '\n        + 'επαγγελματική καθαριότητα και διαφανές μοντέλο κόστους χωρίς markup.\\n\\n'\n        + 'Θα χαρούμε να κανονίσουμε μια σύντομη κλήση για να δούμε μαζί τις ανάγκες του ακινήτου σας.\\n\\n'\n        + 'Με εκτίμηση,\\n'\n        + 'Elysian Properties\\n'\n        + '+30 210 260 2749\\n'\n        + 'info@elysianproperties.eu\\n'\n        + 'elysianproperties.eu');\n    return { subject: subject, body: body };\n  }\n  function ldWelBuildHtml(text) {\n    var paras = String(text || '').split(/\\n\\n+/).map(function (p) {\n      return '<p style=\"margin:0 0 12px 0;font-size:13.5px;line-height:1.55;color:#333\">'\n        + ldWelEsc(p).replace(/\\n/g, '<br>') + '</p>';\n    }).join('');\n    return ''\n      + '<div style=\"margin:0;padding:0;background:#f4f4f2\">'\n      + '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f4f4f2\"><tr><td align=\"center\" style=\"padding:20px 8px\">'\n      + '<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a\">'\n      + '<tr><td style=\"padding:18px 24px 12px 24px;border-bottom:3px solid #0F1E2E\">'\n      + '<div style=\"font-size:19px;font-weight:700;color:#0F1E2E;letter-spacing:.02em\">ELYSIAN</div>'\n      + '<div style=\"font-size:11px;color:#C9A84C;letter-spacing:.12em;text-transform:uppercase;margin-top:2px\">Properties Management</div>'\n      + '</td></tr>'\n      + '<tr><td style=\"padding:22px 24px 8px 24px\">' + paras + '</td></tr>'\n      + '<tr><td style=\"background:#f9f9f7;padding:12px 24px;font-size:10px;color:#999\">'\n      + 'Elysian Properties · Athens · Thessaloniki · Patra · elysianproperties.eu'\n      + '</td></tr>'\n      + '</table></td></tr></table></div>';\n  }\n  function ldWelClose() {\n    var ov = document.getElementById('ld-wel-ov');\n    if (ov && ov.parentNode) ov.parentNode.removeChild(ov);\n    window._ldWel = null;\n  }\n  function ldWelApplyLang() {\n    var st = window._ldWel; if (!st) return;\n    var lang = (document.getElementById('ld-wel-lang') || {}).value || 'GR';\n    var t = ldWelTemplates(st.lead, lang);\n    var sub = document.getElementById('ld-wel-subj');\n    var bod = document.getElementById('ld-wel-body');\n    if (sub) sub.value = t.subject;\n    if (bod) bod.value = t.body;\n    // Swap the attached brochure to match the chosen language.\n    (async function () {\n      if (typeof st.loadBrochure !== 'function') return;\n      var b = await st.loadBrochure(lang);\n      st.brochure = b;\n      var att = document.getElementById('ld-wel-attach');\n      var meta = document.getElementById('ld-wel-att-meta');\n      if (att) { att.disabled = !b; att.checked = !!b; }\n      if (meta) {\n        meta.textContent = b\n          ? (b.filename + ' · ' + (b.size ? ((b.size / 1024).toFixed(0) + ' KB') : 'attached') + ' · ' + lang)\n          : 'Brochure not available for ' + lang;\n      }\n    })();\n  }\n  window.ldWelcome = async function (id) {\n    var l = lead(id);\n    if (!l) return;\n    if (!l.email) { toast('This lead has no email address.', 'err'); return; }\n    ldWelClose();\n    var cfg = { configured: false };\n    try {\n      if (typeof _emailStatus === 'function') cfg = await _emailStatus(true);\n      else {\n        var r = await fetch('/api/email/status');\n        cfg = r.ok ? await r.json() : { configured: false };\n      }\n    } catch (e) { cfg = { configured: false }; }\n    var lang0 = 'GR';\n    async function loadBrochure(lang) {\n      var key = lang === 'EN' ? 'brochure-en' : 'brochure-gr';\n      var brochure = null;\n      try {\n        var ar = await fetch('/api/lead-assets/' + key);\n        var aj = await ar.json();\n        if (ar.ok && aj.asset && aj.asset.data) {\n          brochure = {\n            filename: aj.asset.filename || ('Elysian-Properties-Management-Brochure-' + lang + '.pdf'),\n            mime: aj.asset.mime || 'application/pdf',\n            data: aj.asset.data,\n            size: aj.asset.size || 0,\n            version: aj.asset.version || 1,\n            key: key\n          };\n        }\n      } catch (e) { brochure = null; }\n      if (!brochure) {\n        try {\n          var file = lang === 'EN'\n            ? '/assets/elysian-management-brochure-en.pdf'\n            : '/assets/elysian-management-brochure-gr.pdf';\n          var fr = await fetch(file);\n          if (fr.ok) {\n            var buf = await fr.arrayBuffer();\n            var bytes = new Uint8Array(buf);\n            var bin = '';\n            for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));\n            brochure = {\n              filename: 'Elysian-Properties-Management-Brochure-' + lang + '.pdf',\n              mime: 'application/pdf',\n              data: btoa(bin),\n              size: bytes.length,\n              version: 0,\n              key: key\n            };\n          }\n        } catch (e2) { brochure = null; }\n      }\n      return brochure;\n    }\n    var brochure = await loadBrochure(lang0);\n    var t0 = ldWelTemplates(l, lang0);\n    window._ldWel = { lead: l, brochure: brochure, cfg: cfg, loadBrochure: loadBrochure };\n    var sizeLbl = brochure\n      ? (brochure.filename + ' · ' + (brochure.size ? ((brochure.size / 1024).toFixed(0) + ' KB') : 'attached'))\n      : 'Brochure not available — upload via lead assets or redeploy with assets/elysian-management-brochure.pdf';\n    var ov = document.createElement('div');\n    ov.id = 'ld-wel-ov';\n    ov.innerHTML = ''\n      + '<div class=\"ld-wel\" role=\"dialog\" aria-label=\"Welcome email\">'\n      + '<div class=\"ld-wel-h\"><h3>Welcome email</h3>'\n      + '<button type=\"button\" class=\"btn sm\" onclick=\"ldWelClose()\">✕</button></div>'\n      + '<div class=\"ld-wel-b\">'\n      + '<div class=\"ld-wel-row\">'\n      + '<div style=\"flex:1;min-width:160px\"><label>To</label><input id=\"ld-wel-to\" value=\"' + ldWelEsc(l.email) + '\"/></div>'\n      + '<div style=\"width:110px\"><label>Language</label><select id=\"ld-wel-lang\" onchange=\"ldWelApplyLang()\">'\n      + '<option value=\"GR\" selected>Greek</option><option value=\"EN\">English</option></select></div>'\n      + '</div>'\n      + '<div><label>Subject</label><input id=\"ld-wel-subj\" value=\"' + ldWelEsc(t0.subject) + '\"/></div>'\n      + '<div><label>Message</label><textarea id=\"ld-wel-body\">' + ldWelEsc(t0.body) + '</textarea></div>'\n      + '<div class=\"ld-wel-att\"><label style=\"display:flex;align-items:center;gap:8px;margin:0;color:inherit;font-size:12px\">'\n      + '<input type=\"checkbox\" id=\"ld-wel-attach\"' + (brochure ? ' checked' : ' disabled') + '/>'\n      + 'Attach company brochure — services &amp; packages (matches language)</label>'\n      + '<div id=\"ld-wel-att-meta\" style=\"margin-top:6px;font-size:11.5px;color:var(--tx3,#888)\">' + ldWelEsc(sizeLbl) + '</div></div>'\n      + (!cfg.configured ? '<div style=\"font-size:12px;color:#D97706\">Email SMTP is not configured on the server — Send will be unavailable until SMTP_* is set.</div>' : '')\n      + '</div>'\n      + '<div class=\"ld-wel-f\">'\n      + '<button type=\"button\" class=\"btn sm\" onclick=\"ldWelClose()\">Cancel</button>'\n      + '<button type=\"button\" class=\"btn sm primary\" id=\"ld-wel-send\" onclick=\"ldWelSend()\"'\n      + (!cfg.configured ? ' disabled' : '') + '>Send welcome email</button>'\n      + '</div></div>';\n    ov.addEventListener('click', function (ev) { if (ev.target === ov) ldWelClose(); });\n    document.body.appendChild(ov);\n  };\n  window.ldWelClose = ldWelClose;\n  window.ldWelApplyLang = ldWelApplyLang;\n  window.ldWelSend = async function () {\n    var st = window._ldWel; if (!st || !st.lead) return;\n    var to = String((document.getElementById('ld-wel-to') || {}).value || '').trim();\n    var subject = String((document.getElementById('ld-wel-subj') || {}).value || '').trim();\n    var body = String((document.getElementById('ld-wel-body') || {}).value || '').trim();\n    var attach = !!(document.getElementById('ld-wel-attach') || {}).checked;\n    if (!to) { toast('Add a recipient email.', 'err'); return; }\n    if (!subject) { toast('Add a subject.', 'err'); return; }\n    if (!body) { toast('The message is empty.', 'err'); return; }\n    var btn = document.getElementById('ld-wel-send');\n    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }\n    var attachments = [];\n    if (attach && st.brochure && st.brochure.data) {\n      attachments.push({\n        filename: st.brochure.filename,\n        contentType: st.brochure.mime || 'application/pdf',\n        contentBase64: st.brochure.data\n      });\n    }\n    try {\n      var r = await fetch('/api/email/send', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({\n          to: to,\n          subject: subject,\n          text: body,\n          html: ldWelBuildHtml(body),\n          attachments: attachments\n        })\n      });\n      var j = await r.json().catch(function () { return {}; });\n      if (!r.ok) throw new Error(j.error || ('Send failed (' + r.status + ')'));\n      var note = 'Welcome email → ' + to + (attachments.length ? ' (+ brochure)' : '');\n      var patch = { emailSent: note, by: who() };\n      // First touch: advance Contact stage when still new / to_contact.\n      if (st.lead.stage === 'new' || st.lead.stage === 'to_contact') patch.stage = 'contacted';\n      await jsend('/api/leads/' + st.lead.id, 'PATCH', patch);\n      toast('Welcome email sent.');\n      ldWelClose();\n      reload(true);\n    } catch (e) {\n      toast(e.message || String(e), 'err');\n      if (btn) { btn.disabled = false; btn.textContent = 'Send welcome email'; }\n    }\n  };\n\n  window.ldStage = function (id, stage) {\n    var l = lead(id); if (!l || l.stage === stage) return;\n    var body = { stage: stage, by: who() };",
+      "count": 1
+    },
+    {
+      "note": "Home: open-lead next action matches welcome email",
+      "find": "var NEXT={new:'Call or email them',to_contact:'Call or email them',contacted:'Qualify the property',qualified:'Book a viewing',viewing:'Send a proposal',proposal:'Send the contract',contract_sent:'Chase the signature',signed:'Start onboarding',onboarding:'Go live'};",
+      "replace": "var NEXT={new:'Send the welcome email',to_contact:'Send the welcome email',contacted:'Qualify the property',qualified:'Book a viewing',viewing:'Send a proposal',proposal:'Send the contract',contract_sent:'Chase the signature',signed:'Start onboarding',onboarding:'Go live'};",
+      "count": 1
+    }
+  ],
+  "assertions": [
+    {
+      "has": "window.ldWelcome",
+      "note": "welcome composer entry point"
+    },
+    {
+      "has": "ld-welcome",
+      "note": "welcome button on ticket contact"
+    },
+    {
+      "has": "ldWelSend",
+      "note": "send handler"
+    },
+    {
+      "has": "brochure-en",
+      "note": "loads English brochure asset"
+    },
+    {
+      "has": "brochure-gr",
+      "note": "loads Greek brochure asset"
+    },
+    {
+      "has": "elysian-management-brochure-en.pdf",
+      "note": "EN static fallback"
+    },
+    {
+      "has": "elysian-management-brochure-gr.pdf",
+      "note": "GR static fallback"
+    },
+    {
+      "has": "Attach company brochure",
+      "note": "brochure attach checkbox"
+    },
+    {
+      "has": "Send the welcome email",
+      "note": "next-action copy for Contact"
+    },
+    {
+      "has": "Καλωσήρθατε στην Elysian Properties",
+      "note": "Greek welcome subject"
+    },
+    {
+      "has": "Welcome to Elysian Properties",
+      "note": "English welcome subject"
+    },
+    {
+      "hasNot": "Call or email them",
+      "note": "old first-contact hint removed from NEXT"
+    }
+  ]
+}

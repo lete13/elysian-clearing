@@ -1,0 +1,41 @@
+{
+ "baseSha256": "33fbfa897c6d356355b53fd450c258c0720943a81d28b1bc5e4f62f55f497f7a",
+ "expectedSha256": "c83c67204f9197381df43b297149f331d8488cfdd40f56069af3511d81036b16",
+ "builtAt": "2026-08-13 leads welcome email: bilingual brochure seed + GET by key",
+ "patches": [
+  {
+   "note": "Leads: seed EN+GR company brochures into lead_assets when missing",
+   "find": "  await pool.query(`\n    UPDATE leads SET property_address = NULL, property_size = NULL, property_type = NULL,\n                     bedrooms = NULL, bathrooms = NULL, bedrooms_n = NULL, bathrooms_n = NULL\n     WHERE status = 'erased' AND property_address IS NOT NULL;\n  `);\n  _leadsReady = true;\n}",
+   "replace": "  await pool.query(`\n    UPDATE leads SET property_address = NULL, property_size = NULL, property_type = NULL,\n                     bedrooms = NULL, bathrooms = NULL, bedrooms_n = NULL, bathrooms_n = NULL\n     WHERE status = 'erased' AND property_address IS NOT NULL;\n  `);\n  // Seed EN + GR company brochures once from disk so welcome emails attach the\n  // matching language. Replacing via POST /api/lead-assets still wins — we only\n  // insert when the key is missing. `brochure` stays as a GR alias for older callers.\n  try {\n    const fsLead = require('fs');\n    const seeds = [\n      { key: 'brochure-en', file: 'elysian-management-brochure-en.pdf', name: 'Elysian-Properties-Management-Brochure-EN.pdf' },\n      { key: 'brochure-gr', file: 'elysian-management-brochure-gr.pdf', name: 'Elysian-Properties-Management-Brochure-GR.pdf' },\n      { key: 'brochure',    file: 'elysian-management-brochure-gr.pdf', name: 'Elysian-Properties-Management-Brochure.pdf' }\n    ];\n    for (const s of seeds) {\n      const brochurePath = path.join(__dirname, 'assets', s.file);\n      if (!fsLead.existsSync(brochurePath)) continue;\n      const have = await pool.query(`SELECT 1 FROM lead_assets WHERE key = $1 LIMIT 1`, [s.key]);\n      if (have.rows.length) continue;\n      const buf = fsLead.readFileSync(brochurePath);\n      await pool.query(\n        `INSERT INTO lead_assets (key, filename, mime, size, version, data, updated_by, updated_at)\n         VALUES ($1,$2,'application/pdf',$3,1,$4,'system',NOW())\n         ON CONFLICT (key) DO NOTHING`,\n        [s.key, s.name, buf.length, buf.toString('base64')]);\n      console.log('[leads] seeded ' + s.key + ' (' + buf.length + ' bytes)');\n    }\n  } catch (e) { console.error('[leads] brochure seed skipped:', e.message); }\n  _leadsReady = true;\n}",
+   "count": 1
+  },
+  {
+   "note": "Leads: GET /api/lead-assets/:key returns one asset with data",
+   "find": "app.get('/api/lead-assets', async (req, res) => {\n  try {\n    if (!pool) return res.status(503).json({ error: 'No database configured.' });\n    await ensureLeadTables();\n    const full = String(req.query.full || '') === '1';\n    const r = await pool.query(full ? 'SELECT * FROM lead_assets' : 'SELECT key, filename, mime, size, version, updated_by, updated_at FROM lead_assets');\n    res.json({ ok: true, assets: r.rows });\n  } catch (e) { res.status(500).json({ error: e.message }); }\n});",
+   "replace": "app.get('/api/lead-assets', async (req, res) => {\n  try {\n    if (!pool) return res.status(503).json({ error: 'No database configured.' });\n    await ensureLeadTables();\n    const full = String(req.query.full || '') === '1';\n    const r = await pool.query(full ? 'SELECT * FROM lead_assets' : 'SELECT key, filename, mime, size, version, updated_by, updated_at FROM lead_assets');\n    res.json({ ok: true, assets: r.rows });\n  } catch (e) { res.status(500).json({ error: e.message }); }\n});\napp.get('/api/lead-assets/:key', async (req, res) => {\n  try {\n    if (!pool) return res.status(503).json({ error: 'No database configured.' });\n    await ensureLeadTables();\n    const r = await pool.query('SELECT * FROM lead_assets WHERE key = $1', [String(req.params.key || '')]);\n    if (!r.rows.length) return res.status(404).json({ error: 'Asset not found.' });\n    res.json({ ok: true, asset: r.rows[0] });\n  } catch (e) { res.status(500).json({ error: e.message }); }\n});",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "brochure-en",
+   "note": "English brochure asset key"
+  },
+  {
+   "has": "brochure-gr",
+   "note": "Greek brochure asset key"
+  },
+  {
+   "has": "elysian-management-brochure-en.pdf",
+   "note": "EN brochure file on disk"
+  },
+  {
+   "has": "elysian-management-brochure-gr.pdf",
+   "note": "GR brochure file on disk"
+  },
+  {
+   "has": "app.get('/api/lead-assets/:key'",
+   "note": "single-asset fetch for welcome attach"
+  }
+ ]
+}
