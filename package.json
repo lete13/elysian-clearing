@@ -1,12 +1,14 @@
 {
   "name": "elysian-clearing",
   "version": "2.0.0",
-  "description": "Elysian Properties — Clearing Automation Tool",
+  "description": "Elysian Properties \u2014 Clearing Automation Tool",
   "main": "server.js",
   "scripts": {
     "start": "node srv-boot.js",
     "dev": "node srv-boot.js",
-    "test": "node tests/monthly-close-patches.test.js"
+    "test": "node tests/monthly-close-patches.test.js",
+    "pull:platform-invoices": "node scripts/platform-invoice-pull.js",
+    "postinstall": "npx playwright install chromium || true"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -16,6 +18,7 @@
     "express": "^4.18.2",
     "node-fetch": "^2.7.0",
     "nodemailer": "^6.9.14",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "playwright": "^1.49.1"
   }
 }

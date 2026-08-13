@@ -6,24 +6,41 @@ Monthly **Airbnb** and **Booking.com** invoices are PDFs the platforms issue **t
 (ενδοκοινοτικά / intra-EU). They do **not** appear in Greek expense or myDATA imports.
 They are **not** Oxygen ΑΠΥ/ΤΠΥ documents (those are what Elysian issues to owners).
 
-Today the app can **upload**, **pack**, and **email** them (Tools → Platform Invoices).
-Automated **portal download** is the next slice.
+The app can **upload**, **pack**, **email**, and **pull** them (Tools → Platform Invoices).
+
+## Dating rules (ASAP — do not wait for the 20th/25th)
+
+| Channel | Document | Issue / file month |
+|---|---|---|
+| Booking.com | Invoice | **Month after** the bookings (June stays → July invoice) |
+| Airbnb | VAT invoice | Hosthub **`created` / `createdOnChannel`** (confirmation) |
+| Airbnb | Credit note | Hosthub **`cancelledAt`** (must download on cancel) |
+
+Confirm in month A and cancel in month B → keep **both** documents.
+
+Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperties.eu`.
 
 ## Railway variables
 
 | Variable | Purpose |
 |---|---|
-| `PLATFORM_INVOICE_ACCOUNTANT_EMAIL` | Default recipient for the leased pack (E-New Generation) |
+| `PLATFORM_INVOICE_ACCOUNTANT_EMAIL` | Override default recipients |
 | `AIRBNB_HOST_EMAIL` / `AIRBNB_HOST_PASSWORD` | Airbnb host login |
-| `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD` | Booking.com extranet login |
+| `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD` | **admin.booking.com** partner extranet login (not www.booking.com) |
 
-`POST /api/platform-invoices/pull` already checks these and returns 501 until the browser worker lands.
+## Worker
 
-## Planned worker
+`scripts/platform-invoice-pull.js` (Playwright + Chromium):
 
-1. Headless browser (Playwright) logs into each portal with the env credentials.
-2. Opens the tax/invoice area for the requested `YYYY-MM`.
-3. Downloads PDFs into `platform_invoices` with `source=portal`.
-4. UI then emails leased → accountant (20th) and B2B → partners (25th).
+1. Logs into Airbnb hosting and **https://admin.booking.com/** with the env credentials.
+2. Opens Finance → Invoices (extranet) for the requested `YYYY-MM`.
+3. Downloads PDFs (invoices + Airbnb credit notes when visible).
+4. `POST /api/platform-invoices/pull` stores them in `platform_invoices` with `source=portal`.
 
-Selectors and MFA handling will be filled in against a live host session before enabling pull in production.
+```bash
+npm run pull:platform-invoices -- --month=2026-07 --channel=all --out=/tmp/pi-out
+# Booking only:
+npm run pull:platform-invoices -- --month=2026-07 --channel=booking --out=/tmp/pi-out
+```
+
+Selectors are best-effort; MFA/captcha is detected and reported. First live pass may need selector tuning against a real host session. Chromium is installed via `postinstall` / Railway `buildCommand`.
