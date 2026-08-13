@@ -17,6 +17,9 @@
  *   PLAYWRIGHT_PROXY_SERVER (optional, e.g. http://user:pass@host:port)
  *   AIRBNB_OTP (optional one-shot code if password login hits OTP)
  *   PI_APARTMENTS_JSON (optional JSON array of {aptId,aptName} for partner matching)
+ *   PI_AIRBNB_RESERVATIONS_JSON — Hosthub-driven Airbnb codes (VAT Invoicer-style):
+ *     JSON array of {code, kind:'invoice'|'credit_note'|'both', aptId, aptName, guestName}
+ *     Worker opens each reservation by code and downloads VAT invoice / credit note PDFs.
  *
  * Booking.com: https://admin.booking.com/ — one invoice per property/apartment.
  * Dating: Booking invoice month M covers bookings from M−1;
@@ -57,6 +60,29 @@ function loadApartments() {
     if (!raw) return [];
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/** Hosthub channel reservation codes for Airbnb (confirmation codes). */
+function loadAirbnbReservations() {
+  try {
+    const raw = process.env.PI_AIRBNB_RESERVATIONS_JSON || '';
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((r) => ({
+        code: String((r && (r.code || r.reservationId || r.confirmationCode)) || '')
+          .trim()
+          .toUpperCase(),
+        kind: String((r && r.kind) || 'both').toLowerCase(),
+        aptId: String((r && (r.aptId || r.apartmentId)) || '').trim(),
+        aptName: String((r && (r.aptName || r.apartmentName)) || '').trim(),
+        guestName: String((r && (r.guestName || r.guest)) || '').trim(),
+      }))
+      .filter((r) => r.code && /^[A-Z0-9]{6,20}$/.test(r.code));
   } catch (e) {
     return [];
   }
@@ -195,181 +221,309 @@ async function tryFillOtp(page, dir) {
   return true;
 }
 
-/** Airbnb: session or login → reservations → VAT invoice / credit note PDFs. */
-async function pullAirbnb(page, context, month, outDir, files, errors) {
+async function ensureAirbnbLoggedIn(page, context, dir, errors) {
   const email = process.env.AIRBNB_HOST_EMAIL || '';
   const pass = process.env.AIRBNB_HOST_PASSWORD || '';
   const stored = await loadStorageState('AIRBNB');
   if (stored && stored.__error) {
     errors.push({ channel: 'airbnb', error: 'AIRBNB session invalid: ' + stored.__error });
-    return;
+    return false;
   }
   if (!stored && (!email || !pass)) {
     errors.push({
       channel: 'airbnb',
       error: 'Connect Airbnb session (or set AIRBNB_HOST_EMAIL / AIRBNB_HOST_PASSWORD)',
     });
-    return;
+    return false;
   }
+
+  if (!stored) {
+    await page.goto('https://www.airbnb.com/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    for (const sel of ['button:has-text("Accept")', 'button:has-text("OK")', '[data-testid="accept-btn"]']) {
+      const b = page.locator(sel).first();
+      if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
+    }
+
+    const emailInput = page
+      .locator('#phone-or-email, input[name="email"], input[type="email"], input[autocomplete="username"]')
+      .first();
+    await emailInput.waitFor({ state: 'visible', timeout: 20000 });
+    await emailInput.fill(email);
+    await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
+    await page.waitForTimeout(2500);
+
+    let bodyText = await page.locator('body').innerText().catch(() => '');
+    if (/confirmation code|one-time|verify your|we.ll send/i.test(bodyText) && !(await page.locator('input[type="password"]').count())) {
+      const filled = await tryFillOtp(page, dir);
+      if (!filled) {
+        errors.push({
+          channel: 'airbnb',
+          error:
+            'Airbnb asked for OTP. Connect a saved host session once (Platform Invoices → Connect Airbnb), then Pull runs unattended.',
+        });
+        await page.screenshot({ path: path.join(dir, '_login-otp.png'), fullPage: true }).catch(() => {});
+        return false;
+      }
+    }
+
+    const passInput = page.locator('input[name="password"], input[type="password"]').first();
+    if (await passInput.count()) {
+      await passInput.waitFor({ timeout: 20000 });
+      await passInput.fill(pass);
+      await page.locator('button:has-text("Log in"), button:has-text("Sign in"), button[type="submit"]').first().click();
+      await page.waitForTimeout(4000);
+    }
+
+    bodyText = await page.locator('body').innerText().catch(() => '');
+    if (/confirmation code|one-time|verify your/i.test(bodyText)) {
+      const filled = await tryFillOtp(page, dir);
+      if (!filled) {
+        errors.push({
+          channel: 'airbnb',
+          error: 'Airbnb MFA/OTP blocked password login — reconnect Airbnb session in the app.',
+        });
+        await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
+        return false;
+      }
+    }
+    if (/captcha|unusual activity/i.test(bodyText)) {
+      errors.push({
+        channel: 'airbnb',
+        error: 'Airbnb blocked login (captcha/unusual activity). Reconnect Airbnb session from a normal browser.',
+      });
+      await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
+      return false;
+    }
+  }
+
+  await page.goto('https://www.airbnb.com/hosting/reservations', {
+    waitUntil: 'domcontentloaded',
+    timeout: 60000,
+  });
+  await page.waitForTimeout(2500);
+
+  if (/log.?in|sign.?in/i.test(page.url()) || /log in to continue|welcome to airbnb/i.test(await page.locator('body').innerText().catch(() => ''))) {
+    errors.push({
+      channel: 'airbnb',
+      error: 'Airbnb session expired — reconnect Airbnb in Platform Invoices (one-time), then Pull again.',
+    });
+    return false;
+  }
+
+  await persistSession('AIRBNB', context);
+  return true;
+}
+
+async function savePdfBuffer(dir, filename, buf) {
+  ensureDir(dir);
+  const dest = path.join(dir, filename);
+  fs.writeFileSync(dest, buf);
+  return { path: dest, filename, bytes: buf.length };
+}
+
+async function captureAirbnbDocPdf(page, dir, filename) {
+  // Prefer a real download; otherwise print the open invoice HTML to PDF (VAT Invoicer-style).
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 8000 }).catch(() => null),
+    page
+      .locator(
+        'button:has-text("Download"), a:has-text("Download"), button:has-text("Print"), a:has-text("Print"), button:has-text("Save")'
+      )
+      .first()
+      .click({ timeout: 3000 })
+      .catch(() => null),
+  ]);
+  if (download) {
+    const suggested = (download.suggestedFilename() || filename).replace(/[^\w.\-]+/g, '_');
+    return saveDownload(download, dir, suggested.endsWith('.pdf') ? suggested : filename);
+  }
+  const pdf = await page.pdf({ format: 'A4', printBackground: true }).catch(() => null);
+  if (!pdf || !pdf.length) return null;
+  return savePdfBuffer(dir, filename, pdf);
+}
+
+async function findAirbnbDocHrefs(page, wantKinds) {
+  const wantInvoice = wantKinds.includes('invoice') || wantKinds.includes('both');
+  const wantCredit = wantKinds.includes('credit_note') || wantKinds.includes('both');
+  return page.$$eval(
+    'a[href], button',
+    (els, flags) => {
+      const out = [];
+      const seen = new Set();
+      els.forEach((el) => {
+        const text = ((el.innerText || el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).replace(/\s+/g, ' ').trim();
+        let href = el.getAttribute('href') || '';
+        if (!href && el.tagName === 'BUTTON') {
+          const parent = el.closest('a');
+          if (parent) href = parent.getAttribute('href') || '';
+        }
+        if (!href) return;
+        const blob = (text + ' ' + href).toLowerCase();
+        let kind = '';
+        if (flags.wantCredit && /credit\s*note|πιστωτικ|credit-note|credit_note/.test(blob)) kind = 'credit_note';
+        else if (flags.wantInvoice && /vat\s*invoice|tax\s*invoice|τιμολ|vat_invoice|vat-invoice|\/invoice/.test(blob))
+          kind = 'invoice';
+        else if (flags.wantInvoice && /\binvoice\b/.test(blob) && !/receipt|statement/.test(blob)) kind = 'invoice';
+        if (!kind) return;
+        let abs = href;
+        try {
+          abs = new URL(href, location.origin).href;
+        } catch (e) {
+          return;
+        }
+        const key = kind + '|' + abs;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push({ kind, href: abs, text: text.slice(0, 80) });
+      });
+      return out;
+    },
+    { wantInvoice, wantCredit }
+  );
+}
+
+async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, resv, apts) {
+  const code = resv.code;
+  const urls = [
+    'https://www.airbnb.com/hosting/reservations/details/' + encodeURIComponent(code),
+    'https://www.airbnb.com/hosting/reservations/' + encodeURIComponent(code),
+  ];
+  let opened = false;
+  for (const url of urls) {
+    const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
+    await page.waitForTimeout(1500);
+    if (/log.?in|sign.?in/i.test(page.url())) {
+      errors.push({ channel: 'airbnb', code, error: 'Session lost opening reservation ' + code });
+      return 0;
+    }
+    const text = await page.locator('body').innerText().catch(() => '');
+    if (/we can.t find|not found|doesn.t exist|couldn.t find/i.test(text) && !(res && res.ok())) continue;
+    if (/reservation|confirmation|guest|check-?in|vat|invoice|booking/i.test(text)) {
+      opened = true;
+      break;
+    }
+  }
+  if (!opened) {
+    errors.push({ channel: 'airbnb', code, error: 'Could not open Airbnb reservation page for code ' + code });
+    await page.screenshot({ path: path.join(dir, '_miss-' + code + '.png'), fullPage: true }).catch(() => {});
+    return 0;
+  }
+
+  const listingGuess =
+    (await page.locator('h1, h2, [data-testid*="listing"]').first().innerText().catch(() => '')) || resv.aptName || '';
+  const apt = matchApartment(listingGuess || resv.aptName, apts);
+  const aptId = resv.aptId || apt.aptId || '';
+  const aptName = resv.aptName || apt.aptName || listingGuess || '';
+
+  const wantKinds = [resv.kind || 'both'];
+  let docs = await findAirbnbDocHrefs(page, wantKinds);
+  // Expand "Receipts / Tax info" style menus if nothing visible yet
+  if (!docs.length) {
+    for (const label of ['Receipt', 'Tax', 'Invoice', 'Documents', 'Απόδειξη', 'Τιμολόγιο']) {
+      const btn = page.locator(`button:has-text("${label}"), a:has-text("${label}"), [role="button"]:has-text("${label}")`).first();
+      if (await btn.count()) await btn.click({ timeout: 1500 }).catch(() => {});
+    }
+    await page.waitForTimeout(800);
+    docs = await findAirbnbDocHrefs(page, wantKinds);
+  }
+
+  const kindsWanted = new Set();
+  if (resv.kind === 'invoice' || resv.kind === 'both' || !resv.kind) kindsWanted.add('invoice');
+  if (resv.kind === 'credit_note' || resv.kind === 'both') kindsWanted.add('credit_note');
+
+  let savedCount = 0;
+  const seenKind = new Set();
+  for (const doc of docs) {
+    if (!kindsWanted.has(doc.kind) || seenKind.has(doc.kind)) continue;
+    try {
+      await page.goto(doc.href, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await page.waitForTimeout(1200);
+      const fname = `airbnb-${doc.kind}-${code}-${month}.pdf`;
+      const saved = await captureAirbnbDocPdf(page, dir, fname);
+      if (!saved) {
+        errors.push({ channel: 'airbnb', code, kind: doc.kind, error: 'Opened doc but could not capture PDF' });
+        continue;
+      }
+      seenKind.add(doc.kind);
+      savedCount++;
+      files.push({
+        channel: 'airbnb',
+        kind: doc.kind,
+        scope: 'leased',
+        partner: doc.kind === 'credit_note' ? ('credit_note:' + code) : (aptId || aptName || code),
+        aptName: aptName,
+        reservationId: code,
+        filename: saved.filename,
+        path: saved.path,
+        bytes: saved.bytes,
+        source: 'portal',
+      });
+    } catch (e) {
+      errors.push({ channel: 'airbnb', code, kind: doc.kind, error: e.message });
+    }
+  }
+
+  if (!savedCount) {
+    errors.push({
+      channel: 'airbnb',
+      code,
+      error:
+        'No VAT invoice/credit note link found on reservation ' +
+        code +
+        ' (wanted: ' +
+        [...kindsWanted].join(',') +
+        ')',
+    });
+    await page.screenshot({ path: path.join(dir, '_nodoc-' + code + '.png'), fullPage: true }).catch(() => {});
+  }
+  return savedCount;
+}
+
+/**
+ * Airbnb VAT Invoicer-style pull:
+ * Hosthub supplies reservation confirmation codes → open each hosting reservation → PDF.
+ */
+async function pullAirbnb(page, context, month, outDir, files, errors) {
   const dir = path.join(outDir, 'airbnb');
   ensureDir(dir);
   const apts = loadApartments();
+  const reservations = loadAirbnbReservations();
 
   try {
-    if (!stored) {
-      await page.goto('https://www.airbnb.com/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
-      for (const sel of ['button:has-text("Accept")', 'button:has-text("OK")', '[data-testid="accept-btn"]']) {
-        const b = page.locator(sel).first();
-        if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
-      }
-
-      const emailInput = page
-        .locator('#phone-or-email, input[name="email"], input[type="email"], input[autocomplete="username"]')
-        .first();
-      await emailInput.waitFor({ state: 'visible', timeout: 20000 });
-      await emailInput.fill(email);
-      await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
-      await page.waitForTimeout(2500);
-
-      let bodyText = await page.locator('body').innerText().catch(() => '');
-      if (/confirmation code|one-time|verify your|we.ll send/i.test(bodyText) && !(await page.locator('input[type="password"]').count())) {
-        const filled = await tryFillOtp(page, dir);
-        if (!filled) {
-          errors.push({
-            channel: 'airbnb',
-            error:
-              'Airbnb asked for OTP. Connect a saved host session once (Platform Invoices → Connect Airbnb), then Pull runs unattended.',
-          });
-          await page.screenshot({ path: path.join(dir, '_login-otp.png'), fullPage: true }).catch(() => {});
-          return;
-        }
-      }
-
-      const passInput = page.locator('input[name="password"], input[type="password"]').first();
-      if (await passInput.count()) {
-        await passInput.waitFor({ timeout: 20000 });
-        await passInput.fill(pass);
-        await page.locator('button:has-text("Log in"), button:has-text("Sign in"), button[type="submit"]').first().click();
-        await page.waitForTimeout(4000);
-      }
-
-      bodyText = await page.locator('body').innerText().catch(() => '');
-      if (/confirmation code|one-time|verify your/i.test(bodyText)) {
-        const filled = await tryFillOtp(page, dir);
-        if (!filled) {
-          errors.push({
-            channel: 'airbnb',
-            error: 'Airbnb MFA/OTP blocked password login — reconnect Airbnb session in the app.',
-          });
-          await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
-          return;
-        }
-      }
-      if (/captcha|unusual activity/i.test(bodyText)) {
-        errors.push({
-          channel: 'airbnb',
-          error: 'Airbnb blocked login (captcha/unusual activity). Reconnect Airbnb session from a normal browser.',
-        });
-        await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
-        return;
-      }
-    }
-
-    await page.goto('https://www.airbnb.com/hosting/reservations', {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000,
-    });
-    await page.waitForTimeout(3000);
-
-    if (/log.?in|sign.?in/i.test(page.url()) || /log in to continue|welcome to airbnb/i.test(await page.locator('body').innerText().catch(() => ''))) {
+    if (!reservations.length) {
       errors.push({
         channel: 'airbnb',
-        error: 'Airbnb session expired — reconnect Airbnb in Platform Invoices (one-time), then Pull again.',
+        error:
+          'No Hosthub Airbnb reservation codes provided. Sync Hosthub, then Pull again (Expect lists confirmation codes).',
       });
       return;
     }
 
-    await persistSession('AIRBNB', context);
+    const ok = await ensureAirbnbLoggedIn(page, context, dir, errors);
+    if (!ok) return;
 
-    for (const t of ['All', 'Όλα', 'Upcoming', 'Past', 'Canceled', 'Cancelled']) {
-      const tab = page.locator(`button:has-text("${t}"), a:has-text("${t}"), [role="tab"]:has-text("${t}")`).first();
-      if (await tab.count()) await tab.click({ timeout: 1500 }).catch(() => {});
+    // De-dupe codes but keep kind union (invoice + credit_note → both)
+    const byCode = new Map();
+    for (const r of reservations) {
+      const prev = byCode.get(r.code);
+      if (!prev) {
+        byCode.set(r.code, Object.assign({}, r));
+        continue;
+      }
+      if (prev.kind !== r.kind) prev.kind = 'both';
+      if (!prev.aptId && r.aptId) prev.aptId = r.aptId;
+      if (!prev.aptName && r.aptName) prev.aptName = r.aptName;
     }
-    await page.waitForTimeout(1500);
 
-    const hrefs = await page.$$eval('a[href*="/details"], a[href*="reservation"], a[href*="/hosting/"]', (as) => {
-      const u = new Set();
-      as.forEach((a) => {
-        const h = a.getAttribute('href') || '';
-        if (/reservation|details|booking/i.test(h)) {
-          try {
-            u.add(new URL(h, location.origin).href);
-          } catch (e) {}
-        }
-      });
-      return [...u].slice(0, 120);
-    });
-
-    if (!hrefs.length) {
+    let pulled = 0;
+    for (const resv of byCode.values()) {
+      pulled += await pullAirbnbDocsForCode(page, context, month, dir, files, errors, resv, apts);
+    }
+    if (!pulled) {
       errors.push({
         channel: 'airbnb',
-        error: 'No reservation links found after login — selectors may need updating, or the inbox is empty.',
+        error: 'Hosthub listed ' + byCode.size + ' Airbnb code(s) but 0 PDFs were captured.',
       });
-      await page.screenshot({ path: path.join(dir, '_reservations.png'), fullPage: true }).catch(() => {});
-      return;
-    }
-
-    let idx = 0;
-    for (const href of hrefs) {
-      idx++;
-      try {
-        await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.waitForTimeout(1200);
-        const text = (await page.locator('body').innerText().catch(() => '')).toLowerCase();
-        const listingGuess =
-          (await page.locator('h1, h2, [data-testid*="listing"]').first().innerText().catch(() => '')) || '';
-        const apt = matchApartment(listingGuess, apts);
-
-        const candidates = [
-          { kind: 'credit_note', re: /credit\s*note|πιστωτικ/i },
-          { kind: 'invoice', re: /vat\s*invoice|tax\s*invoice|τιμολ|invoice/i },
-        ];
-        for (const c of candidates) {
-          if (!c.re.test(text) && c.kind === 'credit_note') continue;
-          const btn = page
-            .locator(
-              'a:has-text("VAT Invoice"), a:has-text("Invoice"), a:has-text("Credit note"), a:has-text("Credit Note"), button:has-text("VAT Invoice"), button:has-text("Print"), a:has-text("Download"), button:has-text("Download")'
-            )
-            .filter({ hasText: c.re })
-            .first();
-          const any = (await btn.count())
-            ? btn
-            : page.locator('a:has-text("Invoice"), button:has-text("Invoice"), a:has-text("Print"), button:has-text("Print")').first();
-          if (!(await any.count())) continue;
-
-          const [download] = await Promise.all([
-            page.waitForEvent('download', { timeout: 15000 }).catch(() => null),
-            any.click({ timeout: 5000 }).catch(() => null),
-          ]);
-          if (!download) continue;
-          const suggested = download.suggestedFilename() || `airbnb-${c.kind}-${month}-${idx}.pdf`;
-          const safe = suggested.replace(/[^\w.\-]+/g, '_');
-          const saved = await saveDownload(download, dir, safe);
-          files.push({
-            channel: 'airbnb',
-            kind: c.kind,
-            scope: 'leased',
-            partner: c.kind === 'credit_note' ? 'credit_note' : apt.aptId || apt.aptName || '',
-            aptName: apt.aptName || '',
-            filename: saved.filename,
-            path: saved.path,
-            bytes: saved.bytes,
-            source: 'portal',
-          });
-        }
-      } catch (e) {
-        errors.push({ channel: 'airbnb', href, error: e.message });
-      }
     }
     await persistSession('AIRBNB', context);
   } catch (e) {
@@ -783,6 +937,7 @@ async function main() {
     files,
     errors,
     sessionsSaved: sessions,
+    airbnbCodes: loadAirbnbReservations().length,
   };
   console.log(JSON.stringify(result, null, 0));
   process.exit(files.length ? 0 : 1);

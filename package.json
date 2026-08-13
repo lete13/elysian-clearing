@@ -8,7 +8,8 @@
     "dev": "node srv-boot.js",
     "test": "node tests/monthly-close-patches.test.js",
     "pull:platform-invoices": "node scripts/platform-invoice-pull.js",
-    "postinstall": "test \"$PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD\" = \"1\" || npx playwright install chromium || true"
+    "postinstall": "test \"$PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD\" = \"1\" || npx playwright install chromium || true",
+    "test:platform-invoices": "node tests/platform-invoice-airbnb-codes.test.js"
   },
   "engines": {
     "node": ">=18.0.0",
