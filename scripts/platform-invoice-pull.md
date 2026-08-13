@@ -1,15 +1,44 @@
 # Platform invoice pull (Airbnb / Booking.com portals)
 
-## Cadence
-As soon as portal documents exist after month-end (**ASAP**).
+## What this is
 
-## Dating
-- **Booking.com** — one invoice the **month after** the bookings month (June bookings → July invoice).
-- **Airbnb VAT invoice** — issue month = Hosthub **created** date (confirmation).
-- **Airbnb credit note** — issued on cancel; issue month = Hosthub **cancelledAt**. A booking confirmed in month A and cancelled in month B needs **both** documents (invoice in A, credit note in B).
+Monthly **Airbnb** and **Booking.com** invoices are PDFs the platforms issue **to Elysian**
+(ενδοκοινοτικά / intra-EU). They do **not** appear in Greek expense or myDATA imports.
+They are **not** Oxygen ΑΠΥ/ΤΠΥ documents (those are what Elysian issues to owners).
 
-## App today
-Upload / pack / email + **Hosthub health check**. Portal auto-download next.
+The app can **upload**, **pack**, **email**, and **pull** them (Tools → Platform Invoices).
 
-## Railway
-`PLATFORM_INVOICE_ACCOUNTANT_EMAIL` (default `info@e-newgeneration.gr, info@elysianproperties.eu`) · `AIRBNB_HOST_*` · `BOOKING_HOST_*`
+## Dating rules (ASAP — do not wait for the 20th/25th)
+
+| Channel | Document | Issue / file month |
+|---|---|---|
+| Booking.com | Invoice | **Month after** the bookings (June stays → July invoice) |
+| Airbnb | VAT invoice | Hosthub **`created` / `createdOnChannel`** (confirmation) |
+| Airbnb | Credit note | Hosthub **`cancelledAt`** (must download on cancel) |
+
+Confirm in month A and cancel in month B → keep **both** documents.
+
+Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperties.eu`.
+
+## Railway variables
+
+| Variable | Purpose |
+|---|---|
+| `PLATFORM_INVOICE_ACCOUNTANT_EMAIL` | Override default recipients |
+| `AIRBNB_HOST_EMAIL` / `AIRBNB_HOST_PASSWORD` | Airbnb host login |
+| `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD` | Booking.com extranet login |
+
+## Worker
+
+`scripts/platform-invoice-pull.js` (Playwright + Chromium):
+
+1. Logs into each portal with the env credentials.
+2. Opens the tax/invoice area for the requested `YYYY-MM`.
+3. Downloads PDFs (invoices + Airbnb credit notes when visible).
+4. `POST /api/platform-invoices/pull` stores them in `platform_invoices` with `source=portal`.
+
+```bash
+npm run pull:platform-invoices -- --month=2026-07 --channel=all --out=/tmp/pi-out
+```
+
+Selectors are best-effort; MFA/captcha is detected and reported. First live pass may need selector tuning against a real host session. Chromium is installed via `postinstall` / Railway `buildCommand`.
