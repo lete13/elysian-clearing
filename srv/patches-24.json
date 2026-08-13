@@ -1,0 +1,94 @@
+{
+ "baseSha256": "8f3e8714db65ccac72304067fdc0613f59a3e98b8caad9b29c1bbb91e74c0794",
+ "expectedSha256": "cd4820cbc33381d59dece0325bf78b29611a0634ecc7c4e8e7e7982736eebbbb",
+ "builtAt": "2026-08-13 Change Log: persist captures (API + auto-log saves/uploads)",
+ "patches": [
+  {
+   "note": "Change log: table, logEvent, diffSummary, POST/GET /api/changelog (changes + clicks)",
+   "find": "  _memProofs.delete(id);\n  res.json({ ok: true });\n});\n\n// ── AI schedule check (Daily Ops) ─",
+   "replace": "  logEvent(req, 'files', 'delete', 'proof #' + id);\n  _memProofs.delete(id);\n  res.json({ ok: true });\n});\n\n// ── Change log — per-account audit trail (server-stamped usernames) ───────────\n// Captures data changes (saves, uploads, Property Info) and client-posted\n// events (including UI clicks). The client never chooses the username.\nlet _logTableReady = false, _logN = 0, _memLogSeq = 1;\nconst _memLog = [];\nasync function ensureLogTable() {\n  if (_logTableReady || !pool) return;\n  await pool.query(`CREATE TABLE IF NOT EXISTS change_log (\n    id SERIAL PRIMARY KEY, ts TIMESTAMPTZ DEFAULT NOW(),\n    username TEXT, area TEXT, action TEXT, details TEXT\n  );`);\n  await pool.query(`CREATE INDEX IF NOT EXISTS idx_changelog_id ON change_log (id DESC);`);\n  _logTableReady = true;\n}\nasync function logEvent(req, area, action, details) {\n  const row = {\n    username: String((req && req.acctUser) || 'system').slice(0, 60),\n    area: String(area || 'app').slice(0, 30),\n    action: String(action || 'event').slice(0, 80),\n    details: String(details == null ? '' : details).slice(0, 600),\n  };\n  if (!pool) {\n    _memLog.unshift({ id: _memLogSeq++, ts: new Date().toISOString(), ...row });\n    if (_memLog.length > 8000) _memLog.length = 8000;\n    return;\n  }\n  try {\n    await ensureLogTable();\n    await pool.query(\n      `INSERT INTO change_log (username, area, action, details) VALUES ($1,$2,$3,$4)`,\n      [row.username, row.area, row.action, row.details]\n    );\n    if ((++_logN) % 25 === 0)\n      await pool.query(`DELETE FROM change_log WHERE id < (SELECT COALESCE(MIN(id),0) FROM (SELECT id FROM change_log ORDER BY id DESC LIMIT 8000) t)`);\n  } catch (e) { console.error('[log]', e.message); }\n}\nfunction diffSummary(oldD, newD) {\n  try {\n    const out = [];\n    const keys = [...new Set([...(oldD ? Object.keys(oldD) : []), ...(newD ? Object.keys(newD) : [])])];\n    for (const k of keys) {\n      const a = oldD ? oldD[k] : undefined, b = newD ? newD[k] : undefined;\n      if (Array.isArray(a) || Array.isArray(b)) {\n        const la = Array.isArray(a) ? a.length : 0, lb = Array.isArray(b) ? b.length : 0;\n        if (la !== lb) out.push(k + ' ' + la + '→' + lb);\n        else if (la <= 2000 && JSON.stringify(a) !== JSON.stringify(b)) out.push(k + ' ✎');\n      } else if (a && b && typeof a === 'object' && typeof b === 'object') {\n        const ka = Object.keys(a).length, kb = Object.keys(b).length;\n        if (JSON.stringify(a) !== JSON.stringify(b)) out.push(k + ' ✎' + (ka !== kb ? ' (' + ka + '→' + kb + ' keys)' : ''));\n      } else if (JSON.stringify(a) !== JSON.stringify(b)) out.push(k + ' ✎');\n      if (out.length >= 12) { out.push('…'); break; }\n    }\n    return out.length ? out.join(' · ') : 'saved (no top-level change detected)';\n  } catch (e) { return 'saved'; }\n}\n\n// POST /api/changelog — client events (changes + clicks); user is server-stamped\napp.post('/api/changelog', async (req, res) => {\n  const b = req.body || {};\n  await logEvent(req, b.area, b.action, b.details);\n  res.json({ ok: true });\n});\n// GET /api/changelog?limit=&user=&area=&kind= — newest first\n// kind=changes excludes area=click; kind=clicks keeps only area=click\napp.get('/api/changelog', async (req, res) => {\n  const lim = Math.min(parseInt(req.query.limit, 10) || 300, 500);\n  const kind = String(req.query.kind || '').toLowerCase();\n  const filterRow = (r) => {\n    if (req.query.user && r.username !== req.query.user) return false;\n    if (req.query.area && r.area !== req.query.area) return false;\n    if (kind === 'clicks' && r.area !== 'click') return false;\n    if (kind === 'changes' && r.area === 'click') return false;\n    return true;\n  };\n  if (!pool) {\n    return res.json(_memLog.filter(filterRow).slice(0, lim));\n  }\n  try {\n    await ensureLogTable();\n    const conds = [], vals = [];\n    if (req.query.user) { vals.push(req.query.user); conds.push('username = $' + vals.length); }\n    if (req.query.area) { vals.push(req.query.area); conds.push('area = $' + vals.length); }\n    if (kind === 'clicks') conds.push(\"area = 'click'\");\n    if (kind === 'changes') conds.push(\"area <> 'click'\");\n    vals.push(lim);\n    const r = await pool.query(\n      'SELECT id, ts, username, area, action, details FROM change_log' +\n      (conds.length ? ' WHERE ' + conds.join(' AND ') : '') +\n      ' ORDER BY id DESC LIMIT $' + vals.length, vals);\n    res.json(r.rows);\n  } catch (e) { res.status(500).json({ error: e.message }); }\n});\n\n// ── AI schedule check (Daily Ops) ─"
+  },
+  {
+   "note": "Proofs: allow law5170 month namespace used by Property Info",
+   "find": "  if (!/^\\d{4}-\\d{2}$/.test(b.month || ''))      return res.status(400).json({ error: 'Invalid month (YYYY-MM expected)' });",
+   "replace": "  if (!/^(\\d{4}-\\d{2}|law5170)$/.test(b.month || ''))      return res.status(400).json({ error: 'Invalid month (YYYY-MM or law5170 expected)' });"
+  },
+  {
+   "note": "Change log: blocked booking wipe",
+   "find": "      if (dbBks > 10 && inBks === 0) {\n        console.warn('[db] BLOCKED write: would wipe', dbBks, 'bookings');",
+   "replace": "      if (dbBks > 10 && inBks === 0) {\n        console.warn('[db] BLOCKED write: would wipe', dbBks, 'bookings');\n        logEvent(req, 'data', '⚠ blocked wipe', 'write would have deleted ' + dbBks + ' bookings');"
+  },
+  {
+   "note": "Change log: blocked expense wipe",
+   "find": "      if (dbExps > 0 && inExps === 0 && dbBks > 0) {\n        console.warn('[db] BLOCKED write: would wipe', dbExps, 'expenses');",
+   "replace": "      if (dbExps > 0 && inExps === 0 && dbBks > 0) {\n        console.warn('[db] BLOCKED write: would wipe', dbExps, 'expenses');\n        logEvent(req, 'data', '⚠ blocked wipe', 'write would have deleted ' + dbExps + ' expenses');"
+  },
+  {
+   "note": "Change log: data save with diff summary",
+   "find": "    const ts = await pool.query(\"SELECT updated_at FROM app_data WHERE key = 'main'\");\n    // Also capture a trend snapshot from the saved data (covers manual refresh).",
+   "replace": "    const ts = await pool.query(\"SELECT updated_at FROM app_data WHERE key = 'main'\");\n    logEvent(req, 'data', 'save', diffSummary(existing, payload));\n    // Also capture a trend snapshot from the saved data (covers manual refresh)."
+  },
+  {
+   "note": "Change log: proof upload (db)",
+   "find": "      return res.json({ ok: true, db: true, id: r.rows[0].id, uploadedAt: r.rows[0].uploaded_at });",
+   "replace": "      logEvent(req, 'files', 'upload', (meta.month === 'law5170' ? '[Law5170] ' : '[' + meta.month + '] ') + meta.apt_name + ' · ' + meta.task_key + ' · ' + meta.filename);\n      return res.json({ ok: true, db: true, id: r.rows[0].id, uploadedAt: r.rows[0].uploaded_at });"
+  },
+  {
+   "note": "Change log: proof upload (memory)",
+   "find": "  const id = 'm' + _memProofSeq++;\n  _memProofs.set(id, { ...meta, id, uploaded_at: new Date().toISOString(), data: b.dataB64 });\n  res.json({ ok: true, db: false, id });",
+   "replace": "  const id = 'm' + _memProofSeq++;\n  _memProofs.set(id, { ...meta, id, uploaded_at: new Date().toISOString(), data: b.dataB64 });\n  logEvent(req, 'files', 'upload', '[mem] ' + meta.apt_name + ' · ' + meta.task_key + ' · ' + meta.filename);\n  res.json({ ok: true, db: false, id });"
+  },
+  {
+   "note": "Change log: proof delete (db)",
+   "find": "    try { await ensureProofTable(); await pool.query(`DELETE FROM proof_files WHERE id = $1`, [parseInt(id)]); return res.json({ ok: true }); }",
+   "replace": "    try { await ensureProofTable(); await pool.query(`DELETE FROM proof_files WHERE id = $1`, [parseInt(id)]); logEvent(req, 'files', 'delete', 'proof #' + id); return res.json({ ok: true }); }"
+  },
+  {
+   "note": "Change log: Property Info save",
+   "find": "    const r = await pool.query(\n      `INSERT INTO rental_info (rental_id, data, updated_by, updated_at)\n       VALUES ($1, $2::jsonb, $3, NOW())\n       ON CONFLICT (rental_id) DO UPDATE SET data = $2::jsonb, updated_by = $3, updated_at = NOW()\n       RETURNING updated_at`,\n      [id, JSON.stringify(riShape(req.body)), by]\n    );\n    res.json({ ok: true, updatedAt: r.rows[0] && r.rows[0].updated_at });",
+   "replace": "    const shaped = riShape(req.body);\n    const r = await pool.query(\n      `INSERT INTO rental_info (rental_id, data, updated_by, updated_at)\n       VALUES ($1, $2::jsonb, $3, NOW())\n       ON CONFLICT (rental_id) DO UPDATE SET data = $2::jsonb, updated_by = $3, updated_at = NOW()\n       RETURNING updated_at`,\n      [id, JSON.stringify(shaped), by]\n    );\n    logEvent(req, 'pinfo', 'save', id + ' · ' +\n      Object.values(shaped.amenities || {}).filter(a => a && a.on).length + ' amenities · ' +\n      (shaped.faqs || []).length + ' FAQs · ' + Object.keys(shaped.compliance || {}).length + ' compliance items');\n    res.json({ ok: true, updatedAt: r.rows[0] && r.rows[0].updated_at });"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "CREATE TABLE IF NOT EXISTS change_log",
+   "note": "change_log table"
+  },
+  {
+   "has": "app.post('/api/changelog'",
+   "note": "POST changelog"
+  },
+  {
+   "has": "app.get('/api/changelog'",
+   "note": "GET changelog"
+  },
+  {
+   "has": "function diffSummary",
+   "note": "save diff summary"
+  },
+  {
+   "has": "kind === 'clicks'",
+   "note": "clicks filter on GET"
+  },
+  {
+   "has": "logEvent(req, 'data', 'save'",
+   "note": "data saves are logged"
+  },
+  {
+   "has": "logEvent(req, 'files', 'upload'",
+   "note": "file uploads are logged"
+  },
+  {
+   "has": "logEvent(req, 'pinfo', 'save'",
+   "note": "Property Info saves are logged"
+  },
+  {
+   "has": "|law5170)",
+   "note": "Property Info proof month allowed"
+  },
+  {
+   "has": "missing/invalid period (YYYY-MM expected)",
+   "note": "Oxygen period validator untouched"
+  }
+ ]
+}
