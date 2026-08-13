@@ -60,7 +60,7 @@ npm run pull:platform-invoices -- --month=2026-07 --channel=booking --out=/tmp/p
 
 ## Automated collect (no monthly upload)
 
-1. **Connect once** (only if password login hits captcha/OTP): run `platform-invoice-save-session.js --headed` on a laptop, then **Connect Airbnb/Booking** in the app (or POST the session). Sessions live in the DB and refresh after successful pulls.
+1. **Connect once** (only if password login hits captcha/OTP): on a laptop run `node scripts/platform-invoice-save-session.js --channel=airbnb|booking --headed`, finish OTP/captcha, press Enter — it writes `airbnb-session.json` / `booking-session.json`. In the app click **Connect Airbnb/Booking** and choose that file. (Airbnb OTP can also be typed when Pull prompts.) Sessions live in the DB and refresh after successful pulls.
 2. Open Platform Invoices → Collect → **Pull from portals**. Booking downloads **one PDF per property/apartment** and tags `partner`.
 3. Review checklist → Ship.
 
