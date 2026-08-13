@@ -1,0 +1,54 @@
+{
+ "baseSha256": "10ab0b24117f684b099e3bb2d53559269342626e711b2b9ed8db1b888581dd28",
+ "expectedSha256": "9a273a50656ed5ae1e709b2cb8509b8c6473b5c4f78f1e1b00330b6fbb9ae8db",
+ "builtAt": "2026-08-13 Daily Ops: On-call (Εφημερία) + unassigned cleaners default to Ρεπό",
+ "patches": [
+  {
+   "note": "Daily Ops: assigned-set helpers + auto-fill unassigned cleaners into Ρεπό",
+   "find": "function _opsCleanersOnSchedule() {\n  const busy = new Set();\n  function add(r) {\n    (typeof _opsCleanerList === 'function' ? _opsCleanerList(r) : []).forEach(function (n) {\n      const t = String(n || '').trim().toLowerCase();\n      if (t) busy.add(t);\n    });\n  }\n  (_opsRows || []).forEach(add);\n  (_opsCleanExtras || []).forEach(add);\n  return busy;\n}\nfunction _opsAvailableCleaners(cur) {\n  const busy = _opsCleanersOnSchedule();\n  const curT = String(cur || '').trim();\n  const list = (Array.isArray(S.cleaners) ? S.cleaners.slice() : []).filter(function (nm) {\n    const t = String(nm || '').trim();\n    if (!t) return false;\n    if (curT && t.toLowerCase() === curT.toLowerCase()) return true;\n    return !busy.has(t.toLowerCase());\n  });\n  list.sort(function (a, b) {\n    try { return a.localeCompare(b, 'el', { sensitivity: 'base' }); }\n    catch (e) { return a.localeCompare(b); }\n  });\n  if (curT && !list.some(function (n) { return n.toLowerCase() === curT.toLowerCase(); })) {\n    list.unshift(curT);\n  }\n  return list;\n}",
+   "replace": "function _opsCleanersOnSchedule() {\n  const busy = new Set();\n  function add(r) {\n    (typeof _opsCleanerList === 'function' ? _opsCleanerList(r) : []).forEach(function (n) {\n      const t = String(n || '').trim().toLowerCase();\n      if (t) busy.add(t);\n    });\n  }\n  (_opsRows || []).forEach(add);\n  (_opsCleanExtras || []).forEach(add);\n  return busy;\n}\nfunction _opsNormCleanerName(n) {\n  return String(n || '').trim().toLowerCase();\n}\nfunction _opsStaffBlocks() {\n  return ['oncall', 'adeies', 'odigoi', 'imatismos_cholargos', 'imatismos_thess', 'repo'];\n}\nfunction _opsNamesInDailyBlock(block) {\n  _opsEnsure();\n  const bag = (S.daily.extra && S.daily.extra[_opsDate]) || {};\n  const o = bag[block] || {};\n  const out = [];\n  Object.keys(o).forEach(function (k) {\n    const t = String(o[k] || '').trim();\n    if (t) out.push(t);\n  });\n  return out;\n}\n// Assigned = cleaning table + on-call + άδειες + ιματισμός + οδηγοί (not Ρεπό).\nfunction _opsCleanersAssigned(exceptBlock) {\n  const busy = _opsCleanersOnSchedule();\n  ['oncall', 'adeies', 'odigoi', 'imatismos_cholargos', 'imatismos_thess'].forEach(function (block) {\n    if (exceptBlock && block === exceptBlock) return;\n    _opsNamesInDailyBlock(block).forEach(function (n) {\n      const t = _opsNormCleanerName(n);\n      if (t) busy.add(t);\n    });\n  });\n  return busy;\n}\nfunction _opsAvailableCleaners(cur, forBlock) {\n  const busy = _opsCleanersAssigned(forBlock === 'repo' ? null : forBlock);\n  // For Ρεπό picks, also hide people already placed in other Ρεπό rows? keep simple: assigned elsewhere only.\n  if (forBlock && forBlock !== 'repo') {\n    // ok\n  }\n  const curT = String(cur || '').trim();\n  const list = (Array.isArray(S.cleaners) ? S.cleaners.slice() : []).filter(function (nm) {\n    const t = String(nm || '').trim();\n    if (!t) return false;\n    if (curT && t.toLowerCase() === curT.toLowerCase()) return true;\n    return !busy.has(t.toLowerCase());\n  });\n  list.sort(function (a, b) {\n    try { return a.localeCompare(b, 'el', { sensitivity: 'base' }); }\n    catch (e) { return a.localeCompare(b); }\n  });\n  if (curT && !list.some(function (n) { return n.toLowerCase() === curT.toLowerCase(); })) {\n    list.unshift(curT);\n  }\n  return list;\n}\n// Cleaning-team members with no assignment today default into Ρεπό.\n// Άδειες / On-call / Ιματισμός / Οδηγοί / cleaning table all count as assigned.\nfunction _opsSyncUnassignedToRepo() {\n  _opsEnsure();\n  if (!S.daily.extra[_opsDate]) S.daily.extra[_opsDate] = {};\n  const bag = S.daily.extra[_opsDate];\n  const assigned = _opsCleanersAssigned(null);\n  const team = (Array.isArray(S.cleaners) ? S.cleaners : []).map(function (n) {\n    return String(n || '').trim();\n  }).filter(Boolean);\n  const unassigned = [];\n  const seen = new Set();\n  team.forEach(function (n) {\n    const k = _opsNormCleanerName(n);\n    if (!k || assigned.has(k) || seen.has(k)) return;\n    seen.add(k);\n    unassigned.push(n);\n  });\n  unassigned.sort(function (a, b) {\n    try { return a.localeCompare(b, 'el', { sensitivity: 'base' }); }\n    catch (e) { return a.localeCompare(b); }\n  });\n  const prev = bag.repo || {};\n  const prevKeys = Object.keys(prev).filter(function (k) { return String(prev[k] || '').trim(); });\n  const same = prevKeys.length === unassigned.length && unassigned.every(function (n, i) {\n    return _opsNormCleanerName(prev[i]) === _opsNormCleanerName(n);\n  });\n  if (same) {\n    // Still ensure row count covers the list.\n    const needExtra = Math.max(0, unassigned.length - 5);\n    bag._rows = bag._rows || {};\n    if ((bag._rows.repo || 0) < needExtra) bag._rows.repo = needExtra;\n    return false;\n  }\n  const next = {};\n  unassigned.forEach(function (n, i) { next[i] = n; });\n  bag.repo = next;\n  bag._rows = bag._rows || {};\n  bag._rows.repo = Math.max(bag._rows.repo || 0, Math.max(0, unassigned.length - 5));\n  return true;\n}"
+  },
+  {
+   "note": "personSelect: exclude cleaners already assigned to other staff blocks",
+   "find": "  function personSelect(block, idx) {\n    // legacy token kept for chain asserts: type to find…\n    const cur = String((dailyExtra[block] && dailyExtra[block][idx]) || '');\n    const opts = (typeof _opsAvailableCleaners === 'function') ? _opsAvailableCleaners(cur) : (Array.isArray(S.cleaners) ? S.cleaners.slice() : []);",
+   "replace": "  function personSelect(block, idx) {\n    // legacy token kept for chain asserts: type to find…\n    const cur = String((dailyExtra[block] && dailyExtra[block][idx]) || '');\n    const opts = (typeof _opsAvailableCleaners === 'function') ? _opsAvailableCleaners(cur, block) : (Array.isArray(S.cleaners) ? S.cleaners.slice() : []);"
+  },
+  {
+   "note": "Άδειες select uses assigned-aware available list",
+   "find": "    const opts = (typeof _opsAvailableCleaners === 'function') ? _opsAvailableCleaners(cur) : (Array.isArray(S.cleaners) ? S.cleaners.slice() : []);\n    let o = '<option value=\"\">—</option>';\n    opts.forEach(function (nm) {\n      const sel = (cur && String(nm).toLowerCase() === cur.toLowerCase()) ? ' selected' : '';\n      o += '<option value=\"' + esc(nm) + '\"' + sel + '>' + esc(nm) + '</option>';\n    });\n    return '<div style=\"display:flex;gap:6px;align-items:center;margin-bottom:5px\">' +\n      '<span style=\"width:18px;text-align:center;color:#9CA3AF;font-size:11px\">' + (idx + 1) + '</span>' +\n      '<div style=\"flex:1\">' +\n      '<select onchange=\"opsSetDailyExtra(\\'adeies\\',' + idx + ',this.value)\" ' +",
+   "replace": "    const opts = (typeof _opsAvailableCleaners === 'function') ? _opsAvailableCleaners(cur, 'adeies') : (Array.isArray(S.cleaners) ? S.cleaners.slice() : []);\n    let o = '<option value=\"\">—</option>';\n    opts.forEach(function (nm) {\n      const sel = (cur && String(nm).toLowerCase() === cur.toLowerCase()) ? ' selected' : '';\n      o += '<option value=\"' + esc(nm) + '\"' + sel + '>' + esc(nm) + '</option>';\n    });\n    return '<div style=\"display:flex;gap:6px;align-items:center;margin-bottom:5px\">' +\n      '<span style=\"width:18px;text-align:center;color:#9CA3AF;font-size:11px\">' + (idx + 1) + '</span>' +\n      '<div style=\"flex:1\">' +\n      '<select onchange=\"opsSetDailyExtra(\\'adeies\\',' + idx + ',this.value)\" ' +"
+  },
+  {
+   "note": "Daily Ops: Εφημερία (On-call) block + sync unassigned → Ρεπό before render",
+   "find": "  const dailyBlocks = '<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid #E5E7EB\">' +\n    blockTable('Ρεπό', 'repo', 5) +\n    blockTable('Άδειες', 'adeies', 5) +\n    imatismosBlock +\n    '</div>' +\n    driversBlock();",
+   "replace": "  if (typeof _opsSyncUnassignedToRepo === 'function') {\n    const _repoChanged = _opsSyncUnassignedToRepo();\n    if (_repoChanged && typeof save === 'function') save();\n  }\n  const dailyExtraFresh = (S.daily && S.daily.extra && S.daily.extra[_opsDate]) || {};\n  // Refresh closure data used by personSelect / adeiaRow after auto-repo sync.\n  Object.keys(dailyExtraFresh).forEach(function (k) { dailyExtra[k] = dailyExtraFresh[k]; });\n  const dailyBlocks = '<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid #E5E7EB\">' +\n    blockTable('Εφημερία', 'oncall', 1) +\n    blockTable('Ρεπό', 'repo', 5) +\n    blockTable('Άδειες', 'adeies', 5) +\n    imatismosBlock +\n    '</div>' +\n    driversBlock();"
+  },
+  {
+   "note": "opsSetDailyExtra: re-sync Ρεπό after On-call/Άδειες/Ιματισμός/Οδηγοί changes",
+   "find": "function opsSetDailyExtra(block, idx, val) {\n  _opsEnsure();\n  if (!S.daily.extra[_opsDate]) S.daily.extra[_opsDate] = {};\n  if (!S.daily.extra[_opsDate][block]) S.daily.extra[_opsDate][block] = {};\n  const prev = S.daily.extra[_opsDate][block][idx];\n  S.daily.extra[_opsDate][block][idx] = val;\n  if (block === 'adeies') _opsSyncAdeiaRange(idx);\n  if (block === 'odigoi' && String(prev || '') !== String(val || '')) {\n    _opsRewriteDriverRouteComments(idx, prev, val);\n  }\n  if (typeof save === 'function') save();\n}",
+   "replace": "function opsSetDailyExtra(block, idx, val) {\n  _opsEnsure();\n  if (!S.daily.extra[_opsDate]) S.daily.extra[_opsDate] = {};\n  if (!S.daily.extra[_opsDate][block]) S.daily.extra[_opsDate][block] = {};\n  const prev = S.daily.extra[_opsDate][block][idx];\n  S.daily.extra[_opsDate][block][idx] = val;\n  if (block === 'adeies') _opsSyncAdeiaRange(idx);\n  if (block === 'odigoi' && String(prev || '') !== String(val || '')) {\n    _opsRewriteDriverRouteComments(idx, prev, val);\n  }\n  // Recompute Ρεπό defaults whenever an assignment (or on-call / leave) changes.\n  if (block !== 'repo' && typeof _opsSyncUnassignedToRepo === 'function') _opsSyncUnassignedToRepo();\n  if (typeof save === 'function') save();\n  if (block !== 'repo' && typeof renderOps === 'function') renderOps();\n}"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "blockTable('Εφημερία', 'oncall', 1)",
+   "note": "On-call / Εφημερία block"
+  },
+  {
+   "has": "function _opsSyncUnassignedToRepo",
+   "note": "auto-repo sync helper"
+  },
+  {
+   "has": "function _opsCleanersAssigned",
+   "note": "assigned-cleaner set"
+  },
+  {
+   "has": "_opsAvailableCleaners(cur, block)",
+   "note": "personSelect passes block"
+  },
+  {
+   "has": "_opsAvailableCleaners(cur, 'adeies')",
+   "note": "adeies uses assigned-aware list"
+  }
+ ]
+}
