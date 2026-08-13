@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node srv-boot.js",
     "dev": "node srv-boot.js",
-    "test": "node tests/monthly-close-patches.test.js"
+    "test": "node tests/monthly-close-patches.test.js && node tests/last-minute-backtest.test.js",
+    "backtest:lm": "node scripts/run-last-minute-backtest.js"
   },
   "engines": {
     "node": ">=18.0.0",
