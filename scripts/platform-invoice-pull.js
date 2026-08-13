@@ -9,6 +9,8 @@
  *   AIRBNB_HOST_EMAIL / AIRBNB_HOST_PASSWORD
  *   BOOKING_HOST_EMAIL / BOOKING_HOST_PASSWORD
  *
+ * Booking.com extranet entry: https://admin.booking.com/ (never www.booking.com)
+ *
  * Dating rules:
  *   Booking.com  — invoice month M covers bookings from M-1
  *   Airbnb VAT   — issue month = confirmation (Hosthub created)
@@ -232,7 +234,11 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
   }
 }
 
-/** Booking.com: login → Finance/Invoices → generate month pack → download. */
+/**
+ * Booking.com host extranet — ALWAYS via https://admin.booking.com/
+ * (not www.booking.com / partner join). Login may bounce through
+ * account.booking.com but must return to admin.booking.com/hotel/…
+ */
 async function pullBooking(page, context, month, outDir, files, errors) {
   const email = process.env.BOOKING_HOST_EMAIL || '';
   const pass = process.env.BOOKING_HOST_PASSWORD || '';
@@ -243,114 +249,225 @@ async function pullBooking(page, context, month, outDir, files, errors) {
   const dir = path.join(outDir, 'booking');
   ensureDir(dir);
   const [year, mon] = month.split('-').map(Number);
+  const monthNames = [
+    '',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  function onAdminExtranet(url) {
+    try {
+      const u = new URL(url);
+      return u.hostname === 'admin.booking.com' && /hoteladmin|extranet/i.test(u.pathname);
+    } catch (e) {
+      return false;
+    }
+  }
 
   try {
-    await page.goto('https://admin.booking.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(2000);
+    // Canonical partner extranet entry (not the consumer site)
+    await page.goto('https://admin.booking.com/login', {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000,
+    });
+    await page.waitForTimeout(1500);
 
-    const emailInput = page.locator('input[name="username"], input[type="email"], input[name="loginname"]').first();
-    if (await emailInput.count()) {
-      await emailInput.fill(email);
-      const next = page.locator('button:has-text("Next"), button[type="submit"]').first();
-      if (await next.count()) await next.click().catch(() => {});
+    // Cookie banners
+    for (const sel of [
+      'button:has-text("Accept")',
+      'button:has-text("Agree")',
+      '#onetrust-accept-btn-handler',
+    ]) {
+      const b = page.locator(sel).first();
+      if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
+    }
+
+    // Username / email (Booking often uses "loginname")
+    const emailInput = page
+      .locator(
+        'input[name="loginname"], input[name="username"], input[type="email"], input[autocomplete="username"], #loginname'
+      )
+      .first();
+    await emailInput.waitFor({ timeout: 25000 });
+    await emailInput.fill(email);
+    const next = page
+      .locator('button:has-text("Next"), button:has-text("Continue"), button[type="submit"]')
+      .first();
+    if (await next.count()) await next.click().catch(() => {});
+    await page.waitForTimeout(1200);
+
+    const passInput = page.locator('input[name="password"], input[type="password"], #password').first();
+    await passInput.waitFor({ timeout: 20000 });
+    await passInput.fill(pass);
+    await page
+      .locator(
+        'button:has-text("Sign in"), button:has-text("Log in"), button:has-text("Sign In"), button[type="submit"]'
+      )
+      .first()
+      .click();
+    await page.waitForTimeout(5000);
+
+    // If account.booking.com SSO, wait until we are back on admin.booking.com
+    for (let i = 0; i < 20; i++) {
+      const url = page.url();
+      if (onAdminExtranet(url) || (url.includes('admin.booking.com') && !/login|sign-in/i.test(url))) break;
+      if (/verif|two-factor|authenticator|captcha|challenge/i.test(await page.locator('body').innerText().catch(() => ''))) {
+        errors.push({
+          channel: 'booking',
+          error: 'Login needs manual verification (MFA/captcha) on admin.booking.com.',
+        });
+        await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
+        return;
+      }
       await page.waitForTimeout(1000);
     }
-    const passInput = page.locator('input[name="password"], input[type="password"]').first();
-    if (await passInput.count()) {
-      await passInput.fill(pass);
-      await page.locator('button:has-text("Sign in"), button:has-text("Log in"), button[type="submit"]').first().click();
-      await page.waitForTimeout(4000);
+
+    // Multi-property picker
+    const prop = page
+      .locator(
+        'a[href*="hoteladmin"], a[href*="extranet"], [data-testid*="property"] a, table a[href*="hotel_id"]'
+      )
+      .first();
+    if (await prop.count()) {
+      await prop.click().catch(() => {});
+      await page.waitForTimeout(2500);
     }
 
-    const bodyText = await page.locator('body').innerText().catch(() => '');
-    if (/verif|two-factor|authenticator|captcha/i.test(bodyText)) {
+    if (!page.url().includes('admin.booking.com')) {
       errors.push({
         channel: 'booking',
-        error: 'Login needs manual verification (MFA/captcha).',
+        error: 'Not on admin.booking.com after login (landed on ' + page.url() + ').',
       });
-      await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
+      await page.screenshot({ path: path.join(dir, '_wrong-host.png'), fullPage: true }).catch(() => {});
       return;
     }
 
-    // Finance → Invoices (URL patterns vary by extranet version)
+    await page.screenshot({ path: path.join(dir, '_after-login.png'), fullPage: true }).catch(() => {});
+
+    // Finance → Invoices on the extranet (URL patterns vary by hoteladmin version)
     const invoiceUrls = [
       'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/finance/invoices.html',
+      'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/finance/invoice.html',
+      'https://admin.booking.com/hotel/hoteladmin/finance_invoices.html',
       'https://admin.booking.com/hotel/hoteladmin/finance/invoices.html',
       'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/documents.html',
     ];
     let opened = false;
     for (const u of invoiceUrls) {
       const res = await page.goto(u, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
-      if (res && res.ok()) {
+      await page.waitForTimeout(1500);
+      const url = page.url();
+      const text = await page.locator('body').innerText().catch(() => '');
+      if (
+        url.includes('admin.booking.com') &&
+        /invoice|τιμολ|finance|document/i.test(text + url) &&
+        !/sign.?in|log.?in|loginname/i.test(url)
+      ) {
+        opened = true;
+        break;
+      }
+      if (res && res.ok() && url.includes('admin.booking.com') && !/login/i.test(url)) {
         opened = true;
         break;
       }
     }
     if (!opened) {
-      // Try nav click
-      const fin = page.locator('a:has-text("Finance"), a:has-text("Invoices"), a:has-text("Documents")').first();
-      if (await fin.count()) {
-        await fin.click();
-        await page.waitForTimeout(2000);
-        opened = true;
+      // Nav: Finance / Invoices / Documents (stay on admin.booking.com)
+      for (const label of ['Finance', 'Invoices', 'Documents', 'Οικονομικά', 'Τιμολόγια']) {
+        const fin = page.locator(`a:has-text("${label}"), button:has-text("${label}"), [role="link"]:has-text("${label}")`).first();
+        if (await fin.count()) {
+          await fin.click().catch(() => {});
+          await page.waitForTimeout(2000);
+          if (page.url().includes('admin.booking.com')) {
+            opened = true;
+            break;
+          }
+        }
       }
     }
     if (!opened) {
-      errors.push({ channel: 'booking', error: 'Could not open Finance/Invoices — update selectors/URL.' });
+      errors.push({
+        channel: 'booking',
+        error: 'Could not open Finance/Invoices on admin.booking.com — update selectors/URL.',
+        url: page.url(),
+      });
       await page.screenshot({ path: path.join(dir, '_nav.png'), fullPage: true }).catch(() => {});
       return;
     }
 
-    // Month selector — best effort
-    const monthSelect = page.locator('select, [name*="month"], [data-testid*="month"]').first();
+    // Month / year filters — best effort (invoice month M = bookings M−1)
+    const monthLabel = monthNames[mon] || String(mon);
+    const monthSelect = page.locator('select[name*="month" i], select[id*="month" i], [data-testid*="month"] select').first();
     if (await monthSelect.count()) {
-      await monthSelect.selectOption({ label: String(mon) }).catch(() =>
-        monthSelect.selectOption({ value: String(mon) }).catch(() => {})
+      await monthSelect.selectOption({ label: monthLabel }).catch(() =>
+        monthSelect.selectOption({ value: String(mon) }).catch(() =>
+          monthSelect.selectOption({ value: String(mon).padStart(2, '0') }).catch(() => {})
+        )
       );
     }
-    const yearSelect = page.locator('select[name*="year"], [data-testid*="year"]').first();
+    const yearSelect = page.locator('select[name*="year" i], select[id*="year" i], [data-testid*="year"] select').first();
     if (await yearSelect.count()) {
-      await yearSelect.selectOption({ value: String(year) }).catch(() => {});
+      await yearSelect.selectOption({ value: String(year) }).catch(() =>
+        yearSelect.selectOption({ label: String(year) }).catch(() => {})
+      );
     }
 
-    const gen = page.locator('button:has-text("Generate"), a:has-text("Generate"), button:has-text("All outstanding")').first();
-    if (await gen.count()) await gen.click().catch(() => {});
-    await page.waitForTimeout(2000);
-
-    const dl = page
+    const gen = page
       .locator(
-        `a:has-text("PDF"), a:has-text("Download"), a:has-text("outstanding"), a:has-text("${year}"), button:has-text("Download")`
+        'button:has-text("Generate"), a:has-text("Generate"), button:has-text("All outstanding"), a:has-text("All outstanding"), button:has-text("Download all")'
       )
       .first();
-    if (await dl.count()) {
+    if (await gen.count()) await gen.click().catch(() => {});
+    await page.waitForTimeout(2500);
+
+    // Collect every plausible PDF / download link for this month
+    const dlLoc = page.locator(
+      'a[href*=".pdf"], a[download], a:has-text("PDF"), a:has-text("Download"), button:has-text("Download"), a:has-text("outstanding")'
+    );
+    const n = await dlLoc.count();
+    let got = 0;
+    for (let i = 0; i < Math.min(n, 25); i++) {
+      const el = dlLoc.nth(i);
+      const label = ((await el.innerText().catch(() => '')) + ' ' + (await el.getAttribute('href').catch(() => ''))).toLowerCase();
+      if (label && !/\.pdf|download|invoice|outstanding|τιμολ/.test(label)) continue;
       const [download] = await Promise.all([
-        page.waitForEvent('download', { timeout: 30000 }).catch(() => null),
-        dl.click(),
+        page.waitForEvent('download', { timeout: 20000 }).catch(() => null),
+        el.click({ timeout: 5000 }).catch(() => null),
       ]);
-      if (download) {
-        const suggested = download.suggestedFilename() || `booking-invoices-${month}.pdf`;
-        const saved = await saveDownload(download, dir, suggested.replace(/[^\w.\-]+/g, '_'));
-        files.push({
-          channel: 'booking',
-          kind: 'invoice',
-          scope: 'leased',
-          filename: saved.filename,
-          path: saved.path,
-          bytes: saved.bytes,
-          source: 'portal',
-        });
-      } else {
-        errors.push({ channel: 'booking', error: 'Download click did not produce a file.' });
-      }
-    } else {
+      if (!download) continue;
+      const suggested = download.suggestedFilename() || `booking-invoice-${month}-${got + 1}.pdf`;
+      const saved = await saveDownload(download, dir, suggested.replace(/[^\w.\-]+/g, '_'));
+      files.push({
+        channel: 'booking',
+        kind: 'invoice',
+        scope: 'leased',
+        filename: saved.filename,
+        path: saved.path,
+        bytes: saved.bytes,
+        source: 'portal',
+      });
+      got++;
+    }
+    if (!got) {
       errors.push({
         channel: 'booking',
-        error: 'No download control found on invoices page — selectors need a live pass.',
+        error: 'No PDF download on admin.booking.com invoices page — selectors need a live pass.',
+        url: page.url(),
       });
       await page.screenshot({ path: path.join(dir, '_invoices.png'), fullPage: true }).catch(() => {});
     }
   } catch (e) {
-    errors.push({ channel: 'booking', error: e.message });
+    errors.push({ channel: 'booking', error: e.message, url: page.url() });
     await page.screenshot({ path: path.join(dir, '_error.png'), fullPage: true }).catch(() => {});
   }
 }

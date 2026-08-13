@@ -26,19 +26,21 @@ Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperti
 |---|---|
 | `PLATFORM_INVOICE_ACCOUNTANT_EMAIL` | Override default recipients |
 | `AIRBNB_HOST_EMAIL` / `AIRBNB_HOST_PASSWORD` | Airbnb host login |
-| `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD` | Booking.com extranet login |
+| `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD` | **admin.booking.com** partner extranet login (not www.booking.com) |
 
 ## Worker
 
 `scripts/platform-invoice-pull.js` (Playwright + Chromium):
 
-1. Logs into each portal with the env credentials.
-2. Opens the tax/invoice area for the requested `YYYY-MM`.
+1. Logs into Airbnb hosting and **https://admin.booking.com/** with the env credentials.
+2. Opens Finance → Invoices (extranet) for the requested `YYYY-MM`.
 3. Downloads PDFs (invoices + Airbnb credit notes when visible).
 4. `POST /api/platform-invoices/pull` stores them in `platform_invoices` with `source=portal`.
 
 ```bash
 npm run pull:platform-invoices -- --month=2026-07 --channel=all --out=/tmp/pi-out
+# Booking only:
+npm run pull:platform-invoices -- --month=2026-07 --channel=booking --out=/tmp/pi-out
 ```
 
 Selectors are best-effort; MFA/captcha is detected and reported. First live pass may need selector tuning against a real host session. Chromium is installed via `postinstall` / Railway `buildCommand`.
