@@ -110,10 +110,10 @@ async function main() {
   const b64 = Buffer.from(json, 'utf8').toString('base64');
   const key = CHANNEL === 'booking' ? 'BOOKING_STORAGE_STATE_B64' : 'AIRBNB_STORAGE_STATE_B64';
 
-  if (OUT) {
-    fs.writeFileSync(OUT, json);
-    console.error('Wrote', path.resolve(OUT));
-  }
+  const outPath = OUT || path.join(process.cwd(), CHANNEL + '-session.json');
+  fs.writeFileSync(outPath, json);
+  console.error('Wrote session file:', path.resolve(outPath));
+  console.error('In the app: Connect ' + (CHANNEL === 'booking' ? 'Booking' : 'Airbnb') + ' → choose this file.');
 
   console.log(key + '=' + b64);
 

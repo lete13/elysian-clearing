@@ -188,10 +188,16 @@ async function tryFillOtp(page, dir) {
       'input[name*="code" i], input[autocomplete="one-time-code"], input[inputmode="numeric"], input[type="tel"]'
     )
     .first();
+  // OTP field can lag a second or two after the "we sent a code" screen
+  for (let i = 0; i < 15; i++) {
+    if (await otpInput.count()) break;
+    await page.waitForTimeout(1000);
+  }
   if (!(await otpInput.count())) return false;
+  await otpInput.fill('');
   await otpInput.fill(otp);
-  await page.locator('button:has-text("Continue"), button:has-text("Submit"), button[type="submit"]').first().click().catch(() => {});
-  await page.waitForTimeout(3000);
+  await page.locator('button:has-text("Continue"), button:has-text("Submit"), button:has-text("Confirm"), button[type="submit"]').first().click().catch(() => {});
+  await page.waitForTimeout(4000);
   return true;
 }
 
