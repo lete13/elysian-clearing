@@ -54,7 +54,22 @@ async function loadPlaywright() {
   }
 }
 
-async function withBrowser(fn) {
+async function loadStorageState(prefix) {
+  const b64 = process.env[prefix + '_STORAGE_STATE_B64'] || '';
+  const raw = process.env[prefix + '_STORAGE_STATE'] || '';
+  try {
+    if (b64) return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+    if (raw) {
+      if (raw.trim().startsWith('{')) return JSON.parse(raw);
+      if (fs.existsSync(raw)) return JSON.parse(fs.readFileSync(raw, 'utf8'));
+    }
+  } catch (e) {
+    return { __error: e.message };
+  }
+  return null;
+}
+
+async function withBrowser(fn, opts) {
   const pw = await loadPlaywright();
   if (!pw) {
     return { ok: false, error: 'playwright package not installed' };
@@ -72,15 +87,18 @@ async function withBrowser(fn) {
       hint: 'Run: npx playwright install chromium',
     };
   }
+  const storageState = opts && opts.storageState;
   const context = await browser.newContext({
     acceptDownloads: true,
     viewport: { width: 1400, height: 900 },
     userAgent:
-      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    locale: 'en-US',
+    ...(storageState ? { storageState } : {}),
   });
   const page = await context.newPage();
   try {
-    return await fn(page, context);
+    return await fn(page, context, browser);
   } finally {
     await browser.close().catch(() => {});
   }
@@ -98,46 +116,67 @@ async function saveDownload(download, dir, filename) {
 async function pullAirbnb(page, context, month, outDir, files, errors) {
   const email = process.env.AIRBNB_HOST_EMAIL || '';
   const pass = process.env.AIRBNB_HOST_PASSWORD || '';
-  if (!email || !pass) {
-    errors.push({ channel: 'airbnb', error: 'AIRBNB_HOST_EMAIL / AIRBNB_HOST_PASSWORD not set' });
+  const stored = await loadStorageState('AIRBNB');
+  if (stored && stored.__error) {
+    errors.push({ channel: 'airbnb', error: 'AIRBNB_STORAGE_STATE invalid: ' + stored.__error });
+    return;
+  }
+  if (!stored && (!email || !pass)) {
+    errors.push({ channel: 'airbnb', error: 'Set AIRBNB_HOST_EMAIL / AIRBNB_HOST_PASSWORD or AIRBNB_STORAGE_STATE_B64' });
     return;
   }
   const dir = path.join(outDir, 'airbnb');
   ensureDir(dir);
 
   try {
-    await page.goto('https://www.airbnb.com/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    // Cookie / region banners
-    for (const sel of ['button:has-text("Accept")', 'button:has-text("OK")', '[data-testid="accept-btn"]']) {
-      const b = page.locator(sel).first();
-      if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
-    }
-
-    // Prefer email login path
-    const emailBtn = page.locator('button:has-text("Continue with email"), a:has-text("Continue with email"), button:has-text("Email")').first();
-    if (await emailBtn.count()) await emailBtn.click().catch(() => {});
-
-    const emailInput = page.locator('input[name="email"], input[type="email"], input[autocomplete="username"]').first();
-    await emailInput.waitFor({ timeout: 20000 });
-    await emailInput.fill(email);
-    const continueBtn = page.locator('button:has-text("Continue"), button[type="submit"]').first();
-    if (await continueBtn.count()) await continueBtn.click().catch(() => {});
-
-    const passInput = page.locator('input[name="password"], input[type="password"]').first();
-    await passInput.waitFor({ timeout: 20000 });
-    await passInput.fill(pass);
-    await page.locator('button:has-text("Log in"), button:has-text("Sign in"), button[type="submit"]').first().click();
-    await page.waitForTimeout(4000);
-
-    // MFA / captcha detection
-    const bodyText = await page.locator('body').innerText().catch(() => '');
-    if (/verif|two-factor|authenticator|captcha|unusual activity/i.test(bodyText)) {
-      errors.push({
-        channel: 'airbnb',
-        error: 'Login needs manual verification (MFA/captcha). Use headed mode once or unlock the host account.',
-      });
-      await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
+    const stored = await loadStorageState('AIRBNB');
+    if (stored && stored.__error) {
+      errors.push({ channel: 'airbnb', error: 'AIRBNB_STORAGE_STATE invalid: ' + stored.__error });
       return;
+    }
+    if (!stored) {
+      await page.goto('https://www.airbnb.com/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
+      for (const sel of ['button:has-text("Accept")', 'button:has-text("OK")', '[data-testid="accept-btn"]']) {
+        const b = page.locator(sel).first();
+        if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
+      }
+
+      // Current Airbnb login uses #phone-or-email
+      const emailInput = page
+        .locator('#phone-or-email, input[name="email"], input[type="email"], input[autocomplete="username"]')
+        .first();
+      await emailInput.waitFor({ state: 'visible', timeout: 20000 });
+      await emailInput.fill(email);
+      await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
+      await page.waitForTimeout(2500);
+
+      let bodyText = await page.locator('body').innerText().catch(() => '');
+      if (/confirmation code|one-time|verify your|we.ll send/i.test(bodyText) && !(await page.locator('input[type="password"]').count())) {
+        errors.push({
+          channel: 'airbnb',
+          error:
+            'Airbnb wants an email/SMS code (OTP). Set AIRBNB_STORAGE_STATE_B64 from a headed login (see scripts/platform-invoice-save-session.js), or upload PDFs manually.',
+        });
+        await page.screenshot({ path: path.join(dir, '_login-otp.png'), fullPage: true }).catch(() => {});
+        return;
+      }
+
+      const passInput = page.locator('input[name="password"], input[type="password"]').first();
+      await passInput.waitFor({ timeout: 20000 });
+      await passInput.fill(pass);
+      await page.locator('button:has-text("Log in"), button:has-text("Sign in"), button[type="submit"]').first().click();
+      await page.waitForTimeout(4000);
+
+      bodyText = await page.locator('body').innerText().catch(() => '');
+      if (/verif|two-factor|authenticator|captcha|unusual activity|confirmation code/i.test(bodyText)) {
+        errors.push({
+          channel: 'airbnb',
+          error:
+            'Login needs verification (MFA/OTP/captcha). Set AIRBNB_STORAGE_STATE_B64 from headed login, or upload PDFs.',
+        });
+        await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
+        return;
+      }
     }
 
     await page.goto('https://www.airbnb.com/hosting/reservations', {
@@ -242,8 +281,16 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
 async function pullBooking(page, context, month, outDir, files, errors) {
   const email = process.env.BOOKING_HOST_EMAIL || '';
   const pass = process.env.BOOKING_HOST_PASSWORD || '';
-  if (!email || !pass) {
-    errors.push({ channel: 'booking', error: 'BOOKING_HOST_EMAIL / BOOKING_HOST_PASSWORD not set' });
+  const stored = await loadStorageState('BOOKING');
+  if (stored && stored.__error) {
+    errors.push({ channel: 'booking', error: 'BOOKING_STORAGE_STATE invalid: ' + stored.__error });
+    return;
+  }
+  if (!stored && (!email || !pass)) {
+    errors.push({
+      channel: 'booking',
+      error: 'Set BOOKING_HOST_EMAIL / BOOKING_HOST_PASSWORD or BOOKING_STORAGE_STATE_B64',
+    });
     return;
   }
   const dir = path.join(outDir, 'booking');
@@ -275,61 +322,77 @@ async function pullBooking(page, context, month, outDir, files, errors) {
   }
 
   try {
-    // Canonical partner extranet entry (not the consumer site)
-    await page.goto('https://admin.booking.com/login', {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000,
-    });
-    await page.waitForTimeout(1500);
+    if (!stored) {
+      // Partner extranet entry. /login 404s — root redirects to account.booking.com SSO.
+      await page.goto('https://admin.booking.com/', {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      });
+      await page.waitForTimeout(2500);
 
-    // Cookie banners
-    for (const sel of [
-      'button:has-text("Accept")',
-      'button:has-text("Agree")',
-      '#onetrust-accept-btn-handler',
-    ]) {
-      const b = page.locator(sel).first();
-      if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
-    }
+      for (const sel of [
+        'button:has-text("Accept")',
+        'button:has-text("Agree")',
+        '#onetrust-accept-btn-handler',
+      ]) {
+        const b = page.locator(sel).first();
+        if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
+      }
 
-    // Username / email (Booking often uses "loginname")
-    const emailInput = page
-      .locator(
-        'input[name="loginname"], input[name="username"], input[type="email"], input[autocomplete="username"], #loginname'
-      )
-      .first();
-    await emailInput.waitFor({ timeout: 25000 });
-    await emailInput.fill(email);
-    const next = page
-      .locator('button:has-text("Next"), button:has-text("Continue"), button[type="submit"]')
-      .first();
-    if (await next.count()) await next.click().catch(() => {});
-    await page.waitForTimeout(1200);
+      // Extranet "Login name" / Login ID (often not an email)
+      const emailInput = page.locator('#loginname, input[name="loginname"]').first();
+      await emailInput.waitFor({ state: 'visible', timeout: 30000 });
+      await emailInput.fill(email);
+      await page
+        .locator('button:has-text("Next"), button[type="submit"], button:has-text("Continue")')
+        .first()
+        .click({ timeout: 10000 });
+      await page.waitForTimeout(2500);
 
-    const passInput = page.locator('input[name="password"], input[type="password"], #password').first();
-    await passInput.waitFor({ timeout: 20000 });
-    await passInput.fill(pass);
-    await page
-      .locator(
-        'button:has-text("Sign in"), button:has-text("Log in"), button:has-text("Sign In"), button[type="submit"]'
-      )
-      .first()
-      .click();
-    await page.waitForTimeout(5000);
-
-    // If account.booking.com SSO, wait until we are back on admin.booking.com
-    for (let i = 0; i < 20; i++) {
-      const url = page.url();
-      if (onAdminExtranet(url) || (url.includes('admin.booking.com') && !/login|sign-in/i.test(url))) break;
-      if (/verif|two-factor|authenticator|captcha|challenge/i.test(await page.locator('body').innerText().catch(() => ''))) {
+      const bodyAfterNext = await page.locator('body').innerText().catch(() => '');
+      if (/make sure you.re human|are you human|captcha/i.test(bodyAfterNext)) {
         errors.push({
           channel: 'booking',
-          error: 'Login needs manual verification (MFA/captcha) on admin.booking.com.',
+          error:
+            'Booking.com showed a human/captcha check after Login name. From a desktop browser run: node scripts/platform-invoice-save-session.js --channel=booking --headed — then set BOOKING_STORAGE_STATE_B64 on Railway. Until then use Upload.',
+          url: page.url(),
         });
-        await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
+        await page.screenshot({ path: path.join(dir, '_captcha.png'), fullPage: true }).catch(() => {});
         return;
       }
-      await page.waitForTimeout(1000);
+
+      const passInput = page
+        .locator('input[type="password"]:not([id="hidden-password"]), input[name="password"], #password')
+        .first();
+      await passInput.waitFor({ state: 'visible', timeout: 20000 });
+      await passInput.fill(pass);
+      await page
+        .locator(
+          'button:has-text("Sign in"), button:has-text("Log in"), button:has-text("Sign In"), button[type="submit"]'
+        )
+        .first()
+        .click();
+      await page.waitForTimeout(5000);
+
+      for (let i = 0; i < 20; i++) {
+        const url = page.url();
+        if (onAdminExtranet(url) || (url.includes('admin.booking.com') && !/login|sign-in/i.test(url))) break;
+        const t = await page.locator('body').innerText().catch(() => '');
+        if (/make sure you.re human|verif|two-factor|authenticator|captcha|challenge/i.test(t)) {
+          errors.push({
+            channel: 'booking',
+            error:
+              'Login blocked by verification/captcha. Set BOOKING_STORAGE_STATE_B64 from headed login, or upload PDFs.',
+            url,
+          });
+          await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
+          return;
+        }
+        await page.waitForTimeout(1000);
+      }
+    } else {
+      await page.goto('https://admin.booking.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.waitForTimeout(2500);
     }
 
     // Multi-property picker
@@ -347,6 +410,7 @@ async function pullBooking(page, context, month, outDir, files, errors) {
       errors.push({
         channel: 'booking',
         error: 'Not on admin.booking.com after login (landed on ' + page.url() + ').',
+        hint: stored ? 'Storage state may be expired — re-run save-session.' : undefined,
       });
       await page.screenshot({ path: path.join(dir, '_wrong-host.png'), fullPage: true }).catch(() => {});
       return;
@@ -484,23 +548,46 @@ async function main() {
     process.exit(2);
   }
 
-  const result = await withBrowser(async (page, context) => {
-    if (wantAirbnb) await pullAirbnb(page, context, MONTH, OUT, files, errors);
-    if (wantBooking) {
-      // Fresh page reduces Airbnb session bleed into Booking
-      const p2 = await context.newPage();
-      await pullBooking(p2, context, MONTH, OUT, files, errors);
-      await p2.close().catch(() => {});
+  async function runChannel(want, prefix, pullFn) {
+    if (!want) return null;
+    const stored = await loadStorageState(prefix);
+    if (stored && stored.__error) {
+      errors.push({ channel: prefix.toLowerCase(), error: prefix + '_STORAGE_STATE invalid: ' + stored.__error });
+      return null;
     }
-    return { ok: files.length > 0, month: MONTH, out: OUT, files, errors };
-  });
+    return withBrowser(
+      async (page, context) => {
+        await pullFn(page, context, MONTH, OUT, files, errors);
+        return true;
+      },
+      { storageState: stored || undefined }
+    );
+  }
 
-  if (result && result.error && !result.files) {
-    console.log(JSON.stringify(result));
+  const air = await runChannel(wantAirbnb, 'AIRBNB', pullAirbnb);
+  if (air && air.error && !air.ok) {
+    // launch failure
+    errors.push({ channel: 'airbnb', error: air.error, hint: air.hint });
+  }
+  const book = await runChannel(wantBooking, 'BOOKING', pullBooking);
+  if (book && book.error && !book.ok) {
+    errors.push({ channel: 'booking', error: book.error, hint: book.hint });
+  }
+
+  // If Chromium itself failed for every channel
+  if ((wantAirbnb && air && air.error && !wantBooking) || (wantBooking && book && book.error && !wantAirbnb)) {
+    const fail = air && air.error ? air : book;
+    console.log(JSON.stringify(fail));
     process.exit(1);
   }
+  if (wantAirbnb && wantBooking && air && air.error && book && book.error && !files.length) {
+    console.log(JSON.stringify({ ok: false, error: air.error || book.error, hint: air.hint || book.hint, errors }));
+    process.exit(1);
+  }
+
+  const result = { ok: files.length > 0, month: MONTH, out: OUT, files, errors };
   console.log(JSON.stringify(result, null, 0));
-  process.exit(result && result.ok ? 0 : 1);
+  process.exit(result.ok ? 0 : 1);
 }
 
 main().catch((e) => {

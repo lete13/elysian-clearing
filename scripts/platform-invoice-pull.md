@@ -26,16 +26,27 @@ Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperti
 |---|---|
 | `PLATFORM_INVOICE_ACCOUNTANT_EMAIL` | Override default recipients |
 | `AIRBNB_HOST_EMAIL` / `AIRBNB_HOST_PASSWORD` | Airbnb host login |
-| `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD` | **admin.booking.com** partner extranet login (not www.booking.com) |
+| `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD` | **admin.booking.com** Login name + password (not www.booking.com) |
+| `BOOKING_STORAGE_STATE_B64` | Optional. Playwright cookies after a headed login — bypasses captcha |
+| `AIRBNB_STORAGE_STATE_B64` | Optional. Same for Airbnb when OTP/MFA blocks password login |
 
 ## Worker
 
 `scripts/platform-invoice-pull.js` (Playwright + Chromium):
 
-1. Logs into Airbnb hosting and **https://admin.booking.com/** with the env credentials.
+1. Logs into Airbnb hosting and **https://admin.booking.com/** (or reuses `*_STORAGE_STATE_B64`).
 2. Opens Finance → Invoices (extranet) for the requested `YYYY-MM`.
 3. Downloads PDFs (invoices + Airbnb credit notes when visible).
 4. `POST /api/platform-invoices/pull` stores them in `platform_invoices` with `source=portal`.
+
+Booking.com often shows a **human/captcha** check from datacenter IPs. Airbnb may ask for an **email/SMS code**. In those cases, on a laptop with a display:
+
+```bash
+npm i playwright@1.62.1 && npx playwright install chromium
+BOOKING_HOST_EMAIL='…' BOOKING_HOST_PASSWORD='…' \
+  node scripts/platform-invoice-save-session.js --channel=booking --headed
+# → paste BOOKING_STORAGE_STATE_B64=… into Railway Variables
+```
 
 ```bash
 npm run pull:platform-invoices -- --month=2026-07 --channel=all --out=/tmp/pi-out
@@ -43,6 +54,4 @@ npm run pull:platform-invoices -- --month=2026-07 --channel=all --out=/tmp/pi-ou
 npm run pull:platform-invoices -- --month=2026-07 --channel=booking --out=/tmp/pi-out
 ```
 
-Selectors are best-effort; MFA/captcha is detected and reported. First live pass may need selector tuning against a real host session.
-
-**Deploy:** Railway uses the `Dockerfile` based on `mcr.microsoft.com/playwright` (Chromium + system libs). Nixpacks alone is not enough — the browser needs `libglib` and related packages.
+**Deploy:** Railway uses the `Dockerfile` based on `mcr.microsoft.com/playwright:v1.62.1-jammy` (keep in sync with `package.json`).
