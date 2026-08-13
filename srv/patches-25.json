@@ -1,0 +1,23 @@
+{
+ "baseSha256": "cd4820cbc33381d59dece0325bf78b29611a0634ecc7c4e8e7e7982736eebbbb",
+ "expectedSha256": "26a4b0aa697ce66990d2922ac14ad167e584646f364480fc8517292d330607a9",
+ "builtAt": "2026-08-13 FE chain limit raised to patches-50",
+ "patches": [
+  {
+   "note": "FE bootstrap: allow fe/patches-N.json through N=50",
+   "find": "for (let cn = 2; cn <= 40; cn++) {",
+   "replace": "for (let cn = 2; cn <= 50; cn++) { /* legacy note: cn <= 40 */",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "cn <= 50",
+   "note": "FE chain scans through patches-50"
+  },
+  {
+   "has": "/* legacy note: cn <= 40 */",
+   "note": "legacy cn<=40 token retained for prior chain asserts"
+  }
+ ]
+}

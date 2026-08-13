@@ -1,0 +1,68 @@
+{
+ "baseSha256": "1fc0805e998368acdab35dfb311038b0dfa7984981d0db2c7bd625db7094e546",
+ "expectedSha256": "31dc9b6536cae7653a43f27efedb4d24415b9f4b067a342adf45ff136a660fcd",
+ "builtAt": "2026-08-13 Daily Ops: Παρκοκρεβάτο + Early check-in (manual, blue)",
+ "patches": [
+  {
+   "note": "Daily Ops: Παρκοκρεβάτο + Early check-in managed comment tags",
+   "find": "const OPS_TAG_LATE = 'Late Checkout: 12:00';\nconst OPS_TAG_PRIORITY = 'PRIORITY';\nconst OPS_TAG_SOFA1 = 'Prepare 1 sofa bed';\nconst OPS_TAG_SOFA2 = 'Prepare 2 sofa beds';\nconst OPS_LONG_RE = /^Long stay:\\s*\\d+\\s*nights?$/i;",
+   "replace": "const OPS_TAG_LATE = 'Late Checkout: 12:00';\nconst OPS_TAG_PRIORITY = 'PRIORITY';\nconst OPS_TAG_SOFA1 = 'Prepare 1 sofa bed';\nconst OPS_TAG_SOFA2 = 'Prepare 2 sofa beds';\nconst OPS_TAG_PARK = 'Παρκοκρεβάτο';\nconst OPS_TAG_EARLY = 'Early check-in';\nconst OPS_LONG_RE = /^Long stay:\\s*\\d+\\s*nights?$/i;"
+  },
+  {
+   "note": "Daily Ops: manual Παρκοκρεβάτο + Early check-in toggles write into comments",
+   "find": "function opsTogglePriority(i) {\n  if (!_opsRows[i]) return;\n  _opsRows[i].isPriority = !_opsRows[i].isPriority;\n  _opsRows[i].priorityManual = !!_opsRows[i].isPriority;\n  _opsSetManagedComment(_opsRows[i], OPS_TAG_PRIORITY, !!_opsRows[i].isPriority);\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}\n\nfunction opsToggleCheckin(i) {",
+   "replace": "function opsTogglePriority(i) {\n  if (!_opsRows[i]) return;\n  _opsRows[i].isPriority = !_opsRows[i].isPriority;\n  _opsRows[i].priorityManual = !!_opsRows[i].isPriority;\n  _opsSetManagedComment(_opsRows[i], OPS_TAG_PRIORITY, !!_opsRows[i].isPriority);\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}\nfunction opsTogglePark(i) {\n  if (!_opsRows[i]) return;\n  _opsRows[i].parkBed = !_opsRows[i].parkBed;\n  _opsSetManagedComment(_opsRows[i], OPS_TAG_PARK, !!_opsRows[i].parkBed);\n  if (typeof renderOps === 'function') renderOps();\n  else {\n    const tbody = document.getElementById('ops-tbody');\n    if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');\n  }\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}\nfunction opsToggleEarly(i) {\n  if (!_opsRows[i]) return;\n  _opsRows[i].earlyCheckin = !_opsRows[i].earlyCheckin;\n  _opsSetManagedComment(_opsRows[i], OPS_TAG_EARLY, !!_opsRows[i].earlyCheckin);\n  if (typeof renderOps === 'function') renderOps();\n  else {\n    const tbody = document.getElementById('ops-tbody');\n    if (tbody) tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');\n  }\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}\n\nfunction opsToggleCheckin(i) {"
+  },
+  {
+   "note": "Daily Ops row: Παρκ/Early state + blue comment styling flag",
+   "find": "  const pOn  = !!row.isPriority;\n  const pBg  = pOn ? '#DC2626' : 'transparent';\n  const pClr = pOn ? '#fff' : '#DC2626';\n  const pBrd = pOn ? '1.5px solid #DC2626' : '1px solid #FECACA';\n  const _sofaOn = /Prepare [12] sofa bed/.test(String(row.comments || ''));\n  const _sofaLabel = /Prepare 2 sofa beds/.test(String(row.comments || '')) ? '2 SOFAS' : (_sofaOn ? '1 SOFA' : '');\n  const _cRed = pOn || _sofaOn;",
+   "replace": "  const pOn  = !!row.isPriority;\n  const pBg  = pOn ? '#DC2626' : 'transparent';\n  const pClr = pOn ? '#fff' : '#DC2626';\n  const pBrd = pOn ? '1.5px solid #DC2626' : '1px solid #FECACA';\n  const _partsC = (typeof _opsSplitComments === 'function') ? _opsSplitComments(row.comments) : [];\n  if (row.parkBed == null) row.parkBed = _partsC.indexOf(OPS_TAG_PARK) >= 0;\n  if (row.earlyCheckin == null) row.earlyCheckin = _partsC.indexOf(OPS_TAG_EARLY) >= 0;\n  const parkOn = !!row.parkBed;\n  const earlyOn = !!row.earlyCheckin;\n  const parkBg = parkOn ? '#1D4ED8' : 'transparent';\n  const parkClr = parkOn ? '#fff' : '#1D4ED8';\n  const parkBrd = parkOn ? '1.5px solid #1D4ED8' : '1px solid #93C5FD';\n  const earlyBg = earlyOn ? '#1D4ED8' : 'transparent';\n  const earlyClr = earlyOn ? '#fff' : '#1D4ED8';\n  const earlyBrd = earlyOn ? '1.5px solid #1D4ED8' : '1px solid #93C5FD';\n  const _sofaOn = /Prepare [12] sofa bed/.test(String(row.comments || ''));\n  const _sofaLabel = /Prepare 2 sofa beds/.test(String(row.comments || '')) ? '2 SOFAS' : (_sofaOn ? '1 SOFA' : '');\n  const _cRed = pOn || _sofaOn;\n  const _cBlue = parkOn || earlyOn;"
+  },
+  {
+   "note": "Daily Ops: blue ΠΑΡΚ / EARLY badges on apartment name",
+   "find": "${_sofaOn ? ' <span style=\"background:#DC2626;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"Guests exceed base capacity — prepare sofa bed(s)\">' + _sofaLabel + '</span>' : ''}${(function(){const l = window.aptAreaLabel",
+   "replace": "${_sofaOn ? ' <span style=\"background:#DC2626;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"Guests exceed base capacity — prepare sofa bed(s)\">' + _sofaLabel + '</span>' : ''}${parkOn ? ' <span style=\"background:#1D4ED8;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"Παρκοκρεβάτο\">ΠΑΡΚ</span>' : ''}${earlyOn ? ' <span style=\"background:#1D4ED8;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;vertical-align:middle\" title=\"Early check-in\">EARLY</span>' : ''}${(function(){const l = window.aptAreaLabel"
+  },
+  {
+   "note": "Daily Ops: Παρκ + Early operator buttons (blue)",
+   "find": "      <button onclick=\"opsTogglePriority(${i})\" title=\"Priority — adds PRIORITY to comments\"\n        style=\"background:${pBg};border:${pBrd};border-radius:4px;padding:3px 7px;font-size:10px;font-weight:700;color:${pClr};cursor:pointer;white-space:nowrap;font-family:inherit;margin:1px\">\n        ${pOn ? 'Priority' : 'Pri'}\n      </button>\n    </td>",
+   "replace": "      <button onclick=\"opsTogglePriority(${i})\" title=\"Priority — adds PRIORITY to comments\"\n        style=\"background:${pBg};border:${pBrd};border-radius:4px;padding:3px 7px;font-size:10px;font-weight:700;color:${pClr};cursor:pointer;white-space:nowrap;font-family:inherit;margin:1px\">\n        ${pOn ? 'Priority' : 'Pri'}\n      </button>\n      <button onclick=\"opsTogglePark(${i})\" title=\"Παρκοκρεβάτο — adds to comments (Daily Ops + cleaning notes)\"\n        style=\"background:${parkBg};border:${parkBrd};border-radius:4px;padding:3px 7px;font-size:10px;font-weight:700;color:${parkClr};cursor:pointer;white-space:nowrap;font-family:inherit;margin:1px\">\n        ${parkOn ? 'Παρκ' : 'Παρκ'}\n      </button>\n      <button onclick=\"opsToggleEarly(${i})\" title=\"Early check-in — adds to comments (Daily Ops + cleaning notes)\"\n        style=\"background:${earlyBg};border:${earlyBrd};border-radius:4px;padding:3px 7px;font-size:10px;font-weight:700;color:${earlyClr};cursor:pointer;white-space:nowrap;font-family:inherit;margin:1px\">\n        ${earlyOn ? 'Early' : 'Early'}\n      </button>\n    </td>"
+  },
+  {
+   "note": "Daily Ops comments field: blue when Παρκοκρεβάτο / Early check-in",
+   "find": "style=\"width:100%;box-sizing:border-box;border:none;background:transparent;font-size:12px;outline:none;color:${_cRed ? '#DC2626' : '#1a1a2e'};font-weight:${_cRed ? '700' : '400'}\">",
+   "replace": "style=\"width:100%;box-sizing:border-box;border:none;background:transparent;font-size:12px;outline:none;color:${_cRed ? '#DC2626' : (_cBlue ? '#1D4ED8' : '#1a1a2e')};font-weight:${(_cRed || _cBlue) ? '700' : '400'}\">"
+  },
+  {
+   "note": "Cleaning table: Παρκοκρεβάτο / Early check-in chips in blue (clue color)",
+   "find": "      const hot = p === OPS_TAG_PRIORITY || OPS_LONG_RE.test(p) || /sofa bed/i.test(p) || p === OPS_TAG_LATE || /^Route:/i.test(p);\n      return '<span style=\"display:inline-block;margin:1px 3px 1px 0;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.01em;' +\n        (hot ? 'background:#FEE2E2;color:#B91C1C' : 'background:#F3F4F6;color:#374151') + '\">' + esc(p) + '</span>';",
+   "replace": "      const clue = p === OPS_TAG_PARK || p === OPS_TAG_EARLY;\n      const hot = !clue && (p === OPS_TAG_PRIORITY || OPS_LONG_RE.test(p) || /sofa bed/i.test(p) || p === OPS_TAG_LATE || /^Route:/i.test(p));\n      return '<span style=\"display:inline-block;margin:1px 3px 1px 0;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.01em;' +\n        (clue ? 'background:#DBEAFE;color:#1D4ED8' : hot ? 'background:#FEE2E2;color:#B91C1C' : 'background:#F3F4F6;color:#374151') + '\">' + esc(p) + '</span>';"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "OPS_TAG_PARK = 'Παρκοκρεβάτο'",
+   "note": "park tag"
+  },
+  {
+   "has": "OPS_TAG_EARLY = 'Early check-in'",
+   "note": "early tag"
+  },
+  {
+   "has": "function opsTogglePark(i)",
+   "note": "park toggle"
+  },
+  {
+   "has": "function opsToggleEarly(i)",
+   "note": "early toggle"
+  },
+  {
+   "has": "background:#DBEAFE;color:#1D4ED8",
+   "note": "clue/blue chip color"
+  },
+  {
+   "has": "_cBlue",
+   "note": "blue comments styling"
+  }
+ ]
+}
