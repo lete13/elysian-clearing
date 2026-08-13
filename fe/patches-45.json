@@ -1,0 +1,67 @@
+{
+ "baseSha256": "955fb246faa65a76f68a9cd287e101bb54b34fd330fb4e1b89084f9b65ba37a9",
+ "expectedSha256": "4ae16ae0d38b0f17b0835ac3030a497aa5cc582c7da2aac24176e92ee0a8e37b",
+ "builtAt": "2026-08-13 Platform Invoices: pull-first automation (no monthly upload)",
+ "patches": [
+  {
+   "note": "Collect panel: pull-first, connect sessions, upload emergency-only",
+   "find": "      <div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">3 · Collect documents</div>\n      <div style=\"font-size:12.5px;color:var(--tx3);line-height:1.45;margin-bottom:10px\">\n        Checklist-driven: cover every <b>Booking.com apartment</b> (one PDF each) plus Airbnb invoices/credit notes.\n        Upload is the reliable path when portal pull hits captcha/OTP. Tag each Booking PDF to its apartment.\n      </div>\n      <div id=\"pi-bdc-checklist\" style=\"margin-bottom:12px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>\n      <div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px\">\n        <select id=\"pi-bdc-apt\" style=\"min-width:200px;font-size:12px;padding:6px 8px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg)\"></select>\n        <label class=\"btn sm gold\">Upload PDFs<input id=\"pi-files\" type=\"file\" accept=\".pdf,application/pdf\" multiple hidden onchange=\"piUploadMany(this,'leased')\"/></label>\n        <button class=\"btn sm\" onclick=\"piPull()\">Try portal pull</button>\n        <button class=\"btn sm\" onclick=\"piReload()\">Refresh vault</button>\n      </div>\n      <div id=\"pi-collect-summary\" style=\"font-size:12.5px;margin-bottom:10px\"></div>\n      <div id=\"pi-leased-list\" style=\"font-size:12.5px;min-height:40px\"></div>\n      <div style=\"margin-top:12px;display:flex;gap:8px;flex-wrap:wrap\">\n        <button class=\"btn sm\" onclick=\"piGo(2)\">← Back</button>\n        <button class=\"btn gold\" onclick=\"piCollectContinue()\">Continue to review →</button>\n      </div>",
+   "replace": "      <div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">3 · Collect documents</div>\n      <div style=\"font-size:12.5px;color:var(--tx3);line-height:1.45;margin-bottom:10px\">\n        <b>Automated pull</b> downloads Airbnb + Booking.com PDFs. Booking.com = <b>one invoice per apartment</b>.\n        Booking via <b>admin.booking.com</b>. Connect each portal once if captcha/OTP blocks password login — after that, Pull runs unattended and refreshes the session.\n      </div>\n      <div id=\"pi-session-status\" style=\"font-size:12.5px;margin-bottom:10px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>\n      <div id=\"pi-bdc-checklist\" style=\"margin-bottom:12px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>\n      <div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px\">\n        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull()\">Pull from portals</button>\n        <button class=\"btn sm\" onclick=\"piConnectSession('airbnb')\">Connect Airbnb</button>\n        <button class=\"btn sm\" onclick=\"piConnectSession('booking')\">Connect Booking</button>\n        <button class=\"btn sm\" onclick=\"piReload()\">Refresh vault</button>\n      </div>\n      <div id=\"pi-collect-summary\" style=\"font-size:12.5px;margin-bottom:10px\"></div>\n      <div id=\"pi-leased-list\" style=\"font-size:12.5px;min-height:40px\"></div>\n      <details style=\"margin-top:14px;font-size:12px;color:var(--tx3)\">\n        <summary style=\"cursor:pointer\">Emergency manual tools (not the normal path)</summary>\n        <div style=\"margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center\">\n          <select id=\"pi-bdc-apt\" style=\"min-width:200px;font-size:12px;padding:6px 8px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg)\"></select>\n          <label class=\"btn sm\">Upload PDF<input id=\"pi-files\" type=\"file\" accept=\".pdf,application/pdf\" multiple hidden onchange=\"piUploadMany(this,'leased')\"/></label>\n        </div>\n      </details>\n      <div style=\"margin-top:12px;display:flex;gap:8px;flex-wrap:wrap\">\n        <button class=\"btn sm\" onclick=\"piGo(2)\">← Back</button>\n        <button class=\"btn gold\" onclick=\"piCollectContinue()\">Continue to review →</button>\n      </div>"
+  },
+  {
+   "note": "Header: automated pull wording",
+   "find": "Guided monthly run: Hosthub expect → collect Airbnb + admin.booking.com PDFs → review → email accountants.\n          <b>Booking.com = one invoice per apartment</b>. Ενδοκοινοτικά only (not Oxygen). Do this <b>as soon as possible</b>.",
+   "replace": "Guided monthly run: Hosthub expect → <b>automated portal pull</b> → review → email accountants.\n          <b>Booking.com = one invoice per apartment</b>. Connect portals once; no monthly PDF upload. Do this <b>as soon as possible</b>."
+  },
+  {
+   "note": "Connect session UI + apartment-aware automated pull",
+   "find": "  window.piPull = async function () {\n    var month = monthVal();\n    msg('Pulling from portals (can take a few minutes)…', true);\n    try {\n      var res = await fetch('/api/platform-invoices/pull', {\n        method: 'POST', headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ month: month, channel: 'all' })\n      });\n      var r = await res.json();\n      var errTxt = (r.errors || []).map(function (e) {\n        return (e.channel ? (e.channel + ': ') : '') + (e.error || e.hint || '');\n      }).filter(Boolean).slice(0, 3).join(' · ');\n      if (!res.ok) throw new Error((r.error || 'pull failed') + (r.hint ? (' — ' + r.hint) : '') + (errTxt ? (' · ' + errTxt) : ''));\n      var n = (r.saved || []).length;\n      if (n === 0) {\n        msg('Portal pull saved 0 PDFs' + (errTxt ? (' — ' + errTxt) : '') +\n          ' — use Upload and tag each Booking PDF to its apartment', false);\n      } else {\n        msg('Pulled ' + n + ' PDF(s)' + (errTxt ? (' · notes: ' + errTxt) : '') +\n          '. Tag any Booking files to apartments below.', true);\n      }\n      await piHealth();\n      await piReload();\n    } catch (e) { msg(e.message || String(e), false); }\n  };",
+   "replace": "  function piSessionHtml(st) {\n    st = st || PI.status || {};\n    var a = st.airbnbSession || {};\n    var b = st.bookingSession || {};\n    function chip(ok, label, when) {\n      return '<span style=\"margin-right:10px\">' +\n        (ok ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>' : '<span style=\"color:var(--tx-err,#b91c1c)\">○</span>') +\n        ' ' + label +\n        (when ? (' <span style=\"color:var(--tx3);font-size:11px\">(' + when + ')</span>') : '') +\n        '</span>';\n    }\n    return '<div style=\"font-weight:600;margin-bottom:4px\">Portal sessions</div>' +\n      '<div>' + chip(!!a.connected, 'Airbnb', a.updatedAt ? String(a.updatedAt).slice(0, 16).replace('T', ' ') : '') +\n      chip(!!b.connected, 'Booking.com', b.updatedAt ? String(b.updatedAt).slice(0, 16).replace('T', ' ') : '') + '</div>' +\n      '<div style=\"margin-top:6px;color:var(--tx3);font-size:11.5px\">Pull uses these sessions automatically and refreshes them after a successful login. One-time Connect only when captcha/OTP appears.</div>';\n  }\n  window.piRenderSessions = function () {\n    var el = document.getElementById('pi-session-status');\n    if (el) el.innerHTML = piSessionHtml(PI.status);\n  };\n  window.piConnectSession = async function (channel) {\n    channel = String(channel || '').toLowerCase();\n    var label = channel === 'booking' ? 'Booking.com' : 'Airbnb';\n    var raw = prompt(\n      'Paste ' + label + ' Playwright storageState JSON (from scripts/platform-invoice-save-session.js).\\n' +\n      'This is a one-time connect — not a PDF upload. After this, use Pull from portals.'\n    );\n    if (raw == null) return;\n    raw = String(raw).trim();\n    if (!raw) return;\n    try {\n      var state = null;\n      if (raw.indexOf('{') === 0) state = JSON.parse(raw);\n      else {\n        try { state = JSON.parse(atob(raw.replace(/^.*?=/, ''))); }\n        catch (e2) { state = JSON.parse(atob(raw)); }\n      }\n      var res = await fetch('/api/platform-invoices/sessions/' + encodeURIComponent(channel), {\n        method: 'PUT', headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ storageState: state })\n      });\n      var j = await res.json();\n      if (!res.ok || !j.ok) throw new Error((j && j.error) || 'connect failed');\n      msg(label + ' connected — running Pull…', true);\n      await piReload();\n      await piPull();\n    } catch (e) { msg(e.message || String(e), false); }\n  };\n  window.piPull = async function () {\n    var month = monthVal();\n    var btn = document.getElementById('pi-pull-btn');\n    if (btn) btn.disabled = true;\n    msg('Pulling from portals (can take several minutes)…', true);\n    try {\n      var apts = ((PI.health && PI.health.bdcApts) || []).map(function (a) {\n        return { aptId: a.aptId || '', aptName: a.aptName || '' };\n      });\n      if (!apts.length && typeof S !== 'undefined' && Array.isArray(S.apts)) {\n        apts = S.apts.map(function (a) { return { aptId: a.id || a.aptId || '', aptName: a.name || a.aptName || '' }; });\n      }\n      var res = await fetch('/api/platform-invoices/pull', {\n        method: 'POST', headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ month: month, channel: 'all', apartments: apts })\n      });\n      var r = await res.json();\n      var errTxt = (r.errors || []).map(function (e) {\n        return (e.channel ? (e.channel + ': ') : '') + (e.property ? (e.property + ' — ') : '') + (e.error || e.hint || '');\n      }).filter(Boolean).slice(0, 4).join(' · ');\n      if (!res.ok) throw new Error((r.error || 'pull failed') + (r.hint ? (' — ' + r.hint) : '') + (errTxt ? (' · ' + errTxt) : ''));\n      var n = (r.saved || []).length;\n      if (n === 0) {\n        msg('Automated pull saved 0 PDFs' + (errTxt ? (' — ' + errTxt) : '') +\n          ' — Connect Airbnb/Booking session if login was blocked, then Pull again', false);\n      } else {\n        msg('Pulled ' + n + ' PDF(s) automatically' + (errTxt ? (' · notes: ' + errTxt) : ''), true);\n      }\n      await piHealth();\n      await piReload();\n    } catch (e) { msg(e.message || String(e), false); }\n    finally { if (btn) btn.disabled = false; }\n  };"
+  },
+  {
+   "note": "Reload renders portal session status",
+   "find": "      PI.status = st;\n      var sEl = document.getElementById('pi-status');\n      if (sEl) {\n        sEl.textContent = (st.note || '') +\n          (st.pullAvailable ? ' · Portal pull ready' : ' · Upload PDFs in Collect (portal pull needs session cookies)');\n      }",
+   "replace": "      PI.status = st;\n      var sEl = document.getElementById('pi-status');\n      if (sEl) {\n        sEl.textContent = (st.note || '') +\n          (st.pullAvailable ? ' · Automated pull ready' : ' · Connect Airbnb/Booking sessions to enable Pull');\n      }\n      piRenderSessions();"
+  },
+  {
+   "note": "Entering Collect auto-runs pull when vault incomplete",
+   "find": "    if (PI.step === 2) piHealth();\n    if (PI.step === 3) piReload();\n    if (PI.step === 4) piReload().then(reviewHtml);",
+   "replace": "    if (PI.step === 2) piHealth();\n    if (PI.step === 3) {\n      piReload().then(function () {\n        piRenderSessions();\n        var missing = piMissingBdcNames();\n        var leased = (PI.items || []).filter(function (x) { return x.scope === 'leased'; });\n        var needPull = (PI.status && PI.status.pullAvailable) && (missing.length || !leased.length);\n        if (needPull && !window._piAutoPullOnce) {\n          window._piAutoPullOnce = monthVal();\n          piPull();\n        }\n      });\n    }\n    if (PI.step === 4) piReload().then(reviewHtml);"
+  },
+  {
+   "note": "Month change allows another auto-pull",
+   "find": "  window.piOnMonthChange = function () {\n    PI.health = null;\n    try { localStorage.setItem('pi_month', monthVal()); } catch (e) {}\n    if (PI.step >= 2) piHealth();\n    piReload();\n  };",
+   "replace": "  window.piOnMonthChange = function () {\n    PI.health = null;\n    window._piAutoPullOnce = null;\n    try { localStorage.setItem('pi_month', monthVal()); } catch (e) {}\n    if (PI.step >= 2) piHealth();\n    piReload();\n  };"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Pull from portals",
+   "note": "primary pull CTA"
+  },
+  {
+   "has": "piConnectSession",
+   "note": "one-time portal connect"
+  },
+  {
+   "has": "pi-session-status",
+   "note": "session status panel"
+  },
+  {
+   "has": "Emergency manual tools",
+   "note": "upload demoted"
+  },
+  {
+   "has": "_piAutoPullOnce",
+   "note": "auto-pull on Collect"
+  },
+  {
+   "has": "apartments: apts",
+   "note": "pull sends apartment hints"
+  },
+  {
+   "hasNot": "Upload is the reliable path",
+   "note": "upload-first copy removed"
+  }
+ ]
+}
