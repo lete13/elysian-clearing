@@ -1,0 +1,23 @@
+{
+ "baseSha256": "7533b68fdbba001b97f333ff58e7cf629ade9b3878f4524c284475b0caaad6c3",
+ "expectedSha256": "8ebe0a54d413cd5d4567c96ebc4a34e38a1fe55b04051e0c2ed87f2821414c80",
+ "builtAt": "2026-08-13 FE chain limit raised to patches-80",
+ "patches": [
+  {
+   "note": "FE bootstrap: allow fe/patches-N.json through N=80",
+   "find": "for (let cn = 2; cn <= 50; cn++) { /* legacy note: cn <= 40 */",
+   "replace": "for (let cn = 2; cn <= 80; cn++) { /* legacy note: cn <= 40 */",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "cn <= 80",
+   "note": "FE chain through 80"
+  },
+  {
+   "has": "/* legacy note: cn <= 40 */",
+   "note": "legacy token kept"
+  }
+ ]
+}
