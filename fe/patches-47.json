@@ -1,0 +1,35 @@
+{
+  "baseSha256": "70437e57ea226fbdc0b34252330252071a60fbf7a1786cd3e7e105cf912bd307",
+  "expectedSha256": "10ab0b24117f684b099e3bb2d53559269342626e711b2b9ed8db1b888581dd28",
+  "builtAt": "2026-08-13 Home: Open leads default extended with minimise arrow",
+  "patches": [
+    {
+      "note": "Home: Open leads default extended; arrow toggles minimise",
+      "find": "    function paint(pack){\n      var mine=pack.mine||[];\n      if(countEl) countEl.textContent=String(mine.length);\n      if(!slot) return;\n      if(!pack.me || !mine.length){ slot.style.display='none'; return; }\n      if(empty && empty.parentNode) empty.parentNode.removeChild(empty);\n      slot.style.display='';\n      slot.innerHTML='<h3><span class=\"dot\" style=\"background:var(--gold)\"></span>Open leads <span class=\"cnt\">'+mine.length+'</span></h3>'+\n        mine.slice(0,10).map(function(l){\n          var act=NEXT[l.stage]||'Open the ticket';\n          var si=STEPS.indexOf(l.stage);\n          var pipe=si>=0?('Step '+(si+1)+' of 10 · '+(LABEL[l.stage]||l.stage)):(LABEL[l.stage]||l.stage);\n          var raw=String(l.full_name||'').trim().replace(/\\s+/g,' ');\n          var name=!raw?'(no name)':(raw===raw.toUpperCase()||raw===raw.toLowerCase())?raw.toLowerCase().replace(/(^|[\\s'\\-])(\\S)/g,function(_,a,b){return a+b.toUpperCase();}):raw;\n          var sub=pipe+(l.property_address?(' · '+l.property_address):'');\n          return '<div class=\"home-row\" style=\"cursor:pointer\" onclick=\"ldGoTask('+l.id+')\"><span class=\"dot\" style=\"background:var(--gold)\"></span><div class=\"rl\"><b>'+esc(name)+'</b><div class=\"meta\">Lead · '+esc(sub)+'</div></div><span class=\"lnk\">'+esc(act)+' →</span></div>';\n        }).join('')+(mine.length>10?'<div class=\"home-empty\">+'+(mine.length-10)+' more on Leads</div>':'');\n    }\n",
+      "replace": "    function homeLeadsExpanded(){\n      try{\n        var v=localStorage.getItem('home_leads_expanded');\n        // Default: extended (open). Only collapse when the user explicitly minimises.\n        if(v===null||v===undefined||v==='') return true;\n        return v!=='0' && v!=='false';\n      }catch(e){ return true; }\n    }\n    window.toggleHomeLeads=function(ev){\n      if(ev){ ev.preventDefault(); ev.stopPropagation(); }\n      var open=!homeLeadsExpanded();\n      try{ localStorage.setItem('home_leads_expanded', open?'1':'0'); }catch(e){}\n      if(typeof window.refreshHomeLeads==='function') window.refreshHomeLeads();\n    };\n    function paint(pack){\n      var mine=pack.mine||[];\n      if(countEl) countEl.textContent=String(mine.length);\n      if(!slot) return;\n      if(!pack.me || !mine.length){ slot.style.display='none'; return; }\n      if(empty && empty.parentNode) empty.parentNode.removeChild(empty);\n      slot.style.display='';\n      var open=homeLeadsExpanded();\n      var arrow=open?'▾':'▸';\n      var head='<h3 class=\"home-leads-h\" style=\"cursor:pointer;user-select:none\" onclick=\"toggleHomeLeads(event)\" title=\"'+(open?'Minimise open leads':'Show open leads')+'\">' +\n        '<span class=\"dot\" style=\"background:var(--gold)\"></span>Open leads <span class=\"cnt\">'+mine.length+'</span>' +\n        '<span class=\"home-leads-arrow\" style=\"margin-left:auto;color:var(--tx3);font-size:12px;line-height:1\">'+arrow+'</span></h3>';\n      var body='';\n      if(open){\n        // Extended view: full assigned open-lead list (not a truncated preview).\n        body=mine.map(function(l){\n          var act=NEXT[l.stage]||'Open the ticket';\n          var si=STEPS.indexOf(l.stage);\n          var pipe=si>=0?('Step '+(si+1)+' of 10 · '+(LABEL[l.stage]||l.stage)):(LABEL[l.stage]||l.stage);\n          var raw=String(l.full_name||'').trim().replace(/\\s+/g,' ');\n          var name=!raw?'(no name)':(raw===raw.toUpperCase()||raw===raw.toLowerCase())?raw.toLowerCase().replace(/(^|[\\s'\\-])(\\S)/g,function(_,a,b){return a+b.toUpperCase();}):raw;\n          var sub=pipe+(l.property_address?(' · '+l.property_address):'');\n          return '<div class=\"home-row\" style=\"cursor:pointer\" onclick=\"ldGoTask('+l.id+')\"><span class=\"dot\" style=\"background:var(--gold)\"></span><div class=\"rl\"><b>'+esc(name)+'</b><div class=\"meta\">Lead · '+esc(sub)+'</div></div><span class=\"lnk\">'+esc(act)+' →</span></div>';\n        }).join('');\n      }\n      slot.innerHTML=head+body;\n    }\n",
+      "count": 1
+    }
+  ],
+  "assertions": [
+    {
+      "has": "toggleHomeLeads",
+      "note": "minimise/expand toggle for Open leads"
+    },
+    {
+      "has": "home_leads_expanded",
+      "note": "persists Open leads expand state"
+    },
+    {
+      "has": "home-leads-arrow",
+      "note": "arrow control on Open leads header"
+    },
+    {
+      "has": "Minimise open leads",
+      "note": "default extended title when open"
+    },
+    {
+      "hasNot": "mine.slice(0,10)",
+      "note": "extended view lists all open leads"
+    }
+  ]
+}
