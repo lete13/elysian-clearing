@@ -72,17 +72,14 @@ AIRBNB_HOST_EMAIL='…' AIRBNB_HOST_PASSWORD='…' \
 ## Automated collect
 
 1. **Sync Hosthub** so bookings carry `reservationId` (Expect can also backfill from Hosthub).
-2. **Connect Airbnb once** (required when password login hits OTP, or when Pull says session expired):
+2. **Connect Airbnb once** (in the app — no terminal):
 
-```bash
-cd elysian-clearing
-AIRBNB_HOST_EMAIL='…' AIRBNB_HOST_PASSWORD='…' \
-  node scripts/platform-invoice-save-session.js --channel=airbnb --headed
-```
+   Platform Invoices → Collect → **Connect Airbnb**.  
+   The server signs in with `AIRBNB_HOST_EMAIL` / `AIRBNB_HOST_PASSWORD`.  
+   When Airbnb sends an email/SMS code, enter it in the same screen → Submit code.  
+   Session is stored in the vault; then **Pull Airbnb**.
 
-Complete OTP in the Chromium window. When Hosting → Reservations is open, press Enter in the terminal.  
-Copy the printed JSON (or the `AIRBNB_STORAGE_STATE_B64=…` line).  
-In the app: Platform Invoices → Collect → **Connect Airbnb** → paste → then **Pull Airbnb (Hosthub codes)**.
+   Advanced fallback (laptop JSON paste) still works via the error panel’s “Paste session JSON”.
 
 3. Review → Ship.
 
