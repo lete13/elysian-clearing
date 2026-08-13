@@ -275,12 +275,13 @@ async function pullBooking(page, context, month, outDir, files, errors) {
   }
 
   try {
-    // Canonical partner extranet entry (not the consumer site)
-    await page.goto('https://admin.booking.com/login', {
+    // Partner extranet entry. /login 404s — root redirects to
+    // account.booking.com/sign-in?… with Login name (loginname), then password.
+    await page.goto('https://admin.booking.com/', {
       waitUntil: 'domcontentloaded',
       timeout: 60000,
     });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2500);
 
     // Cookie banners
     for (const sel of [
@@ -292,22 +293,21 @@ async function pullBooking(page, context, month, outDir, files, errors) {
       if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
     }
 
-    // Username / email (Booking often uses "loginname")
-    const emailInput = page
-      .locator(
-        'input[name="loginname"], input[name="username"], input[type="email"], input[autocomplete="username"], #loginname'
-      )
-      .first();
-    await emailInput.waitFor({ timeout: 25000 });
+    // Username = extranet "Login name" / Login ID (not always an email)
+    const emailInput = page.locator('#loginname, input[name="loginname"]').first();
+    await emailInput.waitFor({ state: 'visible', timeout: 30000 });
     await emailInput.fill(email);
     const next = page
-      .locator('button:has-text("Next"), button:has-text("Continue"), button[type="submit"]')
+      .locator('button:has-text("Next"), button[type="submit"], button:has-text("Continue")')
       .first();
-    if (await next.count()) await next.click().catch(() => {});
-    await page.waitForTimeout(1200);
+    await next.click({ timeout: 10000 });
+    await page.waitForTimeout(1500);
 
-    const passInput = page.locator('input[name="password"], input[type="password"], #password').first();
-    await passInput.waitFor({ timeout: 20000 });
+    // Password step — prefer visible password field (page also has #hidden-password)
+    const passInput = page
+      .locator('input[type="password"]:not([id="hidden-password"]), input[name="password"]:visible, #password')
+      .first();
+    await passInput.waitFor({ state: 'visible', timeout: 20000 });
     await passInput.fill(pass);
     await page
       .locator(
