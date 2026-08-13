@@ -1,0 +1,27 @@
+{
+ "baseSha256": "33fbfa897c6d356355b53fd450c258c0720943a81d28b1bc5e4f62f55f497f7a",
+ "expectedSha256": "e7c3be2c3c653beea794f567b21d519b97b756012f0af62d70ab6b3772942030",
+ "builtAt": "2026-08-13 platform invoices SOP: ASAP, BDC lag, Airbnb invoice+credit note dating",
+ "patches": [
+  {
+   "note": "Default platform-invoice recipients: E-New Generation + info@elysianproperties.eu",
+   "find": "const PLATFORM_INV_ACCOUNTANT = process.env.PLATFORM_INVOICE_ACCOUNTANT_EMAIL || '';",
+   "replace": "const PLATFORM_INV_ACCOUNTANT = process.env.PLATFORM_INVOICE_ACCOUNTANT_EMAIL || 'info@e-newgeneration.gr, info@elysianproperties.eu';"
+  },
+  {
+   "note": "Status note: ASAP + BDC/Airbnb/credit-note dating",
+   "find": "note: 'Portal pull starts with host login credentials on Railway; upload works now.'",
+   "replace": "note: 'ASAP. Booking.com invoice = month after bookings. Airbnb invoice = Hosthub created; credit note = cancellation date. Upload works now; portal pull next.'"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "info@e-newgeneration.gr",
+   "note": "default E-New Generation"
+  },
+  {
+   "has": "credit note = cancellation date",
+   "note": "Airbnb credit-note rule"
+  }
+ ]
+}

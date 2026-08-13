@@ -1,0 +1,54 @@
+{
+ "baseSha256": "7dfc6d9820640feb07b3fbbfec20c8ac9280cf07952a497d23f8e1f48f7c2f1a",
+ "expectedSha256": "52a9e8f0690ec74dfbd81176a532214fa505de63c639891979a2c945781d34b0",
+ "builtAt": "2026-08-13 platform invoices SOP: ASAP, BDC lag, Airbnb invoice+credit note, Hosthub check",
+ "patches": [
+  {
+   "note": "SOP copy: ASAP, BDC month-after, Airbnb invoice=created + credit note=cancel",
+   "find": "PDFs from the <b>Airbnb</b> and <b>Booking.com</b> host portals (ενδοκοινοτικά).\n          Not Greek expenses / not Oxygen. Leased pack → accountant by the 20th; B2B packs → partners by the 25th.",
+   "replace": "PDFs from the <b>Airbnb</b> and <b>Booking.com</b> host portals (ενδοκοινοτικά) — not Greek expenses / not Oxygen. Do this <b>as soon as possible</b>.\n          <b>Booking.com</b>: invoice the <b>month after</b> the bookings (June → July invoice). <b>Airbnb</b>: VAT invoice month = Hosthub <b>created</b> date; if cancelled, also download the <b>credit note</b> (issue date = <b>cancellation</b> date)."
+  },
+  {
+   "note": "Elysian-tax pack header ASAP",
+   "find": "<div style=\"font-weight:600;margin-bottom:8px\">Leased → accountant (by 20th)</div>",
+   "replace": "<div style=\"font-weight:600;margin-bottom:8px\">Elysian-tax units → E-New Generation <span style=\"font-weight:500;color:var(--tx3)\">(ASAP)</span></div>"
+  },
+  {
+   "note": "Other-groups pack header ASAP",
+   "find": "<div style=\"font-weight:600;margin-bottom:8px\">B2B → partners (by 25th)</div>",
+   "replace": "<div style=\"font-weight:600;margin-bottom:8px\">Other groups → their accountants <span style=\"font-weight:500;color:var(--tx3)\">(ASAP)</span></div>"
+  },
+  {
+   "note": "Hosthub health check button + panel",
+   "find": "<button class=\"btn sm\" onclick=\"piPull()\">Pull from portals</button>\n      <span style=\"font-size:11.5px;color:var(--tx3)\">Needs Airbnb/Booking host login on the server. Until that is live, upload the PDFs here.</span>\n    </div>\n    <div id=\"pi-msg\" style=\"margin-top:12px;font-size:12.5px\"></div>",
+   "replace": "<button class=\"btn sm\" onclick=\"piPull()\">Pull from portals</button>\n      <button class=\"btn sm\" onclick=\"piHealth()\">Hosthub health check</button>\n      <span style=\"font-size:11.5px;color:var(--tx3)\">Upload portal PDFs (invoices + Airbnb credit notes). Health check uses Hosthub created / cancellation dates.</span>\n    </div>\n    <div id=\"pi-health\" style=\"margin-top:12px;font-size:12.5px;line-height:1.5;border:1px solid var(--bdr);border-radius:10px;padding:10px 12px;background:var(--bg2);display:none\"></div>\n    <div id=\"pi-msg\" style=\"margin-top:12px;font-size:12.5px\"></div>"
+  },
+  {
+   "note": "piHealth: Airbnb invoices by created, credit notes by cancelledAt",
+   "find": "  window.piPull = async function () {",
+   "replace": "  function piYmFromTs(t) {\n    if (t == null || t === '') return '';\n    var n = Number(t);\n    if (!isFinite(n)) { var s = String(t); return s.length >= 7 ? s.slice(0, 7) : ''; }\n    if (n < 1e12) n *= 1000;\n    var d = new Date(n);\n    if (isNaN(d.getTime())) return '';\n    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');\n  }\n  function piPrevMonth(ym) {\n    var p = String(ym || '').split('-');\n    var y = parseInt(p[0], 10), m = parseInt(p[1], 10);\n    if (!y || !m) return '';\n    var d = new Date(y, m - 2, 1);\n    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');\n  }\n  function piChan(b) {\n    var s = String((b && (b.platform || b.channel)) || '').toLowerCase();\n    if (s.indexOf('air') >= 0) return 'airbnb';\n    if (s.indexOf('book') >= 0) return 'booking';\n    return 'other';\n  }\n  window.piHealth = function () {\n    var month = (document.getElementById('pi-month') || {}).value || monthDefault();\n    var box = document.getElementById('pi-health');\n    if (!box) return;\n    box.style.display = 'block';\n    var bks = (typeof S !== 'undefined' && Array.isArray(S.bks)) ? S.bks : [];\n    if (!bks.length) { box.innerHTML = '<b>Hosthub health check</b> — no bookings loaded. Sync Hosthub first.'; return; }\n    var airInv = 0, airCredit = 0, bdcExpect = 0;\n    var bdcBookMonth = piPrevMonth(month);\n    bks.forEach(function (b) {\n      var ch = piChan(b);\n      var createdYm = piYmFromTs(b.createdOnChannel != null ? b.createdOnChannel : b.created);\n      var cancelYm = piYmFromTs(b.cancelledAt);\n      // Airbnb VAT invoice issue month = Hosthub created month (even if later cancelled).\n      if (ch === 'airbnb' && createdYm === month) airInv++;\n      // Airbnb credit note issue month = cancellation date month.\n      if (ch === 'airbnb' && b.cancelled && cancelYm === month) airCredit++;\n      if (ch === 'booking' && createdYm === bdcBookMonth && !b.cancelled) bdcExpect++;\n    });\n    box.innerHTML =\n      '<div style=\"font-weight:600;margin-bottom:6px\">Hosthub health check for document month <code>' + month + '</code></div>' +\n      '<div><b>Airbnb VAT invoices</b> — bookings with Hosthub <b>created</b> in ' + month + ': <b>' + airInv + '</b> (download each VAT invoice)</div>' +\n      '<div style=\"margin-top:4px\"><b>Airbnb credit notes</b> — cancellations with <b>cancelledAt</b> in ' + month + ': <b>' + airCredit + '</b> (download each credit note; date follows cancellation)</div>' +\n      '<div style=\"margin-top:4px\"><b>Booking.com</b> — invoice <code>' + month + '</code> covers bookings created in <code>' + bdcBookMonth + '</code>: <b>' + bdcExpect + '</b> active</div>' +\n      '<div style=\"margin-top:8px;color:var(--tx3);font-size:11.5px\">A booking confirmed in one month and cancelled in another needs <b>both</b> an invoice (created month) and a credit note (cancel month).</div>';\n    fetch('/api/platform-invoices?month=' + encodeURIComponent(month)).then(function (r) { return r.json(); }).then(function (j) {\n      if (!j || !j.ok) return;\n      var items = j.items || [];\n      var aUp = items.filter(function (x) { return x.channel === 'airbnb'; }).length;\n      var bUp = items.filter(function (x) { return x.channel === 'booking'; }).length;\n      box.innerHTML += '<div style=\"margin-top:8px\">Uploaded in app this month: Airbnb <b>' + aUp + '</b> · Booking.com <b>' + bUp + '</b></div>';\n    }).catch(function () {});\n  };\n  window.piPull = async function () {"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "as soon as possible",
+   "note": "ASAP"
+  },
+  {
+   "has": "credit note",
+   "note": "Airbnb credit notes"
+  },
+  {
+   "has": "cancelledAt",
+   "note": "credit note uses cancellation date"
+  },
+  {
+   "has": "piHealth",
+   "note": "Hosthub health check"
+  },
+  {
+   "has": "month after",
+   "note": "Booking.com lag"
+  }
+ ]
+}
