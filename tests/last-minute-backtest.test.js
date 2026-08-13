@@ -9,6 +9,8 @@ const {
   recommendCut,
   runBacktest,
   liveRecommendation,
+  priceLabsGapReport,
+  PRICELABS,
   parseD,
 } = require('../lib/last-minute-backtest');
 
@@ -192,6 +194,49 @@ function daysBetween(a, b) {
   assert.ok(bt.curve);
   assert.ok(bt.survival.byLead[3]);
   assert.ok(bt.survival.byLead[7]);
+}
+
+// ── PriceLabs default curve helpers ──────────────────────────────────────────
+{
+  assert.strictEqual(PRICELABS.defaultLastMinute.discount, 0.30);
+  assert.strictEqual(PRICELABS.channelSyncHoursDefault, 24);
+  const at15 = PRICELABS.impliedDiscountAtLead(15);
+  const at0 = PRICELABS.impliedDiscountAtLead(0);
+  const at7 = PRICELABS.impliedDiscountAtLead(7);
+  assert.ok(Math.abs(at15) < 1e-9, 'no PL discount at edge of window');
+  assert.ok(Math.abs(at0 - 0.30) < 1e-9, 'full 30% at D-0');
+  assert.ok(at7 > 0.15 && at7 < 0.17, `D-7 ≈ 16%, got ${at7}`);
+}
+
+// ── recommendCut includes Sync Now + PL gap when critical ────────────────────
+{
+  const rec = recommendCut({
+    category: 'attiki',
+    refAdr: 100,
+    curve: { earlyAdr: 100, lastMinuteAdr: 70, lastMinuteDiscount: 0.30, buckets: [] },
+    survival: { byLead: { 3: { lead: 3, vacantAtLead: 40, filled: 8, neverFilled: 32, fillRate: 0.20, clearingAdr: 65 } } },
+    pricingLead: 1,
+    forwardFill: 0.10,
+  });
+  assert.ok(rec);
+  assert.ok(rec.syncAction && /Sync Now/i.test(rec.syncAction));
+  assert.ok(rec.exceedsPriceLabsDefault === true || rec.cutPct > 0.2);
+  assert.ok(rec.priceLabsNote);
+}
+
+// ── priceLabsGapReport ───────────────────────────────────────────────────────
+{
+  const curve = leadTimeAdrCurve([
+    bk({ created: ts('2026-06-01'), checkIn: '1/7/2026', checkOut: '3/7/2026', nights: 2, payout: 240 }),
+    bk({ created: ts('2026-06-01'), checkIn: '5/7/2026', checkOut: '7/7/2026', nights: 2, payout: 260 }),
+    bk({ created: ts('2026-05-20'), checkIn: '10/7/2026', checkOut: '12/7/2026', nights: 2, payout: 250 }),
+    bk({ created: ts('2026-07-09'), checkIn: '10/7/2026', checkOut: '11/7/2026', nights: 1, payout: 80 }),
+    bk({ created: ts('2026-07-14'), checkIn: '15/7/2026', checkOut: '16/7/2026', nights: 1, payout: 75 }),
+    bk({ created: ts('2026-07-19'), checkIn: '20/7/2026', checkOut: '21/7/2026', nights: 1, payout: 70 }),
+  ]);
+  const gap = priceLabsGapReport(curve);
+  assert.ok(gap && gap.verdict);
+  assert.ok(gap.buckets.some(b => b.leadBucket === '0-1'));
 }
 
 console.log('OK — last-minute-backtest tests passed');

@@ -3,12 +3,24 @@
  * Run last-minute pricing backtest against Hosthub-shaped bookings.
  *
  * Usage:
- *   node scripts/run-last-minute-backtest.js --file bookings.json
+ *   # Live Hosthub (same auth/pagination as server.js runSync):
  *   HOSTHUB_API_KEY=… node scripts/run-last-minute-backtest.js --hosthub
- *   node scripts/run-last-minute-backtest.js --file bookings.json --json > report.json
  *
- * Input JSON: { bookings: [...], apartments?: [{id,name,city,lat,lng}] }
- * or a bare array of bookings (Hosthub-synced shape from Elysian Clearing).
+ *   # Already-synced Postgres (what production uses):
+ *   DATABASE_URL=… node scripts/run-last-minute-backtest.js --db
+ *
+ *   # Hit the deployed API (uses server's Hosthub key / DB):
+ *   APP_PASSWORD=… node scripts/run-last-minute-backtest.js --api https://elysian-clearing-production.up.railway.app
+ *   APP_PASSWORD=… node scripts/run-last-minute-backtest.js --api https://… --refresh
+ *
+ *   # Local file:
+ *   node scripts/run-last-minute-backtest.js --file bookings.json
+ *
+ * Why --hosthub "wasn't working" in the cloud agent:
+ *   The agent only had RAILWAY_TOKEN (invalid/expired), so it could not read
+ *   Railway variables (HOSTHUB_API_KEY / DATABASE_URL / APP_PASSWORD). A bare
+ *   HOSTHUB_API_KEY=bad call returns Hosthub 401 — that is auth, not a bug in
+ *   the backtest math. Prefer --db or --api against production after sync.
  */
 
 'use strict';
@@ -19,6 +31,8 @@ const {
   portfolioBacktest,
   liveRecommendation,
   PRICING_HORIZON,
+  PRICELABS,
+  priceLabsGapReport,
 } = require('../lib/last-minute-backtest');
 
 function arg(name, def) {
@@ -48,10 +62,8 @@ function categorize(apt, nameLists) {
   if (/athens|athina|piraeus|pireas|zografou|kallithea/.test(city)) return 'attiki';
   if (apt && apt.lat != null && apt.lng != null) {
     const lat = +apt.lat, lng = +apt.lng;
-    const dAth = Math.hypot(lat - 37.9838, lng - 23.7275);
-    const dThess = Math.hypot(lat - 40.6401, lng - 22.9444);
-    if (dAth < 0.4) return 'attiki';
-    if (dThess < 0.3) return 'thessaloniki';
+    if (Math.hypot(lat - 37.9838, lng - 23.7275) < 0.4) return 'attiki';
+    if (Math.hypot(lat - 40.6401, lng - 22.9444) < 0.3) return 'thessaloniki';
     return 'escape';
   }
   return 'attiki';
@@ -62,58 +74,103 @@ const NAME_LISTS = {
   escape: ['ariti 7', 'ariti7', 'eclectic', 'seaside lavrio', 'sunset nest in fiskardo', 'villa liberty', 'p & g apartment'],
 };
 
-async function loadFromHosthub(apiKey) {
-  const BASE = 'https://app.hosthub.com/api/2019-03-01';
-  const headers = { Authorization: apiKey, Accept: 'application/json' };
-  async function pages(url) {
-    const out = [];
-    let next = url;
-    while (next) {
-      const r = await fetch(next.startsWith('http') ? next : BASE + next, { headers });
-      if (!r.ok) throw new Error(`Hosthub ${r.status} for ${next}`);
-      const j = await r.json();
-      const data = j.data || j || [];
-      out.push(...data);
-      next = j.next_page_url || j.links?.next || null;
-      if (typeof next === 'string' && next.includes('app.hosthub.com')) {
-        // full URL ok
-      } else if (next && !String(next).startsWith('/')) {
-        next = null;
-      }
-      if (!j.next_page_url && !j.links?.next) break;
-      if (data.length === 0) break;
-    }
-    return out;
+// ── Hosthub client (mirrors server.js exactly) ───────────────────────────────
+const BASE = 'https://app.hosthub.com/api/2019-03-01';
+const HH = 'https://app.hosthub.com';
+const hhH = (key) => ({
+  Authorization: key,
+  Accept: 'application/json',
+  'Content-Type': 'application/json',
+});
+function nextUrl(nav) {
+  const n = nav?.next;
+  if (!n) return null;
+  return n.startsWith('http') ? n : `${HH}${n}`;
+}
+async function hhGet(url, key) {
+  const r = await fetch(url, { headers: hhH(key) });
+  if (!r.ok) {
+    const text = await r.text().catch(() => '');
+    return { _err: true, status: r.status, text: text.slice(0, 200) };
   }
-  // Prefer simpler single-page + pagination via ?page=
-  async function fetchAll(pathSuffix) {
-    const out = [];
-    for (let page = 1; page <= 50; page++) {
-      const sep = pathSuffix.includes('?') ? '&' : '?';
-      const r = await fetch(`${BASE}${pathSuffix}${sep}page=${page}`, { headers });
-      if (!r.ok) throw new Error(`Hosthub ${r.status}`);
-      const j = await r.json();
-      const data = j.data || [];
-      out.push(...data);
-      if (!data.length || data.length < 50) break;
+  return r.json();
+}
+async function fetchPages(startUrl, key, onPage) {
+  const all = [];
+  let url = startUrl;
+  let page = 0;
+  while (url) {
+    page++;
+    let obj;
+    try { obj = await hhGet(url, key); } catch (e) {
+      console.error('fetchPages network:', e.message);
+      break;
     }
-    return out;
+    if (obj._err) {
+      throw new Error(`Hosthub HTTP ${obj.status} for ${url}${obj.text ? ' — ' + obj.text : ''}`);
+    }
+    const items = obj.data || [];
+    all.push(...items);
+    if (onPage) onPage(all.length, items.length, page);
+    const next = nextUrl(obj.navigation);
+    if (!next || items.length === 0) break;
+    url = next;
   }
+  return all;
+}
 
-  const rentals = await fetchAll('/rentals');
-  const events = await fetchAll('/calendar-events?is_visible=all');
+async function loadFromHosthub(apiKey) {
+  // Probe auth first with a clear error (this is what failed before with a dummy key)
+  const who = await hhGet(`${BASE}/users`, apiKey);
+  if (who._err) {
+    throw new Error(
+      `Hosthub auth failed (${who.status}). `
+      + `Authorization header must be the raw API key (same as server.js hhH). `
+      + `Get it from Hosthub → Settings → API Keys, or from Railway var HOSTHUB_API_KEY.`
+    );
+  }
+  console.error(`Authenticated: ${who.data?.[0]?.name || who.data?.[0]?.email || 'ok'}`);
+
+  const rentals = await fetchPages(`${BASE}/rentals`, apiKey, (t, n, p) => {
+    if (p === 1 || n > 0) console.error(`  rentals page ${p}: +${n} (total ${t})`);
+  });
   const rName = {};
   for (const r of rentals) rName[r.id] = r;
+
+  // Same dual-fetch as runSync: global calendar-events + per-rental
+  const seen = new Set();
+  const allEvents = [];
+  const add = (evs) => {
+    for (const e of evs) {
+      if (!seen.has(e.id)) { seen.add(e.id); allEvents.push(e); }
+    }
+  };
+  add(await fetchPages(`${BASE}/calendar-events?is_visible=all`, apiKey, (t, n, p) => {
+    if (n > 0) console.error(`  events page ${p}: +${n} (total ${t})`);
+  }));
+  console.error(`  Per-rental fetch for ${rentals.length} properties…`);
+  for (const rental of rentals) {
+    const evs = await fetchPages(`${BASE}/rentals/${rental.id}/calendar-events?is_visible=all`, apiKey).catch(() => []);
+    const before = allEvents.length;
+    add(evs);
+    if (allEvents.length > before) console.error(`  ${rental.name}: +${allEvents.length - before}`);
+  }
 
   const money = v => (v && typeof v === 'object') ? (v.cents || 0) / 100 : (parseFloat(v || 0) || 0);
   const fmt = (s) => {
     if (!s) return null;
-    const d = new Date(s);
+    const d = new Date(String(s).slice(0, 10) + (String(s).includes('T') ? '' : 'T12:00:00Z'));
     if (isNaN(d)) return null;
-    return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+    return `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`;
   };
 
-  const bookings = events.map(ev => {
+  const bookings = allEvents.filter(ev => {
+    const t = (ev.type || '').toLowerCase();
+    if (t.includes('hold') || t.includes('block')) return false;
+    if (ev.is_visible !== false) return true;
+    const gross = money(ev.total_price) || money(ev.guest_paid) || money(ev.total_reservation_price);
+    return gross > 0;
+  }).map(ev => {
     const rental = rName[ev.rental_id] || {};
     const gross = money(ev.total_price) || money(ev.guest_paid) || money(ev.booking_value);
     const pay = money(ev.total_payout) || money(ev.host_payout) || gross;
@@ -137,15 +194,45 @@ async function loadFromHosthub(apiKey) {
     };
   });
 
-  const apartments = rentals.map(r => ({
-    id: String(r.id),
-    name: r.name,
-    city: r.city,
-    lat: r.latitude,
-    lng: r.longitude,
-  }));
+  return {
+    bookings,
+    apartments: rentals.map(r => ({
+      id: String(r.id), name: r.name, city: r.city, lat: r.latitude, lng: r.longitude,
+    })),
+  };
+}
 
-  return { bookings, apartments };
+async function loadFromDb() {
+  const url = process.env.DATABASE_URL || process.env.DATABASE_PRIVATE_URL
+    || process.env.POSTGRES_URL || process.env.POSTGRES_PRIVATE_URL;
+  if (!url) throw new Error('DATABASE_URL required for --db');
+  const { Client } = require('pg');
+  const client = new Client({ connectionString: url, ssl: url.includes('localhost') ? false : { rejectUnauthorized: false } });
+  await client.connect();
+  try {
+    const r = await client.query("SELECT data FROM app_data WHERE key = 'main'");
+    const data = r.rows[0]?.data;
+    if (!data?.bks?.length) throw new Error('No bookings in app_data.main — run Hosthub sync first');
+    return { bookings: data.bks, apartments: data.apts || [] };
+  } finally {
+    await client.end();
+  }
+}
+
+async function loadFromApi(baseUrl, refresh) {
+  const pw = process.env.APP_PASSWORD;
+  if (!pw) throw new Error('APP_PASSWORD required for --api (HTTP Basic Auth)');
+  const auth = 'Basic ' + Buffer.from(':' + pw).toString('base64');
+  const q = new URLSearchParams({ lookback: String(arg('--lookback', '90')) });
+  if (refresh) q.set('refresh', '1');
+  const url = `${baseUrl.replace(/\/$/, '')}/api/backtest/last-minute?${q}`;
+  console.error('GET', url);
+  const r = await fetch(url, { headers: { Authorization: auth, Accept: 'application/json' } });
+  const text = await r.text();
+  let j;
+  try { j = JSON.parse(text); } catch { throw new Error(`API ${r.status}: ${text.slice(0, 300)}`); }
+  if (!r.ok) throw new Error(`API ${r.status}: ${j.error || text.slice(0, 300)}`);
+  return j; // full report already computed
 }
 
 function loadFile(filePath) {
@@ -171,7 +258,8 @@ function groupByCategory(bookings, apartments) {
 
 function printReport(report, perProp) {
   console.log('\n══ Last-minute pricing backtest (Hosthub creation dates) ══\n');
-  console.log(`As of ${report.asOf}\n`);
+  console.log(`As of ${report.asOf}`);
+  console.log(`PriceLabs: recalc daily · channel sync ~every ${PRICELABS.channelSyncHoursDefault}h · default LM gradual ${Math.round(PRICELABS.defaultLastMinute.discount * 100)}% / ${PRICELABS.defaultLastMinute.windowDays}d\n`);
 
   for (const [cat, data] of Object.entries(report.byCat)) {
     const c = data.curve;
@@ -191,10 +279,11 @@ function printReport(report, perProp) {
       if (!row) continue;
       console.log(`    D−${String(L).padStart(2)}  vacant ${String(row.vacantAtLead).padStart(5)}  fill ${pct(row.fillRate).padStart(4)}  never ${pct(row.neverFillRate).padStart(4)}  clearing ${eur(row.clearingAdr)}`);
     }
-    console.log('  Suggested PriceLabs overlay (observed % below early ADR):');
-    for (const o of data.overlay || []) {
-      if (o.n < 3) continue;
-      console.log(`    lead ${o.leadBucket}: cut ~${pct(o.observedDiscount)} (n=${o.n})`);
+    if (data.priceLabsGap) {
+      console.log(`  vs PriceLabs default: ${data.priceLabsGap.verdict}`);
+      for (const o of data.priceLabsGap.buckets.filter(x => x.n >= 5 && x.gap != null)) {
+        console.log(`    ${o.leadBucket}: observed ${pct(o.observedDiscount)} vs PL ${pct(o.priceLabsDefault)} → gap ${pct(o.gap)}`);
+      }
     }
     console.log('');
   }
@@ -206,37 +295,14 @@ function printReport(report, perProp) {
       if (!r) continue;
       console.log(`  ${p.name}: cut €${r.cutEur} → €${r.targetAdr}/night (${pct(r.cutPct)} off €${r.refAdr}) [${r.severity}]`);
       console.log(`    ${r.reason}`);
+      if (r.priceLabsNote) console.log(`    ${r.priceLabsNote}`);
+      if (r.exceedsPriceLabsDefault) console.log('    ⚠ Deeper than PriceLabs default LM curve — update Last Minute Prices customization');
     }
     console.log('');
   }
 }
 
-async function main() {
-  const asJson = !!arg('--json', false);
-  const lookback = parseInt(arg('--lookback', '90'), 10) || 90;
-  let data;
-
-  if (arg('--hosthub', false)) {
-    const key = process.env.HOSTHUB_API_KEY;
-    if (!key) {
-      console.error('HOSTHUB_API_KEY required for --hosthub');
-      process.exit(1);
-    }
-    console.error('Fetching Hosthub…');
-    data = await loadFromHosthub(key);
-  } else {
-    const file = arg('--file', null);
-    if (!file) {
-      console.error('Usage: --file bookings.json | --hosthub');
-      process.exit(1);
-    }
-    data = loadFile(path.resolve(file));
-  }
-
-  const byCat = groupByCategory(data.bookings, data.apartments);
-  const report = portfolioBacktest(byCat, { lookbackDays: lookback });
-
-  // Per-property live recs when apartments provided
+function buildPerProp(data, lookback) {
   const aptMap = {};
   for (const a of data.apartments) aptMap[String(a.id)] = a;
   const byApt = {};
@@ -249,7 +315,6 @@ async function main() {
     const apt = aptMap[aptId] || { id: aptId, name: bks[0]?.aptName || aptId };
     const cat = categorize(apt, NAME_LISTS);
     const horizon = PRICING_HORIZON[cat] || PRICING_HORIZON.default;
-    // Crude forward fill: share of next horizon.window nights booked (from today)
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const end = new Date(today); end.setDate(end.getDate() + horizon.window);
     const booked = new Set();
@@ -266,29 +331,83 @@ async function main() {
       }
     }
     const forwardFill = booked.size / horizon.window;
-    const live = liveRecommendation(bks, {
-      category: cat,
-      forwardFill,
-      lookbackDays: lookback,
-      refAdr: undefined,
-    });
+    const live = liveRecommendation(bks, { category: cat, forwardFill, lookbackDays: lookback });
     if (live.recommendation) {
       perProp.push({
-        aptId,
-        name: apt.name || aptId,
-        category: cat,
-        forwardFill,
+        aptId, name: apt.name || aptId, category: cat, forwardFill,
         recommendation: live.recommendation,
       });
     }
   }
   perProp.sort((a, b) => (b.recommendation?.cutPct || 0) - (a.recommendation?.cutPct || 0));
+  return perProp;
+}
+
+async function main() {
+  const asJson = !!arg('--json', false);
+  const lookback = parseInt(arg('--lookback', '90'), 10) || 90;
+
+  // API path returns a finished report
+  const apiBase = arg('--api', null);
+  if (apiBase && apiBase !== true) {
+    const j = await loadFromApi(apiBase, !!arg('--refresh', false));
+    if (asJson) {
+      console.log(JSON.stringify(j, null, 2));
+    } else {
+      printReport(j.report, j.recommendations || []);
+      console.log(`Source: ${j.source} · bookings ${j.coverage?.bookings} · created coverage ${pct(j.coverage?.createdCoverage)}`);
+      if (j.diagnosis) {
+        console.log('\nDiagnosis:');
+        console.log(' ', j.diagnosis.whyHosthubCliFailsWithoutKey);
+        console.log(' ', j.diagnosis.priceLabsCadence);
+      }
+    }
+    return;
+  }
+
+  let data;
+  if (arg('--hosthub', false)) {
+    const key = process.env.HOSTHUB_API_KEY;
+    if (!key) {
+      console.error('HOSTHUB_API_KEY required for --hosthub');
+      console.error('Or use: --db (DATABASE_URL) / --api <url> (APP_PASSWORD)');
+      process.exit(1);
+    }
+    console.error('Fetching Hosthub (server.js-compatible client)…');
+    data = await loadFromHosthub(key);
+  } else if (arg('--db', false)) {
+    console.error('Loading synced bookings from Postgres…');
+    data = await loadFromDb();
+  } else {
+    const file = arg('--file', null);
+    if (!file || file === true) {
+      console.error('Usage: --hosthub | --db | --api <url> [--refresh] | --file bookings.json');
+      process.exit(1);
+    }
+    data = loadFile(path.resolve(file));
+  }
+
+  const withCreated = data.bookings.filter(b => b.created != null || b.createdOnChannel != null).length;
+  console.error(`Loaded ${data.bookings.length} bookings (${withCreated} with created timestamps), ${data.apartments.length} apartments`);
+
+  const byCat = groupByCategory(data.bookings, data.apartments);
+  const report = portfolioBacktest(byCat, { lookbackDays: lookback });
+  const perProp = buildPerProp(data, lookback);
 
   if (asJson) {
-    console.log(JSON.stringify({ report, recommendations: perProp }, null, 2));
+    console.log(JSON.stringify({
+      report,
+      recommendations: perProp,
+      coverage: {
+        bookings: data.bookings.length,
+        withCreated,
+        createdCoverage: data.bookings.length ? withCreated / data.bookings.length : 0,
+      },
+      priceLabs: PRICELABS,
+    }, null, 2));
   } else {
     printReport(report, perProp.slice(0, 40));
-    console.log(`Bookings: ${data.bookings.length} · Properties with cut recs: ${perProp.length}`);
+    console.log(`Bookings: ${data.bookings.length} · created coverage ${pct(data.bookings.length ? withCreated / data.bookings.length : 0)} · cut recs: ${perProp.length}`);
   }
 }
 
@@ -301,6 +420,6 @@ function parseDSafe(v) {
 }
 
 main().catch(e => {
-  console.error(e);
+  console.error(e.message || e);
   process.exit(1);
 });
