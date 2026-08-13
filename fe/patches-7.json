@@ -16,8 +16,8 @@
    "note": "the operator workspace shows Leads"
   },
   {
-   "has": "accountant: { tabs: ['dash', 'leads', 'mt', 'rpt', 'exp', 'ann'],",
-   "note": "the accountant workspace shows Leads"
+   "has": "accountant: { tabs: ['dash', 'leads', 'mt', 'rpt', 'exp', 'ann', 'platinv'],",
+   "note": "the accountant workspace shows Leads and Platform Invoices"
   },
   {
    "has": "nav.ovf-r{",
