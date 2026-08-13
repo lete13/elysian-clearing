@@ -1,0 +1,67 @@
+{
+  "baseSha256": "2d15e812fc1fccf3e24848c08a9e181fe97d4d7ddbe26d029c76943fa1a26d27",
+  "expectedSha256": "7dfc6d9820640feb07b3fbbfec20c8ac9280cf07952a497d23f8e1f48f7c2f1a",
+  "builtAt": "2026-08-13 Daily Ops cleaning schedule: multiple cleaners per apartment",
+  "patches": [
+    {
+      "note": "Multi-cleaner helpers per apartment",
+      "find": "function opsSetCleanerKey(key, val) {\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  r.cleanerName = val;\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n}",
+      "replace": "function _opsCleanerList(r) {\n  if (!r) return [];\n  if (Array.isArray(r.cleanerNames) && r.cleanerNames.length) {\n    return r.cleanerNames.map(function (s) { return String(s || '').trim(); }).filter(Boolean);\n  }\n  const s = String(r.cleanerName || '').trim();\n  if (!s) return [];\n  return s.split(/\\s*[·,;|/]\\s*/).map(function (x) { return x.trim(); }).filter(Boolean);\n}\nfunction _opsWriteCleaners(r, names) {\n  if (!r) return;\n  const uniq = [];\n  (names || []).forEach(function (n) {\n    const t = String(n || '').trim();\n    if (!t) return;\n    if (!uniq.some(function (u) { return u.toLowerCase() === t.toLowerCase(); })) uniq.push(t);\n  });\n  r.cleanerNames = uniq;\n  r.cleanerName = uniq.join(' · ');\n}\nfunction opsSetCleanerKey(key, val) {\n  // Legacy single-field write — still used as a full replace if needed.\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  _opsWriteCleaners(r, String(val || '').split(/\\s*[·,;|/]\\s*/));\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n}\nfunction opsAddCleanerKey(key, val) {\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  const add = String(val || '').split(/\\s*[·,;|/]\\s*/).map(function (x) { return x.trim(); }).filter(Boolean);\n  if (!add.length) return;\n  _opsWriteCleaners(r, _opsCleanerList(r).concat(add));\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n  if (typeof renderOps === 'function') renderOps();\n}\nfunction opsRemoveCleanerAt(key, idx) {\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  const list = _opsCleanerList(r);\n  if (idx < 0 || idx >= list.length) return;\n  list.splice(idx, 1);\n  _opsWriteCleaners(r, list);\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n  if (typeof renderOps === 'function') renderOps();\n}",
+      "count": 1
+    },
+    {
+      "note": "Persist cleanerNames on clean extras",
+      "find": "      ex.cleanerName = prev.cleanerName || '';\n      ex.cleanDone = !!prev.cleanDone;",
+      "replace": "      ex.cleanerName = prev.cleanerName || '';\n      ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : _opsCleanerList(prev);\n      ex.cleanDone = !!prev.cleanDone;",
+      "count": 1
+    },
+    {
+      "note": "Normalize cleanerNames list for each schedule row",
+      "find": "    const cur = String(r.cleanerName || '');\n    const done = !!r.cleanDone;",
+      "replace": "    const names = (typeof _opsCleanerList === 'function') ? _opsCleanerList(r) : (String(r.cleanerName || '') ? [String(r.cleanerName)] : []);\n    const cur = names.join(' · ');\n    const done = !!r.cleanDone;",
+      "count": 1
+    },
+    {
+      "note": "Cleaning schedule: multi-cleaner chips + add field",
+      "find": "      '<td style=\"padding:10px 12px;border-bottom:1px solid #E5E7EB;width:210px;vertical-align:middle;background:' + (cur ? '#FFFBEB' : 'transparent') + '\">' +\n      '<input type=\"text\" list=\"ops-cleaners-datalist\" value=\"' + esc(cur) + '\" placeholder=\"όνομα…\" ' +\n      'onchange=\"opsSetCleanerKey(\\'' + key + '\\',this.value)\" onblur=\"opsSetCleanerKey(\\'' + key + '\\',this.value)\" ' +\n      'style=\"width:100%;border:2px solid ' + (cur ? '#111827' : '#D1D5DB') + ';border-radius:8px;background:#fff;font-size:16px;font-weight:700;letter-spacing:0;outline:none;color:#111827;padding:10px 8px;box-sizing:border-box;text-align:center;line-height:1.2\"></td>' +",
+      "replace": "      '<td data-cleaners-cell=\"1\" data-cleaners-names=\"' + esc(cur) + '\" style=\"padding:10px 12px;border-bottom:1px solid #E5E7EB;width:230px;vertical-align:middle;background:' + (names.length ? '#FFFBEB' : 'transparent') + '\">' +\n      '<div style=\"display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin:0 0 6px\">' +\n      names.map(function (nm, ni) {\n        return '<span style=\"display:inline-flex;align-items:center;gap:4px;background:#111827;color:#fff;font-size:13px;font-weight:700;padding:5px 8px;border-radius:8px;line-height:1.1\">' +\n          esc(nm) +\n          '<button type=\"button\" onclick=\"opsRemoveCleanerAt(\\'' + key + '\\',' + ni + ')\" title=\"Αφαίρεση\" ' +\n          'style=\"border:none;background:transparent;color:#FCA5A5;cursor:pointer;font-size:14px;line-height:1;padding:0 0 0 2px;font-weight:800\">×</button></span>';\n      }).join('') +\n      '</div>' +\n      '<input type=\"text\" list=\"ops-cleaners-datalist\" value=\"\" placeholder=\"' + (names.length ? '+ άλλη…' : 'όνομα…') + '\" ' +\n      'onkeydown=\"if(event.key===\\'Enter\\'){event.preventDefault();opsAddCleanerKey(\\'' + key + '\\',this.value);}\" ' +\n      'onchange=\"opsAddCleanerKey(\\'' + key + '\\',this.value)\" ' +\n      'style=\"width:100%;border:2px solid ' + (names.length ? '#111827' : '#D1D5DB') + ';border-radius:8px;background:#fff;font-size:16px;font-weight:700;letter-spacing:0;outline:none;color:#111827;padding:8px 8px;box-sizing:border-box;text-align:center;line-height:1.2\"></td>' +",
+      "count": 1
+    },
+    {
+      "note": "Screenshot renders all assigned cleaners crisply",
+      "find": "    clone.querySelectorAll('input, textarea, select, button').forEach(function (node) {\n      if (node.tagName === 'BUTTON') { node.remove(); return; }\n      const v = (node.tagName === 'SELECT')\n        ? (node.options[node.selectedIndex] ? node.options[node.selectedIndex].text : node.value)\n        : node.value;\n      const div = document.createElement('div');\n      const isCleaner = node.getAttribute('list') === 'ops-cleaners-datalist' || (node.style && /font-weight:\\s*900/.test(node.getAttribute('style') || ''));\n      div.textContent = v || '—';\n      div.style.cssText = isCleaner\n        ? 'font-size:16px;font-weight:700;color:#111827;text-align:center;line-height:1.25;padding:8px 6px;border:1.5px solid #111827;border-radius:8px;background:#FFFBEB;min-height:28px;display:flex;align-items:center;justify-content:center;'\n        : 'font-size:12px;font-weight:600;color:#111827;line-height:1.35;padding:4px 2px;white-space:pre-wrap;word-break:break-word;';\n      node.parentNode.replaceChild(div, node);\n    });",
+      "replace": "    clone.querySelectorAll('[data-cleaners-cell]').forEach(function (td) {\n      const names = (td.getAttribute('data-cleaners-names') || '').trim();\n      td.innerHTML = '<div style=\"font-size:15px;font-weight:700;color:#111827;text-align:center;line-height:1.35;padding:10px 8px;border:1.5px solid #111827;border-radius:8px;background:#FFFBEB;min-height:28px;display:flex;align-items:center;justify-content:center;white-space:pre-wrap;word-break:break-word;\">' +\n        (names ? names.replace(/ · /g, '\\n') : '—') + '</div>';\n    });\n    clone.querySelectorAll('input, textarea, select, button').forEach(function (node) {\n      if (node.tagName === 'BUTTON') { node.remove(); return; }\n      const v = (node.tagName === 'SELECT')\n        ? (node.options[node.selectedIndex] ? node.options[node.selectedIndex].text : node.value)\n        : node.value;\n      const div = document.createElement('div');\n      const isCleaner = node.getAttribute('list') === 'ops-cleaners-datalist';\n      div.textContent = v || '—';\n      div.style.cssText = isCleaner\n        ? 'font-size:15px;font-weight:700;color:#111827;text-align:center;line-height:1.25;padding:8px 6px;border:1.5px solid #111827;border-radius:8px;background:#FFFBEB;min-height:28px;display:flex;align-items:center;justify-content:center;'\n        : 'font-size:12px;font-weight:600;color:#111827;line-height:1.35;padding:4px 2px;white-space:pre-wrap;word-break:break-word;';\n      node.parentNode.replaceChild(div, node);\n    });",
+      "count": 1
+    }
+  ],
+  "assertions": [
+    {
+      "has": "function opsAddCleanerKey(key, val)",
+      "note": "add cleaner helper"
+    },
+    {
+      "has": "function opsRemoveCleanerAt(key, idx)",
+      "note": "remove cleaner helper"
+    },
+    {
+      "has": "function _opsCleanerList(r)",
+      "note": "normalize cleaner list"
+    },
+    {
+      "has": "r.cleanerNames = uniq",
+      "note": "stores cleanerNames array"
+    },
+    {
+      "has": "data-cleaners-cell=",
+      "note": "multi-cleaner cell marker"
+    },
+    {
+      "has": "+ άλλη…",
+      "note": "add-another cleaner placeholder"
+    },
+    {
+      "has": "clone.querySelectorAll('[data-cleaners-cell]')",
+      "note": "screenshot uses multi-cleaner cells"
+    }
+  ]
+}
