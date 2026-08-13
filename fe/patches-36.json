@@ -1,0 +1,33 @@
+{
+ "baseSha256": "67f5ceee44d483b75608bc2deca4e14b1cdb3fc72f545fb7d40f9e350c2ce549",
+ "expectedSha256": "c3422e7f711dc391bc7348000199593c63cd455fbf525799753ccd50970f0537",
+ "builtAt": "2026-08-13 Daily Ops: refresh same-day check-in when a booking arrives after snapshot",
+ "patches": [
+  {
+   "note": "Daily Ops: upgrade Δεν ξέρουμε ακόμα → Ναι when a same-day booking syncs in",
+   "find": "    out.isOwner = f ? !!f.isOwner : !!r.isOwner;\n    return out;\n  });",
+   "replace": "    out.isOwner = f ? !!f.isOwner : !!r.isOwner;\n    // Same-day check-in status used to freeze in the day's snapshot as\n    // \"Δεν ξέρουμε ακόμα\". When a booking lands later (Hosthub sync), refresh\n    // from live bookings unless the operator toggled the cell by hand.\n    if (f && !r.checkinManual) {\n      if (f.checkinSameDay === 'yes' || f.checkinSameDay === 'checkin_only') {\n        out.checkinSameDay = f.checkinSameDay;\n        out.nextNights = f.nextNights;\n        out.nextGuest = f.nextGuest || '';\n        if (f.people != null && f.people !== '') out.people = f.people;\n        out.isCheckinOnly = !!f.isCheckinOnly;\n      } else if (out.checkinSameDay === 'yes' && f.checkinSameDay === 'unknown' && !out.isCheckinOnly) {\n        // Auto-detected Ναι whose booking vanished — fall back to unknown.\n        out.checkinSameDay = 'unknown';\n        out.nextNights = null;\n        out.nextGuest = '';\n      }\n    }\n    return out;\n  });",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: manual Ναι/Όχι/unknown clicks set checkinManual so auto refresh does not fight the operator",
+   "find": "function opsToggleCheckin(i) {\n  if (!_opsRows[i]) return;\n  const cycle = { yes:'no', no:'unknown', unknown:'yes' };\n  _opsRows[i].checkinSameDay = cycle[_opsRows[i].checkinSameDay] || 'unknown';\n  // Changing Ναι/Όχι clears a prior manual Pri lock so auto same-day rule re-applies.\n  delete _opsRows[i].priorityManual;\n  if (typeof _opsApplySameDayPriority === 'function') _opsApplySameDayPriority(_opsRows[i]);\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) { tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join(''); }\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}",
+   "replace": "function opsToggleCheckin(i) {\n  if (!_opsRows[i]) return;\n  const cycle = { yes:'no', no:'unknown', unknown:'yes' };\n  _opsRows[i].checkinSameDay = cycle[_opsRows[i].checkinSameDay] || 'unknown';\n  // Operator clicked — keep this value even if Hosthub later disagrees.\n  _opsRows[i].checkinManual = true;\n  // Changing Ναι/Όχι clears a prior manual Pri lock so auto same-day rule re-applies.\n  delete _opsRows[i].priorityManual;\n  if (typeof _opsApplySameDayPriority === 'function') _opsApplySameDayPriority(_opsRows[i]);\n  const tbody = document.getElementById('ops-tbody');\n  if (tbody) { tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join(''); }\n  if (typeof _opsAutoSave === 'function') _opsAutoSave();\n}",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "if (f && !r.checkinManual)",
+   "note": "same-day check-in refreshes from live bookings unless manual"
+  },
+  {
+   "has": "_opsRows[i].checkinManual = true;",
+   "note": "toggling same-day cell marks it manual"
+  },
+  {
+   "has": "f.checkinSameDay === 'yes' || f.checkinSameDay === 'checkin_only'",
+   "note": "upgrade unknown when booking exists"
+  }
+ ]
+}
