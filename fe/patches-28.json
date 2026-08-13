@@ -1,0 +1,36 @@
+{
+ "baseSha256": "2d15e812fc1fccf3e24848c08a9e181fe97d4d7ddbe26d029c76943fa1a26d27",
+ "expectedSha256": "e4924e92572e75dbbd1f8cdaafc7f7df2126631946f5e471efe9f99ddff0dffd",
+ "builtAt": "2026-08-13 Platform invoices: previous month — send early (20th/25th are latest)",
+ "patches": [
+  {
+   "note": "Platform invoices: do previous month early, not near deadlines",
+   "find": "PDFs from the <b>Airbnb</b> and <b>Booking.com</b> host portals (ενδοκοινοτικά).\n          Not Greek expenses / not Oxygen. Leased pack → accountant by the 20th; B2B packs → partners by the 25th.",
+   "replace": "PDFs from the <b>Airbnb</b> and <b>Booking.com</b> host portals (ενδοκοινοτικά).\n          Not Greek expenses / not Oxygen. These are <b>previous-month</b> invoices — pull and send <b>as soon as the month closes</b> (don't wait for the 20th/25th; those are only latest-safe dates)."
+  },
+  {
+   "note": "Leased pack header: 20th is latest, not target",
+   "find": "<div style=\"font-weight:600;margin-bottom:8px\">Leased → accountant (by 20th)</div>",
+   "replace": "<div style=\"font-weight:600;margin-bottom:8px\">Leased → accountant <span style=\"font-weight:500;color:var(--tx3)\">(latest: 20th)</span></div>"
+  },
+  {
+   "note": "B2B pack header: 25th is latest, not target",
+   "find": "<div style=\"font-weight:600;margin-bottom:8px\">B2B → partners (by 25th)</div>",
+   "replace": "<div style=\"font-weight:600;margin-bottom:8px\">B2B → partners <span style=\"font-weight:500;color:var(--tx3)\">(latest: 25th)</span></div>"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "as soon as the month closes",
+   "note": "early-send guidance"
+  },
+  {
+   "has": "(latest: 20th)",
+   "note": "leased latest date"
+  },
+  {
+   "has": "(latest: 25th)",
+   "note": "b2b latest date"
+  }
+ ]
+}
