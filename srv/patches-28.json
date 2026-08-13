@@ -1,0 +1,22 @@
+{
+ "baseSha256": "4d180f919cc2ae8201485e3b929a1eb9219134ce9505ccbf85e55a2f8b189102",
+ "expectedSha256": "22e8730ae49e3135df3d6d070f2283b37a41345a72f7a856aaac3610d042ccb4",
+ "builtAt": "2026-08-13 Grant John access to Platform Invoices (platinv)",
+ "patches": [
+  {
+   "note": "John user gets accountant tabs including platinv",
+   "find": "return { user: String(u.user), pass: String(u.pass), profile: profile, profiles: profiles, access: access };\n    }) : [];\n  } catch (e) { console.error('[auth] USERS_JSON parse error:', e.message); return []; }\n}",
+   "replace": "// John (operations) also runs Platform Invoices — grant accountant tabs incl. platinv.\n      if (/^john$/i.test(String(u.user))) {\n        if (profiles.indexOf('accountant') < 0) profiles.push('accountant');\n        if (access !== 'all') {\n          if (!Array.isArray(access)) access = [];\n          (TABS.accountant || []).forEach(function (x) {\n            if (access.indexOf(x) < 0) access.push(x);\n          });\n          if (access.indexOf('platinv') < 0) access.push('platinv');\n        }\n      }\n      return { user: String(u.user), pass: String(u.pass), profile: profile, profiles: profiles, access: access };\n    }) : [];\n  } catch (e) { console.error('[auth] USERS_JSON parse error:', e.message); return []; }\n}"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "/^john$/i.test(String(u.user))",
+   "note": "John-specific platinv grant"
+  },
+  {
+   "has": "access.indexOf('platinv') < 0) access.push('platinv')",
+   "note": "ensures platinv in access"
+  }
+ ]
+}
