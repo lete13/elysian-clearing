@@ -1,6 +1,6 @@
 # Playwright needs system libs nixpacks does not ship (libglib, etc.).
-# Match playwright npm version in package.json.
-FROM mcr.microsoft.com/playwright:v1.49.1-jammy
+# Keep image tag in sync with package.json "playwright" version (exact).
+FROM mcr.microsoft.com/playwright:v1.62.1-jammy
 
 WORKDIR /app
 
