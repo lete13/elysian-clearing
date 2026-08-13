@@ -1,12 +1,12 @@
 {
-  "baseSha256": "66d0816d47de955d59c7b6941842dd7082d12db1ababccaa20dc4e8998d253c0",
-  "expectedSha256": "66d0816d47de955d59c7b6941842dd7082d12db1ababccaa20dc4e8998d253c0",
-  "builtAt": "2026-08-13 post-consolidation placeholder (LM baked into index.html)",
+  "baseSha256": "9b1603830c7a51c4581c0301c5818b6f0e03c69fa5f73c775b582524e2bed743",
+  "expectedSha256": "9b1603830c7a51c4581c0301c5818b6f0e03c69fa5f73c775b582524e2bed743",
+  "builtAt": "2026-08-13 revenue-first LM recommendations",
   "patches": [],
   "assertions": [
     {
-      "has": "LM cut €",
-      "note": "Excel export includes last-minute cut columns"
+      "has": "objective: 'revenue'",
+      "note": "Revenue-first LM cut objective in Performance tab"
     }
   ]
 }

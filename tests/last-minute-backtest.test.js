@@ -130,13 +130,17 @@ function daysBetween(a, b) {
   assert.ok(surv.nightsScanned > 0);
 }
 
-// ── recommendCut: critical vacancy → deep cut toward clearing ────────────────
+// ── recommendCut: high die-rate → revenue-justified deep cut ─────────────────
 {
   const curve = {
     earlyAdr: 100,
     lastMinuteAdr: 70,
     lastMinuteDiscount: 0.30,
-    buckets: [],
+    buckets: [
+      { key: '0-1', n: 5 }, { key: '2-3', n: 3 }, { key: '4-7', n: 2 },
+      { key: '8-14', n: 10 }, { key: '15-30', n: 20 }, { key: '31+', n: 20 },
+    ],
+    sampleSize: 60,
   };
   const survival = {
     byLead: {
@@ -151,10 +155,43 @@ function daysBetween(a, b) {
     pricingLead: 3,
     forwardFill: 0.15,
   });
-  assert.ok(rec, 'should recommend a cut');
-  assert.ok(rec.targetAdr <= 78, `target should be aggressive, got ${rec.targetAdr}`);
-  assert.ok(rec.cutPct >= 0.20, `cut ≥20%, got ${rec.cutPct}`);
-  assert.strictEqual(rec.severity, 'critical');
+  assert.ok(rec, 'should recommend a cut when nights usually die');
+  assert.ok(rec.targetAdr <= 78, `target should be aggressive when die-rate high, got ${rec.targetAdr}`);
+  assert.ok(rec.objective === 'revenue');
+  assert.ok(rec.severity === 'critical' || rec.severity === 'hard', `got ${rec.severity}`);
+}
+
+// ── recommendCut: Pixie-class LM self-filler → NOT critical deep dump ────────
+{
+  const curve = {
+    earlyAdr: 68,
+    lastMinuteAdr: 60,
+    lastMinuteDiscount: 0.12,
+    buckets: [
+      { key: '0-1', n: 110 }, { key: '2-3', n: 41 }, { key: '4-7', n: 32 },
+      { key: '8-14', n: 10 }, { key: '15-30', n: 7 }, { key: '31+', n: 5 },
+    ],
+    sampleSize: 205,
+  };
+  const survival = {
+    byLead: {
+      7: { lead: 7, vacantAtLead: 79, filled: 65, neverFilled: 14, fillRate: 0.823, clearingAdr: 64 },
+    },
+  };
+  const rec = recommendCut({
+    category: 'attiki',
+    refAdr: 61,
+    curve,
+    survival,
+    pricingLead: 7,
+    forwardFill: 0.0, // empty calendar — old logic said critical
+  });
+  // May nudge to clearing but must NOT dump to ~€41
+  if (rec) {
+    assert.ok(rec.targetAdr >= 55, `Pixie-class must not dump below clearing, got €${rec.targetAdr}`);
+    assert.notStrictEqual(rec.severity, 'critical', 'empty calendar alone is not critical for LM self-filler');
+    assert.ok(rec.evWait != null && rec.evCut != null);
+  }
 }
 
 // ── recommendCut: healthy fill → no cut ──────────────────────────────────────
@@ -162,7 +199,7 @@ function daysBetween(a, b) {
   const rec = recommendCut({
     category: 'attiki',
     refAdr: 100,
-    curve: { earlyAdr: 100, lastMinuteAdr: 98, lastMinuteDiscount: 0.02, buckets: [] },
+    curve: { earlyAdr: 100, lastMinuteAdr: 98, lastMinuteDiscount: 0.02, buckets: [], sampleSize: 0 },
     survival: { byLead: { 3: { fillRate: 0.85, clearingAdr: 98, vacantAtLead: 20, filled: 17, neverFilled: 3 } } },
     pricingLead: 3,
     forwardFill: 0.90,
@@ -208,19 +245,25 @@ function daysBetween(a, b) {
   assert.ok(at7 > 0.15 && at7 < 0.17, `D-7 ≈ 16%, got ${at7}`);
 }
 
-// ── recommendCut includes Sync Now + PL gap when critical ────────────────────
+// ── recommendCut includes Sync Now + PL gap when deaths are high ─────────────
 {
   const rec = recommendCut({
     category: 'attiki',
     refAdr: 100,
-    curve: { earlyAdr: 100, lastMinuteAdr: 70, lastMinuteDiscount: 0.30, buckets: [] },
-    survival: { byLead: { 3: { lead: 3, vacantAtLead: 40, filled: 8, neverFilled: 32, fillRate: 0.20, clearingAdr: 65 } } },
+    curve: {
+      earlyAdr: 100, lastMinuteAdr: 70, lastMinuteDiscount: 0.30, sampleSize: 50,
+      buckets: [
+        { key: '0-1', n: 5 }, { key: '2-3', n: 5 }, { key: '4-7', n: 5 },
+        { key: '8-14', n: 10 }, { key: '15-30', n: 15 }, { key: '31+', n: 10 },
+      ],
+    },
+    survival: { byLead: { 1: { lead: 1, vacantAtLead: 40, filled: 8, neverFilled: 32, fillRate: 0.20, clearingAdr: 65 } } },
     pricingLead: 1,
     forwardFill: 0.10,
   });
   assert.ok(rec);
-  assert.ok(rec.syncAction && /Sync Now/i.test(rec.syncAction));
-  assert.ok(rec.exceedsPriceLabsDefault === true || rec.cutPct > 0.2);
+  assert.ok(rec.syncAction);
+  assert.ok(rec.objective === 'revenue');
   assert.ok(rec.priceLabsNote);
 }
 

@@ -9528,9 +9528,11 @@ loadFromDb()
   }
 
   function lmRecommendCut(opts) {
+    // Revenue-first: maximise EV(wait)=pFill×clearing vs EV(cut)=pFill'×target.
+    // Empty forward fill alone is NOT critical for LM self-fillers (Pixie lesson).
     const cat = opts.category || 'attiki';
-    const urg = LM_URGENCY[cat] || LM_URGENCY.attiki;
     const horizon = PRICING_HORIZON[cat] || PRICING_HORIZON.attiki;
+    const urg = LM_URGENCY[cat] || LM_URGENCY.attiki;
     const refAdr = opts.refAdr;
     if (refAdr == null || refAdr < 15) return null;
     const curve = opts.curve, survival = opts.survival;
@@ -9550,36 +9552,113 @@ loadFromDb()
     }
     if (clearing == null && curve && curve.lastMinuteAdr != null) clearing = curve.lastMinuteAdr;
 
-    let severity = 'none';
-    if (forwardFill != null) {
-      if (forwardFill < horizon.red) severity = 'critical';
-      else if (forwardFill < horizon.orange) severity = 'hard';
-      else if (forwardFill < horizon.orange + 0.15) severity = 'soft';
-    }
-    if (fillRate != null && fillRate < 0.45 && severity === 'none') severity = 'soft';
-    if (fillRate != null && fillRate < 0.30 && (severity === 'soft' || severity === 'none')) severity = 'hard';
-    if (fillRate != null && fillRate < 0.20) severity = 'critical';
-    if (severity === 'none' && (clearing == null || clearing >= refAdr * 0.97)) return null;
+    const lmN = (curve && curve.buckets || []).filter(b => b.key === '0-1' || b.key === '2-3' || b.key === '4-7')
+      .reduce((a, b) => a + (b.n || 0), 0);
+    const lmShare = (curve && curve.sampleSize) ? lmN / curve.sampleSize : null;
+    const pFill = (fillRate != null && fillRate >= 0) ? fillRate : null;
+    const dieRate = pFill != null ? Math.max(0, 1 - pFill) : null;
+    const waitPrice = clearing != null ? clearing : (curve && curve.lastMinuteAdr != null ? curve.lastMinuteAdr : refAdr);
+    const waitP = pFill != null ? pFill : 0.55;
+    const evWait = waitP * waitPrice;
 
-    const urgencyCut = severity === 'critical' ? urg.critical
-                     : severity === 'hard' ? urg.hard
-                     : severity === 'soft' ? urg.soft : 0;
-    let target = refAdr;
-    if (clearing != null) target = Math.min(target, clearing);
-    if (urgencyCut > 0) target = Math.min(target, refAdr * (1 - urgencyCut));
-    target = Math.max(target, refAdr * 0.40);
-    target = Math.round(target);
-    const cutPct = (refAdr - target) / refAdr;
-    if (cutPct < 0.03) return null;
+    if (forwardFill != null && forwardFill >= (horizon.orange + 0.15)
+        && (clearing == null || clearing >= refAdr * 0.97)) return null;
+
+    const floor = Math.round(refAdr * 0.45);
+    const candidates = new Set([Math.round(refAdr)]);
+    if (clearing != null) {
+      candidates.add(Math.round(clearing));
+      candidates.add(Math.round(clearing * 0.95));
+      candidates.add(Math.round(clearing * 0.90));
+      candidates.add(Math.round(clearing * 0.85));
+    }
+    if (curve && curve.lastMinuteAdr != null) candidates.add(Math.round(curve.lastMinuteAdr));
+    candidates.add(Math.round(refAdr * (1 - urg.soft)));
+    candidates.add(Math.round(refAdr * (1 - urg.hard)));
+    candidates.add(Math.round(refAdr * (1 - urg.critical)));
+
+    function evAt(target) {
+      if (target == null || target < floor) return { ev: -Infinity, p: 0 };
+      if (clearing == null || clearing <= 0) {
+        const boost = (forwardFill != null && forwardFill < horizon.red) ? 0.15 : 0.05;
+        const p = Math.min(0.95, waitP + boost);
+        return { ev: p * target, p };
+      }
+      if (target >= clearing * 0.98) return { ev: waitP * Math.min(target, refAdr), p: waitP };
+      const cutFrac = (clearing - target) / clearing;
+      const convert = Math.min(dieRate || 0, (dieRate || 0) * (cutFrac / 0.10) * 0.20);
+      const p = Math.min(0.97, waitP + convert);
+      return { ev: p * target, p };
+    }
+
+    let best = { target: Math.round(refAdr), ev: evWait, p: waitP, delta: 0 };
+    for (const t of candidates) {
+      const tt = Math.max(floor, Math.min(Math.round(refAdr), t));
+      const { ev, p } = evAt(tt);
+      if (ev > best.ev + 0.01 || (Math.abs(ev - best.ev) < 0.01 && tt > best.target)) {
+        best = { target: tt, ev, p, delta: ev - evWait };
+      }
+    }
+
+    const highLm = lmShare != null && lmShare >= 0.60;
+    const strongSelfFill = pFill != null && pFill >= 0.75;
+    if ((highLm || strongSelfFill) && clearing != null) {
+      const capped = Math.max(best.target, Math.round(clearing));
+      if (capped > best.target) {
+        const { ev, p } = evAt(capped);
+        best = { target: capped, ev, p, delta: ev - evWait };
+      }
+    }
+
+    let target = Math.max(floor, Math.min(Math.round(refAdr), Math.round(best.target)));
+    const refR = Math.round(refAdr);
+    const cutPct = refR > 0 ? (refR - target) / refR : 0;
+    const die = dieRate != null ? dieRate : 0;
+    let severity = 'none';
+    if (best.delta >= refAdr * 0.08 && die >= 0.45) severity = 'critical';
+    else if (best.delta >= refAdr * 0.04 && die >= 0.30) severity = 'hard';
+    else if (best.delta >= refAdr * 0.02 || (clearing != null && clearing < refAdr * 0.92)) severity = 'soft';
+    else if (forwardFill != null && forwardFill < horizon.red && die >= 0.40) severity = 'soft';
+    if ((highLm || strongSelfFill) && severity === 'critical' && die < 0.40) severity = 'soft';
+    if ((highLm || strongSelfFill) && severity === 'hard' && die < 0.30) severity = 'soft';
+    if (cutPct < 0.03) {
+      if (forwardFill != null && forwardFill < horizon.red && die >= 0.40) {
+        return {
+          refAdr: refR, targetAdr: refR, cutPct: 0, cutEur: 0, severity: 'soft',
+          usedLead, fillRate: pFill,
+          clearingAdr: clearing != null ? Math.round(clearing) : null,
+          lmShare, evWait: Math.round(evWait), evCut: Math.round(evWait), evDelta: 0,
+          objective: 'revenue',
+          syncAction: 'Hold price; Sync Now — do not dump',
+          reason: `Revenue-first: no EV-positive cut. Die rate ${Math.round(die * 100)}% — sync visibility, hold €${refR}.`,
+        };
+      }
+      return null;
+    }
+    if (severity === 'none') return null;
+
+    const syncAction = (severity === 'critical' || severity === 'hard')
+      ? 'PriceLabs → Sync Now'
+      : (strongSelfFill || highLm)
+        ? 'Hold near clearing; Sync Now only if still empty at D−2/D−1'
+        : 'Next daily sync OK unless needed tonight';
+
     return {
-      refAdr: Math.round(refAdr), targetAdr: target, cutPct,
-      cutEur: Math.round(refAdr) - target, severity, usedLead, fillRate,
+      refAdr: refR, targetAdr: target, cutPct,
+      cutEur: refR - target, severity, usedLead, fillRate: pFill,
       clearingAdr: clearing != null ? Math.round(clearing) : null,
       observedLmDiscount: curve ? curve.lastMinuteDiscount : null,
-      reason: `Aim €${target}/night (−€${Math.round(refAdr) - target}, ${Math.round(cutPct * 100)}% vs €${Math.round(refAdr)}).`
-            + (clearing != null ? ` Historical clearing for vacant-at-D−${usedLead != null ? usedLead : '?'} nights: €${Math.round(clearing)}.` : '')
-            + (fillRate != null ? ` Only ${Math.round(fillRate * 100)}% of those vacant nights eventually filled.` : '')
-            + ' PriceLabs near-arrival discount alone is usually not deep enough — overlay this cut in PriceLabs / channels now.',
+      lmShare, evWait: Math.round(evWait), evCut: Math.round(best.ev), evDelta: Math.round(best.delta),
+      objective: 'revenue',
+      syncAction,
+      reason: ((strongSelfFill || highLm)
+        ? `Revenue-first: vacant-at-D−${usedLead != null ? usedLead : '?'} fills ${pFill != null ? Math.round(pFill * 100) + '%' : '—'} at ~€${clearing != null ? Math.round(clearing) : '—'}`
+          + (lmShare != null ? ` (${Math.round(lmShare * 100)}% bookings ≤7d)` : '')
+          + `. EV wait €${Math.round(evWait)} vs cut €${Math.round(best.ev)}; target €${target}.`
+        : `Aim €${target}/night (EV Δ €${Math.round(best.delta)}).`
+          + (clearing != null ? ` Clearing €${Math.round(clearing)}.` : '')
+          + (pFill != null ? ` Hist fill-from-empty ${Math.round(pFill * 100)}%.` : ''))
+        + ' ' + syncAction + '.',
     };
   }
 
