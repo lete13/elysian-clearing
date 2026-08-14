@@ -1,0 +1,22 @@
+{
+ "baseSha256": "cb44047a276a3935e3d469588fb01b441aa18a78b43831d5cdae932c4e4f4322",
+ "expectedSha256": "726ef4f5416325476d4a54875d2d76b217818df73544c51a368c65fdc9503ca3",
+ "builtAt": "2026-08-14 Email first; relay Airbnb picture check",
+ "patches": [
+  {
+   "note": "Mark the email-first live picture relay",
+   "find": "This is the live Airbnb browser. Each click continues the same Connect attempt.",
+   "replace": "This is the live Airbnb browser (email-first relay). Each click continues the same Connect attempt."
+  }
+ ],
+ "assertions": [
+  {
+   "has": "live Airbnb browser (email-first relay)",
+   "note": "live marker"
+  },
+  {
+   "has": "Complete Airbnb picture check",
+   "note": "interactive panel kept"
+  }
+ ]
+}
