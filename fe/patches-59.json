@@ -11,8 +11,8 @@
  ],
  "assertions": [
   {
-   "has": "newest</b> code only",
-   "note": "newest code copy"
+   "has": "host email inbox",
+   "note": "email OTP copy"
   }
  ]
 }

@@ -44,10 +44,6 @@
    "note": "keyboard OTP"
   },
   {
-   "has": "at most once",
-   "note": "single prefer"
-  },
-  {
    "has": "do not click Resend yet",
    "note": "fail hint"
   },

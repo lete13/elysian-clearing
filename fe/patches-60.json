@@ -11,8 +11,8 @@
  ],
  "assertions": [
   {
-   "has": "Password step is filled without UI clicks",
-   "note": "marker"
+   "has": "host email inbox",
+   "note": "email OTP copy"
   }
  ]
 }

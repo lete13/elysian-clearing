@@ -1,0 +1,18 @@
+{
+ "baseSha256": "226bac80c5528da3edfc398c5d18a896e0a213d7b67ca70a8e76be738e5422bc",
+ "expectedSha256": "007c6557a27b4f952cb19c2bb692dc67c5a07116412b693612ae3a9ccbae4a50",
+ "builtAt": "2026-08-14 Airbnb email send on Connect + Resend",
+ "patches": [
+  {
+   "note": "OTP hint: email is sent on Connect; Resend once",
+   "find": "Use the <b>newest</b> code only — wait for it before Submit. Avoid Resend unless it expired. Password step is filled without UI clicks.",
+   "replace": "Airbnb should email a code on Connect. If none arrives within a minute, tap Resend as email once, then wait. Use the newest code only."
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Airbnb should email a code on Connect",
+   "note": "send copy"
+  }
+ ]
+}
