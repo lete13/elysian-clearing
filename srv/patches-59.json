@@ -1,0 +1,71 @@
+{
+ "baseSha256": "acfb6aa2efa42ed3882e76b9abf2bf1e8d53035534b824dc7d1566a0c5478826",
+ "expectedSha256": "f4d03375ba5fc37662b914e8bf3cb759b6215a34c781898e06f6f180daf07fe6",
+ "builtAt": "2026-08-14 Save the live in-app Airbnb browser for Pull",
+ "patches": [
+  {
+   "note": "Ignore hidden login fields and recognize logged-in Airbnb surfaces",
+   "find": "async function piAirbnbPageLooksLoggedIn(page) {\n  const url = page.url();\n  // Login footer contains the word \"Hosting\" — never treat body text as logged-in.\n  if (!/airbnb\\.com\\/hosting(\\/|$|\\?)/i.test(url)) return false;\n  if (/log.?in|sign.?in|authenticate/i.test(url)) return false;\n  if (await page.locator('input[type=\"password\"], #otp-code-input, #phone-or-email').count()) return false;\n  const text = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ');\n  if (/enter your password|log in to continue|try another way|verify that you.?re human/i.test(text)) return false;\n  return true;\n}\n",
+   "replace": "async function piAirbnbPageLooksLoggedIn(page) {\n  const url = page.url();\n  // Login footer contains the word \"Hosting\" — never treat body text as logged-in.\n  if (/log.?in|sign.?in|authenticate/i.test(url)) return false;\n  if (await page.locator('input[type=\"password\"]:visible, #otp-code-input:visible, #phone-or-email:visible').count()) return false;\n  const text = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ');\n  if (/enter your password|log in to continue|try another way|verify that you.?re human/i.test(text) && !/airbnb\\.com\\/hosting/i.test(url)) return false;\n  if (/airbnb\\.com\\/hosting(\\/|$|\\?)/i.test(url)) return true;\n  if (/airbnb\\.com\\/(account(?:-settings)?|users\\/show|become-a-host)(\\/|$|\\?)/i.test(url)) return true;\n  const avatar = await page.locator('[data-testid=\"header-avatar\"]:visible, [data-testid=\"cypress-headernav-profile\"]:visible').count();\n  return avatar > 0;\n}\nasync function piAirbnbPageLooksReadyToSave(page) {\n  const url = page.url();\n  if (!url || !/airbnb\\.com/i.test(url)) return false;\n  if (await piAirbnbHasHumanCheck(page)) return false;\n  if (await page.locator('input[type=\"password\"]:visible, #otp-code-input:visible, #phone-or-email:visible').count()) return false;\n  return true;\n}\nasync function piAirbnbSaveLiveSession(job) {\n  if (!job || !job.context) return false;\n  const state = await job.context.storageState();\n  const cookies = (state && Array.isArray(state.cookies)) ? state.cookies : [];\n  if (cookies.length < 3) return false;\n  await piSavePortalSession('airbnb', state, job.by || 'in-app-connect');\n  job._piSessionSaved = true;\n  job.updatedAt = Date.now();\n  return true;\n}\nasync function piAirbnbHarvestLiveJobs() {\n  let saved = false;\n  for (const job of _piLoginJobs.values()) {\n    if (!job || !job.page || !job.context) continue;\n    if (job.status === 'error' || job.status === 'starting' || job.status === 'logging_in') continue;\n    try {\n      await piAirbnbRunBrowserAction(job, async function () {\n        if (await piAirbnbHasHumanCheck(job.page)) return;\n        const ready = (await piAirbnbPageLooksLoggedIn(job.page)) || (await piAirbnbPageLooksReadyToSave(job.page));\n        if (!ready) return;\n        job._piOtpAccepted = true;\n        saved = (await piAirbnbSaveLiveSession(job)) || saved;\n        try {\n          await piAirbnbFinishAndSave(job);\n        } catch (eSave) {\n          if (job._piSessionSaved) {\n            job.status = 'connected';\n            job.error = null;\n            job.hint = 'Airbnb session saved from the in-app browser. You can Pull now.';\n            job.updatedAt = Date.now();\n          }\n        }\n      });\n    } catch (eHarvest) {}\n  }\n  return saved;\n}\n"
+  },
+  {
+   "note": "OTP detection requires a visible code field, not leftover copy",
+   "find": "async function piAirbnbNeedsOtp(page) {\n  const text = await page.locator('body').innerText().catch(function () { return ''; });\n  const hasOtpCopy = /confirmation code|one-time|verify your|we.ll send|enter the code|sent you a code|sent a code|confirm it.?s you|check your email|text message|otp-code/i.test(text);\n  const hasPass = await page.locator('input[type=\"password\"]').count();\n  const otpInput = await page.locator('#otp-code-input, input[name*=\"code\" i], input[autocomplete=\"one-time-code\"], input[inputmode=\"numeric\"], input[type=\"tel\"], input[maxlength=\"1\"]').count();\n  if (otpInput > 0 && !hasPass) return true;\n  if (hasOtpCopy && otpInput > 0) return true;\n  if (hasOtpCopy && !hasPass) return true;\n  return false;\n}\n",
+   "replace": "async function piAirbnbNeedsOtp(page) {\n  const otpVisible = await page.locator('#otp-code-input:visible, input[autocomplete=\"one-time-code\"]:visible').count();\n  return otpVisible > 0;\n}\n"
+  },
+  {
+   "note": "Expose whether the live browser already saved cookies",
+   "find": "      url: (function () {\n        try { return String(job.page.url() || '').replace(/[?#].*$/, '').slice(0, 200); }\n        catch (e) { return ''; }\n      })()\n    } : null,\n",
+   "replace": "      url: (function () {\n        try { return String(job.page.url() || '').replace(/[?#].*$/, '').slice(0, 200); }\n        catch (e) { return ''; }\n      })()\n    } : null,\n    sessionSaved: !!job._piSessionSaved,\n"
+  },
+  {
+   "note": "Idle logged-in interactive browser saves cookies then Hosting",
+   "find": "  if (await piAirbnbPageLooksLoggedIn(page)) {\n    job._piFinishing = true;\n    job._piOtpAccepted = true;\n    try {\n      await piAirbnbFinishAndSave(job);\n    } catch (eSave) {\n      job._piFinishing = false;\n      job._piOtpAccepted = false;\n      job.status = 'interactive';\n      job.error = null;\n      await piAirbnbInteractiveSnapshot(job, 'Hosting was not confirmed yet. Keep operating Airbnb below until Hosting opens.');\n    }\n    return;\n  }\n  if (await piAirbnbHasHumanCheck(page)) {\n    job.status = 'awaiting_captcha';\n    job.error = null;\n    await piAirbnbInteractiveSnapshot(job, 'Complete Airbnb verification directly in the interactive browser below.');\n    return;\n  }\n  if ((await page.locator('#otp-code-input').count().catch(function () { return 0; })) || (await piAirbnbNeedsOtp(page))) {\n",
+   "replace": "  if ((await piAirbnbPageLooksLoggedIn(page)) || (await piAirbnbPageLooksReadyToSave(page))) {\n    job._piFinishing = true;\n    job._piOtpAccepted = true;\n    try {\n      await piAirbnbSaveLiveSession(job);\n      await piAirbnbFinishAndSave(job);\n    } catch (eSave) {\n      job._piFinishing = false;\n      if (job._piSessionSaved) {\n        job.status = 'connected';\n        job.error = null;\n        job.hint = 'Airbnb session saved from the in-app browser. You can Pull now.';\n        job.updatedAt = Date.now();\n        return;\n      }\n      job._piOtpAccepted = false;\n      job.status = 'interactive';\n      job.error = null;\n      await piAirbnbInteractiveSnapshot(job, 'Hosting was not confirmed yet. Keep operating Airbnb below until Hosting opens.');\n    }\n    return;\n  }\n  if (await piAirbnbHasHumanCheck(page)) {\n    job.status = 'awaiting_captcha';\n    job.error = null;\n    await piAirbnbInteractiveSnapshot(job, 'Complete Airbnb verification directly in the interactive browser below.');\n    return;\n  }\n  if ((await page.locator('#otp-code-input:visible').count().catch(function () { return 0; })) || (await piAirbnbNeedsOtp(page))) {\n"
+  },
+  {
+   "note": "Manual save route for the in-app browser",
+   "find": "app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/browser/refresh', async (req, res) => {\n",
+   "replace": "app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/browser/save', async (req, res) => {\n  try {\n    const job = _piLoginJobs.get(String(req.params.jobId || ''));\n    if (!job || !job.page) return res.status(409).json({ error: 'No active Airbnb browser', job: piLoginPublic(job) });\n    await piAirbnbRunBrowserAction(job, async function () {\n      job._piOtpAccepted = true;\n      await piAirbnbSaveLiveSession(job);\n      try { await piAirbnbFinishAndSave(job); } catch (eSave) {\n        if (job._piSessionSaved) {\n          job.status = 'connected';\n          job.error = null;\n          job.hint = 'Airbnb session saved from the in-app browser. You can Pull now.';\n          job.updatedAt = Date.now();\n        } else {\n          throw eSave;\n        }\n      }\n    });\n    if (!job._piSessionSaved && job.status !== 'connected') {\n      return res.status(409).json({ error: 'Airbnb is not logged in yet — pass the code screen first', job: piLoginPublic(job) });\n    }\n    res.json({ ok: true, job: piLoginPublic(job) });\n  } catch (e) {\n    res.status(500).json({ error: e.message });\n  }\n});\n\napp.post('/api/platform-invoices/sessions/airbnb/login/:jobId/browser/refresh', async (req, res) => {\n"
+  },
+  {
+   "note": "Pull harvests cookies from the live Connect browser before spawning the worker",
+   "find": "  const airbnbSession = await piLoadPortalSession('airbnb');\n  const bookingSession = await piLoadPortalSession('booking');\n",
+   "replace": "  try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}\n  const airbnbSession = await piLoadPortalSession('airbnb');\n  const bookingSession = await piLoadPortalSession('booking');\n"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piAirbnbPageLooksReadyToSave",
+   "note": "idle logged-in pages can save"
+  },
+  {
+   "has": "piAirbnbSaveLiveSession",
+   "note": "cookies saved without waiting for Hosting URL"
+  },
+  {
+   "has": "piAirbnbHarvestLiveJobs",
+   "note": "Pull reuses the live in-app browser"
+  },
+  {
+   "has": "/browser/save",
+   "note": "manual save"
+  },
+  {
+   "has": "input[type=\"password\"]:visible, #otp-code-input:visible",
+   "note": "hidden OTP/password no longer block Hosting"
+  },
+  {
+   "has": "never treat body text as logged-in",
+   "note": "footer Hosting still ignored"
+  },
+  {
+   "hasNot": "if (/hosting|reservations|calendar/i.test(url + ' ' + text)) return true;",
+   "note": "body-text Hosting still forbidden"
+  },
+  {
+   "hasNot": "if (hasOtpCopy && !hasPass) return true;",
+   "note": "leftover OTP copy no longer blocks session save"
+  }
+ ]
+}
