@@ -1,0 +1,60 @@
+{
+ "baseSha256": "adffc965ab00793dabb02019e9efef924c8223937bc6f03ff443bfcfff917cc3",
+ "expectedSha256": "942b8f2e381ec099740dceb53be4f1ea81d0b841d830b6ed72f3fb5aca895a11",
+ "builtAt": "2026-08-14 Airbnb Resend locked 1 minute; trusted OTP fill",
+ "patches": [
+  {
+   "note": "OTP hint: Resend locked 1 minute",
+   "find": "Connect emails <b>one</b> code. If several arrived, use the latest. Do not Resend during Airbnb\u2019s 1-minute wait \u2014 it will not send.",
+   "replace": "Connect emails <b>one</b> code. Enter it. Resend stays locked for the 1-minute wait \u2014 tapping it earlier will not send a new email."
+  },
+  {
+   "note": "Soft-update Resend countdown on poll",
+   "find": "    if (st === 'awaiting_otp' && window._piAirbnbConnectStatus === 'awaiting_otp' && document.getElementById('pi-airbnb-otp')) {\n      var hintEl = document.getElementById('pi-airbnb-otp-hint');\n      if (hintEl) hintEl.innerHTML = job.hint || hintEl.innerHTML;\n      var snipEl = document.getElementById('pi-airbnb-otp-snip');\n      if (snipEl && job.pageSnippet) snipEl.textContent = 'Airbnb page: ' + String(job.pageSnippet).slice(0,180) + '\u2026';\n      var actEl = document.getElementById('pi-airbnb-otp-actions');\n      if (actEl && job.clickables && job.clickables.length) {\n        actEl.textContent = 'Visible actions: ' + job.clickables.slice(0, 12).join(' \u00b7 ');\n      }\n      return;\n    }",
+   "replace": "    if (st === 'awaiting_otp' && window._piAirbnbConnectStatus === 'awaiting_otp' && document.getElementById('pi-airbnb-otp')) {\n      var hintEl = document.getElementById('pi-airbnb-otp-hint');\n      if (hintEl) hintEl.innerHTML = job.hint || hintEl.innerHTML;\n      var snipEl = document.getElementById('pi-airbnb-otp-snip');\n      if (snipEl && job.pageSnippet) snipEl.textContent = 'Airbnb page: ' + String(job.pageSnippet).slice(0,180) + '\u2026';\n      var actEl = document.getElementById('pi-airbnb-otp-actions');\n      if (actEl && job.clickables && job.clickables.length) {\n        actEl.textContent = 'Visible actions: ' + job.clickables.slice(0, 12).join(' \u00b7 ');\n      }\n      var rb = document.getElementById('pi-airbnb-resend');\n      if (rb) {\n        var left = Math.ceil((60000 - (Date.now() - (window._piAirbnbOtpSince || Date.now()))) / 1000);\n        if (left > 0) { rb.disabled = true; rb.textContent = 'Resend in ' + left + 's'; }\n        else { rb.disabled = false; rb.textContent = 'Resend as email'; }\n      }\n      return;\n    }"
+  },
+  {
+   "note": "Resend button id for countdown",
+   "find": "        '<button class=\"btn sm\" onclick=\"piResendAirbnbOtp(true)\">Resend as email</button>' +",
+   "replace": "        '<button class=\"btn sm\" id=\"pi-airbnb-resend\" onclick=\"piResendAirbnbOtp(true)\">Resend as email</button>' +"
+  },
+  {
+   "note": "Stamp OTP wait start when panel first renders",
+   "find": "    } else if (st === 'awaiting_otp') {\n      body = '<div style=\"font-weight:600;margin-bottom:6px\">Enter Airbnb verification code</div>' +",
+   "replace": "    } else if (st === 'awaiting_otp') {\n      if (!window._piAirbnbOtpSince) window._piAirbnbOtpSince = Date.now();\n      body = '<div style=\"font-weight:600;margin-bottom:6px\">Enter Airbnb verification code</div>' +"
+  },
+  {
+   "note": "Clear OTP wait stamp when panel hides",
+   "find": "    if (!job) { box.style.display = 'none'; box.innerHTML = ''; window._piAirbnbConnectStatus = ''; return; }",
+   "replace": "    if (!job) { box.style.display = 'none'; box.innerHTML = ''; window._piAirbnbConnectStatus = ''; window._piAirbnbOtpSince = 0; return; }"
+  },
+  {
+   "note": "Reset OTP wait stamp on new Connect",
+   "find": "  window.piConnectAirbnbInApp = async function () {\n    msg('Starting Airbnb connect\u2026', true);",
+   "replace": "  window.piConnectAirbnbInApp = async function () {\n    window._piAirbnbOtpSince = 0;\n    msg('Starting Airbnb connect\u2026', true);"
+  },
+  {
+   "note": "Block Resend clicks during 1-minute Airbnb cooldown",
+   "find": "  window.piResendAirbnbOtp = async function (asEmail) {\n    var id = window._piAirbnbLoginId;\n    if (!id) { msg('No active Airbnb connect \u2014 click Connect Airbnb', false); return; }\n    msg(asEmail ? 'Asking Airbnb to email a new code\u2026' : 'Resending code\u2026', true);",
+   "replace": "  window.piResendAirbnbOtp = async function (asEmail) {\n    var id = window._piAirbnbLoginId;\n    if (!id) { msg('No active Airbnb connect \u2014 click Connect Airbnb', false); return; }\n    var waitLeft = Math.ceil((60000 - (Date.now() - (window._piAirbnbOtpSince || 0))) / 1000);\n    if (window._piAirbnbOtpSince && waitLeft > 0) {\n      msg('Airbnb will not send for ' + waitLeft + 's. Enter a code you already have \u2014 do not tap Resend yet.', false);\n      return;\n    }\n    msg(asEmail ? 'Asking Airbnb to email a new code\u2026' : 'Resending code\u2026', true);"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "pi-airbnb-resend",
+   "note": "resend button id"
+  },
+  {
+   "has": "_piAirbnbOtpSince",
+   "note": "cooldown stamp"
+  },
+  {
+   "has": "Resend stays locked for the 1-minute wait",
+   "note": "hint copy"
+  },
+  {
+   "hasNot": "Do not Resend during Airbnb\u2019s 1-minute wait \u2014 it will not send.",
+   "note": "old hint gone"
+  }
+ ]
+}
