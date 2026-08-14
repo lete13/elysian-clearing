@@ -16,20 +16,16 @@
  ],
  "assertions": [
   {
-   "has": "SMS-only challenge",
-   "note": "stuck banner"
+   "has": "piResendAirbnbOtp",
+   "note": "resend helper (superseded UI in patches-55)"
   },
   {
-   "has": "job.smsStuck",
-   "note": "smsStuck branch"
+   "has": "pageSnippet",
+   "note": "page snippet on OTP panel"
   },
   {
-   "has": "Visible actions:",
-   "note": "clickables debug"
-  },
-  {
-   "has": "Airbnb stayed on SMS",
-   "note": "resend stuck msg"
+   "has": "Resend as email",
+   "note": "resend as email control"
   }
  ]
 }

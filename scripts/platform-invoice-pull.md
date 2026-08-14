@@ -76,14 +76,12 @@ AIRBNB_HOST_EMAIL='…' AIRBNB_HOST_PASSWORD='…' \
 
    Platform Invoices → Collect → **Connect Airbnb**.  
    The server signs in with `AIRBNB_HOST_EMAIL` / `AIRBNB_HOST_PASSWORD`.  
-   Prefer an **email** code when Airbnb offers it (Resend as email).  
-   When Airbnb sends a code, enter it in the same screen → Submit code.  
+   Connect uses a stealth browser and **Try another way → email OTP** (not SMS).  
+   When Airbnb emails a code, enter it in the same screen → Submit code.  
    Session is stored in the vault; then **Pull Airbnb**.
 
-   **If Airbnb only offers SMS** (common for datacenter/server logins): texts usually
-   never arrive and email may not be offered. Cancel Connect and use **Paste session JSON**
-   from a normal browser (run `platform-invoice-save-session.js --channel=airbnb --headed`
-   on a laptop, then paste the printed storageState into the app).
+   If Airlock/bot checks keep blocking login, set optional `PLAYWRIGHT_PROXY_SERVER`
+   (residential proxy).
 
 3. Review → Ship.
 

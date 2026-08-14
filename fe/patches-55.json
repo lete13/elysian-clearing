@@ -1,0 +1,35 @@
+{
+ "baseSha256": "29d2e2748ed12dfb57a08dec11809788cc69e0d8b0e17449d7b9387613ff8c1a",
+ "expectedSha256": "ea2a8ea2e872dfeabd38f1d3b12d250f8bf08a5c32c65e4394526f1847b7c5a2",
+ "builtAt": "2026-08-14 Airbnb email OTP UI (no paste-primary)",
+ "patches": [
+  {
+   "note": "OTP panel expects email code; drop paste-primary SMS banner",
+   "find": "} else if (st === 'awaiting_otp') {\n      var stuck = !!(job.smsStuck || (job.delivery === 'sms' && job.canEmail === false));\n      body = '<div style=\"font-weight:600;margin-bottom:6px\">Enter Airbnb verification code</div>' +\n        '<div style=\"color:var(--tx);font-size:12.5px;margin-bottom:6px;line-height:1.45\">' +\n        (job.hint || 'Check the <b>host email inbox</b> first (and spam). SMS often does not arrive for server logins.') +\n        '</div>' +\n        (stuck\n          ? ('<div style=\"margin:8px 0;padding:8px 10px;border:1px solid #b91c1c55;border-radius:8px;background:#b91c1c0d;font-size:12.5px;line-height:1.45\">' +\n             '<b>SMS-only challenge.</b> Server logins rarely receive the text, and Airbnb did not offer email. ' +\n             'Cancel and use <b>Paste session JSON</b> from a normal browser session (see Portal Connect guide), then Pull.' +\n             '</div>')\n          : '') +\n        '<div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px\">' +\n        '<input id=\"pi-airbnb-otp\" type=\"text\" inputmode=\"numeric\" autocomplete=\"one-time-code\" placeholder=\"' +\n        (stuck ? 'code if SMS arrives' : 'code from email') + '\" ' +\n        'style=\"width:160px;padding:7px 10px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg2);font-size:14px\" />' +\n        '<button class=\"btn gold\" onclick=\"piSubmitAirbnbOtp()\">Submit code</button>' +\n        (stuck ? '' : '<button class=\"btn sm\" onclick=\"piResendAirbnbOtp(true)\">Resend as email</button>') +\n        '<button class=\"btn sm\" onclick=\"piConnectSessionPaste(\\'airbnb\\')\">Paste session JSON</button>' +\n        '<button class=\"btn sm\" onclick=\"piCancelAirbnbConnect()\">Cancel</button>' +\n        '</div>' +\n        (job.pageSnippet ? ('<div style=\"font-size:11px;color:var(--tx3);line-height:1.35\">Airbnb page: ' +\n          String(job.pageSnippet).replace(/</g,'&lt;').slice(0,180) + '…</div>') : '') +\n        (job.clickables && job.clickables.length\n          ? ('<div style=\"font-size:10.5px;color:var(--tx3);margin-top:4px\">Visible actions: ' +\n             job.clickables.slice(0, 12).map(function (t) { return String(t).replace(/</g,'&lt;'); }).join(' · ') + '</div>')\n          : '');\n    ",
+   "replace": "} else if (st === 'awaiting_otp') {\n      body = '<div style=\"font-weight:600;margin-bottom:6px\">Enter Airbnb verification code</div>' +\n        '<div style=\"color:var(--tx);font-size:12.5px;margin-bottom:6px;line-height:1.45\">' +\n        (job.hint || 'Check the <b>host email inbox</b> (and spam). Connect requests email OTP via Try another way.') +\n        '</div>' +\n        '<div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px\">' +\n        '<input id=\"pi-airbnb-otp\" type=\"text\" inputmode=\"numeric\" autocomplete=\"one-time-code\" placeholder=\"code from email\" ' +\n        'style=\"width:160px;padding:7px 10px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg2);font-size:14px\" />' +\n        '<button class=\"btn gold\" onclick=\"piSubmitAirbnbOtp()\">Submit code</button>' +\n        '<button class=\"btn sm\" onclick=\"piResendAirbnbOtp(true)\">Resend as email</button>' +\n        '<button class=\"btn sm\" onclick=\"piCancelAirbnbConnect()\">Cancel</button>' +\n        '</div>' +\n        (job.pageSnippet ? ('<div style=\"font-size:11px;color:var(--tx3);line-height:1.35\">Airbnb page: ' +\n          String(job.pageSnippet).replace(/</g,'&lt;').slice(0,180) + '…</div>') : '') +\n        (job.clickables && job.clickables.length\n          ? ('<div style=\"font-size:10.5px;color:var(--tx3);margin-top:4px\">Visible actions: ' +\n             job.clickables.slice(0, 12).map(function (t) { return String(t).replace(/</g,'&lt;'); }).join(' · ') + '</div>')\n          : '');\n    "
+  },
+  {
+   "note": "Resend status uses server hint only",
+   "find": "      var stuck = j.job && (j.job.smsStuck || (j.job.delivery === 'sms' && j.job.canEmail === false));\n      if (stuck) {\n        msg(j.job.hint || 'Airbnb stayed on SMS — use Paste session JSON', false);\n      } else {\n        msg(j.job && j.job.hint ? j.job.hint : (j.resent ? 'Code resent — check email' : 'Could not click Resend on Airbnb page'), !!j.resent);\n      }",
+   "replace": "      msg(j.job && j.job.hint ? j.job.hint : (j.resent ? 'Code resent — check email' : 'Could not click Resend on Airbnb page'), !!j.resent);"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "code from email",
+   "note": "email placeholder"
+  },
+  {
+   "has": "Try another way",
+   "note": "email path copy"
+  },
+  {
+   "hasNot": "SMS-only challenge",
+   "note": "paste-primary banner removed"
+  },
+  {
+   "hasNot": "Airbnb stayed on SMS — use Paste session JSON",
+   "note": "no paste in resend msg"
+  }
+ ]
+}
