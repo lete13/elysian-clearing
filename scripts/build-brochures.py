@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Generate redesigned Elysian Properties management brochures (EN + GR)."""
+"""Generate redesigned Elysian Properties management brochures (EN + GR).
+
+Writes into assets/:
+  elysian-management-brochure-en.pdf
+  elysian-management-brochure-gr.pdf
+  elysian-management-brochure.pdf      ← copy of GR (legacy alias / seed key)
+
+The live server seeds lead_assets from the -en/-gr files (and GR as key
+`brochure`). Re-run after copy changes; requires reportlab + DejaVu fonts.
+"""
 from __future__ import annotations
 
 import os

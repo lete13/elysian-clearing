@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 // srv-boot.js — server release bootstrap (mirrors the fe/patches.json mechanism).
-// Applies the srv/patches*.json chain to server.js at boot: ordered exact string
-// replacements, gated by baseSha256 (the server.js the patches expect) and
-// expectedSha256 (the result). Releases chain: srv/patches.json, then
-// srv/patches-2.json, -3.json … each file starts where the previous one ended,
-// so a release is a small new file instead of a rewrite of one ever-growing
-// patches.json. ALL-OR-NOTHING: any failure (missing file, base drift, anchor
+//
+// WHY: server.js is too large / too hot to rewrite on every feature ship through
+// the GitHub connector path. Releases are tiny JSON find/replace files instead.
+//
+// FLOW: read server.js → apply srv/patches.json, then patches-2…N (gap stops the
+// chain) → each file gated by baseSha256 + expectedSha256 → write server.gen.js
+// → require it. ALL-OR-NOTHING: any failure (missing file, base drift, anchor
 // count mismatch, result sha mismatch) logs the reason and starts the unpatched
-// server.js instead, so the app never goes down on a bad patch set.
-// Consolidation: upload the full patched server.js via GitHub web, reset
-// srv/patches.json to {"patches":[]} and delete the chain files in the same
-// release — the base-drift gate makes a missed reset safe.
+// server.js so the site never goes down on a bad patch set.
+//
+// DO NOT edit server.js to “add a comment” or tweak a route — that breaks every
+// subsequent baseSha256 and silently disables Leads / Platform Invoices / etc.
+// Ship srv/patches-(N+1).json instead. Consolidation: bake the patched result
+// into server.js, reset srv/patches.json to {"patches":[]}, delete patches-2…N
+// in the same release (base-drift gate makes a missed reset safe).
+//
+// Dry-run: SRVBOOT_DRYRUN=1 exits after apply/fallback without listening.
 'use strict';
 const fs = require('fs');
 const path = require('path');
