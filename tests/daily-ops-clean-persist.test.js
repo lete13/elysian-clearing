@@ -8,32 +8,12 @@
  */
 
 const assert = require('assert');
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { applyChain } = require('./apply-chain');
 
 const root = path.resolve(__dirname, '..');
-
-function applyChain(kind, baseFile) {
-  let source = fs.readFileSync(path.join(root, baseFile), 'utf8').replace(/\r\n/g, '\n');
-  let sha = crypto.createHash('sha256').update(source).digest('hex');
-  for (let n = 1; ; n++) {
-    const name = n === 1 ? 'patches.json' : `patches-${n}.json`;
-    const file = path.join(root, kind, name);
-    if (!fs.existsSync(file)) break;
-    const spec = JSON.parse(fs.readFileSync(file, 'utf8'));
-    assert.strictEqual(spec.baseSha256, sha, `${kind}/${name} continues the chain`);
-    for (const [index, patch] of spec.patches.entries()) {
-      const count = source.split(patch.find).length - 1;
-      assert.strictEqual(count, patch.count || 1, `${kind}/${name} patch ${index + 1} anchor count`);
-      source = source.split(patch.find).join(patch.replace);
-    }
-    sha = crypto.createHash('sha256').update(source).digest('hex');
-    assert.strictEqual(spec.expectedSha256, sha, `${kind}/${name} effective hash`);
-  }
-  return source;
-}
 
 function extractFn(source, name) {
   const start = source.indexOf('function ' + name + '(');
@@ -47,7 +27,7 @@ function extractFn(source, name) {
   throw new Error('unclosed function ' + name);
 }
 
-const html = applyChain('fe', 'index.html');
+const html = applyChain(root, 'fe', 'index.html');
 
 assert(html.includes('function _opsLookupSavedClean'), 'type-flip cleanDone helper present');
 assert(html.includes('function _opsAptKeyList'), 'dual apt key helper present');

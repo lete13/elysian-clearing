@@ -1,0 +1,4754 @@
+{
+  "builtAt": "2026-08-14 consolidated fe/1-100 + srv/1-68 into index.html + server.js",
+  "feSha": "7b05b19f208885ae8c912e9ef7c63c0e89afe35bb93da9a092cf0b592726b111",
+  "srvSha": "5b1d1fd084ce071592bd25d977c1a1b66f5ea97cb804f184c2c039ed10275c7c",
+  "fe": [
+    {
+      "has": "short: 'Extinguisher'",
+      "note": "fire extinguisher has its own portfolio column head",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "short: 'Smoke alarm'",
+      "note": "smoke detector has its own portfolio column head",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "short: 'Emergency nos.'",
+      "note": "emergency phones have their own portfolio column head",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "short: 'Exit signs'",
+      "note": "exit signage has its own portfolio column head",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "hasNot": "_esc(it.label.split(' ')[0])",
+      "note": "portfolio heads no longer take the first word of the label",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "_esc(it.short || it.label)",
+      "note": "portfolio heads render the short label",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "function _ownerEmails(",
+      "note": "owner emails are read from the Configuration fields",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "window.pinfoOwnerPhone",
+      "note": "owner phone can be saved from Property Info",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "function _ownerBlockHtml(",
+      "note": "the property page shows an owner contact block",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "function _ownerTableHtml(",
+      "note": "the portfolio overview lists owner contacts",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "_ownerTableHtml(apts);",
+      "note": "the owner contacts list renders under the matrix",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "Owner phone (optional)",
+      "note": "Configuration gained an owner phone field",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "setApt('${a.id}','ownerPhone'",
+      "note": "the Configuration phone field writes to the apartment",
+      "from": "fe/patches-3.json"
+    },
+    {
+      "has": "var LISTING_KINDS = [",
+      "note": "the channel list is defined once and drives every view",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "window.pinfoSetLink",
+      "note": "listing links can be saved",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "if (nv && !/^https?:\\/\\//i.test(nv))",
+      "note": "a value that is not a link is rejected",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "does not look like a ",
+      "note": "a link pointing at the wrong channel asks for confirmation",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "function _linkCellHtml(",
+      "note": "one link cell shared by the property page and the portfolio table",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "function _listingsBlockHtml(",
+      "note": "the property page has a Channel listings block",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "_listingsBlockHtml((S.apts",
+      "note": "the Channel listings block is rendered",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "Owner contacts &amp; listings",
+      "note": "the portfolio card covers listings too",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "airbnbUrl",
+      "note": "Airbnb link field exists",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "bookingUrl",
+      "note": "Booking.com link field exists",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "rel=\"noopener noreferrer\"",
+      "note": "listing links open safely in a new tab",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "min-width:1240px",
+      "note": "the contacts table widened for the link columns",
+      "from": "fe/patches-4.json"
+    },
+    {
+      "has": "const AREA_ROUTES = {",
+      "note": "station reference data present",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "window.aptAreaInfo",
+      "note": "effective area resolves config first, then location",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "window.aptAreaCompare",
+      "note": "route comparator present",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "window.areaFillFromLocation",
+      "note": "bulk fill from location data exists",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "window.setAptArea",
+      "note": "the Area setting is saved per apartment",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "areaOptionsHtml(a.area",
+      "note": "Configuration renders the Area selector",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "how: 'area'",
+      "note": "an explicit area outranks the hard-coded category lists",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "var OPS_KINDS = [",
+      "note": "Daily Ops row kinds are declared in one table",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "function _opsSameGuest(",
+      "note": "same-guest test is a named, documented rule",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "if (shorter.length < 8) return false;",
+      "note": "short names never auto-match as extended",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "function _opsOrder(",
+      "note": "non-turnovers sink and both halves keep route order",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "window.opsToggleMaintenance",
+      "note": "per-row manual override handlers exist",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "_opsSetKind(i, 'isExtended')",
+      "note": "overrides route through one setter",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "_sortKey = 'area'",
+      "note": "Performance defaults to route order",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "hasNot": "let _sortKey = 'name';",
+      "note": "the old name-first default is gone",
+      "from": "fe/patches-5.json"
+    },
+    {
+      "has": "data-tab=\"leads\"",
+      "note": "the tab is reachable from the main nav",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "  </nav>\n  <div class=\"nav-dd\" id=\"nav-dd\">",
+      "note": "Tools sits outside the scrolling strip so it is always reachable",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "<div id=\"tab-leads\" class=\"tab-panel\"",
+      "note": "the panel exists",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "window.renderLeads = function",
+      "note": "the render entry point exists",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "if (name === 'leads') {",
+      "note": "showTab routes to it without breaking the existing chain",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "_prevShowTabLeads.apply(this, arguments)",
+      "note": "every other tab still works",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "window.ldNew = function",
+      "note": "+ New lead",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "window.ldErase = function",
+      "note": "delete permanently, password-gated",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "window.ldArchive = function",
+      "note": "archive with undo",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "ldArchive(' + id + ',1);return false",
+      "note": "the undo is offered in the toast, not hidden in a menu",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "window.ldSaveProp = function",
+      "note": "property details can be corrected",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "nav{min-width:0;overflow-x:auto",
+      "note": "the nav scrolls rather than pushing Tools off the screen",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "#nav-profile,#btn-clear-all,#hdr-props{display:none!important}",
+      "note": "the phone header gives its room to the tabs",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "href=\"tel:",
+      "note": "a phone number is tappable",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "r.status === 409 && r.j && r.j.duplicate",
+      "note": "a duplicate offers the existing lead instead of a second ticket",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "--acc:#C9A84C;",
+      "note": "the custom property Monthly Close styles itself with actually exists",
+      "from": "fe/patches-6.json"
+    },
+    {
+      "has": "<button class=\"nav-btn active\" data-tab=\"dash\" onclick=\"showTab('dash',this)\">Dashboard</button>\n    <button class=\"nav-btn\" data-tab=\"leads\"",
+      "note": "Leads is the second tab, where it can actually be seen",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "hasNot": "id=\"nav-pinfo\">🏷 Property Info</button>\n    <button class=\"nav-btn\" data-tab=\"leads\"",
+      "note": "and no longer the last one",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "has": "operator:   { tabs: ['dash', 'leads', 'ops', 'perf', 'pinfo'],",
+      "note": "the operator workspace shows Leads",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "has": "accountant: { tabs: ['dash', 'leads', 'mt', 'rpt', 'exp', 'ann', 'platinv'],",
+      "note": "the accountant workspace shows Leads and Platform Invoices",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "has": "nav.ovf-r{",
+      "note": "the scrollable edge is faded",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "has": "nav.addEventListener('wheel'",
+      "note": "a mouse wheel scrolls the strip",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "has": "nav.classList.toggle('ovf-r'",
+      "note": "the fade follows the scroll position",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "has": "if (nr && r.left >= nr.left - 1 && r.right <= nr.right + 1) return;",
+      "note": "a tab already in view does not move the strip",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "has": "#hdr-strap,#hdr-rule{display:none!important}",
+      "note": "the phone header drops the strapline so the tabs get the width",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "has": "<div id=\"hdr-word\"",
+      "note": "the header elements are addressable",
+      "from": "fe/patches-7.json"
+    },
+    {
+      "has": "ld-restore",
+      "note": "the archive row carries its own Restore control",
+      "from": "fe/patches-8.json"
+    },
+    {
+      "has": "onclick=\"event.stopPropagation();ldArchive(' + l.id + ',1)\"",
+      "note": "restoring does not also open the ticket",
+      "from": "fe/patches-8.json"
+    },
+    {
+      "has": "role=\"button\" tabindex=\"0\"",
+      "note": "the row is still keyboard reachable after becoming a div",
+      "from": "fe/patches-8.json"
+    },
+    {
+      "has": "a button inside a button is not valid HTML",
+      "note": "why the row stopped being a button is written down",
+      "from": "fe/patches-8.json"
+    },
+    {
+      "has": "if (v === 'archive') listMode = true;",
+      "note": "the archive opens as rows",
+      "from": "fe/patches-8.json"
+    },
+    {
+      "has": "ld-why",
+      "note": "the archive reason is visible without opening the ticket",
+      "from": "fe/patches-8.json"
+    },
+    {
+      "hasNot": "'<button class=\"ld-lrow\" onclick=\"ldOpen('",
+      "note": "no nested-button markup left behind",
+      "from": "fe/patches-8.json"
+    },
+    {
+      "has": "id=\"nav-home\"",
+      "note": "Home nav item present",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "id=\"tab-home\"",
+      "note": "Home panel present",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "window.renderHome=function()",
+      "note": "Home renderer defined",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "window.toggleTheme=function()",
+      "note": "theme toggle defined",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "id=\"theme-toggle\"",
+      "note": "theme toggle button present",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "html[data-theme=\"dark\"]",
+      "note": "dark theme tokens present",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "<option value=\"management\">Admin</option>",
+      "note": "Management renamed to Admin",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "<option value=\"operator\">Operations</option>",
+      "note": "Operator renamed to Operations",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "<option value=\"accountant\">Accounting</option>",
+      "note": "Accountant renamed to Accounting",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "if(name==='home')",
+      "note": "showTab dispatches Home",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "S.meta.uiPrefs",
+      "note": "prefs synced through meta",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "Compliance health",
+      "note": "Accounting compliance checklist present",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "Checkouts today",
+      "note": "Operations today summary present",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": ".nav-btn[data-tab=\"dash\"]::before",
+      "note": "sidebar nav icons via Tabler webfont",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "hasNot": "id=\"nav-ops\">🗓 Daily Ops",
+      "note": "nav emojis replaced by icons",
+      "from": "fe/patches-9.json"
+    },
+    {
+      "has": "var _mcCommentDraft = null;",
+      "note": "comment draft state exists",
+      "from": "fe/patches-10.json"
+    },
+    {
+      "has": "window.mcCommentInput = function",
+      "note": "comments update on input, not only blur",
+      "from": "fe/patches-10.json"
+    },
+    {
+      "has": "id=\"mc-comment\"",
+      "note": "comments textarea has a stable id for focus restore",
+      "from": "fe/patches-10.json"
+    },
+    {
+      "has": "mcFlushCommentDraft()",
+      "note": "draft is flushed into the close record before remount",
+      "from": "fe/patches-10.json"
+    },
+    {
+      "has": "_keepComment && _mcCommentDraft",
+      "note": "caret is restored when comments were mid-edit",
+      "from": "fe/patches-10.json"
+    },
+    {
+      "has": "window.createTask=function",
+      "note": "task creation defined",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "window.closeTask=function",
+      "note": "task close defined",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "S.meta.assignedTasks",
+      "note": "assignable tasks synced via meta",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "S.meta.notifications",
+      "note": "notifications synced via meta",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "id=\"notif-bell\"",
+      "note": "notification bell present",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "window.setCurrentUser=function",
+      "note": "identity selection present",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "My tasks",
+      "note": "My-tasks dashboard section",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "id=\"nt-assignees\"",
+      "note": "multi-assignee task form",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "function injectDashTasks(",
+      "note": "tasks list injected on the Dashboard tab",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "name === 'accountant' && t === 'perf'",
+      "note": "Performance added to Accounting view",
+      "from": "fe/patches-11.json"
+    },
+    {
+      "has": "{name:'Kostas',role:'operator'}",
+      "note": "Kostas is on the team with the Operations profile",
+      "from": "fe/patches-12.json"
+    },
+    {
+      "has": "{name:'John',role:'operator'},{name:'Kostas',role:'operator'}]",
+      "note": "Kostas is added alongside George and John, not replacing them",
+      "from": "fe/patches-12.json"
+    },
+    {
+      "has": "icon: 'Mnt'",
+      "note": "maintenance kind uses Mnt label",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "icon: 'Prep'",
+      "note": "preparation kind uses Prep label",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "icon: 'Ext'",
+      "note": "extended kind uses Ext label",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "OPS_TAG_LATE",
+      "note": "late checkout auto-comment tag declared",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "OPS_TAG_PRIORITY",
+      "note": "priority auto-comment tag declared",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "OPS_TAG_SOFA1",
+      "note": "sofa prep auto-comment tags declared",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "function opsTogglePriority(i)",
+      "note": "priority toggle exists",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "Late Checkout: 12:00",
+      "note": "late checkout comment text",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "Prepare 2 sofa beds",
+      "note": "two-sofa prep comment text",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "base_capacity",
+      "note": "base capacity field present",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "beds_double",
+      "note": "double beds sleeping config",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "sofa_bed_2p",
+      "note": "2-person sofa bed config",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "sofa_bed_1p",
+      "note": "1-person sofa bed config",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "Sleeping configuration",
+      "note": "sleeping configuration section label",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "_opsPrefetchRentalInfo",
+      "note": "Daily Ops loads Property Info for sofa comments",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "Late / Pri",
+      "note": "flags column header",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "background:#DC2626;color:#fff",
+      "note": "Priority/sofa badges use solid red",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "_cRed ? '#DC2626'",
+      "note": "comments input turns red for priority/sofa",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "pClr = pOn ? '#fff' : '#DC2626'",
+      "note": "Priority button uses red",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "hasNot": "icon: '🔧'",
+      "note": "emoji wrench icon removed from kinds",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "hasNot": "icon: '🧹'",
+      "note": "emoji broom icon removed from kinds",
+      "from": "fe/patches-13.json"
+    },
+    {
+      "has": "var view = 'mine'",
+      "note": "Leads defaults to My tasks",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "function isOpenTask(l)",
+      "note": "open-task rule is defined",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "function tasksHtml()",
+      "note": "task list renderer exists",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "['mine','My tasks']",
+      "note": "My tasks tab is in the chrome",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "window.ldGoTask",
+      "note": "Home can deep-link into a lead task",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "window.ldFetchMyTasks",
+      "note": "Home can fetch my open lead tasks",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "window.refreshHomeLeads",
+      "note": "Home paints open leads into My tasks",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "Open lead tasks",
+      "note": "Home chip for open lead tasks",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "home-lead-tasks-slot",
+      "note": "lead tasks slot inside My tasks",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "id=\"ldn-owner\"",
+      "note": "new lead can be assigned to someone",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "Open task for",
+      "note": "ticket names the open task and its owner",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "john: 'giannis'",
+      "note": "John and Giannis resolve to the same team key",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "Your open lead tasks",
+      "note": "Leads action card copy",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "hasNot": "['board', 'list', 'archive'].map",
+      "note": "old Board/List/Archive-only tabs are gone",
+      "from": "fe/patches-14.json"
+    },
+    {
+      "has": "function prettyPerson(name)",
+      "note": "lead names are title-cased when Meta dumps ALL CAPS",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "has": "if (key === 'giannis') return 'John'",
+      "note": "Giannis displays as John",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "has": "function pipelinePos(l)",
+      "note": "pipeline shows Step N of M",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "has": "Still not contacted · overdue",
+      "note": "SLA copy is plain language",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "has": "done: 'Mark contacted'",
+      "note": "button marks the step done instead of repeating the hint",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "has": "class=\"ld-assign\"",
+      "note": "task card has an Assigned to control",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "has": "onchange=\"ldOwner(",
+      "note": "assignee can be changed from the task card",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "has": "Next: <b>",
+      "note": "next step is shown once as a hint",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "hasNot": "label: 'Make first contact'",
+      "note": "old duplicated Make first contact label is gone",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "hasNot": "past first-contact SLA",
+      "note": "jargon SLA line is gone",
+      "from": "fe/patches-15.json"
+    },
+    {
+      "has": "function _opsCleaningTableHtml()",
+      "note": "cleaning assignment table builder exists",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "function opsManageCleaners()",
+      "note": "cleaner roster modal exists",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "function opsSetCleanerKey(",
+      "note": "per-checkout cleaner assigner exists",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "function opsToggleCleanDoneKey(",
+      "note": "cleaned checkbox handler exists",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "function _opsExtraCleanRows(",
+      "note": "refresh/sofa extra clean rows exist",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "Καθαρισμοί σήμερα",
+      "note": "cleaning table heading present",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "Καθαρίστρια",
+      "note": "cleaner column header present",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "opsSetDailyExtra",
+      "note": "daily block (ρεπό/άδειες) assignments exist",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "cleaners: S.cleaners || []",
+      "note": "cleaner roster is persisted",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "S.cleaners = data.cleaners || S.cleaners || []",
+      "note": "cleaner roster is loaded",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "_opsCleaningTableHtml()",
+      "note": "cleaning table is rendered under Daily Ops",
+      "from": "fe/patches-16.json"
+    },
+    {
+      "has": "['katharismos', 'Καθαρισμός']",
+      "note": "Καθαρισμός is a clean-task option",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "has": "r.cleanTask = (r.cleanType === 'sofa_bed') ? 'prepare_sofa' : 'katharismos'",
+      "note": "Καθαρισμός is the default εργασία",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "has": "ops-cleaners-datalist",
+      "note": "searchable cleaner datalist present",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "has": "type to find…",
+      "note": "cleaner inputs are type-to-filter fields",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "has": "function opsCopyCleaningImage()",
+      "note": "cleaning-table screenshot helper exists",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "has": "ops-cleaning-shot",
+      "note": "screenshot capture target present",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "has": "onclick=\"opsCopyCleaningImage()\"",
+      "note": "Screenshot button wired",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "has": "field === 'comments' || field === 'cleanTaskNote'",
+      "note": "cleaner notes sync with apartment comments",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "has": "data-clean-note=",
+      "note": "cleaning note inputs tagged for reverse sync",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "hasNot": "['genikos', 'Γενικός καθαρισμός']",
+      "note": "old genikos label removed in favour of Καθαρισμός",
+      "from": "fe/patches-17.json"
+    },
+    {
+      "has": "function _opsApplySameDayPriority(row)",
+      "note": "same-day priority helper exists",
+      "from": "fe/patches-18.json"
+    },
+    {
+      "has": "_opsApplySameDayPriorityAll()",
+      "note": "same-day priority applied on render",
+      "from": "fe/patches-18.json"
+    },
+    {
+      "has": "row.checkinSameDay === 'yes'",
+      "note": "Ναι same-day check-in drives auto priority",
+      "from": "fe/patches-18.json"
+    },
+    {
+      "has": "priorityManual",
+      "note": "manual Pri override flag",
+      "from": "fe/patches-18.json"
+    },
+    {
+      "has": "delete _opsRows[i].priorityManual",
+      "note": "toggling same-day check-in resets manual Pri lock",
+      "from": "fe/patches-18.json"
+    },
+    {
+      "has": "function _opsIsCleanStub(r)",
+      "note": "clean stub detector",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "let _opsCleanExtras = []",
+      "note": "extras kept separate from main ops rows",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "cleanExtras:",
+      "note": "snapshot stores cleanExtras",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "function _opsLongStayTag(nights)",
+      "note": "long-stay tag helper",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "return 'Long stay: ' + n + ' nights'",
+      "note": "long-stay comment format",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "function _opsApplyLongStayComment(row)",
+      "note": "long-stay applicator",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "(bk.aptId && b.aptId === bk.aptId) || (bk.aptName && b.aptName === bk.aptName)",
+      "note": "same-day check-in matches aptName too",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "Array.from(occupied)",
+      "note": "extras exclude all Daily Ops apartments",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "data-clean-note=",
+      "note": "multi-comment note field present",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "<textarea data-clean-note=",
+      "note": "notes use textarea so all comments fit",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "Cleaning schedule",
+      "note": "reworked cleaning schedule header",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "hasNot": "if (!existing) { _opsRows.push(ex); existing = ex; }",
+      "note": "extras no longer pushed into _opsRows",
+      "from": "fe/patches-19.json"
+    },
+    {
+      "has": "ld-task-name",
+      "note": "task title uses ld-task-name",
+      "from": "fe/patches-20.json"
+    },
+    {
+      "has": "ld-task-sub",
+      "note": "task subtitle uses ld-task-sub",
+      "from": "fe/patches-20.json"
+    },
+    {
+      "has": "ld-task-side",
+      "note": "task actions column renamed",
+      "from": "fe/patches-20.json"
+    },
+    {
+      "has": "ld-task-btns",
+      "note": "task buttons row renamed",
+      "from": "fe/patches-20.json"
+    },
+    {
+      "has": "font-synthesis:none",
+      "note": "no synthetic bold double-drawing names",
+      "from": "fe/patches-20.json"
+    },
+    {
+      "hasNot": "#tab-leads .ld-task .tt{",
+      "note": "leads no longer targets the toggle .tt class",
+      "from": "fe/patches-20.json"
+    },
+    {
+      "has": "'<div class=\"ld-task-name\">'",
+      "note": "task card emits ld-task-name",
+      "from": "fe/patches-20.json"
+    },
+    {
+      "hasNot": "'<div class=\"tt\">'",
+      "note": "task card no longer emits class tt",
+      "from": "fe/patches-20.json"
+    },
+    {
+      "has": "ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ",
+      "note": "schedule renamed",
+      "from": "fe/patches-21.json"
+    },
+    {
+      "has": "function _opsDefaultOpsDate()",
+      "note": "default date helper",
+      "from": "fe/patches-21.json"
+    },
+    {
+      "has": "function _opsMaybeAdvanceAfterCleans()",
+      "note": "advance-when-done helper",
+      "from": "fe/patches-21.json"
+    },
+    {
+      "has": "cleansCompleteFor",
+      "note": "persists completed-day flag",
+      "from": "fe/patches-21.json"
+    },
+    {
+      "has": "font-size:17px;font-weight:900",
+      "note": "cleaner names emphasized",
+      "from": "fe/patches-21.json"
+    },
+    {
+      "has": "ΚΑΘΑΡΙΣΤΡΙΑ",
+      "note": "cleaner column header emphasized",
+      "from": "fe/patches-21.json"
+    },
+    {
+      "has": "class=\"ld-task-sub\"",
+      "note": "subtitle uses ld-task-sub",
+      "from": "fe/patches-22.json"
+    },
+    {
+      "has": "class=\"ld-task-meta\"",
+      "note": "meta line uses ld-task-meta",
+      "from": "fe/patches-22.json"
+    },
+    {
+      "hasNot": "<div class=\"ts\">",
+      "note": "no leftover ts div on task cards",
+      "from": "fe/patches-22.json"
+    },
+    {
+      "hasNot": "<div class=\"tm\">",
+      "note": "no leftover tm div on task cards",
+      "from": "fe/patches-22.json"
+    },
+    {
+      "has": "isolation:isolate",
+      "note": "task card creates its own stacking context",
+      "from": "fe/patches-22.json"
+    },
+    {
+      "has": "width:auto;height:auto;max-width:100%",
+      "note": "name cannot inherit the 34x18 toggle box",
+      "from": "fe/patches-22.json"
+    },
+    {
+      "has": "function opsSetAdeiaDays(idx, days)",
+      "note": "adeies duration setter",
+      "from": "fe/patches-23.json"
+    },
+    {
+      "has": "function _opsSyncAdeiaRange(idx)",
+      "note": "adeies multi-day prefill",
+      "from": "fe/patches-23.json"
+    },
+    {
+      "has": "opsSetAdeiaDays(",
+      "note": "duration input wired",
+      "from": "fe/patches-23.json"
+    },
+    {
+      "has": "ημ.</label>",
+      "note": "duration unit label",
+      "from": "fe/patches-23.json"
+    },
+    {
+      "has": "clone.querySelectorAll('input, textarea, select, button')",
+      "note": "screenshot flattens controls",
+      "from": "fe/patches-23.json"
+    },
+    {
+      "has": "dailyBlocks +\n    '</div>' +\n    '</div>';",
+      "note": "staff blocks inside screenshot frame",
+      "from": "fe/patches-23.json"
+    },
+    {
+      "has": "font-size:16px;font-weight:700;letter-spacing:0",
+      "note": "cleaner name typography for capture",
+      "from": "fe/patches-23.json"
+    },
+    {
+      "has": "if (!name) {\n      if (i > 0) delete S.daily.extra[day].adeies[idx];",
+      "note": "clearing adeia name clears future days",
+      "from": "fe/patches-24.json"
+    },
+    {
+      "has": "{name:'Michalis',role:'operator'}",
+      "note": "Michalis is on the Operations team",
+      "from": "fe/patches-25.json"
+    },
+    {
+      "has": "window._ACC.profile ? [window._ACC.profile] : null",
+      "note": "account profile list is used to pick the workspace",
+      "from": "fe/patches-25.json"
+    },
+    {
+      "has": "wsAllowed.length > 1",
+      "note": "switcher shows for Admin or for accounts with more than one workspace",
+      "from": "fe/patches-25.json"
+    },
+    {
+      "has": "profile: j.profile",
+      "note": "client stores the account profile",
+      "from": "fe/patches-25.json"
+    },
+    {
+      "has": "window._ACC.mode==='users'",
+      "note": "You-are picker locks to the login name",
+      "from": "fe/patches-25.json"
+    },
+    {
+      "has": "const showMoney = prof !== 'operator';",
+      "note": "Popi still sees money",
+      "from": "fe/patches-25.json"
+    },
+    {
+      "has": "allowed.indexOf('management') < 0) return (allowed.indexOf(p) >= 0) ? p : allowed[0]",
+      "note": "dual-role users switch among their workspaces",
+      "from": "fe/patches-26.json"
+    },
+    {
+      "has": "wsAllowed.length > 1",
+      "note": "switcher shows when the account has more than one profile",
+      "from": "fe/patches-26.json"
+    },
+    {
+      "has": "o.hidden = wsAllowed.indexOf('management') < 0 && wsAllowed.indexOf(o.value) < 0",
+      "note": "Admin option hidden unless the account is Admin",
+      "from": "fe/patches-26.json"
+    },
+    {
+      "has": "profiles: Array.isArray(j.profiles)",
+      "note": "client stores the allowed workspaces",
+      "from": "fe/patches-26.json"
+    },
+    {
+      "has": "elysianLogout",
+      "note": "logout helper",
+      "from": "fe/patches-27.json"
+    },
+    {
+      "has": "id=\"acc-logout\"",
+      "note": "logout button",
+      "from": "fe/patches-27.json"
+    },
+    {
+      "has": "id=\"nav-platinv\"",
+      "note": "Platform Invoices nav",
+      "from": "fe/patches-27.json"
+    },
+    {
+      "has": "id=\"tab-platinv\"",
+      "note": "Platform Invoices tab",
+      "from": "fe/patches-27.json"
+    },
+    {
+      "has": "piPull",
+      "note": "portal pull button wired",
+      "from": "fe/patches-27.json"
+    },
+    {
+      "has": "ενδοκοινοτικά",
+      "note": "tab copy states EU platform invoices",
+      "from": "fe/patches-27.json"
+    },
+    {
+      "has": "function opsAddCleanerKey(key, val)",
+      "note": "add cleaner helper",
+      "from": "fe/patches-28.json"
+    },
+    {
+      "has": "function opsRemoveCleanerAt(key, idx)",
+      "note": "remove cleaner helper",
+      "from": "fe/patches-28.json"
+    },
+    {
+      "has": "function _opsCleanerList(r)",
+      "note": "normalize cleaner list",
+      "from": "fe/patches-28.json"
+    },
+    {
+      "has": "r.cleanerNames = uniq",
+      "note": "stores cleanerNames array",
+      "from": "fe/patches-28.json"
+    },
+    {
+      "has": "data-cleaners-cell=",
+      "note": "multi-cleaner cell marker",
+      "from": "fe/patches-28.json"
+    },
+    {
+      "has": "+ άλλη…",
+      "note": "add-another cleaner placeholder",
+      "from": "fe/patches-28.json"
+    },
+    {
+      "has": "clone.querySelectorAll('[data-cleaners-cell]')",
+      "note": "screenshot uses multi-cleaner cells",
+      "from": "fe/patches-28.json"
+    },
+    {
+      "has": "function _opsAptAddress(aptOrRow)",
+      "note": "address helper",
+      "from": "fe/patches-29.json"
+    },
+    {
+      "has": "function _opsAptTitle(row)",
+      "note": "Name (address) title helper",
+      "from": "fe/patches-29.json"
+    },
+    {
+      "has": "window.pinfoAddress",
+      "note": "Property Info address editor",
+      "from": "fe/patches-29.json"
+    },
+    {
+      "has": "function opsAddDriverRoute(idx, aptKey)",
+      "note": "add apartment to driver route",
+      "from": "fe/patches-29.json"
+    },
+    {
+      "has": "function opsRemoveDriverRoute(idx, stopIdx)",
+      "note": "remove apartment from driver route",
+      "from": "fe/patches-29.json"
+    },
+    {
+      "has": "ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ",
+      "note": "drivers section at bottom of schedule",
+      "from": "fe/patches-29.json"
+    },
+    {
+      "has": "+ διαμέρισμα στη διαδρομή…",
+      "note": "schedule apartment picker for routes",
+      "from": "fe/patches-29.json"
+    },
+    {
+      "has": "'Route: ' + n",
+      "note": "route comment tag format",
+      "from": "fe/patches-29.json"
+    },
+    {
+      "has": "/^Route:/i.test(p)",
+      "note": "route chips highlighted",
+      "from": "fe/patches-29.json"
+    },
+    {
+      "has": "window.ldWelcome",
+      "note": "welcome composer entry point",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "ld-welcome",
+      "note": "welcome button on ticket contact",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "ldWelSend",
+      "note": "send handler",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "brochure-en",
+      "note": "loads English brochure asset",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "brochure-gr",
+      "note": "loads Greek brochure asset",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "elysian-management-brochure-en.pdf",
+      "note": "EN static fallback",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "elysian-management-brochure-gr.pdf",
+      "note": "GR static fallback",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "Attach company brochure",
+      "note": "brochure attach checkbox",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "Send the welcome email",
+      "note": "next-action copy for Contact",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "Καλωσήρθατε στην Elysian Properties",
+      "note": "Greek welcome subject",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "Welcome to Elysian Properties",
+      "note": "English welcome subject",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "hasNot": "Call or email them",
+      "note": "old first-contact hint removed from NEXT",
+      "from": "fe/patches-30.json"
+    },
+    {
+      "has": "event.stopPropagation();ldWelcome(",
+      "note": "task-card Email opens welcome",
+      "from": "fe/patches-31.json"
+    },
+    {
+      "has": "ld-cbtn ld-welcome",
+      "note": "ticket Email opens welcome",
+      "from": "fe/patches-31.json"
+    },
+    {
+      "has": "ldWelDisplayName",
+      "note": "lead name normalised for the draft",
+      "from": "fe/patches-31.json"
+    },
+    {
+      "has": "Welcome to Elysian Properties, ",
+      "note": "EN subject includes first name",
+      "from": "fe/patches-31.json"
+    },
+    {
+      "has": "Καλωσήρθατε στην Elysian Properties, ",
+      "note": "GR subject includes first name",
+      "from": "fe/patches-31.json"
+    },
+    {
+      "has": "Thank you, ' + first + '",
+      "note": "EN body addresses the lead by name",
+      "from": "fe/patches-31.json"
+    },
+    {
+      "has": "To ' + ldWelEsc(t0.displayName)",
+      "note": "composer header shows the lead",
+      "from": "fe/patches-31.json"
+    },
+    {
+      "hasNot": "onclick=\"event.stopPropagation()\">Email</a>",
+      "note": "task-card mailto Email removed",
+      "from": "fe/patches-31.json"
+    },
+    {
+      "has": "ldErase(' + l.id + ')\">Delete</button>",
+      "note": "Delete on the task card next to Call/Email",
+      "from": "fe/patches-32.json"
+    },
+    {
+      "has": "confirm('Delete \"' + name + '\" permanently?",
+      "note": "simple yes/no confirm",
+      "from": "fe/patches-32.json"
+    },
+    {
+      "hasNot": "Enter the password to confirm the erasure",
+      "note": "password prompt removed",
+      "from": "fe/patches-32.json"
+    },
+    {
+      "hasNot": "password: String(pw).trim()",
+      "note": "password no longer sent with erase",
+      "from": "fe/patches-32.json"
+    },
+    {
+      "has": "function leadPriorityCity",
+      "note": "city priority detector",
+      "from": "fe/patches-33.json"
+    },
+    {
+      "has": "Priority · ",
+      "note": "priority badge label",
+      "from": "fe/patches-33.json"
+    },
+    {
+      "has": "leadPrioRank(a)",
+      "note": "tasks sort by city priority",
+      "from": "fe/patches-33.json"
+    },
+    {
+      "has": "ld-task.prio",
+      "note": "priority card accent style",
+      "from": "fe/patches-33.json"
+    },
+    {
+      "has": "θεσσαλονικ|thessalonik|salonik",
+      "note": "Thessaloniki matchers",
+      "from": "fe/patches-33.json"
+    },
+    {
+      "has": "αθηνα|athens",
+      "note": "Athens matchers",
+      "from": "fe/patches-33.json"
+    },
+    {
+      "has": "as soon as possible",
+      "note": "ASAP",
+      "from": "fe/patches-34.json"
+    },
+    {
+      "has": "booking.com",
+      "note": "Booking host (path evolved; domain token kept)",
+      "from": "fe/patches-34.json"
+    },
+    {
+      "has": "credit note",
+      "note": "Airbnb credit notes",
+      "from": "fe/patches-34.json"
+    },
+    {
+      "has": "cancelledAt",
+      "note": "credit note dating",
+      "from": "fe/patches-34.json"
+    },
+    {
+      "has": "piHealth",
+      "note": "Hosthub health check",
+      "from": "fe/patches-34.json"
+    },
+    {
+      "has": "Pull Airbnb",
+      "note": "pull progress (Airbnb-first copy)",
+      "from": "fe/patches-34.json"
+    },
+    {
+      "has": "location.replace('/api/logout",
+      "note": "logout navigates to /api/logout",
+      "from": "fe/patches-35.json"
+    },
+    {
+      "has": "localStorage.clear()",
+      "note": "clears localStorage on logout",
+      "from": "fe/patches-35.json"
+    },
+    {
+      "hasNot": "logout:logout@",
+      "note": "no embedded-credentials fetch",
+      "from": "fe/patches-35.json"
+    },
+    {
+      "has": "if (f && !r.checkinManual)",
+      "note": "same-day check-in refreshes from live bookings unless manual",
+      "from": "fe/patches-36.json"
+    },
+    {
+      "has": "_opsRows[i].checkinManual = true;",
+      "note": "toggling same-day cell marks it manual",
+      "from": "fe/patches-36.json"
+    },
+    {
+      "has": "f.checkinSameDay === 'yes' || f.checkinSameDay === 'checkin_only'",
+      "note": "upgrade unknown when booking exists",
+      "from": "fe/patches-36.json"
+    },
+    {
+      "has": "xlsx@0.18.5/dist/xlsx.full.min.js\" defer",
+      "note": "xlsx deferred",
+      "from": "fe/patches-37.json"
+    },
+    {
+      "has": "html2canvas + jsPDF load on first export",
+      "note": "pdf libs not in head",
+      "from": "fe/patches-37.json"
+    },
+    {
+      "has": "media=\"print\" onload=\"this.media='all'\"",
+      "note": "fonts after first paint",
+      "from": "fe/patches-37.json"
+    },
+    {
+      "has": "Nav stays visible during whoami",
+      "note": "nav not gated",
+      "from": "fe/patches-37.json"
+    },
+    {
+      "has": "Opening workspace…",
+      "note": "cold-start overlay copy",
+      "from": "fe/patches-37.json"
+    },
+    {
+      "has": "_showLoadingSpinner(!_dataInitialized)",
+      "note": "no overlay when cache exists",
+      "from": "fe/patches-37.json"
+    },
+    {
+      "has": "Promise.all([",
+      "note": "parallel db fetch",
+      "from": "fe/patches-37.json"
+    },
+    {
+      "hasNot": "gate.id = 'acc-gate'",
+      "note": "nav gate style not injected",
+      "from": "fe/patches-37.json"
+    },
+    {
+      "hasNot": "html2canvas.min.js\"></script>",
+      "note": "no blocking html2canvas",
+      "from": "fe/patches-37.json"
+    },
+    {
+      "has": "window.logClick",
+      "note": "logClick helper",
+      "from": "fe/patches-38.json"
+    },
+    {
+      "has": "logClick('open-tab'",
+      "note": "tab opens logged",
+      "from": "fe/patches-38.json"
+    },
+    {
+      "has": "logClick('logout'",
+      "note": "logout logged",
+      "from": "fe/patches-38.json"
+    },
+    {
+      "has": "kindOpt(_f.kind)",
+      "note": "kind filter in Change Log UI",
+      "from": "fe/patches-38.json"
+    },
+    {
+      "has": "area === 'click'",
+      "note": "click vs change badges",
+      "from": "fe/patches-38.json"
+    },
+    {
+      "has": "tabs: ['dash', 'leads', 'mt', 'rpt', 'exp', 'ann', 'platinv']",
+      "note": "accountant sees platinv tab",
+      "from": "fe/patches-39.json"
+    },
+    {
+      "has": "id=\"nav-platinv\"",
+      "note": "main nav Platform Invoices",
+      "from": "fe/patches-39.json"
+    },
+    {
+      "has": "piPipelineStart",
+      "note": "pipeline start",
+      "from": "fe/patches-39.json"
+    },
+    {
+      "has": "piShip",
+      "note": "ship finished pack",
+      "from": "fe/patches-39.json"
+    },
+    {
+      "has": "Guided monthly run",
+      "note": "pipeline copy",
+      "from": "fe/patches-39.json"
+    },
+    {
+      "has": "piUploadMany",
+      "note": "multi upload",
+      "from": "fe/patches-39.json"
+    },
+    {
+      "hasNot": "Until that is live, upload the PDFs here",
+      "note": "old tools-era copy gone",
+      "from": "fe/patches-39.json"
+    },
+    {
+      "has": "_opsAvailableCleaners",
+      "note": "available-cleaner helper",
+      "from": "fe/patches-40.json"
+    },
+    {
+      "has": "_opsCleanersOnSchedule",
+      "note": "on-schedule set helper",
+      "from": "fe/patches-40.json"
+    },
+    {
+      "has": "window._opsFastSave",
+      "note": "fast-save flag for Daily Ops",
+      "from": "fe/patches-40.json"
+    },
+    {
+      "has": "_dbPollMs",
+      "note": "adaptive poll interval",
+      "from": "fe/patches-40.json"
+    },
+    {
+      "has": "setTimeout(saveToDb, ms)",
+      "note": "variable save debounce",
+      "from": "fe/patches-40.json"
+    },
+    {
+      "has": "<option value=\"\">—</option>",
+      "note": "empty option on free-cleaner selects",
+      "from": "fe/patches-40.json"
+    },
+    {
+      "has": "OPS_TAG_PARK = 'Παρκοκρεβάτο'",
+      "note": "park tag",
+      "from": "fe/patches-41.json"
+    },
+    {
+      "has": "OPS_TAG_EARLY = 'Early check-in'",
+      "note": "early tag",
+      "from": "fe/patches-41.json"
+    },
+    {
+      "has": "function opsTogglePark(i)",
+      "note": "park toggle",
+      "from": "fe/patches-41.json"
+    },
+    {
+      "has": "function opsToggleEarly(i)",
+      "note": "early toggle",
+      "from": "fe/patches-41.json"
+    },
+    {
+      "has": "background:#DBEAFE;color:#1D4ED8",
+      "note": "clue/blue chip color",
+      "from": "fe/patches-41.json"
+    },
+    {
+      "has": "_cBlue",
+      "note": "blue comments styling",
+      "from": "fe/patches-41.json"
+    },
+    {
+      "has": "'Subtotal — Elysian charges, excl. mgmt fee'",
+      "note": "the on-screen subtotal names what it leaves out",
+      "from": "fe/patches-42.json"
+    },
+    {
+      "has": "Subtotal — Elysian charges, excl. mgmt fee${_hasVat",
+      "note": "the PDF summary says it too",
+      "from": "fe/patches-42.json"
+    },
+    {
+      "has": "before the management fee",
+      "note": "Net Earnings no longer implies the fee is already deducted",
+      "from": "fe/patches-42.json"
+    },
+    {
+      "has": "εκτός αμοιβής διαχείρισης",
+      "note": "the Greek report says the same thing",
+      "from": "fe/patches-42.json"
+    },
+    {
+      "has": "same words, two scopes",
+      "note": "why the label was wrong is written down",
+      "from": "fe/patches-42.json"
+    },
+    {
+      "hasNot": "'Subtotal — Elysian charges', -(cleanDeduct",
+      "note": "no bare on-screen label left",
+      "from": "fe/patches-42.json"
+    },
+    {
+      "hasNot": "Subtotal — Elysian charges${_hasVat",
+      "note": "no bare PDF label left",
+      "from": "fe/patches-42.json"
+    },
+    {
+      "hasNot": "Gross minus all taxes, platform fees & Elysian charges",
+      "note": "the caption that implied the fee was out is gone",
+      "from": "fe/patches-42.json"
+    },
+    {
+      "has": "function _dbHasPendingLocalEdits",
+      "note": "pending-edit guard",
+      "from": "fe/patches-43.json"
+    },
+    {
+      "has": "let _saveGen = 0",
+      "note": "save generation counter",
+      "from": "fe/patches-43.json"
+    },
+    {
+      "has": "_dbSaveInFlight",
+      "note": "in-flight save flag",
+      "from": "fe/patches-43.json"
+    },
+    {
+      "has": "if (typeof _opsSaveNow === 'function') _opsSaveNow();\n  if (typeof renderOps === 'function') renderOps();",
+      "note": "Παρκ/Early snapshot before render",
+      "from": "fe/patches-43.json"
+    },
+    {
+      "has": "r.cleanerNames = [];",
+      "note": "date-mismatch clears multi-cleaner lists",
+      "from": "fe/patches-43.json"
+    },
+    {
+      "has": "one invoice per apartment",
+      "note": "Booking apartment rule in UI",
+      "from": "fe/patches-44.json"
+    },
+    {
+      "has": "pi-bdc-checklist",
+      "note": "collect apartment checklist",
+      "from": "fe/patches-44.json"
+    },
+    {
+      "has": "pi-bdc-apt",
+      "note": "Booking apartment select",
+      "from": "fe/patches-44.json"
+    },
+    {
+      "has": "bdcApts",
+      "note": "health stores apartment list",
+      "from": "fe/patches-44.json"
+    },
+    {
+      "has": "piCollectContinue",
+      "note": "collect continue gate",
+      "from": "fe/patches-44.json"
+    },
+    {
+      "has": "piTagBookingApt",
+      "note": "retag Booking PDF to apartment",
+      "from": "fe/patches-44.json"
+    },
+    {
+      "has": "0 PDF",
+      "note": "0-PDF pull treated as failure (copy may vary)",
+      "from": "fe/patches-44.json"
+    },
+    {
+      "hasNot": "bookings covered)",
+      "note": "old booking-count expect copy removed",
+      "from": "fe/patches-44.json"
+    },
+    {
+      "has": "Pull Airbnb",
+      "note": "primary pull CTA (Airbnb-first)",
+      "from": "fe/patches-45.json"
+    },
+    {
+      "has": "piConnectSession",
+      "note": "one-time portal connect",
+      "from": "fe/patches-45.json"
+    },
+    {
+      "has": "pi-session-status",
+      "note": "session status panel",
+      "from": "fe/patches-45.json"
+    },
+    {
+      "has": "Emergency manual tools",
+      "note": "upload demoted",
+      "from": "fe/patches-45.json"
+    },
+    {
+      "has": "_piAutoPullOnce",
+      "note": "auto-pull on Collect",
+      "from": "fe/patches-45.json"
+    },
+    {
+      "has": "apartments: apts",
+      "note": "pull sends apartment hints",
+      "from": "fe/patches-45.json"
+    },
+    {
+      "hasNot": "Upload is the reliable path",
+      "note": "upload-first copy removed",
+      "from": "fe/patches-45.json"
+    },
+    {
+      "has": "t === 'platinv') && (typeof accTab !== 'function' || accTab(t))",
+      "note": "platinv visible when accTab allows",
+      "from": "fe/patches-46.json"
+    },
+    {
+      "has": "toggleHomeLeads",
+      "note": "minimise/expand toggle for Open leads",
+      "from": "fe/patches-47.json"
+    },
+    {
+      "has": "home_leads_expanded",
+      "note": "persists Open leads expand state",
+      "from": "fe/patches-47.json"
+    },
+    {
+      "has": "home-leads-arrow",
+      "note": "arrow control on Open leads header",
+      "from": "fe/patches-47.json"
+    },
+    {
+      "has": "Minimise open leads",
+      "note": "default extended title when open",
+      "from": "fe/patches-47.json"
+    },
+    {
+      "hasNot": "mine.slice(0,10)",
+      "note": "extended view lists all open leads",
+      "from": "fe/patches-47.json"
+    },
+    {
+      "has": "blockTable('Εφημερία', 'oncall', 1)",
+      "note": "On-call / Εφημερία block",
+      "from": "fe/patches-48.json"
+    },
+    {
+      "has": "function _opsSyncUnassignedToRepo",
+      "note": "auto-repo sync helper",
+      "from": "fe/patches-48.json"
+    },
+    {
+      "has": "function _opsCleanersAssigned",
+      "note": "assigned-cleaner set",
+      "from": "fe/patches-48.json"
+    },
+    {
+      "has": "_opsAvailableCleaners(cur, block)",
+      "note": "personSelect passes block",
+      "from": "fe/patches-48.json"
+    },
+    {
+      "has": "_opsAvailableCleaners(cur, 'adeies')",
+      "note": "adeies uses assigned-aware list",
+      "from": "fe/patches-48.json"
+    },
+    {
+      "has": "piAirExpectList",
+      "note": "Hosthub Airbnb code expect builder",
+      "from": "fe/patches-49.json"
+    },
+    {
+      "has": "airbnbReservations",
+      "note": "pull posts Hosthub codes",
+      "from": "fe/patches-49.json"
+    },
+    {
+      "has": "Pull Airbnb (Hosthub codes)",
+      "note": "Collect CTA",
+      "from": "fe/patches-49.json"
+    },
+    {
+      "has": "pi-air-checklist",
+      "note": "Airbnb code checklist",
+      "from": "fe/patches-49.json"
+    },
+    {
+      "has": "channel: 'airbnb'",
+      "note": "Airbnb-only pull for now",
+      "from": "fe/patches-49.json"
+    },
+    {
+      "has": "/api/platform-invoices/airbnb-codes",
+      "note": "FE calls codes endpoint",
+      "from": "fe/patches-50.json"
+    },
+    {
+      "has": "Backfilled",
+      "note": "shows persisted backfill",
+      "from": "fe/patches-50.json"
+    },
+    {
+      "has": "Hosthub has no reservation_id",
+      "note": "clearer empty-codes message",
+      "from": "fe/patches-50.json"
+    },
+    {
+      "has": "Airbnb session required",
+      "note": "connect banner",
+      "from": "fe/patches-51.json"
+    },
+    {
+      "has": "reconnectHint",
+      "note": "uses API hint",
+      "from": "fe/patches-51.json"
+    },
+    {
+      "has": "piConnectAirbnbInApp",
+      "note": "in-app connect",
+      "from": "fe/patches-52.json"
+    },
+    {
+      "has": "piSubmitAirbnbOtp",
+      "note": "OTP submit",
+      "from": "fe/patches-52.json"
+    },
+    {
+      "has": "pi-airbnb-connect",
+      "note": "connect panel",
+      "from": "fe/patches-52.json"
+    },
+    {
+      "has": "inAppConnectAirbnb",
+      "note": "uses status flag",
+      "from": "fe/patches-52.json"
+    },
+    {
+      "has": "Resend as email",
+      "note": "resend button",
+      "from": "fe/patches-53.json"
+    },
+    {
+      "has": "piResendAirbnbOtp",
+      "note": "resend fn",
+      "from": "fe/patches-53.json"
+    },
+    {
+      "has": "host email inbox",
+      "note": "email-first copy",
+      "from": "fe/patches-53.json"
+    },
+    {
+      "has": "piResendAirbnbOtp",
+      "note": "resend helper (superseded UI in patches-55)",
+      "from": "fe/patches-54.json"
+    },
+    {
+      "has": "pageSnippet",
+      "note": "page snippet on OTP panel",
+      "from": "fe/patches-54.json"
+    },
+    {
+      "has": "Resend as email",
+      "note": "resend as email control",
+      "from": "fe/patches-54.json"
+    },
+    {
+      "has": "code from email",
+      "note": "email placeholder",
+      "from": "fe/patches-55.json"
+    },
+    {
+      "has": "host email inbox",
+      "note": "email-first OTP copy",
+      "from": "fe/patches-55.json"
+    },
+    {
+      "hasNot": "SMS-only challenge",
+      "note": "paste-primary banner removed",
+      "from": "fe/patches-55.json"
+    },
+    {
+      "hasNot": "Airbnb stayed on SMS — use Paste session JSON",
+      "note": "no paste in resend msg",
+      "from": "fe/patches-55.json"
+    },
+    {
+      "has": "Connect API returned non-JSON",
+      "note": "clear connect error",
+      "from": "fe/patches-56.json"
+    },
+    {
+      "has": "Connect poll returned non-JSON",
+      "note": "clear poll error",
+      "from": "fe/patches-56.json"
+    },
+    {
+      "has": "host email inbox",
+      "note": "email OTP copy (marker superseded)",
+      "from": "fe/patches-57.json"
+    },
+    {
+      "has": "_piAirbnbConnectStatus",
+      "note": "status guard",
+      "from": "fe/patches-58.json"
+    },
+    {
+      "has": "pi-airbnb-otp-hint",
+      "note": "stable hint node",
+      "from": "fe/patches-58.json"
+    },
+    {
+      "has": "Soft-update while awaiting OTP",
+      "note": "comment",
+      "from": "fe/patches-58.json"
+    },
+    {
+      "has": "Soft-update while awaiting OTP",
+      "note": "soft update retained",
+      "from": "fe/patches-58.json"
+    },
+    {
+      "has": "host email inbox",
+      "note": "email OTP copy",
+      "from": "fe/patches-59.json"
+    },
+    {
+      "has": "host email inbox",
+      "note": "email OTP copy",
+      "from": "fe/patches-60.json"
+    },
+    {
+      "has": "host email inbox",
+      "note": "email OTP copy",
+      "from": "fe/patches-61.json"
+    },
+    {
+      "has": "Connect emails <b>one</b> code",
+      "note": "one code copy",
+      "from": "fe/patches-62.json"
+    },
+    {
+      "has": "1-minute wait",
+      "note": "cooldown copy",
+      "from": "fe/patches-62.json"
+    },
+    {
+      "has": "pi-airbnb-resend",
+      "note": "resend button id",
+      "from": "fe/patches-63.json"
+    },
+    {
+      "has": "_piAirbnbOtpSince",
+      "note": "cooldown stamp",
+      "from": "fe/patches-63.json"
+    },
+    {
+      "has": "Resend stays locked for the 1-minute wait",
+      "note": "hint copy",
+      "from": "fe/patches-63.json"
+    },
+    {
+      "hasNot": "Do not Resend during Airbnb’s 1-minute wait — it will not send.",
+      "note": "old hint gone",
+      "from": "fe/patches-63.json"
+    },
+    {
+      "has": "click Connect Airbnb, enter the email code, then Pull again",
+      "note": "in-app pull copy",
+      "from": "fe/patches-64.json"
+    },
+    {
+      "hasNot": "one-time laptop session",
+      "note": "laptop pull copy gone",
+      "from": "fe/patches-64.json"
+    },
+    {
+      "has": "Connecting Airbnb — email code required",
+      "note": "connect copy",
+      "from": "fe/patches-65.json"
+    },
+    {
+      "hasNot": ">Connecting Airbnb…<",
+      "note": "old ellipsis title gone",
+      "from": "fe/patches-65.json"
+    },
+    {
+      "has": "Airbnb page: ' + String(job.pageSnippet)",
+      "note": "error snippet",
+      "from": "fe/patches-66.json"
+    },
+    {
+      "has": "Signing in — wait for the email-code screen",
+      "note": "live marker copy",
+      "from": "fe/patches-67.json"
+    },
+    {
+      "has": "Connecting Airbnb — email code required",
+      "note": "title kept",
+      "from": "fe/patches-67.json"
+    },
+    {
+      "has": "Complete Airbnb picture check",
+      "note": "captcha panel",
+      "from": "fe/patches-68.json"
+    },
+    {
+      "has": "piAirbnbCaptchaClick",
+      "note": "captcha click handler",
+      "from": "fe/patches-68.json"
+    },
+    {
+      "has": "/captcha.png?v=",
+      "note": "live captcha image",
+      "from": "fe/patches-68.json"
+    },
+    {
+      "has": "/captcha/click",
+      "note": "click relay",
+      "from": "fe/patches-68.json"
+    },
+    {
+      "has": "function rptOvKey(",
+      "note": "override key helper",
+      "from": "fe/patches-69.json"
+    },
+    {
+      "has": "rptCleanStep(1,\\''+aid",
+      "note": "grouped cleaning stepper passes apartment id",
+      "from": "fe/patches-69.json"
+    },
+    {
+      "has": "moSubHtml(txt, p.a.id)",
+      "note": "grouped software/tax rows keep the months stepper",
+      "from": "fe/patches-69.json"
+    },
+    {
+      "has": "cleanOverrides: (function ()",
+      "note": "close snapshot captures per-member cleaning overrides",
+      "from": "fe/patches-69.json"
+    },
+    {
+      "has": "moOverrides: (function ()",
+      "note": "close snapshot captures per-member months overrides",
+      "from": "fe/patches-69.json"
+    },
+    {
+      "has": "Mov1 grouped apt A cleaning override",
+      "note": "self-test for mixed grouped overrides",
+      "from": "fe/patches-69.json"
+    },
+    {
+      "hasNot": "_multi ? null : cleanOverride",
+      "note": "grouped packets no longer drop the cleaning override",
+      "from": "fe/patches-69.json"
+    },
+    {
+      "hasNot": "const moStepHtml = () => _multi ? '' :",
+      "note": "month stepper no longer hidden on grouped reports",
+      "from": "fe/patches-69.json"
+    },
+    {
+      "has": "live Airbnb browser (email-first relay)",
+      "note": "live marker",
+      "from": "fe/patches-70.json"
+    },
+    {
+      "has": "Complete Airbnb picture check",
+      "note": "interactive panel kept",
+      "from": "fe/patches-70.json"
+    },
+    {
+      "has": "if (apt.profile === profileKey) return;",
+      "note": "re-clicking the active profile does not reset flags",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "has": "Kostas's Daily Ops save dropped the",
+      "note": "boot comment records the Michalakopoulou wipe",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "has": "function _cfgInputFocused()",
+      "note": "config focus blocks DB poll reload",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "has": "el.closest('#cfg-grid') && (el.tagName === 'INPUT'",
+      "note": "renderCfg skips while a config input is focused",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "has": "f==='ownerEmail'||f==='ownerEmail2'",
+      "note": "setApt does not rebuild the card after an email save",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "has": "inputmode=\"email\" autocomplete=\"email\"",
+      "note": "owner emails are text fields so pasted addresses save",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "has": "S.monthlyClose[_mk][id].emailed = _em;",
+      "note": "send stamps emailed on the close record",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "has": "var em = (r && r.emailed) || (lk && lk.email);",
+      "note": "Email stage honours the close-record stamp",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "has": "if (!mr.remit) mr.remit = rec.remit;",
+      "note": "confirm copies remit onto every report member",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "hasNot": "if (S.bks?.length || S.exps?.length) _dataInitialized = true;",
+      "note": "localStorage no longer marks the client safe to POST",
+      "from": "fe/patches-71.json"
+    },
+    {
+      "has": "after Verify, wait while Airbnb continues",
+      "note": "settling copy",
+      "from": "fe/patches-72.json"
+    },
+    {
+      "has": "Complete Airbnb picture check",
+      "note": "captcha panel retained",
+      "from": "fe/patches-72.json"
+    },
+    {
+      "has": "window.mcReturnAfterSend = function ()",
+      "note": "return-to-queue helper after a pipeline send",
+      "from": "fe/patches-73.json"
+    },
+    {
+      "has": "showTab('mt', document.querySelector('.nav-btn[data-tab=\"mt\"]'))",
+      "note": "returns to Monthly Tasks",
+      "from": "fe/patches-73.json"
+    },
+    {
+      "has": "typeof window.mcReturnAfterSend === 'function' && window.mcReturnAfterSend()",
+      "note": "send success calls the return helper",
+      "from": "fe/patches-73.json"
+    },
+    {
+      "has": "setTimeout(() => showPostReportReminders(apt), 500);",
+      "note": "a send from Reports still shows post-report reminders",
+      "from": "fe/patches-73.json"
+    },
+    {
+      "has": "j.captchaVerify === false",
+      "note": "tile and Verify responses take different frontend paths",
+      "from": "fe/patches-74.json"
+    },
+    {
+      "has": "img.src = '/api/platform-invoices/sessions/airbnb/login/'",
+      "note": "tile click refreshes the existing image directly",
+      "from": "fe/patches-74.json"
+    },
+    {
+      "has": "if (!(captchaImg && r.job.status === 'awaiting_captcha')) piRenderAirbnbConnect(r.job);",
+      "note": "polling preserves the active CAPTCHA DOM",
+      "from": "fe/patches-74.json"
+    },
+    {
+      "has": "Submit code to Airbnb",
+      "note": "OTP submit live marker",
+      "from": "fe/patches-75.json"
+    },
+    {
+      "has": "placeholder=\"code from email\"",
+      "note": "email-code input retained",
+      "from": "fe/patches-75.json"
+    },
+    {
+      "has": "A resend is shown as successful only when Airbnb confirms it",
+      "note": "resend confirmation copy",
+      "from": "fe/patches-76.json"
+    },
+    {
+      "has": "Submit code to Airbnb",
+      "note": "robust submit retained",
+      "from": "fe/patches-76.json"
+    },
+    {
+      "has": "OTP diagnostic: input visible=",
+      "note": "Connect shows concise OTP diagnostic prefix",
+      "from": "fe/patches-77.json"
+    },
+    {
+      "has": "; auth=' + auth",
+      "note": "diagnostic line includes latest sanitized auth event",
+      "from": "fe/patches-77.json"
+    },
+    {
+      "has": "body: JSON.stringify({ x: x, y: y, captchaVerify: captchaVerify })",
+      "note": "frontend sends explicit Verify-region hint",
+      "from": "fe/patches-77.json"
+    },
+    {
+      "has": "x >= naturalW * 0.57 && x <= naturalW * 0.70",
+      "note": "Verify hint is bounded to the screenshot bottom-right region",
+      "from": "fe/patches-77.json"
+    },
+    {
+      "has": "function renderEmployees",
+      "note": "Υπάλληλοι tab renderer",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "cleanerRoles: S.cleanerRoles || {}",
+      "note": "persist cleanerRoles",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "function _opsIsCleanerRole",
+      "note": "role-aware cleaner check",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "function _opsSyncUnassignedToRepo",
+      "note": "auto-repo still present",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "_opsIsCleanerRole(n)",
+      "note": "auto-Ρεπό filters to Cleaner-role",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "function opsCopyCleanList",
+      "note": "WhatsApp text list",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "Αντιγραφή λίστας",
+      "note": "copy list button",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "window._opsCleanSort",
+      "note": "sort toggle state",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "Κατάσταση",
+      "note": "status sort label",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "Ανά καθαρίστρια",
+      "note": "by-cleaner sort label",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "data-crew-sheet=\"1\"",
+      "note": "crew-sheet screenshot marker",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "function _empRefreshIfOpen",
+      "note": "Ops→Employees live refresh",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "id=\"nav-emp\"",
+      "note": "Υπάλληλοι nav",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "Άνοιγμα Υπαλλήλων",
+      "note": "modal link to Personnel",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "ops-drivers-datalist",
+      "note": "transporter-preferring drivers list",
+      "from": "fe/patches-78.json"
+    },
+    {
+      "has": "Operate Airbnb directly",
+      "note": "interactive title",
+      "from": "fe/patches-79.json"
+    },
+    {
+      "has": "pi-airbnb-browser",
+      "note": "interactive image",
+      "from": "fe/patches-79.json"
+    },
+    {
+      "has": "piAirbnbBrowserClick",
+      "note": "click relay",
+      "from": "fe/patches-79.json"
+    },
+    {
+      "has": "piAirbnbBrowserType",
+      "note": "type relay",
+      "from": "fe/patches-79.json"
+    },
+    {
+      "has": "piAirbnbBrowserKey",
+      "note": "key relay",
+      "from": "fe/patches-79.json"
+    },
+    {
+      "has": "/browser.png?v=",
+      "note": "live screenshot",
+      "from": "fe/patches-79.json"
+    },
+    {
+      "has": "pi-airbnb-browser-text",
+      "note": "type box",
+      "from": "fe/patches-79.json"
+    },
+    {
+      "has": "pi-airbnb-browser-hint",
+      "note": "live hint without replacing the type box",
+      "from": "fe/patches-79.json"
+    },
+    {
+      "has": "Save session for Pull",
+      "note": "manual save control",
+      "from": "fe/patches-80.json"
+    },
+    {
+      "has": "piAirbnbBrowserSave",
+      "note": "save relay",
+      "from": "fe/patches-80.json"
+    },
+    {
+      "has": "reuses this live browser",
+      "note": "Pull copy",
+      "from": "fe/patches-80.json"
+    },
+    {
+      "has": "!b.cancelled && (b.checkOut === date || b.checkOut === dateFmt)",
+      "note": "cancelled bookings are not checkouts",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "function _opsNightsOf(b)",
+      "note": "nights helper",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "function _opsCheckinOnlyScheduleExtras(occupied)",
+      "note": "check-in-only sofa extras helper",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "function _opsArrivalNeedsSofa(rowOrBk)",
+      "note": "sofa need from capacity or comments",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "nextNights: nxt ? (_opsNightsOf(nxt)) : null,",
+      "note": "same-day nights from helper",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "nextNights: _opsNightsOf(bk), nextGuest: bk.guestName||'',",
+      "note": "check-in-only nights from helper",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "if (f.checkinSameDay === 'checkin_only') out.checkoutGuest = '';",
+      "note": "stale snapshot checkout guest cleared",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "const occupied = new Set(turnovers.map(function (r) { return String(r.aptId || r.aptName); }));",
+      "note": "occupied is turnovers only",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "_opsCheckinOnlyScheduleExtras(Array.from(occupied).concat(Array.from(extraApts)))",
+      "note": "check-in-only sofa extras appended",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "hasNot": "const occupied = new Set((_opsRows || []).map(function (r) { return r.aptId || r.aptName; }));",
+      "note": "check-in-only no longer occupies extras",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "cleanType: needsSofa ? 'sofa_bed' : 'refresh'",
+      "note": "vacant sofa arrivals stay SOFA BED",
+      "from": "fe/patches-81.json"
+    },
+    {
+      "has": "out.people = '';",
+      "note": "no-arrival merge clears people",
+      "from": "fe/patches-82.json"
+    },
+    {
+      "has": "frozen 7-night / 6-people check-in (Athenian Cedar 15/8).",
+      "note": "Cedar 15/8 comment",
+      "from": "fe/patches-82.json"
+    },
+    {
+      "has": ").filter(function (row) { return !!row; });",
+      "note": "vanished snapshot rows are dropped",
+      "from": "fe/patches-82.json"
+    },
+    {
+      "has": "function _opsHasArrival(row)",
+      "note": "arrival helper",
+      "from": "fe/patches-82.json"
+    },
+    {
+      "has": "if (!_opsHasArrival(row)) {",
+      "note": "sofa comments require an arrival",
+      "from": "fe/patches-82.json"
+    },
+    {
+      "has": "const tag = _opsHasArrival(row) ? _opsLongStayTag(row.nextNights) : '';",
+      "note": "long-stay comment requires an arrival",
+      "from": "fe/patches-82.json"
+    },
+    {
+      "has": "const suffix = (row.checkinSameDay === 'yes' && row.nextNights) ? ' ('+row.nextNights+' νύχτες)' : '';",
+      "note": "nights suffix only on Ναι",
+      "from": "fe/patches-82.json"
+    },
+    {
+      "has": "Live Hosthub bookings are the source of check-ins/checkouts.",
+      "note": "live bookings own the ops list",
+      "from": "fe/patches-83.json"
+    },
+    {
+      "hasNot": "onclick=\"opsSaveSnapshot()\"",
+      "note": "Snapshot button removed",
+      "from": "fe/patches-83.json"
+    },
+    {
+      "hasNot": "💾 Snapshot",
+      "note": "Snapshot button label gone",
+      "from": "fe/patches-83.json"
+    },
+    {
+      "has": "OPS_OVERLAY",
+      "note": "operator fields overlay from the day save",
+      "from": "fe/patches-83.json"
+    },
+    {
+      "has": "freshRows.map(function (f)",
+      "note": "rows start from live bookings",
+      "from": "fe/patches-83.json"
+    },
+    {
+      "has": "id=\"nav-emp\">Personnel</button>",
+      "note": "nav says Personnel",
+      "from": "fe/patches-84.json"
+    },
+    {
+      "has": ">Personnel</h2>",
+      "note": "Personnel page title",
+      "from": "fe/patches-84.json"
+    },
+    {
+      "has": "Open Personnel",
+      "note": "modal opens Personnel",
+      "from": "fe/patches-84.json"
+    },
+    {
+      "has": "Άνοιγμα Υπαλλήλων",
+      "note": "legacy patches-78 assert token retained",
+      "from": "fe/patches-84.json"
+    },
+    {
+      "hasNot": "id=\"nav-emp\">Υπάλληλοι</button>",
+      "note": "old nav label gone",
+      "from": "fe/patches-84.json"
+    },
+    {
+      "has": "function renderEmployees",
+      "note": "internal renderer name unchanged",
+      "from": "fe/patches-84.json"
+    },
+    {
+      "has": "piWatchPullJob",
+      "note": "progress polling",
+      "from": "fe/patches-85.json"
+    },
+    {
+      "has": "upstream error",
+      "note": "proxy cutoff is explained",
+      "from": "fe/patches-85.json"
+    },
+    {
+      "has": "channel: 'airbnb'",
+      "note": "Airbnb-only pull",
+      "from": "fe/patches-85.json"
+    },
+    {
+      "has": "Airbnb pull saved 0 PDFs",
+      "note": "zero-PDF copy kept",
+      "from": "fe/patches-85.json"
+    },
+    {
+      "has": "/api/platform-invoices/pull/",
+      "note": "polls job status",
+      "from": "fe/patches-85.json"
+    },
+    {
+      "has": "pull status failed",
+      "note": "lost job is an error, not a hang",
+      "from": "fe/patches-85.json"
+    },
+    {
+      "hasNot": "one-time laptop session",
+      "note": "laptop JSON is still not the path",
+      "from": "fe/patches-85.json"
+    },
+    {
+      "has": "function pcClearGroup",
+      "note": "clearGroup helper for Payments Check",
+      "from": "fe/patches-86.json"
+    },
+    {
+      "has": "pcClearGroup(b)",
+      "note": "BDC display uses clearGroup",
+      "from": "fe/patches-86.json"
+    },
+    {
+      "has": "apt.clearGroup = 'Votsala'",
+      "note": "Votsala heal in applyDefaults",
+      "from": "fe/patches-86.json"
+    },
+    {
+      "has": "\"clearGroup\": \"Votsala\"",
+      "note": "DEFAULT_APT_CONFIG seeds Votsala group",
+      "from": "fe/patches-86.json"
+    },
+    {
+      "has": "Pc16 Votsala clearGroup = one BDC line",
+      "note": "Pc16 regression test",
+      "from": "fe/patches-86.json"
+    },
+    {
+      "hasNot": "const pcAptKey = b => ((typeof normAptName === 'function' ? normAptName(b.aptName || '')",
+      "note": "old per-name pcAptKey removed",
+      "from": "fe/patches-86.json"
+    },
+    {
+      "has": "id=\"ops-crew-share-bar\"",
+      "note": "prominent crew share bar",
+      "from": "fe/patches-87.json"
+    },
+    {
+      "has": "Αποστολή στο συνεργείο",
+      "note": "share bar title",
+      "from": "fe/patches-87.json"
+    },
+    {
+      "has": "Αντιγραφή εικόνας",
+      "note": "primary image CTA",
+      "from": "fe/patches-87.json"
+    },
+    {
+      "has": "Αντιγραφή κειμένου",
+      "note": "WhatsApp text CTA",
+      "from": "fe/patches-87.json"
+    },
+    {
+      "has": "function _opsBuildCrewPoster",
+      "note": "dedicated crew poster builder",
+      "from": "fe/patches-87.json"
+    },
+    {
+      "has": "data-crew-poster",
+      "note": "poster marker",
+      "from": "fe/patches-87.json"
+    },
+    {
+      "has": "Φτιάχνω αφίσα συνεργείου",
+      "note": "poster capture toast",
+      "from": "fe/patches-87.json"
+    },
+    {
+      "has": "Test pull (5 codes)",
+      "note": "gold default is a 5-code test",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "Pull Airbnb (Hosthub codes)",
+      "note": "full-month button kept",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "piPull({ limit: 5 })",
+      "note": "test posts limit 5",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "channel: 'airbnb'",
+      "note": "Airbnb-only pull",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "Airbnb pull saved 0 PDFs",
+      "note": "zero-PDF copy kept",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "limit: limit || undefined",
+      "note": "server receives limit",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "airbnbReservations.slice(0, limit)",
+      "note": "browser slices before POST",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "Do not auto-run Pull",
+      "note": "Collect no longer auto-pulls 322 codes",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "_piAutoPullOnce",
+      "note": "legacy auto-pull flag still present",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "pi-pull-all-btn",
+      "note": "full pull button id",
+      "from": "fe/patches-88.json"
+    },
+    {
+      "has": "data-crew-dense",
+      "note": "dense poster marker",
+      "from": "fe/patches-89.json"
+    },
+    {
+      "has": "width:560px",
+      "note": "narrow poster width",
+      "from": "fe/patches-89.json"
+    },
+    {
+      "has": "padding:3px 5px",
+      "note": "tight row padding",
+      "from": "fe/patches-89.json"
+    },
+    {
+      "has": "Φτιάχνω πυκνό πρόγραμμα",
+      "note": "dense capture toast",
+      "from": "fe/patches-89.json"
+    },
+    {
+      "has": "function _opsBuildCrewPoster",
+      "note": "poster builder kept",
+      "from": "fe/patches-89.json"
+    },
+    {
+      "has": "function piStoreApt",
+      "note": "apartment store key",
+      "from": "fe/patches-90.json"
+    },
+    {
+      "has": "stored by apartment / month / platform",
+      "note": "review copy",
+      "from": "fe/patches-90.json"
+    },
+    {
+      "has": "Pull Airbnb (Hosthub codes)",
+      "note": "full pull label kept",
+      "from": "fe/patches-90.json"
+    },
+    {
+      "has": "Test pull (5 codes)",
+      "note": "test pull kept",
+      "from": "fe/patches-90.json"
+    },
+    {
+      "has": "channel: 'airbnb'",
+      "note": "Airbnb-only pull",
+      "from": "fe/patches-90.json"
+    },
+    {
+      "has": "g.plat + ' · ' + monthVal() + ' · '",
+      "note": "vault header is platform · month · apartment",
+      "from": "fe/patches-90.json"
+    },
+    {
+      "has": "/credit/i.test(it.filename || it.partner || '')",
+      "note": "credit notes labeled from filename",
+      "from": "fe/patches-90.json"
+    },
+    {
+      "has": "Stop pull",
+      "note": "stop button label",
+      "from": "fe/patches-91.json"
+    },
+    {
+      "has": "piStopPull",
+      "note": "stop wired",
+      "from": "fe/patches-91.json"
+    },
+    {
+      "has": "/api/platform-invoices/pull-stop",
+      "note": "stop endpoint",
+      "from": "fe/patches-91.json"
+    },
+    {
+      "has": "job.status === 'cancelled'",
+      "note": "watch ends on cancel",
+      "from": "fe/patches-91.json"
+    },
+    {
+      "has": "Pull Airbnb (Hosthub codes)",
+      "note": "full pull kept",
+      "from": "fe/patches-91.json"
+    },
+    {
+      "has": "Test pull (5 codes)",
+      "note": "test pull kept",
+      "from": "fe/patches-91.json"
+    },
+    {
+      "has": "channel: 'airbnb'",
+      "note": "Airbnb-only pull",
+      "from": "fe/patches-91.json"
+    },
+    {
+      "has": "Pull stopped",
+      "note": "stop copy",
+      "from": "fe/patches-92.json"
+    },
+    {
+      "has": "no pull job with that id",
+      "note": "vanished job is treated as stop",
+      "from": "fe/patches-92.json"
+    },
+    {
+      "has": "Stop pull",
+      "note": "stop button kept",
+      "from": "fe/patches-92.json"
+    },
+    {
+      "has": "Pull Airbnb (Hosthub codes)",
+      "note": "full pull kept",
+      "from": "fe/patches-92.json"
+    },
+    {
+      "has": "Test pull (5 codes)",
+      "note": "test pull kept",
+      "from": "fe/patches-92.json"
+    },
+    {
+      "has": "channel: 'airbnb'",
+      "note": "Airbnb-only pull",
+      "from": "fe/patches-92.json"
+    },
+    {
+      "has": "pull status failed",
+      "note": "other status errors still throw",
+      "from": "fe/patches-92.json"
+    },
+    {
+      "has": "ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ",
+      "note": "drivers routes label",
+      "from": "fe/patches-93.json"
+    },
+    {
+      "has": "imatPoster",
+      "note": "poster builds Ιματισμός block",
+      "from": "fe/patches-93.json"
+    },
+    {
+      "has": "driversPoster",
+      "note": "poster builds drivers routes block",
+      "from": "fe/patches-93.json"
+    },
+    {
+      "has": "_opsAppendStaffToCleanList",
+      "note": "text list includes staff extras",
+      "from": "fe/patches-93.json"
+    },
+    {
+      "has": "Διαδρομή:",
+      "note": "poster shows route stops",
+      "from": "fe/patches-93.json"
+    },
+    {
+      "has": "ΙΜΑΤΙΣΜΟΣ",
+      "note": "imatismos section header on schedule",
+      "from": "fe/patches-93.json"
+    },
+    {
+      "has": "Ιματισμός",
+      "note": "legacy imatismos token kept",
+      "from": "fe/patches-93.json"
+    },
+    {
+      "has": "keyRaw = String(r.aptId || r.aptName || '') + '::' + String(r.cleanType || 'turnover')",
+      "note": "composite clean row key",
+      "from": "fe/patches-94.json"
+    },
+    {
+      "has": "JSON.stringify(keyRaw)",
+      "note": "JSON-safe inline handler keys",
+      "from": "fe/patches-94.json"
+    },
+    {
+      "has": "opsToggleCleanDoneKey(' + key + ',this.checked)",
+      "note": "done checkbox uses JSON key",
+      "from": "fe/patches-94.json"
+    },
+    {
+      "has": "type && type !== 'turnover'",
+      "note": "extras resolved before turnover",
+      "from": "fe/patches-94.json"
+    },
+    {
+      "has": "Legacy keys (apt only, no ::type)",
+      "note": "legacy apt-only keys still work",
+      "from": "fe/patches-94.json"
+    },
+    {
+      "has": "function _opsOnOpsDate",
+      "note": "calendar-day booking match",
+      "from": "fe/patches-95.json"
+    },
+    {
+      "has": "timeZone: 'Europe/Athens'",
+      "note": "Athens-local today",
+      "from": "fe/patches-95.json"
+    },
+    {
+      "has": "18/23 stuck",
+      "note": "check-in-only cleanDone merge comment",
+      "from": "fe/patches-95.json"
+    },
+    {
+      "has": "Do not delete cleansCompleteFor",
+      "note": "no day-roll undo",
+      "from": "fe/patches-95.json"
+    },
+    {
+      "has": "e_opsWorkingDate",
+      "note": "working day persist",
+      "from": "fe/patches-95.json"
+    },
+    {
+      "has": "opsWorkingDate",
+      "note": "shared working day",
+      "from": "fe/patches-95.json"
+    },
+    {
+      "has": "Test pull (5 codes)",
+      "note": "gold test button kept",
+      "from": "fe/patches-96.json"
+    },
+    {
+      "has": "Pull Airbnb (Hosthub codes)",
+      "note": "full-month button kept",
+      "from": "fe/patches-96.json"
+    },
+    {
+      "has": "piPull({ limit: 5 })",
+      "note": "test posts limit 5",
+      "from": "fe/patches-96.json"
+    },
+    {
+      "has": "Test pull: latest ",
+      "note": "test pull is latest ids",
+      "from": "fe/patches-96.json"
+    },
+    {
+      "has": "airbnbReservations.slice(0, limit)",
+      "note": "browser still slices before POST",
+      "from": "fe/patches-96.json"
+    },
+    {
+      "has": "createdOnChannel: x.createdOnChannel",
+      "note": "codes posted with Hosthub dates",
+      "from": "fe/patches-96.json"
+    },
+    {
+      "has": "channel: 'airbnb'",
+      "note": "Airbnb-only pull",
+      "from": "fe/patches-96.json"
+    },
+    {
+      "has": "Airbnb pull saved 0 PDFs",
+      "note": "zero-PDF copy kept",
+      "from": "fe/patches-96.json"
+    },
+    {
+      "has": "Stop pull",
+      "note": "stop kept",
+      "from": "fe/patches-96.json"
+    },
+    {
+      "has": "function _opsLookupSavedClean",
+      "note": "type-flip cleanDone carry",
+      "from": "fe/patches-97.json"
+    },
+    {
+      "has": "function _opsAptKeyList",
+      "note": "dual apt keys",
+      "from": "fe/patches-97.json"
+    },
+    {
+      "has": "e_opsWorkingDate",
+      "note": "sticky working day read",
+      "from": "fe/patches-97.json"
+    },
+    {
+      "has": "poll cannot wipe checks",
+      "note": "immediate saveToDb on toggle",
+      "from": "fe/patches-97.json"
+    },
+    {
+      "has": "unpriced reservations still need Daily Ops",
+      "note": "keep zero-fee bookings",
+      "from": "fe/patches-97.json"
+    },
+    {
+      "has": "flip refresh↔sofa_bed once capacity loads",
+      "note": "rental-info full re-render",
+      "from": "fe/patches-97.json"
+    },
+    {
+      "has": "PDFs by apartment — click Open to view",
+      "note": "vault heading",
+      "from": "fe/patches-98.json"
+    },
+    {
+      "has": "/api/platform-invoices/' + id + '/file",
+      "note": "Open hits file route",
+      "from": "fe/patches-98.json"
+    },
+    {
+      "has": "open them under PDFs by apartment below",
+      "note": "pull success points at vault",
+      "from": "fe/patches-98.json"
+    },
+    {
+      "has": "pi-review-list",
+      "note": "Review lists PDFs too",
+      "from": "fe/patches-98.json"
+    },
+    {
+      "has": "Test pull (5 codes)",
+      "note": "test pull kept",
+      "from": "fe/patches-98.json"
+    },
+    {
+      "has": "Pull Airbnb (Hosthub codes)",
+      "note": "full pull kept",
+      "from": "fe/patches-98.json"
+    },
+    {
+      "has": "Airbnb pull saved 0 PDFs",
+      "note": "zero-PDF copy kept",
+      "from": "fe/patches-98.json"
+    },
+    {
+      "has": "channel: 'airbnb'",
+      "note": "Airbnb-only pull",
+      "from": "fe/patches-98.json"
+    },
+    {
+      "has": "function opsRestartCleaningSchedule",
+      "note": "restart day cleans",
+      "from": "fe/patches-99.json"
+    },
+    {
+      "has": "opsRestartCleaningSchedule()",
+      "note": "toolbar button",
+      "from": "fe/patches-99.json"
+    },
+    {
+      "has": "Επανεκκίνηση ✓",
+      "note": "visible restart label",
+      "from": "fe/patches-99.json"
+    },
+    {
+      "has": "function _opsUiStyles()",
+      "note": "Daily Ops style layer is injected once",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "<style id=\"ops-ui-v2\">",
+      "note": "style block rendered by renderOps",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "function _opsAptLines(row)",
+      "note": "name/address split helper",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "class=\"opsx-bar",
+      "note": "sticky command bar",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "opsx-main thead th{position:sticky",
+      "note": "checkout board header sticks",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "opsx-cln thead th{position:sticky",
+      "note": "cleaning schedule header sticks",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": ".opsx-chk{width:18px;height:18px",
+      "note": "18px checkboxes",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": ".opsx-tg{display:inline-block;height:30px",
+      "note": "larger Late/Pri/Παρκ/Early hit targets",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "id=\"ops-clean-count\"",
+      "note": "done/total counter kept, now the big number",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "class=\"opsx-track",
+      "note": "cleaning progress bar",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "Επανεκκίνηση ✓",
+      "note": "restart button survives the redesign",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "Αντιγραφή εικόνας",
+      "note": "crew share bar intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "Καθαρίστριες",
+      "note": "cleaner manager button intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ",
+      "note": "drivers block intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "ΙΜΑΤΙΣΜΟΣ",
+      "note": "linen block intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "blockTable('Εφημερία', 'oncall', 1)",
+      "note": "Εφημερία/Ρεπό/Άδειες blocks intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "Late / Pri",
+      "note": "checkout board columns unchanged",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "ops-cleaners-datalist",
+      "note": "cleaner datalist intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "ops-drivers-datalist",
+      "note": "driver datalist intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "data-cleaners-cell=\"1\"",
+      "note": "poster/copy hooks intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "data-crew-sheet=\"1\"",
+      "note": "crew sheet hook intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "data-clean-note=\"",
+      "note": "comment mirror hook intact",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "data-field=\"comments\"",
+      "note": "auto-save reads the row inputs by field",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "has": "JSON.stringify(keyRaw).replace(/\"/g, '&quot;')",
+      "note": "cleaning row handlers keep their key inside the attribute",
+      "from": "fe/patches-100.json"
+    },
+    {
+      "hasNot": "border:1px solid #ddd;text-align:center;font-size:11px;color:#666",
+      "note": "old grey grid chrome is gone",
+      "from": "fe/patches-100.json"
+    }
+  ],
+  "srv": [
+    {
+      "has": "CREATE TABLE IF NOT EXISTS leads",
+      "note": "leads table is self-healing like the others",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_meta",
+      "note": "Meta ids are unique, manual leads exempt",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "async function leadIngest(",
+      "note": "one door for every lead source",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "async function leadPickOwner(",
+      "note": "least-open-leads assignment",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "async function leadFindDuplicate(",
+      "note": "duplicate guard before a manual lead is created",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "app.post('/api/leads'",
+      "note": "manual lead creation endpoint",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "app.post('/api/leads/:id/archive'",
+      "note": "archive and restore",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "app.delete('/api/leads/:id'",
+      "note": "permanent erase endpoint",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "This lead has become an apartment",
+      "note": "erasing a converted lead is refused",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "status = 'erased'",
+      "note": "erase keeps a tombstone rather than dropping the row",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "const metaConfigured = () => !!META_TOKEN;",
+      "note": "Meta is optional; everything works without it",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "async function metaPull(",
+      "note": "Meta lead pull",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "app.post('/api/lead-assets'",
+      "note": "brochure and contract are uploaded, not deployed",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "5 * 60 * 1000",
+      "note": "five-minute poll",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "CREATE TABLE IF NOT EXISTS app_data",
+      "note": "the leads module ensures app_data too, not just its own tables",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "Meta is not connected (set META_PAGE_TOKEN",
+      "note": "unconfigured Meta answers 503, not a generic failure",
+      "from": "srv/patches-4.json"
+    },
+    {
+      "has": "archiveRetentionMonths: 24",
+      "note": "archive keeps two years by default",
+      "from": "srv/patches-5.json"
+    },
+    {
+      "has": "metaSinceDate: ''",
+      "note": "the first Meta import can be bounded by date",
+      "from": "srv/patches-5.json"
+    },
+    {
+      "has": "const q = String(req.query.q || '').trim().toLowerCase();",
+      "note": "the lead list takes a search term",
+      "from": "srv/patches-5.json"
+    },
+    {
+      "has": "lower(coalesce(archive_reason,'')) LIKE $1",
+      "note": "search covers the archive reason",
+      "from": "srv/patches-5.json"
+    },
+    {
+      "has": "where + qWhere",
+      "note": "the search is actually applied to the query",
+      "from": "srv/patches-5.json"
+    },
+    {
+      "has": "async function leadRetentionSweep(",
+      "note": "retention sweep exists",
+      "from": "srv/patches-5.json"
+    },
+    {
+      "has": "archive retention: older than",
+      "note": "the sweep records why on the timeline",
+      "from": "srv/patches-5.json"
+    },
+    {
+      "has": "apt_id IS NULL",
+      "note": "converted leads are never swept",
+      "from": "srv/patches-5.json"
+    },
+    {
+      "has": "ADD COLUMN IF NOT EXISTS property_address",
+      "note": "existing production table gains the columns",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "function leadExtractProperty(",
+      "note": "property extractor exists",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "function leadNorm(",
+      "note": "accent- and case-insensitive matching",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "τοποθεσια|διευθυνση",
+      "note": "Greek address labels are matched",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "τετραγωνικ",
+      "note": "Greek square-metre labels are matched",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "υπνοδωματ",
+      "note": "Greek bedroom labels are matched",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "μπανι",
+      "note": "Greek bathroom labels are matched",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "function leadInt(",
+      "note": "a count is parsed out where the answer is a number",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "const _prop = leadExtractProperty(",
+      "note": "extraction runs on every ingest, whatever the source",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "lower(coalesce(property_address,'')) LIKE $1",
+      "note": "address is searchable",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "τυποσ ακινητου",
+      "note": "property type is matched with the folded sigma leadNorm produces",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "uses a final sigma and can never match",
+      "note": "a pattern that could never match is reported, not swallowed",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "const qDigits =",
+      "note": "a phone number pasted with spaces still matches",
+      "from": "srv/patches-6.json"
+    },
+    {
+      "has": "property_address = NULL, property_size = NULL, property_type = NULL",
+      "note": "erase scrubs the property columns",
+      "from": "srv/patches-7.json"
+    },
+    {
+      "has": "WHERE status = 'erased' AND property_address IS NOT NULL",
+      "note": "already-erased tombstones are cleaned up",
+      "from": "srv/patches-7.json"
+    },
+    {
+      "has": "an address is personal data",
+      "note": "the reason is recorded next to the code",
+      "from": "srv/patches-7.json"
+    },
+    {
+      "has": "const LEAD_PROP_EDIT = {",
+      "note": "property details are editable through PATCH",
+      "from": "srv/patches-8.json"
+    },
+    {
+      "has": "\nfunction leadExtractProperty(",
+      "note": "the extractor is at module scope, not trapped inside leadIngest",
+      "from": "srv/patches-8.json"
+    },
+    {
+      "hasNot": "  out.bathrooms_n = leadInt(out.bathrooms);\n  return out;\n}\n  const pick",
+      "note": "it is no longer inlined above the owner pick",
+      "from": "srv/patches-8.json"
+    },
+    {
+      "has": "if (c === 'bedrooms')  put('bedrooms_n',  leadInt(b[k]));",
+      "note": "an edited count is re-parsed, not left stale",
+      "from": "srv/patches-8.json"
+    },
+    {
+      "has": "owner: b.owner || out.owner || null",
+      "note": "create says who it went to",
+      "from": "srv/patches-8.json"
+    },
+    {
+      "hasNot": "await getStoredApiKey()",
+      "note": "the auto-sync timer no longer calls a function that does not exist",
+      "from": "srv/patches-8.json"
+    },
+    {
+      "has": "process.env.META_API_VERSION || 'v25.0'",
+      "note": "the pinned version has runway and can be overridden by a variable",
+      "from": "srv/patches-9.json"
+    },
+    {
+      "hasNot": "'https://graph.facebook.com/v21.0'",
+      "note": "the version expiring in January is gone",
+      "from": "srv/patches-9.json"
+    },
+    {
+      "has": "app.get('/api/leads/meta/status'",
+      "note": "there is a way to see what Meta actually thinks of the token",
+      "from": "srv/patches-9.json"
+    },
+    {
+      "has": "leads_retrieval and pages_show_list are the usual missing ones",
+      "note": "a token that cannot see forms says why",
+      "from": "srv/patches-9.json"
+    },
+    {
+      "has": "out.forms = (f.data.data || []).map",
+      "note": "the status lists the forms the token can reach",
+      "from": "srv/patches-9.json"
+    },
+    {
+      "has": "async function metaGet(",
+      "note": "one place builds the Meta URL",
+      "from": "srv/patches-9.json"
+    },
+    {
+      "has": "the only form of the URL that may be quoted",
+      "note": "the token never appears in an error or a log line",
+      "from": "srv/patches-9.json"
+    },
+    {
+      "has": "me.code === 190 ? 'That token is expired",
+      "note": "an expired token says it is expired",
+      "from": "srv/patches-9.json"
+    },
+    {
+      "has": "async function metaCall(path, qs, token) {",
+      "note": "the added helper no longer shadows the original metaGet",
+      "from": "srv/patches-10.json"
+    },
+    {
+      "has": "async function metaGet(url) {",
+      "note": "the original one-argument metaGet is intact",
+      "from": "srv/patches-10.json"
+    },
+    {
+      "has": "async function metaResolvePage()",
+      "note": "either token shape resolves to a Page",
+      "from": "srv/patches-10.json"
+    },
+    {
+      "has": "return (_metaPage = { id: me.data.id, name: me.data.name, token: META_TOKEN, kind: 'page' });",
+      "note": "a Page token is used directly",
+      "from": "srv/patches-10.json"
+    },
+    {
+      "has": "const acc = await metaCall('/me/accounts', 'fields=id,name,access_token&limit=100');",
+      "note": "a User token finds its Pages, each with its own token",
+      "from": "srv/patches-10.json"
+    },
+    {
+      "has": "const PTOK = page.token;",
+      "note": "the pull uses the resolved Page token",
+      "from": "srv/patches-10.json"
+    },
+    {
+      "has": "metaPageId: '',",
+      "note": "a Page can be named when there are several",
+      "from": "srv/patches-10.json"
+    },
+    {
+      "hasNot": "metaGet(META_API + '/me/leadgen_forms",
+      "note": "nothing asks a user for leadgen_forms any more",
+      "from": "srv/patches-10.json"
+    },
+    {
+      "has": "This looks like a User token, but it cannot list the Pages it manages",
+      "note": "the missing-permission case says which permission",
+      "from": "srv/patches-10.json"
+    },
+    {
+      "has": "const perm = await metaCall('/me/permissions', 'limit=100');",
+      "note": "the token is asked what it can do",
+      "from": "srv/patches-11.json"
+    },
+    {
+      "has": "const NEEDED = ['leads_retrieval', 'pages_show_list', 'pages_read_engagement', 'pages_manage_ads', 'ads_management'];",
+      "note": "the five it needs are named",
+      "from": "srv/patches-11.json"
+    },
+    {
+      "has": "out.missing = NEEDED.filter(",
+      "note": "the missing ones are worked out, not guessed at",
+      "from": "srv/patches-11.json"
+    },
+    {
+      "has": "a token only carries what was selected at the moment it was made",
+      "note": "the fix is spelled out",
+      "from": "srv/patches-11.json"
+    },
+    {
+      "has": "out.tokenFingerprint =",
+      "note": "the loaded token can be identified across checks",
+      "from": "srv/patches-12.json"
+    },
+    {
+      "has": "digest('hex').slice(0, 8)",
+      "note": "only a truncated one-way hash, never the token",
+      "from": "srv/patches-12.json"
+    },
+    {
+      "has": "out.processStartedAt =",
+      "note": "a stale variable and a stale process can be told apart",
+      "from": "srv/patches-12.json"
+    },
+    {
+      "has": "async function metaPull(trigger, opts) {",
+      "note": "a pull can be given options",
+      "from": "srv/patches-13.json"
+    },
+    {
+      "has": "if (opts && opts.backfill && isFinite(floorSec)) sinceSec = floorSec;",
+      "note": "backfill starts at metaSinceDate whatever the watermark says",
+      "from": "srv/patches-13.json"
+    },
+    {
+      "has": "lastRunMs: forms.length ? Date.now() :",
+      "note": "a run that saw no forms cannot advance the watermark",
+      "from": "srv/patches-13.json"
+    },
+    {
+      "has": "req.body && req.body.backfill ? 'backfill' : 'manual'",
+      "note": "the endpoint exposes it, and the timeline records which it was",
+      "from": "srv/patches-13.json"
+    },
+    {
+      "has": "sixty days of backfill silently became ten minutes",
+      "note": "the reason is written down next to the fix",
+      "from": "srv/patches-13.json"
+    },
+    {
+      "has": "cn <= 40",
+      "note": "FE chain scans through patches-40",
+      "from": "srv/patches-14.json"
+    },
+    {
+      "hasNot": "cn <= 20; cn++)",
+      "note": "old FE chain cap removed",
+      "from": "srv/patches-14.json"
+    },
+    {
+      "has": "function parseUsers(raw)",
+      "note": "USERS_JSON parser present",
+      "from": "srv/patches-15.json"
+    },
+    {
+      "has": "process.env.USERS_JSON",
+      "note": "accounts come from Railway USERS_JSON",
+      "from": "srv/patches-15.json"
+    },
+    {
+      "has": "req.acctProfile",
+      "note": "profile is attached to the request",
+      "from": "srv/patches-15.json"
+    },
+    {
+      "has": "mode: USERS.length ? 'users' : 'legacy'",
+      "note": "whoami distinguishes personal accounts from the shared password",
+      "from": "srv/patches-15.json"
+    },
+    {
+      "has": "profile: req.acctProfile",
+      "note": "whoami returns the workspace profile",
+      "from": "srv/patches-15.json"
+    },
+    {
+      "has": "function normProfile(p)",
+      "note": "profile names are normalised",
+      "from": "srv/patches-16.json"
+    },
+    {
+      "has": "u.profiles",
+      "note": "USERS_JSON can list more than one workspace",
+      "from": "srv/patches-16.json"
+    },
+    {
+      "has": "req.acctProfiles",
+      "note": "profiles list is on the request",
+      "from": "srv/patches-16.json"
+    },
+    {
+      "has": "profiles: req.acctProfiles",
+      "note": "whoami returns every workspace the account may open",
+      "from": "srv/patches-16.json"
+    },
+    {
+      "has": "app.get('/api/logout'",
+      "note": "logout route exists",
+      "from": "srv/patches-17.json"
+    },
+    {
+      "has": "req.path === '/api/logout'",
+      "note": "logout bypasses credential check so it can always 401",
+      "from": "srv/patches-17.json"
+    },
+    {
+      "has": "platform_invoices",
+      "note": "platform invoice storage table",
+      "from": "srv/patches-17.json"
+    },
+    {
+      "has": "/api/platform-invoices/pull",
+      "note": "portal pull endpoint",
+      "from": "srv/patches-17.json"
+    },
+    {
+      "has": "'platinv'",
+      "note": "accountant can open Platform Invoices",
+      "from": "srv/patches-17.json"
+    },
+    {
+      "has": "brochure-en",
+      "note": "English brochure asset key",
+      "from": "srv/patches-18.json"
+    },
+    {
+      "has": "brochure-gr",
+      "note": "Greek brochure asset key",
+      "from": "srv/patches-18.json"
+    },
+    {
+      "has": "elysian-management-brochure-en.pdf",
+      "note": "EN brochure file on disk",
+      "from": "srv/patches-18.json"
+    },
+    {
+      "has": "elysian-management-brochure-gr.pdf",
+      "note": "GR brochure file on disk",
+      "from": "srv/patches-18.json"
+    },
+    {
+      "has": "app.get('/api/lead-assets/:key'",
+      "note": "single-asset fetch for welcome attach",
+      "from": "srv/patches-18.json"
+    },
+    {
+      "has": "app.delete('/api/leads/:id'",
+      "note": "erase route remains",
+      "from": "srv/patches-19.json"
+    },
+    {
+      "hasNot": "cfg.deletePassword",
+      "note": "password check removed from erase",
+      "from": "srv/patches-19.json"
+    },
+    {
+      "has": "status = 'erased'",
+      "note": "tombstone erase still runs",
+      "from": "srv/patches-19.json"
+    },
+    {
+      "has": "platform-invoice-pull.js",
+      "note": "worker script",
+      "from": "srv/patches-20.json"
+    },
+    {
+      "has": "admin.booking.com",
+      "note": "Booking extranet",
+      "from": "srv/patches-20.json"
+    },
+    {
+      "has": "info@e-newgeneration.gr",
+      "note": "default recipients",
+      "from": "srv/patches-20.json"
+    },
+    {
+      "has": "playwrightOk",
+      "note": "playwright check",
+      "from": "srv/patches-20.json"
+    },
+    {
+      "has": "SESSION_COOKIE = 'elysian_sess'",
+      "note": "session cookie",
+      "from": "srv/patches-21.json"
+    },
+    {
+      "has": "app.get('/login'",
+      "note": "login page",
+      "from": "srv/patches-21.json"
+    },
+    {
+      "has": "app.post('/api/login'",
+      "note": "login POST",
+      "from": "srv/patches-21.json"
+    },
+    {
+      "has": "Do NOT fall back to Basic Auth",
+      "note": "Basic Auth ignored",
+      "from": "srv/patches-21.json"
+    },
+    {
+      "has": "Clear-Site-Data",
+      "note": "logout clears client storage",
+      "from": "srv/patches-21.json"
+    },
+    {
+      "hasNot": "status(401).send('Logged out')",
+      "note": "old basic logout removed",
+      "from": "srv/patches-21.json"
+    },
+    {
+      "has": "<div class=\"brand\">Elysian Command Center</div>",
+      "note": "login brand",
+      "from": "srv/patches-22.json"
+    },
+    {
+      "has": "<title>Sign in · Elysian Command Center</title>",
+      "note": "login title",
+      "from": "srv/patches-22.json"
+    },
+    {
+      "hasNot": "<div class=\"brand\">Elysian Clearing</div>",
+      "note": "old login brand gone",
+      "from": "srv/patches-22.json"
+    },
+    {
+      "has": "let FE_HTML = ''",
+      "note": "html kept in memory",
+      "from": "srv/patches-23.json"
+    },
+    {
+      "has": "FE_HTML_GZ",
+      "note": "gzipped html cache",
+      "from": "srv/patches-23.json"
+    },
+    {
+      "has": "Opening workspace…",
+      "note": "login overlay",
+      "from": "srv/patches-23.json"
+    },
+    {
+      "has": "sendAppHtml",
+      "note": "in-memory HTML sender",
+      "from": "srv/patches-23.json"
+    },
+    {
+      "has": "express.static(__dirname, { index: false })",
+      "note": "static does not steal GET /",
+      "from": "srv/patches-23.json"
+    },
+    {
+      "hasNot": "Prevent bfcache of the authenticated app after a later logout.",
+      "note": "login no longer clears storage",
+      "from": "srv/patches-23.json"
+    },
+    {
+      "has": "CREATE TABLE IF NOT EXISTS change_log",
+      "note": "change_log table",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "app.post('/api/changelog'",
+      "note": "POST changelog",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "app.get('/api/changelog'",
+      "note": "GET changelog",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "function diffSummary",
+      "note": "save diff summary",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "kind === 'clicks'",
+      "note": "clicks filter on GET",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "logEvent(req, 'data', 'save'",
+      "note": "data saves are logged",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "logEvent(req, 'files', 'upload'",
+      "note": "file uploads are logged",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "logEvent(req, 'pinfo', 'save'",
+      "note": "Property Info saves are logged",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "|law5170)",
+      "note": "Property Info proof month allowed",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "missing/invalid period (YYYY-MM expected)",
+      "note": "Oxygen period validator untouched",
+      "from": "srv/patches-24.json"
+    },
+    {
+      "has": "cn <= 80",
+      "note": "FE chain scans through patches-80 (raised after patches-50)",
+      "from": "srv/patches-25.json"
+    },
+    {
+      "has": "/* legacy note: cn <= 40 */",
+      "note": "legacy cn<=40 token retained for prior chain asserts",
+      "from": "srv/patches-25.json"
+    },
+    {
+      "has": "app.patch('/api/platform-invoices/:id'",
+      "note": "partner tag endpoint",
+      "from": "srv/patches-26.json"
+    },
+    {
+      "has": "app.put('/api/platform-invoices/sessions/:channel'",
+      "note": "connect portal session API",
+      "from": "srv/patches-27.json"
+    },
+    {
+      "has": "piLoadPortalSession",
+      "note": "session loader",
+      "from": "srv/patches-27.json"
+    },
+    {
+      "has": "PI_SESSION_DIR",
+      "note": "pull materializes sessions for worker",
+      "from": "srv/patches-27.json"
+    },
+    {
+      "has": "portal-pull-refresh",
+      "note": "session refresh after pull",
+      "from": "srv/patches-27.json"
+    },
+    {
+      "has": "automation: 'pull-first'",
+      "note": "status advertises pull-first",
+      "from": "srv/patches-27.json"
+    },
+    {
+      "has": "/^john$/i.test(String(u.user))",
+      "note": "John-specific platinv grant",
+      "from": "srv/patches-28.json"
+    },
+    {
+      "has": "access.indexOf('platinv') < 0) access.push('platinv')",
+      "note": "ensures platinv in access",
+      "from": "srv/patches-28.json"
+    },
+    {
+      "has": "reservationId",
+      "note": "Hosthub reservation_id mapped onto booking.reservationId",
+      "from": "srv/patches-29.json"
+    },
+    {
+      "has": "PI_AIRBNB_RESERVATIONS_JSON",
+      "note": "worker receives Hosthub codes",
+      "from": "srv/patches-29.json"
+    },
+    {
+      "has": "airbnbCodes:",
+      "note": "pull reports code count",
+      "from": "srv/patches-29.json"
+    },
+    {
+      "has": "piResolveAirbnbReservations",
+      "note": "server resolves Hosthub codes",
+      "from": "srv/patches-30.json"
+    },
+    {
+      "has": "/api/platform-invoices/airbnb-codes",
+      "note": "codes endpoint",
+      "from": "srv/patches-30.json"
+    },
+    {
+      "has": "piBackfillAirbnbCodesFromHosthub",
+      "note": "live Hosthub backfill",
+      "from": "srv/patches-30.json"
+    },
+    {
+      "has": "No Airbnb reservation codes for ",
+      "note": "clear 409 when still empty",
+      "from": "srv/patches-30.json"
+    },
+    {
+      "has": "piClearPortalSession",
+      "note": "clear helper",
+      "from": "srv/patches-31.json"
+    },
+    {
+      "has": "sessionsCleared",
+      "note": "cleared in response",
+      "from": "srv/patches-31.json"
+    },
+    {
+      "has": "reconnectHint",
+      "note": "hint for laptop connect",
+      "from": "srv/patches-31.json"
+    },
+    {
+      "has": "cn <= 80",
+      "note": "FE chain through 80",
+      "from": "srv/patches-32.json"
+    },
+    {
+      "has": "/* legacy note: cn <= 40 */",
+      "note": "legacy token kept",
+      "from": "srv/patches-32.json"
+    },
+    {
+      "has": "/api/platform-invoices/sessions/airbnb/login",
+      "note": "login start",
+      "from": "srv/patches-33.json"
+    },
+    {
+      "has": "awaiting_otp",
+      "note": "otp wait state",
+      "from": "srv/patches-33.json"
+    },
+    {
+      "has": "inAppConnectAirbnb",
+      "note": "status flag",
+      "from": "srv/patches-33.json"
+    },
+    {
+      "has": "piAirbnbPreferEmailDelivery",
+      "note": "prefer email",
+      "from": "srv/patches-34.json"
+    },
+    {
+      "has": "/resend",
+      "note": "resend endpoint",
+      "from": "srv/patches-34.json"
+    },
+    {
+      "has": "pageSnippet",
+      "note": "page hint",
+      "from": "srv/patches-34.json"
+    },
+    {
+      "has": "piAirbnbClickMatching",
+      "note": "flexible click helper",
+      "from": "srv/patches-35.json"
+    },
+    {
+      "has": "smsStuck",
+      "note": "sms stuck flag",
+      "from": "srv/patches-35.json"
+    },
+    {
+      "has": "piAirbnbRefreshOtpMeta",
+      "note": "otp meta refresh",
+      "from": "srv/patches-35.json"
+    },
+    {
+      "has": "piAirbnbResendCode",
+      "note": "resend helper",
+      "from": "srv/patches-35.json"
+    },
+    {
+      "has": "fallback-option-email-otp",
+      "note": "email otp testid",
+      "from": "srv/patches-36.json"
+    },
+    {
+      "has": "piAirbnbLaunchBrowser",
+      "note": "stealth launch",
+      "from": "srv/patches-36.json"
+    },
+    {
+      "has": "disable-blink-features=AutomationControlled",
+      "note": "anti-automation flag",
+      "from": "srv/patches-36.json"
+    },
+    {
+      "has": "PLAYWRIGHT_PROXY_SERVER",
+      "note": "optional residential proxy",
+      "from": "srv/patches-36.json"
+    },
+    {
+      "hasNot": "Cancel Connect and use Paste session JSON",
+      "note": "paste no longer primary hint",
+      "from": "srv/patches-36.json"
+    },
+    {
+      "has": "app.post('/api/platform-invoices/sessions/airbnb/login',",
+      "note": "start route",
+      "from": "srv/patches-37.json"
+    },
+    {
+      "has": "app.get('/api/platform-invoices/sessions/airbnb/login/:jobId'",
+      "note": "poll route",
+      "from": "srv/patches-37.json"
+    },
+    {
+      "has": "piAirbnbLaunchBrowser",
+      "note": "stealth still present",
+      "from": "srv/patches-37.json"
+    },
+    {
+      "has": "#otp-code-input",
+      "note": "otp input id",
+      "from": "srv/patches-38.json"
+    },
+    {
+      "has": "sent a code",
+      "note": "otp copy detect",
+      "from": "srv/patches-38.json"
+    },
+    {
+      "has": "Still on Airbnb verification",
+      "note": "finish refuses otp page",
+      "from": "srv/patches-38.json"
+    },
+    {
+      "has": "Still on Airbnb verification",
+      "note": "finish refuses otp page",
+      "from": "srv/patches-38.json"
+    },
+    {
+      "has": "forcePrefer",
+      "note": "prefer gated on refresh",
+      "from": "srv/patches-39.json"
+    },
+    {
+      "has": "piAirbnbRefreshOtpMeta",
+      "note": "refresh helper",
+      "from": "srv/patches-39.json"
+    },
+    {
+      "has": "piAirbnbSnapshotOtpMeta",
+      "note": "snapshot helper",
+      "from": "srv/patches-40.json"
+    },
+    {
+      "has": "keyboard.type(code",
+      "note": "keyboard OTP",
+      "from": "srv/patches-40.json"
+    },
+    {
+      "has": "piAirbnbSnapshotOtpMeta",
+      "note": "snapshot helper",
+      "from": "srv/patches-40.json"
+    },
+    {
+      "hasNot": "await piAirbnbPreferEmailDelivery(job.page);\n      if (await piAirbnbNeedsOtp(job.page))",
+      "note": "no prefer after password",
+      "from": "srv/patches-40.json"
+    },
+    {
+      "has": "piAirbnbFillPassword",
+      "note": "password helper",
+      "from": "srv/patches-41.json"
+    },
+    {
+      "has": "piAirbnbDismissOverlays",
+      "note": "escape overlays",
+      "from": "srv/patches-41.json"
+    },
+    {
+      "has": "pressSequentially",
+      "note": "force sequential type",
+      "from": "srv/patches-41.json"
+    },
+    {
+      "hasNot": "await passInput.click();",
+      "note": "no password click",
+      "from": "srv/patches-41.json"
+    },
+    {
+      "has": "piAirbnbWaitForEmailOtpPage",
+      "note": "wait helper",
+      "from": "srv/patches-42.json"
+    },
+    {
+      "has": "send a new code",
+      "note": "resend copy",
+      "from": "srv/patches-42.json"
+    },
+    {
+      "has": "piAirbnbWaitForEmailOtpPage",
+      "note": "wait helper",
+      "from": "srv/patches-42.json"
+    },
+    {
+      "hasNot": "at most once",
+      "note": "old single-prefer copy gone",
+      "from": "srv/patches-42.json"
+    },
+    {
+      "has": "Exactly one Get-a-code-via-email click",
+      "note": "single send",
+      "from": "srv/patches-43.json"
+    },
+    {
+      "has": "wait 1 minute before requesting a code",
+      "note": "cooldown detect",
+      "from": "srv/patches-43.json"
+    },
+    {
+      "has": "do not Resend (Airbnb often waits 1 minute",
+      "note": "fail hint",
+      "from": "srv/patches-43.json"
+    },
+    {
+      "hasNot": "const emailed = await piAirbnbPreferEmailDelivery(page);",
+      "note": "old double-call gone",
+      "from": "srv/patches-43.json"
+    },
+    {
+      "has": "piAirbnbArmEmailOtpGuard",
+      "note": "post guard",
+      "from": "srv/patches-44.json"
+    },
+    {
+      "has": "pressSequentially(code",
+      "note": "trusted OTP type",
+      "from": "srv/patches-44.json"
+    },
+    {
+      "has": "resent: !!(result && result.ok && !result.cooldown)",
+      "note": "resend ok defined",
+      "from": "srv/patches-44.json"
+    },
+    {
+      "hasNot": "await piAirbnbDismissOverlays(page);\n  // Focus without click",
+      "note": "old escape fill gone",
+      "from": "srv/patches-44.json"
+    },
+    {
+      "hasNot": "resent: ok,",
+      "note": "undefined ok gone",
+      "from": "srv/patches-44.json"
+    },
+    {
+      "has": "_piPreferEmailClicked",
+      "note": "single click latch",
+      "from": "srv/patches-44.json"
+    },
+    {
+      "has": "never treat body text as logged-in",
+      "note": "hosting URL required",
+      "from": "srv/patches-45.json"
+    },
+    {
+      "has": "still on login (no email code screen)",
+      "note": "no fake connect",
+      "from": "srv/patches-45.json"
+    },
+    {
+      "has": "Click Connect Airbnb in Collect",
+      "note": "in-app reconnect",
+      "from": "srv/patches-45.json"
+    },
+    {
+      "hasNot": "platform-invoice-save-session.js",
+      "note": "laptop JSON hint gone from server",
+      "from": "srv/patches-45.json"
+    },
+    {
+      "hasNot": "if (/hosting|reservations|calendar/i.test(url + ' ' + text)) return true;",
+      "note": "footer Hosting no longer counts",
+      "from": "srv/patches-45.json"
+    },
+    {
+      "has": "job._piOtpAccepted = true",
+      "note": "OTP marks accepted",
+      "from": "srv/patches-46.json"
+    },
+    {
+      "has": "did not open the email-code screen",
+      "note": "worker cannot connect without OTP",
+      "from": "srv/patches-46.json"
+    },
+    {
+      "has": "Connect requires the email code",
+      "note": "FinishAndSave gated",
+      "from": "srv/patches-46.json"
+    },
+    {
+      "hasNot": "Airbnb Connect did not reach Hosting. Cancel and Connect again (the email code is required).",
+      "note": "old worker finish path gone",
+      "from": "srv/patches-46.json"
+    },
+    {
+      "has": "emailOpt.waitFor({ state: 'visible', timeout: 8000 })",
+      "note": "wait for email option modal",
+      "from": "srv/patches-47.json"
+    },
+    {
+      "has": "page._piEmailOtpLast = res.status()",
+      "note": "record email_otp status including 420",
+      "from": "srv/patches-47.json"
+    },
+    {
+      "has": "bot check). Cancel and Connect again",
+      "note": "airlock before leftover login",
+      "from": "srv/patches-47.json"
+    },
+    {
+      "has": "page._piPreferEmailClicked = true",
+      "note": "latch only after email option is present",
+      "from": "srv/patches-47.json"
+    },
+    {
+      "hasNot": "await page.waitForTimeout(6500);",
+      "note": "blind 6.5s wait gone",
+      "from": "srv/patches-47.json"
+    },
+    {
+      "has": "piAirbnbPassHumanCheck",
+      "note": "recaptcha helper",
+      "from": "srv/patches-48.json"
+    },
+    {
+      "has": "#recaptcha-anchor",
+      "note": "clicks reCAPTCHA checkbox",
+      "from": "srv/patches-48.json"
+    },
+    {
+      "has": "Signing in with the host password",
+      "note": "password first",
+      "from": "srv/patches-48.json"
+    },
+    {
+      "has": "Exactly one Get-a-code-via-email click",
+      "note": "email OTP still used as fallback",
+      "from": "srv/patches-48.json"
+    },
+    {
+      "hasNot": "await piAirbnbDismissOverlays(page);\n  const has = await page.locator('input[name=\"password\"]",
+      "note": "Escape-before-password gone",
+      "from": "srv/patches-48.json"
+    },
+    {
+      "has": "status === 'awaiting_captcha'",
+      "note": "captcha state",
+      "from": "srv/patches-49.json"
+    },
+    {
+      "has": "captcha.png",
+      "note": "captcha screenshot endpoint",
+      "from": "srv/patches-49.json"
+    },
+    {
+      "has": "captcha/click",
+      "note": "captcha coordinate endpoint",
+      "from": "srv/patches-49.json"
+    },
+    {
+      "has": "piAirbnbContinueAfterCaptcha",
+      "note": "same login continues",
+      "from": "srv/patches-49.json"
+    },
+    {
+      "has": "awaiting_captcha' || job.status === 'logging_in'",
+      "note": "resume captcha job",
+      "from": "srv/patches-49.json"
+    },
+    {
+      "has": "anchor.isVisible()",
+      "note": "visible anchor only",
+      "from": "srv/patches-50.json"
+    },
+    {
+      "has": "box && box.y >= 0",
+      "note": "visible picture frame only",
+      "from": "srv/patches-50.json"
+    },
+    {
+      "hasNot": "if (await page.locator('#airlock-inline-container, iframe[src*=\"recaptcha/api2/anchor\"]').count()) return true;",
+      "note": "count-only false positive gone",
+      "from": "srv/patches-50.json"
+    },
+    {
+      "has": "Opening Get a code via email",
+      "note": "email-first status",
+      "from": "srv/patches-51.json"
+    },
+    {
+      "has": "relay the picture grid into Collect",
+      "note": "captcha relay path",
+      "from": "srv/patches-51.json"
+    },
+    {
+      "hasNot": "// Password first — Get-a-code-via-email is what trips Airbnb reCAPTCHA",
+      "note": "password-first dead end gone",
+      "from": "srv/patches-51.json"
+    },
+    {
+      "has": "function mergeKeepMap(",
+      "note": "map union helper",
+      "from": "srv/patches-52.json"
+    },
+    {
+      "has": "function mergeRptLock(",
+      "note": "email/oxygen stamps survive a stale lock write",
+      "from": "srv/patches-52.json"
+    },
+    {
+      "has": "function mergeAptsProtect(",
+      "note": "apartment emails are not blanked by a stale client",
+      "from": "srv/patches-52.json"
+    },
+    {
+      "has": "payload.rptLocks = mergeKeepMap(existing.rptLocks, payload.rptLocks, mergeRptLock);",
+      "note": "rptLocks union-merged on every save",
+      "from": "srv/patches-52.json"
+    },
+    {
+      "has": "logEvent(req, 'email', 'send'",
+      "note": "successful sends are changelog rows",
+      "from": "srv/patches-52.json"
+    },
+    {
+      "has": "const settleUntil = Date.now() + 15000;",
+      "note": "captcha completion gets a bounded settling window",
+      "from": "srv/patches-53.json"
+    },
+    {
+      "has": "await previousClick.catch(function () {});",
+      "note": "captcha coordinate clicks are serialized",
+      "from": "srv/patches-53.json"
+    },
+    {
+      "hasNot": "page._piContinuingCaptcha",
+      "note": "temporary captcha instrumentation is removed",
+      "from": "srv/patches-53.json"
+    },
+    {
+      "hasNot": "/opt/cursor/logs/debug.log",
+      "note": "temporary debug logging is removed",
+      "from": "srv/patches-53.json"
+    },
+    {
+      "hasNot": "Transient state triggers forced email retry",
+      "note": "instrumented forced retry branch is removed",
+      "from": "srv/patches-53.json"
+    },
+    {
+      "has": "No additional email-code request was sent.",
+      "note": "stalled continuation exposes a non-retriggering error",
+      "from": "srv/patches-53.json"
+    },
+    {
+      "hasNot": "page.waitForSelector('input[type=\"password\"]', { timeout: 15000 })",
+      "note": "mounted background password cannot win OTP acceptance",
+      "from": "srv/patches-54.json"
+    },
+    {
+      "has": "await single.waitFor({ state: 'visible', timeout: 8000 });",
+      "note": "OTP typing targets the visible modal input",
+      "from": "srv/patches-54.json"
+    },
+    {
+      "has": "input[name=\"password\"]:visible, input[type=\"password\"]:visible",
+      "note": "post-OTP password handling requires visibility",
+      "from": "srv/patches-54.json"
+    },
+    {
+      "has": "piAirbnbCaptchaClickIsVerify",
+      "note": "CAPTCHA Verify is identified from bframe button bounds",
+      "from": "srv/patches-54.json"
+    },
+    {
+      "has": "await job.page.waitForTimeout(400);",
+      "note": "tile clicks use the fast refresh path",
+      "from": "srv/patches-54.json"
+    },
+    {
+      "has": "captchaVerify: captchaVerify",
+      "note": "frontend can avoid a full render for tile clicks",
+      "from": "srv/patches-54.json"
+    },
+    {
+      "hasNot": "/opt/cursor/logs/debug.log",
+      "note": "temporary runtime instrumentation is absent from effective server",
+      "from": "srv/patches-54.json"
+    },
+    {
+      "has": "page._piOtpSubmitMethod = 'button'",
+      "note": "explicit visible button submission",
+      "from": "srv/patches-55.json"
+    },
+    {
+      "has": "await single.press('Enter'",
+      "note": "input-scoped Enter fallback",
+      "from": "srv/patches-55.json"
+    },
+    {
+      "has": "page._piOtpValidationError",
+      "note": "visible validation distinction",
+      "from": "srv/patches-55.json"
+    },
+    {
+      "hasNot": "/opt/cursor/logs/debug.log",
+      "note": "temporary runtime instrumentation absent",
+      "from": "srv/patches-55.json"
+    },
+    {
+      "has": "page._piEmailOtpResponses",
+      "note": "response count",
+      "from": "srv/patches-56.json"
+    },
+    {
+      "has": "const accepted = responded &&",
+      "note": "resend requires response",
+      "from": "srv/patches-56.json"
+    },
+    {
+      "has": "page._piEmailOtpLast === 200",
+      "note": "resend requires HTTP 200",
+      "from": "srv/patches-56.json"
+    },
+    {
+      "has": "Airbnb did not confirm a new email was sent",
+      "note": "honest failure hint",
+      "from": "srv/patches-56.json"
+    },
+    {
+      "hasNot": "await sendNew.click({ force: true",
+      "note": "failed force click cannot claim success",
+      "from": "srv/patches-56.json"
+    },
+    {
+      "has": "const PI_LOGIN_TTL_MS = 30 * 60 * 1000;",
+      "note": "Connect survives repeated CAPTCHA solving",
+      "from": "srv/patches-57.json"
+    },
+    {
+      "has": "diagnostics: job.otpDiagnostic ? { otp: piOtpDiagnosticPublic(job.otpDiagnostic) } : null",
+      "note": "public job exposes sanitized OTP diagnostics",
+      "from": "srv/patches-57.json"
+    },
+    {
+      "has": "path: String((event && event.path) || '').split(/[?#]/)[0]",
+      "note": "serialized auth paths never include query parameters",
+      "from": "srv/patches-57.json"
+    },
+    {
+      "has": "job.otpDiagnostic = job.page._piOtpDiagnostic || null;",
+      "note": "OTP route publishes the most recent submit facts",
+      "from": "srv/patches-57.json"
+    },
+    {
+      "has": "verifyHint === true || await piAirbnbCaptchaClickIsVerify",
+      "note": "frontend Verify hint bypasses unreliable nested frame bounds",
+      "from": "srv/patches-57.json"
+    },
+    {
+      "hasNot": "/opt/cursor/logs/debug.log",
+      "note": "temporary runtime instrumentation remains absent",
+      "from": "srv/patches-57.json"
+    },
+    {
+      "has": "status === 'interactive'",
+      "note": "interactive state",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "/browser.png",
+      "note": "interactive screenshot",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "/browser/click",
+      "note": "interactive click",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "/browser/type",
+      "note": "interactive typing",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "/browser/key",
+      "note": "interactive key",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "piAirbnbInteractiveAdvance",
+      "note": "automatic Hosting detection",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "piAirbnbRunBrowserAction",
+      "note": "serialized browser actions",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "await piSavePortalSession('airbnb'",
+      "note": "session remains server-owned",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "catch (e) { return ''; }",
+      "note": "closed Playwright pages cannot break status polls",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "Operate Airbnb directly below",
+      "note": "leftover login becomes user-operated",
+      "from": "srv/patches-58.json"
+    },
+    {
+      "has": "piAirbnbPageLooksReadyToSave",
+      "note": "idle logged-in pages can save",
+      "from": "srv/patches-59.json"
+    },
+    {
+      "has": "piAirbnbSaveLiveSession",
+      "note": "cookies saved without waiting for Hosting URL",
+      "from": "srv/patches-59.json"
+    },
+    {
+      "has": "piAirbnbHarvestLiveJobs",
+      "note": "Pull reuses the live in-app browser",
+      "from": "srv/patches-59.json"
+    },
+    {
+      "has": "/browser/save",
+      "note": "manual save",
+      "from": "srv/patches-59.json"
+    },
+    {
+      "has": "input[type=\"password\"]:visible, #otp-code-input:visible",
+      "note": "hidden OTP/password no longer block Hosting",
+      "from": "srv/patches-59.json"
+    },
+    {
+      "has": "never treat body text as logged-in",
+      "note": "footer Hosting still ignored",
+      "from": "srv/patches-59.json"
+    },
+    {
+      "hasNot": "if (/hosting|reservations|calendar/i.test(url + ' ' + text)) return true;",
+      "note": "body-text Hosting still forbidden",
+      "from": "srv/patches-59.json"
+    },
+    {
+      "hasNot": "if (hasOtpCopy && !hasPass) return true;",
+      "note": "leftover OTP copy no longer blocks session save",
+      "from": "srv/patches-59.json"
+    },
+    {
+      "has": "cn <= 90",
+      "note": "FE chain through 90",
+      "from": "srv/patches-60.json"
+    },
+    {
+      "has": "cn <= 80",
+      "note": "previous limit kept in comment",
+      "from": "srv/patches-60.json"
+    },
+    {
+      "has": "piExecutePullJob",
+      "note": "background pull runner",
+      "from": "srv/patches-61.json"
+    },
+    {
+      "has": "piPullParseWorkerStdout",
+      "note": "progress lines do not hide the final result",
+      "from": "srv/patches-61.json"
+    },
+    {
+      "has": "app.get('/api/platform-invoices/pull/:jobId'",
+      "note": "poll route",
+      "from": "srv/patches-61.json"
+    },
+    {
+      "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+      "note": "still harvests the live Connect browser",
+      "from": "srv/patches-61.json"
+    },
+    {
+      "has": "90 * 60 * 1000",
+      "note": "322 Hosthub codes need more than a 12-minute kill",
+      "from": "srv/patches-61.json"
+    },
+    {
+      "has": "setImmediate",
+      "note": "HTTP response is not held open for Playwright",
+      "from": "srv/patches-61.json"
+    },
+    {
+      "has": "event === 'progress'",
+      "note": "live progress from the worker",
+      "from": "srv/patches-61.json"
+    },
+    {
+      "has": "function pcvAptKey",
+      "note": "server apt key helper",
+      "from": "srv/patches-62.json"
+    },
+    {
+      "has": "function pcvAptLabel",
+      "note": "server apt label helper",
+      "from": "srv/patches-62.json"
+    },
+    {
+      "has": "pcvAptKey(b, apts)",
+      "note": "vivaExpectedUnits uses clearGroup key",
+      "from": "srv/patches-62.json"
+    },
+    {
+      "has": "Votsala clearGroup → one BDC unit",
+      "note": "selftest for Votsala batching",
+      "from": "srv/patches-62.json"
+    },
+    {
+      "has": "bdc|2026-07-16|votsala",
+      "note": "expected Votsala mark key",
+      "from": "srv/patches-62.json"
+    },
+    {
+      "has": "const limitN = parseInt(b.limit != null ? b.limit : process.env.PI_AIRBNB_LIMIT, 10);",
+      "note": "limit from body or env",
+      "from": "srv/patches-63.json"
+    },
+    {
+      "has": "env.PI_AIRBNB_LIMIT = String(limitN);",
+      "note": "worker gets PI_AIRBNB_LIMIT",
+      "from": "srv/patches-63.json"
+    },
+    {
+      "has": "limit: b.limit",
+      "note": "job stores limit",
+      "from": "srv/patches-63.json"
+    },
+    {
+      "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+      "note": "still harvests live Connect",
+      "from": "srv/patches-63.json"
+    },
+    {
+      "has": "event === 'progress'",
+      "note": "live progress from the worker",
+      "from": "srv/patches-63.json"
+    },
+    {
+      "has": "let partner = String((f.aptName || f.partner || '')).slice(0, 120);",
+      "note": "apartment is the store key",
+      "from": "srv/patches-64.json"
+    },
+    {
+      "has": "ORDER BY channel, partner, filename, id",
+      "note": "vault ordered by platform then apartment",
+      "from": "srv/patches-64.json"
+    },
+    {
+      "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+      "note": "still harvests live Connect",
+      "from": "srv/patches-64.json"
+    },
+    {
+      "has": "cn <= 100",
+      "note": "FE chain through 100",
+      "from": "srv/patches-65.json"
+    },
+    {
+      "has": "app.post('/api/platform-invoices/pull-stop'",
+      "note": "stop all running pulls",
+      "from": "srv/patches-65.json"
+    },
+    {
+      "has": "function piCancelPullJob",
+      "note": "kills worker child",
+      "from": "srv/patches-65.json"
+    },
+    {
+      "has": "job.status = job.cancelled ? 'cancelled' : 'done'",
+      "note": "stop keeps downloaded PDFs",
+      "from": "srv/patches-65.json"
+    },
+    {
+      "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+      "note": "still harvests live Connect",
+      "from": "srv/patches-65.json"
+    },
+    {
+      "has": "status: 'cancelled'",
+      "note": "missing job is cancelled",
+      "from": "srv/patches-66.json"
+    },
+    {
+      "has": "gone: true",
+      "note": "marks vanished in-memory job",
+      "from": "srv/patches-66.json"
+    },
+    {
+      "has": "app.post('/api/platform-invoices/pull-stop'",
+      "note": "stop-all kept",
+      "from": "srv/patches-66.json"
+    },
+    {
+      "has": "function piCancelPullJob",
+      "note": "cancel helper kept",
+      "from": "srv/patches-66.json"
+    },
+    {
+      "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+      "note": "still harvests live Connect",
+      "from": "srv/patches-66.json"
+    },
+    {
+      "has": "piSortAirbnbReservationsLatest",
+      "note": "server sorts latest Hosthub ids",
+      "from": "srv/patches-67.json"
+    },
+    {
+      "has": "airbnbReservations.slice(0, limitN)",
+      "note": "limit still slices",
+      "from": "srv/patches-67.json"
+    },
+    {
+      "has": "Test pull (latest): ",
+      "note": "limited pull hint",
+      "from": "srv/patches-67.json"
+    },
+    {
+      "has": "createdOnChannel: x.createdOnChannel != null ? x.createdOnChannel : null",
+      "note": "client codes keep dates",
+      "from": "srv/patches-67.json"
+    },
+    {
+      "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+      "note": "still harvests live Connect",
+      "from": "srv/patches-67.json"
+    },
+    {
+      "has": "app.post('/api/platform-invoices/pull-stop'",
+      "note": "stop kept",
+      "from": "srv/patches-67.json"
+    },
+    {
+      "has": "app.get('/api/platform-invoices/:id/file'",
+      "note": "PDF view route",
+      "from": "srv/patches-68.json"
+    },
+    {
+      "has": "function platInvPdfBuffer",
+      "note": "decodes stored PDF",
+      "from": "srv/patches-68.json"
+    },
+    {
+      "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+      "note": "still harvests live Connect",
+      "from": "srv/patches-68.json"
+    },
+    {
+      "has": "app.post('/api/platform-invoices/pull-stop'",
+      "note": "stop kept",
+      "from": "srv/patches-68.json"
+    }
+  ]
+}

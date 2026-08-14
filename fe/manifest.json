@@ -1,4 +1,4 @@
 {
-  "scheme": "patches",
-  "note": "Frontend releases ship as fe/patches.json: ordered exact string replacements applied to the repo's index.html at boot by server.js (v10+), gated by baseSha256 (sha256 of the repo index.html the patches expect) and expectedSha256 (sha256 of the patched result). Any failure serves the repo index.html unchanged. Live state: GET /api/fe-info. Consolidation: upload a fresh full index.html via GitHub web and reset patches.json to {\"patches\":[]} in the same release."
+  "scheme": "patches-chain",
+  "note": "2026-08-14: FE patches 1–100 were baked into index.html; fe/patches.json is an empty placeholder. New releases may again add fe/patches.json ops and/or fe/patches-2.json… (exact string replacements gated by baseSha256 / expectedSha256). srv-boot.js patches server.js first; the effective server applies this FE chain at boot. Any failure serves the repo index.html unchanged. Live state: GET /api/fe-info. See docs/patch-history-consolidated.md for pre-bake notes."
 }
