@@ -1,0 +1,22 @@
+{
+ "baseSha256": "a941bfed2b6847d43bf0c334ee2ae62ad0a0606193e4f6536fe0006231149a14",
+ "expectedSha256": "89a4e2cabc70f0d7595e0e0206454d3e23817855f96db7ab016b3c495d2a271e",
+ "builtAt": "2026-08-14 Captcha Verify waits; no automatic retry",
+ "patches": [
+  {
+   "note": "Tell user Verify settles without starting another challenge",
+   "find": "Each click continues the same Connect attempt.",
+   "replace": "Each click stays in this Connect attempt; after Verify, wait while Airbnb continues."
+  }
+ ],
+ "assertions": [
+  {
+   "has": "after Verify, wait while Airbnb continues",
+   "note": "settling copy"
+  },
+  {
+   "has": "Complete Airbnb picture check",
+   "note": "captcha panel retained"
+  }
+ ]
+}
