@@ -1,0 +1,47 @@
+{
+ "baseSha256": "453d1223945761bf444a8c5dba4a71714d388ce6419bbdf527598b099894b1bd",
+ "expectedSha256": "8c7b6bf8b5812b67b533fc2dea2a7f69c0d6aab614e45aac213d290bb3d76597",
+ "builtAt": "2026-08-14 Daily Ops: live check-ins/checkouts, no Snapshot button",
+ "patches": [
+  {
+   "note": "Daily Ops: check-ins/checkouts always come from live bookings; snapshot only overlays operator fields",
+   "find": "  // Merge: start from snapshot rows, append any new bookings not yet in snapshot\n  // (and drop any cleaning-table stubs that leaked into older snapshots).\n  const snapRows = (snap.rows || []).filter(function (r) { return !_opsIsCleanStub(r); });\n  const snapAptIds = new Set(snapRows.map(r => r.aptId||r.aptName));\n  const newRows = freshRows.filter(r => !snapAptIds.has(r.aptId||r.aptName));\n\n  if (newRows.length > 0) {\n    // New bookings arrived since snapshot — toast notification\n    setTimeout(() => {\n      if (typeof toast === 'function')\n        toast(newRows.length + ' νέα checkout προστέθηκαν από τελευταία αποθήκευση', 'info');\n    }, 300);\n  }\n\n  // Snapshots saved before these kinds existed carry none of the flags, and a\n  // booking can change after a snapshot is taken - so re-detect on every load.\n  // Anything set by hand (<kind>Manual) always beats detection.\n  const _fresh = {};\n  freshRows.forEach(function (r) { _fresh[r.aptId||r.aptName] = r; });\n  const _merged = [...snapRows, ...newRows].map(function (r) {\n    const f = _fresh[r.aptId||r.aptName];\n    const out = { ...r };\n    OPS_KINDS.forEach(function (k) {\n      const auto = f ? !!f[k.key] : !!r[k.key];\n      out[k.key] = (r[k.manual] === true) ? true : (r[k.manual] === false) ? false : auto;\n    });\n    out.isOwner = f ? !!f.isOwner : !!r.isOwner;\n    if (!f) {\n      // Booking gone (cancelled checkout, deleted check-in). Keep only rows the\n      // operator pinned by hand.\n      const keep = !!r.checkinManual || (typeof OPS_KINDS !== 'undefined' && OPS_KINDS.some(function (k) { return r[k.manual]; }));\n      return keep ? out : null;\n    }\n    // Same-day check-in status used to freeze in the day's snapshot as\n    // \"Δεν ξέρουμε ακόμα\". Refresh from live bookings unless the operator\n    // toggled the cell by hand. A checkout with no arrival must not keep a\n    // frozen 7-night / 6-people check-in (Athenian Cedar 15/8).\n    if (f && !r.checkinManual) {\n      if (f.checkinSameDay === 'yes' || f.checkinSameDay === 'checkin_only') {\n        out.checkinSameDay = f.checkinSameDay;\n        out.nextNights = f.nextNights;\n        out.nextGuest = f.nextGuest || '';\n        if (f.people != null && f.people !== '') out.people = f.people;\n        else if (!out.people) out.people = '';\n        out.isCheckinOnly = !!f.isCheckinOnly;\n        if (f.checkinSameDay === 'checkin_only') out.checkoutGuest = '';\n      } else {\n        out.checkinSameDay = f.checkinSameDay || 'unknown';\n        out.nextNights = null;\n        out.nextGuest = '';\n        out.people = '';\n        out.isCheckinOnly = false;\n        if (f.checkoutGuest != null) out.checkoutGuest = f.checkoutGuest;\n      }\n    }\n    return out;\n  }).filter(function (row) { return !!row; });\n  return {\n    rows: _opsOrder(_merged),\n    notes: snap.notes||'',\n    savedAt: snap.savedAt,\n  };",
+   "replace": "  // Live Hosthub bookings are the source of check-ins/checkouts. The day's\n  // saved row only overlays operator work (cleaners, comments, toggles).\n  const snapRows = (snap.rows || []).filter(function (r) { return !_opsIsCleanStub(r); });\n  const snapByKey = {};\n  snapRows.forEach(function (r) { snapByKey[String(r.aptId || r.aptName)] = r; });\n  const OPS_OVERLAY = ['cleanerName','cleanerNames','cleanDone','cleanTask','cleanTaskNote','comments','alreadyCleaned','cleanedDate','lateCheckout','checkoutRequested','arrivalTime','parkBed','earlyCheckin','isPriority','priorityManual','checkinManual'];\n\n  const _merged = freshRows.map(function (f) {\n    const r = snapByKey[String(f.aptId || f.aptName)] || {};\n    const out = Object.assign({}, f);\n    if (snapByKey[String(f.aptId || f.aptName)]) {\n      OPS_OVERLAY.forEach(function (k) {\n        if (r[k] != null) out[k] = r[k];\n      });\n    }\n    OPS_KINDS.forEach(function (k) {\n      const auto = !!f[k.key];\n      out[k.key] = (r[k.manual] === true) ? true : (r[k.manual] === false) ? false : auto;\n      if (r[k.manual] != null) out[k.manual] = r[k.manual];\n    });\n    out.isOwner = !!f.isOwner;\n    // Same-day check-in status used to freeze in the day's snapshot as\n    // \"Δεν ξέρουμε ακόμα\". Refresh from live bookings unless the operator\n    // toggled the cell by hand. A checkout with no arrival must not keep a\n    // frozen 7-night / 6-people check-in (Athenian Cedar 15/8).\n    if (f && !r.checkinManual) {\n      if (f.checkinSameDay === 'yes' || f.checkinSameDay === 'checkin_only') {\n        out.checkinSameDay = f.checkinSameDay;\n        out.nextNights = f.nextNights;\n        out.nextGuest = f.nextGuest || '';\n        if (f.people != null && f.people !== '') out.people = f.people;\n        else if (!out.people) out.people = '';\n        out.isCheckinOnly = !!f.isCheckinOnly;\n        if (f.checkinSameDay === 'checkin_only') out.checkoutGuest = '';\n        else out.checkoutGuest = f.checkoutGuest || '';\n      } else {\n        out.checkinSameDay = f.checkinSameDay || 'unknown';\n        out.nextNights = null;\n        out.nextGuest = '';\n        out.people = '';\n        out.isCheckinOnly = false;\n        if (f.checkoutGuest != null) out.checkoutGuest = f.checkoutGuest;\n      }\n    }\n    return out;\n  }).filter(function (row) { return !!row; });\n  snapRows.forEach(function (r) {\n    const key = String(r.aptId || r.aptName);\n    if (freshRows.some(function (f) { return String(f.aptId || f.aptName) === key; })) return;\n    const keep = !!r.checkinManual || (typeof OPS_KINDS !== 'undefined' && OPS_KINDS.some(function (k) { return r[k.manual]; }));\n    if (keep) _merged.push(r);\n  });\n  return {\n    rows: _opsOrder(_merged),\n    notes: snap.notes||'',\n    savedAt: snap.savedAt,\n  };",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: remove the Snapshot button — Hosthub check-ins change all the time",
+   "find": "          ${snapLabel ? `<span style=\"font-size:11px;color:var(--tx3)\">💾 ${snapLabel}</span>` : ''}\n          <button class=\"btn sm\" onclick=\"opsSaveSnapshot()\" style=\"border-color:#1a7a4a;color:#1a7a4a;padding:5px 12px\">💾 Snapshot</button>\n          <button class=\"btn sm\" onclick=\"opsCopyImage()\" style=\"border-color:#7C3AED;color:#7C3AED;padding:5px 12px\">📋 Copy Image</button>",
+   "replace": "          <button class=\"btn sm\" onclick=\"opsCopyImage()\" style=\"border-color:#7C3AED;color:#7C3AED;padding:5px 12px\">📋 Copy Image</button>",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: drop snapshot time chip next to the removed button",
+   "find": "  const snapLabel = savedAt ? new Date(savedAt).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}) : '';\n",
+   "replace": "  const snapLabel = '';\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Live Hosthub bookings are the source of check-ins/checkouts.",
+   "note": "live bookings own the ops list"
+  },
+  {
+   "hasNot": "onclick=\"opsSaveSnapshot()\"",
+   "note": "Snapshot button removed"
+  },
+  {
+   "hasNot": "💾 Snapshot",
+   "note": "Snapshot button label gone"
+  },
+  {
+   "has": "OPS_OVERLAY",
+   "note": "operator fields overlay from the day save"
+  },
+  {
+   "has": "freshRows.map(function (f)",
+   "note": "rows start from live bookings"
+  }
+ ]
+}

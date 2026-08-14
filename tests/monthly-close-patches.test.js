@@ -14,7 +14,7 @@ let html = origHtml;
 // Each file starts where the previous one ended, so a release is a small new
 // file rather than a rewrite of one ever-growing patches.json.
 const chainFiles = ['patches.json'];
-for (let n = 2; n <= 80; n++) {
+for (let n = 2; n <= 90; n++) {
   const f = path.join(root, 'fe', `patches-${n}.json`);
   if (!fs.existsSync(f)) break;
   chainFiles.push(`patches-${n}.json`);
@@ -255,7 +255,7 @@ assert.strictEqual(stepCtx.S.moOverride['a1::2026-07-01::2026-07-31'], 2, 'a1 mo
 
 // ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
 const srvChain = ['patches.json'];
-for (let n = 2; n <= 80; n++) {
+for (let n = 2; n <= 90; n++) {
   if (!fs.existsSync(path.join(root, 'srv', `patches-${n}.json`))) break;
   srvChain.push(`patches-${n}.json`);
 }
