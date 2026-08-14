@@ -31,9 +31,9 @@ const srv63 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-63.json
 assert(worker.includes('function piInvoiceStoreRel'), 'stores PDFs as Platform/month/apartment/file');
 assert(worker.includes("plat + '/' + month + '/' + apt"), 'path is platform / month / apartment');
 
-const fe89 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-89.json'), 'utf8'));
+const fe90 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-90.json'), 'utf8'));
 const srv64 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-64.json'), 'utf8'));
-assert(fe89.patches.some((p) => (p.replace || '').includes('piStoreApt')), 'FE groups vault by apartment');
+assert(fe90.patches.some((p) => (p.replace || '').includes('piStoreApt')), 'FE groups vault by apartment');
 assert(srv64.patches.some((p) => (p.replace || '').includes('ORDER BY channel, partner, filename, id')), 'API lists by platform then apartment');
 assert(srv64.patches.some((p) => (p.replace || '').includes('f.aptName || f.partner')), 'pull stores partner as apartment');
 
