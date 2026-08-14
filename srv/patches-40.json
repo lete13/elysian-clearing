@@ -44,8 +44,8 @@
    "note": "keyboard OTP"
   },
   {
-   "has": "do not click Resend yet",
-   "note": "fail hint"
+   "has": "piAirbnbSnapshotOtpMeta",
+   "note": "snapshot helper"
   },
   {
    "hasNot": "await piAirbnbPreferEmailDelivery(job.page);\n      if (await piAirbnbNeedsOtp(job.page))",

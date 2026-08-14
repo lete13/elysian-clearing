@@ -39,8 +39,8 @@
    "note": "resend copy"
   },
   {
-   "has": "Airbnb emailed a code to the host inbox",
-   "note": "confirm send hint"
+   "has": "piAirbnbWaitForEmailOtpPage",
+   "note": "wait helper"
   },
   {
    "hasNot": "at most once",

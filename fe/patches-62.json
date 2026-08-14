@@ -1,0 +1,22 @@
+{
+ "baseSha256": "007c6557a27b4f952cb19c2bb692dc67c5a07116412b693612ae3a9ccbae4a50",
+ "expectedSha256": "adffc965ab00793dabb02019e9efef924c8223937bc6f03ff443bfcfff917cc3",
+ "builtAt": "2026-08-14 One Airbnb email OTP; cooldown on Resend",
+ "patches": [
+  {
+   "note": "OTP hint: one email; ignore resend cooldown",
+   "find": "Airbnb should email a code on Connect. If none arrives within a minute, tap Resend as email once, then wait. Use the newest code only.",
+   "replace": "Connect emails <b>one</b> code. If several arrived, use the latest. Do not Resend during Airbnb’s 1-minute wait — it will not send."
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Connect emails <b>one</b> code",
+   "note": "one code copy"
+  },
+  {
+   "has": "1-minute wait",
+   "note": "cooldown copy"
+  }
+ ]
+}

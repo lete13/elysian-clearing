@@ -11,8 +11,8 @@
  ],
  "assertions": [
   {
-   "has": "Airbnb should email a code on Connect",
-   "note": "send copy"
+   "has": "host email inbox",
+   "note": "email OTP copy"
   }
  ]
 }
