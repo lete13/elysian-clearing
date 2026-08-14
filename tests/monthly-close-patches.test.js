@@ -124,6 +124,107 @@ assert(html.includes('!complete(a) && !mcSkipped(a.id)'), 'skipped apartments le
 assert(html.includes('if (mcSkipped(a.id)) { skipN += n; return; }'), 'skipped apartments are never counted as sent');
 assert(html.includes('var _need = Math.max(0, tot - skipN);'), 'progress measures what actually needs clearing');
 
+function extractFn(source, name) {
+  const start = source.indexOf('function ' + name + '(');
+  assert(start >= 0, 'missing function ' + name);
+  const brace = source.indexOf('{', start);
+  let depth = 0;
+  for (let i = brace; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}') {
+      depth--;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error('unclosed function ' + name);
+}
+
+const packetSrc = [
+  (() => {
+    const start = html.indexOf('const BLOCK_NAMES = ');
+    const end = html.indexOf('function rptMonthsSpanned', start);
+    assert(start >= 0 && end > start, 'packet helpers present');
+    return html.slice(start, end);
+  })(),
+  extractFn(html, 'sumPackets'),
+].join('\n');
+const packetCtx = {};
+vm.runInNewContext(packetSrc + '\nthis.calcAptPacket = calcAptPacket;\nthis.sumPackets = sumPackets;\nthis.calcBase = calcBase;', packetCtx);
+const mA = { id:'mA', name:'Multi A', mgmtFee:15, cleaningFee:20, vatOnFees:false,
+  businessTax:true, businessTaxAmt:50, deductCT:true, deductVAT:true,
+  municipalityTax:true, deductCleaning:true, b2b:false,
+  fixedCharges:[{ id:'fA1', label:'Software', amount:45 }] };
+const mB = { ...mA, id:'mB', name:'Multi B', cleaningFee:15, fixedCharges:[] };
+const bk = (gross, ct, vat, at, cancelled, cleanH, svc, pchg) =>
+  ({ gross, ct, vat, at, cancelled, cleanH, svc, pchg, guestName:'guest' });
+const bksA = [ bk(1000, 50, 100, 10, false, 0, 120, 5), bk(500, 25, 50, 5, false, 0, 60, 2.5) ];
+const bksB = [ bk(600, 30, 60, 6, false, 0, 72, 3), bk(400, 20, 40, 4, false, 0, 48, 2), bk(300, 15, 30, 3, false, 0, 36, 1.5) ];
+const mExps = [
+  { id:'me1', aptId:'mB', charge:true, net:100, vat:24, total:124, date:'15/06/2026' },
+  { id:'me2', aptId:'__spl', charge:true, date:'16/06/2026', splits:[{ aptId:'mA', amt:30 }, { aptId:'mC', amt:70 }] },
+];
+const mGea = (e, forAptId) => {
+  if (e.aptId === '__spl') return (e.splits||[]).filter(s => forAptId ? s.aptId===forAptId : true)
+    .reduce((t,s)=>t+(parseFloat(s.amt)||0),0);
+  if (forAptId && e.aptId !== forAptId) return 0;
+  return parseFloat(e.net||e.total||0);
+};
+const mGeaVat = (e, forAptId) => {
+  if (e.aptId === '__spl') return mGea(e, forAptId) * 0.24;
+  if (forAptId && e.aptId !== forAptId) return 0;
+  return parseFloat(e.vat||0);
+};
+const expsFor = id => mExps.filter(e => e.aptId===id || (e.aptId==='__spl' && (e.splits||[]).some(s=>s.aptId===id)));
+const pAov = packetCtx.calcAptPacket(mA, bksA, expsFor('mA'), mGea, mGeaVat, 5, 1);
+const pBov = packetCtx.calcAptPacket(mB, bksB, expsFor('mB'), mGea, mGeaVat, 1, 2);
+assert.strictEqual(pAov.cleanDeduct, 100, 'grouped apt A cleaning override 5×20');
+assert.strictEqual(pBov.cleanDeduct, 15, 'grouped apt B cleaning override 1×15');
+assert.strictEqual(pAov.fixedCh, 45, 'grouped apt A software stays 1 month');
+assert.strictEqual(pBov.m.bt, 100, 'grouped apt B business tax ×2 months');
+assert.strictEqual(packetCtx.sumPackets([pAov, pBov]).payout, pAov.payout + pBov.payout, 'grouped payout with mixed overrides');
+
+const stepCtx = { window: {}, S: { cleanOverride: {}, moOverride: {} }, saves: 0, renders: 0 };
+stepCtx.window = stepCtx;
+stepCtx.save = () => { stepCtx.saves++; };
+stepCtx.renderRpt = () => { stepCtx.renders++; };
+vm.runInNewContext(
+  extractFn(html, 'rptOvKey') + '\n' +
+  extractFn(html, 'rptCleanStep') + '\n' +
+  extractFn(html, 'rptMoStep') + '\n' +
+  extractFn(html, 'rptMoReset') + '\n' +
+  extractFn(html, 'rptCleanReset') + '\n' +
+  'this.rptOvKey = rptOvKey; this.rptCleanStep = rptCleanStep; this.rptMoStep = rptMoStep; this.rptMoReset = rptMoReset; this.rptCleanReset = rptCleanReset;',
+  stepCtx
+);
+const dates = { from: new Date(Date.UTC(2026, 6, 1)), to: new Date(Date.UTC(2026, 6, 31)) };
+stepCtx.window._rptMoAuto = 1;
+stepCtx.window._rpt = {
+  apt: { id: 'a1' },
+  dates,
+  packets: [
+    { a: { id: 'a1' }, m: { cleanStays: 2, cleanStaysAuto: 2 }, months: 1 },
+    { a: { id: 'a2' }, m: { cleanStays: 3, cleanStaysAuto: 3 }, months: 1 },
+  ],
+};
+assert.strictEqual(stepCtx.rptOvKey('a1', dates), 'a1::2026-07-01::2026-07-31');
+stepCtx.rptCleanStep(1, 'a1');
+assert.strictEqual(stepCtx.S.cleanOverride['a1::2026-07-01::2026-07-31'], 3, 'a1 cleaning +1');
+stepCtx.window._rpt.packets[1].m.cleanStays = 3;
+stepCtx.rptCleanStep(-1, 'a2');
+assert.strictEqual(stepCtx.S.cleanOverride['a2::2026-07-01::2026-07-31'], 2, 'a2 cleaning -1');
+assert.strictEqual(stepCtx.S.cleanOverride['a1::2026-07-01::2026-07-31'], 3, 'a1 cleaning unchanged by a2 step');
+stepCtx.rptMoStep(1, 'a2');
+assert.strictEqual(stepCtx.S.moOverride['a2::2026-07-01::2026-07-31'], 2, 'a2 software months +1');
+assert.strictEqual(stepCtx.S.moOverride['a1::2026-07-01::2026-07-31'], undefined, 'a1 months untouched');
+stepCtx.rptMoStep(1, 'a1');
+assert.strictEqual(stepCtx.S.moOverride['a1::2026-07-01::2026-07-31'], 2, 'a1 software months +1');
+stepCtx.rptCleanReset('a1');
+assert.ok(!Object.prototype.hasOwnProperty.call(stepCtx.S.cleanOverride, 'a1::2026-07-01::2026-07-31'), 'a1 cleaning reset');
+assert.strictEqual(stepCtx.S.cleanOverride['a2::2026-07-01::2026-07-31'], 2, 'a2 cleaning survives a1 reset');
+stepCtx.rptMoReset('a2');
+assert.ok(!Object.prototype.hasOwnProperty.call(stepCtx.S.moOverride, 'a2::2026-07-01::2026-07-31'), 'a2 months reset');
+assert.strictEqual(stepCtx.S.moOverride['a1::2026-07-01::2026-07-31'], 2, 'a1 months survive a2 reset');
+
 
 // ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
 const srvChain = ['patches.json'];

@@ -1,0 +1,96 @@
+{
+ "baseSha256": "cb44047a276a3935e3d469588fb01b441aa18a78b43831d5cdae932c4e4f4322",
+ "expectedSha256": "40d9f06832605ed9a9b9367bdca3b619e15cdf00b875ad95afefef168590e9a9",
+ "builtAt": "2026-08-14 grouped reports: per-apartment cleaning and software-months steppers",
+ "patches": [
+  {
+   "note": "Reports: apply cleaning and months overrides per apartment on grouped reports",
+   "find": "  // Months covered by the active report period: fixed monthly amounts (business\n  // tax, fixed charges) are billed once per month, so a range crossing two\n  // months charges them twice. A manual ▲▼ override (single-property mode, like\n  // the cleaning stay-count stepper) can force a different month count.\n  const _nMoAuto = rptMonthsSpanned(getRptDates());\n  const _nMoRpt  = (!_multi && moOverride != null) ? Math.max(1, parseInt(moOverride)||1) : _nMoAuto;\n  window._rptMoAuto = _nMoAuto;\n  const P = _apts.map(a => calcAptPacket(\n    a,\n    _multi ? bks.filter(b => b.aptId === a.id) : bks,\n    _expsForApt(a),\n    getEA,\n    _geaVat,\n    _multi ? null : cleanOverride,  // manual stay-count stepper is single-property only\n    _nMoRpt\n  ));",
+   "replace": "  // Months covered by the active report period: fixed monthly amounts (business\n  // tax, fixed charges) are billed once per month, so a range crossing two\n  // months charges them twice. A manual ▲▼ override per apartment (including\n  // grouped Monthly Close reports) can force a different month count.\n  const _nMoAuto = rptMonthsSpanned(getRptDates());\n  window._rptMoAuto = _nMoAuto;\n  const _ovDates = getRptDates();\n  const _ovKey = (id) => (_ovDates && _ovDates.from && _ovDates.to)\n    ? String(id) + '::' + _ovDates.from.toISOString().slice(0,10) + '::' + _ovDates.to.toISOString().slice(0,10)\n    : null;\n  const P = _apts.map(a => {\n    const k = _ovKey(a.id);\n    const aClean = (k && S.cleanOverride && S.cleanOverride[k] !== undefined) ? S.cleanOverride[k]\n      : (!_multi ? cleanOverride : null);\n    const aMoRaw = (k && S.moOverride && S.moOverride[k] !== undefined) ? S.moOverride[k]\n      : (!_multi ? moOverride : null);\n    const aMo = (aMoRaw != null) ? Math.max(1, parseInt(aMoRaw)||1) : _nMoAuto;\n    return calcAptPacket(\n      a,\n      _multi ? bks.filter(b => b.aptId === a.id) : bks,\n      _expsForApt(a),\n      getEA,\n      _geaVat,\n      aClean,\n      aMo\n    );\n  });\n  const _nMoRpt = (P[0] && P[0].months) || _nMoAuto;"
+  },
+  {
+   "note": "Reports: month stepper on grouped rows, keyed by apartment",
+   "find": "  // ▲▼ stepper for the fixed-monthly-charges month count — same control as the\n  // cleaning stay-count stepper. Single-property mode only (like cleaning).\n  const _moWord = (n) => isGR ? (n===1?'μήνας':'μήνες') : (n===1?'month':'months');\n  const moStepHtml = () => _multi ? '' :\n    '<span style=\"display:inline-flex;flex-direction:column;line-height:0;margin-left:2px;vertical-align:middle\">'\n      +'<button onclick=\"rptMoStep(1)\" title=\"Charge one more month\" style=\"border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px\">\\u25B2</button>'\n      +'<button onclick=\"rptMoStep(-1)\" title=\"Charge one month less\" style=\"border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px\">\\u25BC</button>'\n    +'</span>'\n    +(_nMoRpt!==_nMoAuto?'<a onclick=\"rptMoReset()\" title=\"Reset to automatic ('+_nMoAuto+' '+_moWord(_nMoAuto)+')\" style=\"cursor:pointer;text-decoration:underline;color:#C9A84C;font-size:10px;margin-left:2px\">reset</a>':'');\n  const moSubHtml = (text) => '<span style=\"display:inline-flex;align-items:center;gap:3px\"><span>'+text+'</span>'+moStepHtml()+'</span>';",
+   "replace": "  // ▲▼ stepper for the fixed-monthly-charges month count — same control as the\n  // cleaning stay-count stepper. Grouped reports pass the apartment id so each\n  // member can be adjusted independently.\n  const _moWord = (n) => isGR ? (n===1?'μήνας':'μήνες') : (n===1?'month':'months');\n  const _rptAid = (id) => String(id==null?'':id).replace(/\\\\/g,'\\\\\\\\').replace(/'/g,\"\\\\'\");\n  const moStepHtml = (aptId) => {\n    const pk = aptId ? P.find(p => String(p.a && p.a.id) === String(aptId)) : P[0];\n    const nMo = (pk && pk.months) || _nMoAuto;\n    const arg = aptId ? \",'\"+_rptAid(aptId)+\"'\" : '';\n    const resetArg = aptId ? \"'\"+_rptAid(aptId)+\"'\" : '';\n    return '<span style=\"display:inline-flex;flex-direction:column;line-height:0;margin-left:2px;vertical-align:middle\">'\n      +'<button onclick=\"rptMoStep(1'+arg+')\" title=\"Charge one more month\" style=\"border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px\">\\u25B2</button>'\n      +'<button onclick=\"rptMoStep(-1'+arg+')\" title=\"Charge one month less\" style=\"border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px\">\\u25BC</button>'\n    +'</span>'\n    +(nMo!==_nMoAuto?'<a onclick=\"rptMoReset('+resetArg+')\" title=\"Reset to automatic ('+_nMoAuto+' '+_moWord(_nMoAuto)+')\" style=\"cursor:pointer;text-decoration:underline;color:#C9A84C;font-size:10px;margin-left:2px\">reset</a>':'');\n  };\n  const moSubHtml = (text, aptId) => '<span style=\"display:inline-flex;align-items:center;gap:3px\"><span>'+text+'</span>'+moStepHtml(aptId)+'</span>';"
+  },
+  {
+   "note": "Reports: business-tax month stepper on grouped apartments",
+   "find": "        _multi ? txt : moSubHtml(txt),",
+   "replace": "        moSubHtml(txt, p.a.id),"
+  },
+  {
+   "note": "Reports: cleaning stay stepper on each grouped apartment row",
+   "find": "    // Multi-property: one cleaning row per apartment at ITS OWN rate (no stepper —\n    // the manual stay-count override is a single-property feature)\n    .concat(_multi ? P.filter(p=>p.cleanDeduct>0).map(p => cr(\n      L.cleaningFee + ' — ' + p.a.name,\n      p.m.cleanStays + ' stays × ' + fmt(p.a.cleaningFee) + '/stay',\n      -p.cleanDeduct, p.hasVat ? -p.m.cleanVat : null)) : [])",
+   "replace": "    // Multi-property: one cleaning row per apartment at ITS OWN rate, each with\n    // its own stay-count stepper (same control as a single-property report).\n    .concat(_multi ? P.filter(p=>p.a.deductCleaning!==false).map(p => {\n      const aid = String(p.a.id).replace(/\\\\/g,'\\\\\\\\').replace(/'/g,\"\\\\'\");\n      return cr(\n        L.cleaningFee + ' — ' + p.a.name,\n        '<span style=\"display:inline-flex;align-items:center;gap:5px\">'\n          +'<span>'+p.m.cleanStays+' stays × '+fmt(p.a.cleaningFee)+'/stay</span>'\n          +'<span style=\"display:inline-flex;flex-direction:column;line-height:0;margin-left:2px\">'\n            +'<button onclick=\"rptCleanStep(1,\\''+aid+'\\')\" title=\"Add a stay\" style=\"border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px\">▲</button>'\n            +'<button onclick=\"rptCleanStep(-1,\\''+aid+'\\')\" title=\"Remove a stay\" style=\"border:none;background:none;cursor:pointer;padding:0;color:var(--tx3);font-size:9px;line-height:9px\">▼</button>'\n          +'</span>'\n          +(p.m.cleanStays!==p.m.cleanStaysAuto?'<a onclick=\"rptCleanReset(\\''+aid+'\\')\" title=\"Reset to automatic count ('+p.m.cleanStaysAuto+')\" style=\"cursor:pointer;text-decoration:underline;color:#C9A84C;font-size:10px;margin-left:2px\">reset</a>':'')\n        +'</span>',\n        -p.cleanDeduct, p.hasVat ? -p.m.cleanVat : null);\n    }) : [])"
+  },
+  {
+   "note": "Reports: software/fixed-charge month stepper on grouped apartments",
+   "find": "      const sub = _multi ? (_pMo>1||fa<0 ? txt : null) : moSubHtml(txt);",
+   "replace": "      const sub = moSubHtml(txt, p.a.id);"
+  },
+  {
+   "note": "Reports: cleaning/months steppers take an apartment id (grouped reports)",
+   "find": "function rptCleanStep(delta) {\n  const key = window._rptCleanKey;\n  const m = window._rpt?.m;\n  if (!key || !m) return;\n  S.cleanOverride = S.cleanOverride || {};\n  const current = (typeof m.cleanStays === 'number') ? m.cleanStays : m.cleanStaysAuto;\n  const next = Math.max(0, current + delta);\n  if (next === m.cleanStaysAuto) delete S.cleanOverride[key]; // back to automatic — keep storage clean\n  else S.cleanOverride[key] = next;\n  save();\n  renderRpt();\n}\n\n// ▲▼ months stepper for fixed monthly charges (business tax + fixed charges).\n// Same pattern as the cleaning stay-count stepper: override stored per\n// property + period, automatic value = calendar months the period touches.\nfunction rptMoStep(delta) {\n  const key = window._rptMoKey;\n  if (!key) return;\n  S.moOverride = S.moOverride || {};\n  const auto = window._rptMoAuto || 1;\n  const current = (S.moOverride[key] !== undefined) ? S.moOverride[key] : auto;\n  const next = Math.max(1, current + delta);\n  if (next === auto) delete S.moOverride[key]; // back to automatic — keep storage clean\n  else S.moOverride[key] = next;\n  save();\n  renderRpt();\n}\nfunction rptMoReset() {\n  const key = window._rptMoKey;\n  if (key && S.moOverride) { delete S.moOverride[key]; save(); renderRpt(); }\n}",
+   "replace": "function rptOvKey(aptId, dates) {\n  dates = dates || (window._rpt && window._rpt.dates);\n  if (!aptId || !dates || !dates.from || !dates.to) return null;\n  const from = dates.from.toISOString ? dates.from.toISOString().slice(0,10) : String(dates.from).slice(0,10);\n  const to = dates.to.toISOString ? dates.to.toISOString().slice(0,10) : String(dates.to).slice(0,10);\n  return String(aptId) + '::' + from + '::' + to;\n}\nfunction rptCleanStep(delta, aptId) {\n  const rpt = window._rpt;\n  if (!rpt) return;\n  const id = (aptId != null && aptId !== '') ? aptId : (rpt.apt && rpt.apt.id);\n  const key = rptOvKey(id, rpt.dates);\n  const pk = (rpt.packets || []).find(p => String(p.a && p.a.id) === String(id));\n  const m = (pk && pk.m) || rpt.m;\n  if (!key || !m) return;\n  S.cleanOverride = S.cleanOverride || {};\n  const current = (typeof m.cleanStays === 'number') ? m.cleanStays : m.cleanStaysAuto;\n  const next = Math.max(0, current + delta);\n  if (next === m.cleanStaysAuto) delete S.cleanOverride[key]; // back to automatic — keep storage clean\n  else S.cleanOverride[key] = next;\n  save();\n  renderRpt();\n}\n\n// ▲▼ months stepper for fixed monthly charges (business tax + fixed charges).\n// Same pattern as the cleaning stay-count stepper: override stored per\n// property + period, automatic value = calendar months the period touches.\n// Grouped reports pass the apartment id so each member is independent.\nfunction rptMoStep(delta, aptId) {\n  const rpt = window._rpt;\n  if (!rpt) return;\n  const id = (aptId != null && aptId !== '') ? aptId : (rpt.apt && rpt.apt.id);\n  const key = rptOvKey(id, rpt.dates);\n  if (!key) return;\n  S.moOverride = S.moOverride || {};\n  const auto = window._rptMoAuto || 1;\n  const pk = (rpt.packets || []).find(p => String(p.a && p.a.id) === String(id));\n  const current = (S.moOverride[key] !== undefined) ? S.moOverride[key] : ((pk && pk.months) || auto);\n  const next = Math.max(1, current + delta);\n  if (next === auto) delete S.moOverride[key]; // back to automatic — keep storage clean\n  else S.moOverride[key] = next;\n  save();\n  renderRpt();\n}\nfunction rptMoReset(aptId) {\n  const rpt = window._rpt;\n  const id = (aptId != null && aptId !== '') ? aptId : (rpt && rpt.apt && rpt.apt.id);\n  const key = rptOvKey(id, rpt && rpt.dates);\n  if (key && S.moOverride) { delete S.moOverride[key]; save(); renderRpt(); }\n}"
+  },
+  {
+   "note": "Reports: cleaning reset takes an apartment id",
+   "find": "function rptCleanReset() {\n  const key = window._rptCleanKey;\n  if (!key) return;\n  S.cleanOverride = S.cleanOverride || {};\n  delete S.cleanOverride[key];\n  save();\n  renderRpt();\n}",
+   "replace": "function rptCleanReset(aptId) {\n  const rpt = window._rpt;\n  const id = (aptId != null && aptId !== '') ? aptId : (rpt && rpt.apt && rpt.apt.id);\n  const key = rptOvKey(id, rpt && rpt.dates);\n  if (!key) return;\n  S.cleanOverride = S.cleanOverride || {};\n  delete S.cleanOverride[key];\n  save();\n  renderRpt();\n}"
+  },
+  {
+   "note": "Revenue snapshot: honor each grouped apartment's own months override",
+   "find": "    const m2 = calcBase(aptBks, a, ov, (rpt.packets && rpt.packets[0] && rpt.packets[0].months) || rptMonthsSpanned(dates)); // months-aware (honors the ▲▼ override): bt reduces base once per month covered",
+   "replace": "    const pkMo = (rpt.packets || []).find(p => String(p.a && p.a.id) === String(a.id));\n    const m2 = calcBase(aptBks, a, ov, (pkMo && pkMo.months) || rptMonthsSpanned(dates)); // months-aware (honors the ▲▼ override, per apartment on grouped reports): bt reduces base once per month covered"
+  },
+  {
+   "note": "Monthly Close: freeze per-member cleaning and months overrides on grouped confirm",
+   "find": "            memberIds: _pks.map(function (p) { return String(p.a && p.a.id); }),\n            cleanOverride: (_cleanKey && S.cleanOverride && S.cleanOverride[_cleanKey] !== undefined) ? S.cleanOverride[_cleanKey] : null,\n            moOverride: (_moKey && S.moOverride && S.moOverride[_moKey] !== undefined) ? S.moOverride[_moKey] : null,",
+   "replace": "            memberIds: _pks.map(function (p) { return String(p.a && p.a.id); }),\n            cleanOverride: (_cleanKey && S.cleanOverride && S.cleanOverride[_cleanKey] !== undefined) ? S.cleanOverride[_cleanKey] : null,\n            moOverride: (_moKey && S.moOverride && S.moOverride[_moKey] !== undefined) ? S.moOverride[_moKey] : null,\n            cleanOverrides: (function () {\n              var o = {};\n              _pks.forEach(function (p) {\n                var id = String(p.a && p.a.id);\n                var k = (typeof rptOvKey === 'function') ? rptOvKey(id, R.dates) : null;\n                if (k && S.cleanOverride && S.cleanOverride[k] !== undefined) o[id] = S.cleanOverride[k];\n              });\n              return o;\n            })(),\n            moOverrides: (function () {\n              var o = {};\n              _pks.forEach(function (p) {\n                var id = String(p.a && p.a.id);\n                var k = (typeof rptOvKey === 'function') ? rptOvKey(id, R.dates) : null;\n                if (k && S.moOverride && S.moOverride[k] !== undefined) o[id] = S.moOverride[k];\n              });\n              return o;\n            })(),"
+  },
+  {
+   "note": "calcAptPacket: cleaning override is per apartment, including grouped reports",
+   "find": "//   cleanOv  : manual stay-count override (single-property mode only; pass null for multi)",
+   "replace": "//   cleanOv  : manual stay-count override for THIS apartment (grouped reports pass each member's own value)"
+  },
+  {
+   "note": "Self-tests: grouped report members can have independent cleaning and months overrides",
+   "find": "    assert('Mm4 payout drops by exactly the extra month of fixed amounts (bt reduces mgmt base)',\n      +(pA.payout - pA2mo.payout).toFixed(2), +(50 + 45 - 50*(parseFloat(mA.mgmtFee||0)/100) + (mA.vatOnFees ? 45*0.24 : 0)).toFixed(2));\n    // M4: multi totals ≡ Σ single-property packets (the core invariant)",
+   "replace": "    assert('Mm4 payout drops by exactly the extra month of fixed amounts (bt reduces mgmt base)',\n      +(pA.payout - pA2mo.payout).toFixed(2), +(50 + 45 - 50*(parseFloat(mA.mgmtFee||0)/100) + (mA.vatOnFees ? 45*0.24 : 0)).toFixed(2));\n    // M4: multi totals ≡ Σ single-property packets (the core invariant)\n    const pAov = calcAptPacket(mA, bksA, expsFor('mA'), mGea, mGeaVat, 5, 1);\n    const pBov = calcAptPacket(mB, bksB, expsFor('mB'), mGea, mGeaVat, 1, 2);\n    assert('Mov1 grouped apt A cleaning override 5×20', pAov.cleanDeduct, 100);\n    assert('Mov2 grouped apt B cleaning override 1×15', pBov.cleanDeduct, 15);\n    assert('Mov3 grouped apt A software stays 1 month', pAov.fixedCh, 45);\n    assert('Mov4 grouped apt B business tax ×2 months', pBov.m.bt, 100);\n    assert('Mov5 grouped payout with mixed overrides = Σ packets', sumPackets([pAov,pBov]).payout, pAov.payout + pBov.payout);\n"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function rptOvKey(",
+   "note": "override key helper"
+  },
+  {
+   "has": "rptCleanStep(1,\\''+aid",
+   "note": "grouped cleaning stepper passes apartment id"
+  },
+  {
+   "has": "moSubHtml(txt, p.a.id)",
+   "note": "grouped software/tax rows keep the months stepper"
+  },
+  {
+   "has": "cleanOverrides: (function ()",
+   "note": "close snapshot captures per-member cleaning overrides"
+  },
+  {
+   "has": "moOverrides: (function ()",
+   "note": "close snapshot captures per-member months overrides"
+  },
+  {
+   "has": "Mov1 grouped apt A cleaning override",
+   "note": "self-test for mixed grouped overrides"
+  },
+  {
+   "hasNot": "_multi ? null : cleanOverride",
+   "note": "grouped packets no longer drop the cleaning override"
+  },
+  {
+   "hasNot": "const moStepHtml = () => _multi ? '' :",
+   "note": "month stepper no longer hidden on grouped reports"
+  }
+ ]
+}
