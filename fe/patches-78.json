@@ -1,0 +1,61 @@
+{
+ "baseSha256": "3cfedc57d3b58ab910618698cd5f439f34ccfc50a8944e099d590cab81d0883e",
+ "expectedSha256": "fa2fe1c42d21db705ae10a46605204312986a810409f8a1e5d82d3343a09d476",
+ "builtAt": "2026-08-14 Daily Ops: no phantom check-in nights/people without an arrival (Athenian Cedar 15/8)",
+ "patches": [
+  {
+   "note": "Daily Ops: drop vanished snapshot rows; clear frozen check-in nights/people when there is no arrival",
+   "find": "    out.isOwner = f ? !!f.isOwner : !!r.isOwner;\n    // Same-day check-in status used to freeze in the day's snapshot as\n    // \"Δεν ξέρουμε ακόμα\". When a booking lands later (Hosthub sync), refresh\n    // from live bookings unless the operator toggled the cell by hand.\n    if (f && !r.checkinManual) {\n      if (f.checkinSameDay === 'yes' || f.checkinSameDay === 'checkin_only') {\n        out.checkinSameDay = f.checkinSameDay;\n        out.nextNights = f.nextNights;\n        out.nextGuest = f.nextGuest || '';\n        if (f.people != null && f.people !== '') out.people = f.people;\n        out.isCheckinOnly = !!f.isCheckinOnly;\n        if (f.checkinSameDay === 'checkin_only') out.checkoutGuest = '';\n      } else if (out.checkinSameDay === 'yes' && f.checkinSameDay === 'unknown' && !out.isCheckinOnly) {\n        // Auto-detected Ναι whose booking vanished — fall back to unknown.\n        out.checkinSameDay = 'unknown';\n        out.nextNights = null;\n        out.nextGuest = '';\n      }\n    }\n    return out;\n  });",
+   "replace": "    out.isOwner = f ? !!f.isOwner : !!r.isOwner;\n    if (!f) {\n      // Booking gone (cancelled checkout, deleted check-in). Keep only rows the\n      // operator pinned by hand.\n      const keep = !!r.checkinManual || (typeof OPS_KINDS !== 'undefined' && OPS_KINDS.some(function (k) { return r[k.manual]; }));\n      return keep ? out : null;\n    }\n    // Same-day check-in status used to freeze in the day's snapshot as\n    // \"Δεν ξέρουμε ακόμα\". Refresh from live bookings unless the operator\n    // toggled the cell by hand. A checkout with no arrival must not keep a\n    // frozen 7-night / 6-people check-in (Athenian Cedar 15/8).\n    if (f && !r.checkinManual) {\n      if (f.checkinSameDay === 'yes' || f.checkinSameDay === 'checkin_only') {\n        out.checkinSameDay = f.checkinSameDay;\n        out.nextNights = f.nextNights;\n        out.nextGuest = f.nextGuest || '';\n        if (f.people != null && f.people !== '') out.people = f.people;\n        else if (!out.people) out.people = '';\n        out.isCheckinOnly = !!f.isCheckinOnly;\n        if (f.checkinSameDay === 'checkin_only') out.checkoutGuest = '';\n      } else {\n        out.checkinSameDay = f.checkinSameDay || 'unknown';\n        out.nextNights = null;\n        out.nextGuest = '';\n        out.people = '';\n        out.isCheckinOnly = false;\n        if (f.checkoutGuest != null) out.checkoutGuest = f.checkoutGuest;\n      }\n    }\n    return out;\n  }).filter(function (row) { return !!row; });",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: sofa prep comments only when there is a check-in",
+   "find": "function _opsApplySofaComment(row) {\n  if (!row) return;\n  const hr = _opsAptHouseRules(row);",
+   "replace": "function _opsHasArrival(row) {\n  return !!(row && (row.isCheckinOnly || row.checkinSameDay === 'yes' || row.checkinSameDay === 'checkin_only'));\n}\nfunction _opsApplySofaComment(row) {\n  if (!row) return;\n  if (!_opsHasArrival(row)) {\n    _opsSetManagedComment(row, OPS_TAG_SOFA1, false);\n    _opsSetManagedComment(row, OPS_TAG_SOFA2, false);\n    return;\n  }\n  const hr = _opsAptHouseRules(row);",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: long-stay comment only when there is a check-in",
+   "find": "function _opsApplyLongStayComment(row) {\n  if (!row) return;\n  const tag = _opsLongStayTag(row.nextNights);",
+   "replace": "function _opsApplyLongStayComment(row) {\n  if (!row) return;\n  const tag = _opsHasArrival(row) ? _opsLongStayTag(row.nextNights) : '';",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: nights suffix only on confirmed same-day check-in (Ναι)",
+   "find": "const suffix = row.nextNights ? ' ('+row.nextNights+' νύχτες)' : '';",
+   "replace": "const suffix = (row.checkinSameDay === 'yes' && row.nextNights) ? ' ('+row.nextNights+' νύχτες)' : '';",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "out.people = '';",
+   "note": "no-arrival merge clears people"
+  },
+  {
+   "has": "frozen 7-night / 6-people check-in (Athenian Cedar 15/8).",
+   "note": "Cedar 15/8 comment"
+  },
+  {
+   "has": ").filter(function (row) { return !!row; });",
+   "note": "vanished snapshot rows are dropped"
+  },
+  {
+   "has": "function _opsHasArrival(row)",
+   "note": "arrival helper"
+  },
+  {
+   "has": "if (!_opsHasArrival(row)) {",
+   "note": "sofa comments require an arrival"
+  },
+  {
+   "has": "const tag = _opsHasArrival(row) ? _opsLongStayTag(row.nextNights) : '';",
+   "note": "long-stay comment requires an arrival"
+  },
+  {
+   "has": "const suffix = (row.checkinSameDay === 'yes' && row.nextNights) ? ' ('+row.nextNights+' νύχτες)' : '';",
+   "note": "nights suffix only on Ναι"
+  }
+ ]
+}
