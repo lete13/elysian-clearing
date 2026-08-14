@@ -1,0 +1,97 @@
+{
+ "baseSha256": "d6cba799c6c734cceb7123b4f636d9d824898cdddc9d83234148ac1b9c384f45",
+ "expectedSha256": "9c2f5fa81a7cfd8f2e192427ae5a2c25ab6d993845fd18ec189a18ce8d6f3568",
+ "builtAt": "2026-08-14 Daily Ops: check-in-only sofa arrivals on ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ",
+ "patches": [
+  {
+   "note": "Daily Ops: cancelled bookings are not checkouts on the cleaning schedule",
+   "find": "const checkouts = S.bks.filter(b => b.checkOut === date || b.checkOut === dateFmt);",
+   "replace": "const checkouts = S.bks.filter(b => !b.cancelled && (b.checkOut === date || b.checkOut === dateFmt));",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: nights-from-dates + sofa excess helpers for check-in-only schedule rows",
+   "find": "function _opsLongStayTag(nights) {\n  const n = parseInt(nights, 10);\n  if (!isFinite(n) || n < 5) return '';\n  return 'Long stay: ' + n + ' nights';\n}",
+   "replace": "function _opsLongStayTag(nights) {\n  const n = parseInt(nights, 10);\n  if (!isFinite(n) || n < 5) return '';\n  return 'Long stay: ' + n + ' nights';\n}\nfunction _opsNightsOf(b) {\n  if (!b) return null;\n  const n = parseInt(b.nights, 10);\n  if (isFinite(n) && n > 0) return n;\n  if (!b.checkIn || !b.checkOut || typeof parseD !== 'function') return null;\n  const a = parseD(b.checkIn), c = parseD(b.checkOut);\n  if (!a || !c || isNaN(a) || isNaN(c)) return null;\n  const d = Math.round((c - a) / 86400000);\n  return d > 0 ? d : null;\n}\nfunction _opsSofaExcessFor(people, rowLike) {\n  const hr = (typeof _opsAptHouseRules === 'function') ? _opsAptHouseRules(rowLike || {}) : {};\n  const base = parseInt(hr.base_capacity, 10);\n  const p = parseInt(people, 10);\n  if (!isFinite(base) || base <= 0 || !isFinite(p) || p <= 0) return 0;\n  return Math.max(0, p - base);\n}\nfunction _opsArrivalNeedsSofa(rowOrBk) {\n  if (!rowOrBk) return false;\n  if (rowOrBk.needsSofaBed) return true;\n  const comments = String(rowOrBk.comments || rowOrBk.cleanTaskNote || rowOrBk.guestName || '');\n  if (/Prepare [12] sofa bed/i.test(comments) || /\\bsofa[\\s-]?bed\\b/i.test(comments)) return true;\n  const people = rowOrBk.people != null ? rowOrBk.people : rowOrBk.guests;\n  return _opsSofaExcessFor(people, rowOrBk) >= 1;\n}\nfunction _opsCheckinOnlyScheduleExtras(occupied) {\n  const out = [];\n  const seen = new Set((occupied || []).map(function (k) { return String(k); }));\n  (_opsRows || []).forEach(function (r) {\n    if (!r || !(r.isCheckinOnly || r.checkinSameDay === 'checkin_only')) return;\n    if (r.isExtended || r.isPreparation || r.isMaintenance) return;\n    const key = String(r.aptId || r.aptName || '');\n    if (!key || seen.has(key)) return;\n    if (!_opsArrivalNeedsSofa(r)) return;\n    seen.add(key);\n    out.push({\n      aptId: r.aptId || '', aptName: r.aptName || '',\n      cleanType: 'sofa_bed',\n      cleanerName: '', cleanerNames: [], cleanDone: false,\n      cleanTask: 'prepare_sofa',\n      comments: r.comments || r.cleanTaskNote || '',\n      cleanTaskNote: r.cleanTaskNote || r.comments || '',\n      people: r.people, nextNights: r.nextNights,\n      isCheckinOnly: true\n    });\n  });\n  return out;\n}",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: same-day check-in nights fall back to check-in/out dates",
+   "find": "nextNights: nxt ? (nxt.nights||null) : null,",
+   "replace": "nextNights: nxt ? (_opsNightsOf(nxt)) : null,",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: check-in-only nights fall back to check-in/out dates",
+   "find": "nextNights: bk.nights||null, nextGuest: bk.guestName||'',",
+   "replace": "nextNights: _opsNightsOf(bk), nextGuest: bk.guestName||'',",
+   "count": 1
+  },
+  {
+   "note": "Daily Ops: live check-in-only clears a stale snapshot checkout guest",
+   "find": "        out.isCheckinOnly = !!f.isCheckinOnly;\n      } else if (out.checkinSameDay === 'yes' && f.checkinSameDay === 'unknown' && !out.isCheckinOnly) {",
+   "replace": "        out.isCheckinOnly = !!f.isCheckinOnly;\n        if (f.checkinSameDay === 'checkin_only') out.checkoutGuest = '';\n      } else if (out.checkinSameDay === 'yes' && f.checkinSameDay === 'unknown' && !out.isCheckinOnly) {",
+   "count": 1
+  },
+  {
+   "note": "Cleaning schedule: check-in-only sofa arrivals (e.g. Athenian Cedar 6 ppl) are extras, not turnovers",
+   "find": "  // Exclude EVERY apartment already on Daily Ops (incl. EXTENDED) so they never\n  // get a false REFRESH/SOFA extra — extras are check-in-only gaps.\n  const occupied = new Set((_opsRows || []).map(function (r) { return r.aptId || r.aptName; }));\n  const rawExtras = _opsExtraCleanRows(_opsDate, Array.from(occupied));",
+   "replace": "  // Occupied = apartments already on the schedule as a turnover. Check-in-only\n  // arrivals stay off that list so an empty unit that needs sofa beds (or a\n  // refresh after a gap) can still appear on ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ.\n  const occupied = new Set(turnovers.map(function (r) { return String(r.aptId || r.aptName); }));\n  const rawExtras = _opsExtraCleanRows(_opsDate, Array.from(occupied));",
+   "count": 1
+  },
+  {
+   "note": "Cleaning schedule: copy check-in-only sofa comments onto extras, or add a SOFA BED row",
+   "find": "    if (!ex.cleanTask) ex.cleanTask = (ex.cleanType === 'sofa_bed') ? 'prepare_sofa' : 'katharismos';\n    return ex;\n  });\n  _opsCleanExtras.forEach(function (ex) { turnovers.push(ex); });",
+   "replace": "    if (!ex.cleanTask) ex.cleanTask = (ex.cleanType === 'sofa_bed') ? 'prepare_sofa' : 'katharismos';\n    return ex;\n  });\n  const extraApts = new Set(_opsCleanExtras.map(function (ex) { return String(ex.aptId || ex.aptName); }));\n  (_opsRows || []).forEach(function (r) {\n    if (!r || !(r.isCheckinOnly || r.checkinSameDay === 'checkin_only')) return;\n    const key = String(r.aptId || r.aptName || '');\n    if (!key) return;\n    _opsCleanExtras.forEach(function (ex) {\n      if (String(ex.aptId || ex.aptName) !== key) return;\n      if (!ex.comments && r.comments) {\n        ex.comments = r.comments;\n        ex.cleanTaskNote = r.cleanTaskNote || r.comments;\n      }\n      if (ex.people == null) ex.people = r.people;\n      if (ex.nextNights == null) ex.nextNights = r.nextNights;\n    });\n  });\n  if (typeof _opsCheckinOnlyScheduleExtras === 'function') {\n    _opsCheckinOnlyScheduleExtras(Array.from(occupied).concat(Array.from(extraApts))).forEach(function (ex) {\n      _opsCleanExtras.push(ex);\n    });\n  }\n  _opsCleanExtras.forEach(function (ex) { turnovers.push(ex); });",
+   "count": 1
+  },
+  {
+   "note": "Refresh/sofa extras stringify keys and detect sofa from guest count vs base capacity",
+   "find": "function _opsExtraCleanRows(date, turnoverKeys) {\n  const out = [];\n  const seen = new Set(turnoverKeys || []);\n  const day = (typeof parseD === 'function') ? parseD(date) : null;\n  if (!day) return out;\n  const parts = String(date).split('-');\n  if (parts.length !== 3) return out;\n  const todayDMY = parseInt(parts[2], 10) + '/' + parseInt(parts[1], 10) + '/' + parts[0];\n\n  (S.apts || []).forEach(function (apt) {\n    const key = apt.id || apt.name;\n    if (seen.has(key)) return;\n    const arr = (S.bks || []).find(function (b) {\n      return (b.aptId === apt.id || b.aptName === apt.name) &&\n        (b.checkIn === date || b.checkIn === todayDMY) && !b.cancelled;\n    });\n    if (!arr) return;\n    let lastCo = null;\n    (S.bks || []).forEach(function (b) {\n      if ((b.aptId === apt.id || b.aptName === apt.name) && b.checkOut && !b.cancelled) {\n        const co = parseD(b.checkOut);\n        if (co && co < day && (!lastCo || co > lastCo)) lastCo = co;\n      }\n    });\n    if (lastCo) {\n      const gap = Math.round((day - lastCo) / 86400000);\n      if (gap >= 4) {\n        seen.add(key);\n        out.push({\n          aptId: apt.id || '', aptName: apt.name || '', cleanType: 'refresh',\n          cleanerName: '', cleanDone: false, cleanTask: '', cleanTaskNote: '',\n          _gapDays: gap\n        });\n      }\n    }\n  });\n\n  (S.bks || []).forEach(function (b) {\n    if (b.cancelled) return;\n    const arrivesToday = (b.checkIn === date || b.checkIn === todayDMY);\n    if (!arrivesToday) return;\n    const wants = b.needsSofaBed || /\\bsofa[\\s-]?bed\\b/i.test(String(b.guestName || ''));\n    if (!wants) return;\n    const key = b.aptId || b.aptName;\n    if (seen.has(key)) return;\n    seen.add(key);\n    out.push({\n      aptId: b.aptId || '', aptName: b.aptName || '', cleanType: 'sofa_bed',\n      cleanerName: '', cleanDone: false, cleanTask: 'prepare_sofa', cleanTaskNote: ''\n    });\n  });\n  return out;\n}",
+   "replace": "function _opsExtraCleanRows(date, turnoverKeys) {\n  const out = [];\n  const seen = new Set((turnoverKeys || []).map(function (k) { return String(k); }));\n  const day = (typeof parseD === 'function') ? parseD(date) : null;\n  if (!day) return out;\n  const parts = String(date).split('-');\n  if (parts.length !== 3) return out;\n  const todayDMY = parseInt(parts[2], 10) + '/' + parseInt(parts[1], 10) + '/' + parts[0];\n\n  (S.apts || []).forEach(function (apt) {\n    const key = String(apt.id || apt.name);\n    if (seen.has(key)) return;\n    const arr = (S.bks || []).find(function (b) {\n      return (String(b.aptId) === String(apt.id) || b.aptName === apt.name) &&\n        (b.checkIn === date || b.checkIn === todayDMY) && !b.cancelled;\n    });\n    if (!arr) return;\n    let lastCo = null;\n    (S.bks || []).forEach(function (b) {\n      if ((String(b.aptId) === String(apt.id) || b.aptName === apt.name) && b.checkOut && !b.cancelled) {\n        const co = parseD(b.checkOut);\n        if (co && co < day && (!lastCo || co > lastCo)) lastCo = co;\n      }\n    });\n    if (lastCo) {\n      const gap = Math.round((day - lastCo) / 86400000);\n      if (gap >= 4) {\n        seen.add(key);\n        const note = (typeof _opsArrivalNeedsSofa === 'function' && _opsArrivalNeedsSofa(arr))\n          ? (arr.comments || '') : '';\n        out.push({\n          aptId: apt.id || '', aptName: apt.name || '', cleanType: 'refresh',\n          cleanerName: '', cleanDone: false, cleanTask: '', cleanTaskNote: note,\n          comments: note, people: arr.guests, nextNights: (typeof _opsNightsOf === 'function') ? _opsNightsOf(arr) : arr.nights,\n          _gapDays: gap\n        });\n      }\n    }\n  });\n\n  (S.bks || []).forEach(function (b) {\n    if (b.cancelled) return;\n    const arrivesToday = (b.checkIn === date || b.checkIn === todayDMY);\n    if (!arrivesToday) return;\n    const wants = (typeof _opsArrivalNeedsSofa === 'function')\n      ? _opsArrivalNeedsSofa(b)\n      : (b.needsSofaBed || /\\bsofa[\\s-]?bed\\b/i.test(String(b.guestName || '')));\n    if (!wants) return;\n    const key = String(b.aptId || b.aptName);\n    if (seen.has(key)) return;\n    seen.add(key);\n    out.push({\n      aptId: b.aptId || '', aptName: b.aptName || '', cleanType: 'sofa_bed',\n      cleanerName: '', cleanDone: false, cleanTask: 'prepare_sofa',\n      cleanTaskNote: '', comments: '',\n      people: b.guests, nextNights: (typeof _opsNightsOf === 'function') ? _opsNightsOf(b) : b.nights\n    });\n  });\n  return out;\n}",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "!b.cancelled && (b.checkOut === date || b.checkOut === dateFmt)",
+   "note": "cancelled bookings are not checkouts"
+  },
+  {
+   "has": "function _opsNightsOf(b)",
+   "note": "nights helper"
+  },
+  {
+   "has": "function _opsCheckinOnlyScheduleExtras(occupied)",
+   "note": "check-in-only sofa extras helper"
+  },
+  {
+   "has": "function _opsArrivalNeedsSofa(rowOrBk)",
+   "note": "sofa need from capacity or comments"
+  },
+  {
+   "has": "nextNights: nxt ? (_opsNightsOf(nxt)) : null,",
+   "note": "same-day nights from helper"
+  },
+  {
+   "has": "nextNights: _opsNightsOf(bk), nextGuest: bk.guestName||'',",
+   "note": "check-in-only nights from helper"
+  },
+  {
+   "has": "if (f.checkinSameDay === 'checkin_only') out.checkoutGuest = '';",
+   "note": "stale snapshot checkout guest cleared"
+  },
+  {
+   "has": "const occupied = new Set(turnovers.map(function (r) { return String(r.aptId || r.aptName); }));",
+   "note": "occupied is turnovers only"
+  },
+  {
+   "has": "_opsCheckinOnlyScheduleExtras(Array.from(occupied).concat(Array.from(extraApts)))",
+   "note": "check-in-only sofa extras appended"
+  },
+  {
+   "hasNot": "const occupied = new Set((_opsRows || []).map(function (r) { return r.aptId || r.aptName; }));",
+   "note": "check-in-only no longer occupies extras"
+  }
+ ]
+}
