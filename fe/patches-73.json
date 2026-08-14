@@ -1,0 +1,35 @@
+{
+ "baseSha256": "89a4e2cabc70f0d7595e0e0206454d3e23817855f96db7ab016b3c495d2a271e",
+ "expectedSha256": "03f276fc4b8f33449f8a11e6d54477d71f355de791436da532813323198db8dd",
+ "builtAt": "2026-08-14 Monthly Close send returns to the next apartment",
+ "patches": [
+  {
+   "note": "Monthly Close: after a pipeline send, return to the queue on the next apartment",
+   "find": "  window.mcSendFromReport = function () {\n    if (typeof emailRpt !== 'function') { toast('Open the report first, then use Send email.', 'warn'); return; }\n    emailRpt();\n  };",
+   "replace": "  window.mcSendFromReport = function () {\n    if (typeof emailRpt !== 'function') { toast('Open the report first, then use Send email.', 'warn'); return; }\n    emailRpt();\n  };\n  // Email / invoice / revenue just finished from the Monthly Close pipeline.\n  // Leave Reports and put the focus card on the next unfinished apartment.\n  window.mcReturnAfterSend = function () {\n    if (!_mcCtx) return false;\n    var sentId = String(_mcCtx.id);\n    _mcCtx = null;\n    var bar = document.getElementById('mc-ctx-bar'); if (bar) bar.remove();\n    var q = queue(), next = null;\n    for (var i = 0; i < q.length; i++) {\n      if (String(q[i].id) === sentId) continue;\n      next = q[i]; break;\n    }\n    focusId = next ? next.id : null;\n    if (typeof showTab === 'function') showTab('mt', document.querySelector('.nav-btn[data-tab=\"mt\"]'));\n    setTimeout(function () { try { renderMt(); } catch (e) {} }, 60);\n    return true;\n  };"
+  },
+  {
+   "note": "Send: Monthly Close pipeline returns to Monthly Tasks instead of staying on the report",
+   "find": "      const apt = st.d.apt;\n      _emailModalClose();\n      renderRpt();\n      setTimeout(() => showPostReportReminders(apt), 500);",
+   "replace": "      const apt = st.d.apt;\n      _emailModalClose();\n      if (typeof window.mcReturnAfterSend === 'function' && window.mcReturnAfterSend()) {\n        // Pipeline send: back on Monthly Tasks, next apartment focused.\n      } else {\n        renderRpt();\n        setTimeout(() => showPostReportReminders(apt), 500);\n      }"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "window.mcReturnAfterSend = function ()",
+   "note": "return-to-queue helper after a pipeline send"
+  },
+  {
+   "has": "showTab('mt', document.querySelector('.nav-btn[data-tab=\"mt\"]'))",
+   "note": "returns to Monthly Tasks"
+  },
+  {
+   "has": "typeof window.mcReturnAfterSend === 'function' && window.mcReturnAfterSend()",
+   "note": "send success calls the return helper"
+  },
+  {
+   "has": "setTimeout(() => showPostReportReminders(apt), 500);",
+   "note": "a send from Reports still shows post-report reminders"
+  }
+ ]
+}
