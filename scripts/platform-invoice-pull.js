@@ -168,12 +168,17 @@ async function withBrowser(fn, opts) {
   }
   let browser;
   const proxy = process.env.PLAYWRIGHT_PROXY_SERVER || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+  const launchOpts = {
+    headless: !HEADED,
+    args: ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--no-sandbox'],
+    ...(proxy ? { proxy: { server: proxy } } : {}),
+  };
   try {
-    browser = await pw.chromium.launch({
-      headless: !HEADED,
-      args: ['--disable-dev-shm-usage', '--no-sandbox'],
-      ...(proxy ? { proxy: { server: proxy } } : {}),
-    });
+    try {
+      browser = await pw.chromium.launch(Object.assign({}, launchOpts, { channel: 'chrome' }));
+    } catch (e0) {
+      browser = await pw.chromium.launch(launchOpts);
+    }
   } catch (e) {
     return {
       ok: false,
@@ -184,11 +189,19 @@ async function withBrowser(fn, opts) {
   const storageState = opts && opts.storageState;
   const context = await browser.newContext({
     acceptDownloads: true,
-    viewport: { width: 1400, height: 900 },
+    viewport: { width: 1440, height: 900 },
     userAgent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     locale: 'en-US',
+    timezoneId: process.env.PI_AIRBNB_TZ || 'Europe/Athens',
+    geolocation: { latitude: 37.9838, longitude: 23.7275 },
+    permissions: ['geolocation'],
+    extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
     ...(storageState ? { storageState } : {}),
+  });
+  await context.addInitScript(function () {
+    Object.defineProperty(navigator, 'webdriver', { get: function () { return undefined; } });
+    window.chrome = { runtime: {} };
   });
   const page = await context.newPage();
   try {
@@ -302,10 +315,15 @@ async function ensureAirbnbLoggedIn(page, context, dir, errors) {
   });
   await page.waitForTimeout(2500);
 
-  if (/log.?in|sign.?in/i.test(page.url()) || /log in to continue|welcome to airbnb/i.test(await page.locator('body').innerText().catch(() => ''))) {
+  const bodyNow = await page.locator('body').innerText().catch(() => '');
+  if (
+    /log.?in|sign.?in/i.test(page.url()) ||
+    /log in to continue|welcome to airbnb|enter your password|try another way/i.test(bodyNow) ||
+    (await page.locator('input[type="password"], #phone-or-email').count())
+  ) {
     errors.push({
       channel: 'airbnb',
-      error: 'Airbnb session expired — reconnect Airbnb in Platform Invoices (one-time), then Pull again.',
+      error: 'Airbnb session expired — reconnect Airbnb in Platform Invoices (Connect Airbnb, email code), then Pull again.',
     });
     return false;
   }
