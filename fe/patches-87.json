@@ -1,7 +1,7 @@
 {
   "baseSha256": "97ddeda57319f410922230424ac4c0d8e6784491339d17c042702db6c38fa02a",
-  "expectedSha256": "1640ed8f381ef879b85539153e15c8a38d34974f299a7257942f8b4aaff17671",
-  "builtAt": "2026-08-14 Payments Check: Votsala-only BDC group + reservation dedupe",
+  "expectedSha256": "69c2726dc51b941f64cab2d84fd7c74aa989f7a8fbf386fc85379891c75505bc",
+  "builtAt": "2026-08-14 Payments Check: Votsala-only BDC group (keep same-name stays)",
   "patches": [
     {
       "note": "Payments Check: Viva group only Votsala BDC (not Verandas)",
@@ -10,15 +10,15 @@
       "count": 1
     },
     {
-      "note": "Payments Check: dedupe identical BDC reservations in a line",
-      "find": "        const p = g.props[aptKey] || (g.props[aptKey] = { aptKey, name: pcClearGroup(b) || b.aptName || (typeof aptById === 'function' && aptById(b.aptId) ? aptById(b.aptId).name : '') || '?', items: [], exp: 0, feeMiss: 0 });\n        p.items.push({ guest: b.guestName || '—', ci: b.checkIn, co: b.checkOut, amt });\n        p.exp += amt;\n",
-      "replace": "        const p = g.props[aptKey] || (g.props[aptKey] = { aptKey, name: pcVivaPayGroup(b) || b.aptName || (typeof aptById === 'function' && aptById(b.aptId) ? aptById(b.aptId).name : '') || '?', items: [], exp: 0, feeMiss: 0, _seen: Object.create(null) });\n        // Hosthub can sync the same single-building BDC reservation onto multiple\n        // Votsala unit listings — count each guest/stay/amount once.\n        const dupKey = pcNormG(b.guestName || '') + '|' + String(b.checkIn || '') + '|' + String(b.checkOut || '') + '|' + Number(amt).toFixed(2);\n        if (p._seen[dupKey]) return;\n        p._seen[dupKey] = 1;\n        p.items.push({ guest: b.guestName || '—', ci: b.checkIn, co: b.checkOut, amt });\n        p.exp += amt;\n",
+      "note": "Payments Check: BDC label uses Votsala-only pay group",
+      "find": "        const p = g.props[aptKey] || (g.props[aptKey] = { aptKey, name: pcClearGroup(b) || b.aptName || (typeof aptById === 'function' && aptById(b.aptId) ? aptById(b.aptId).name : '') || '?', items: [], exp: 0, feeMiss: 0 });\n",
+      "replace": "        const p = g.props[aptKey] || (g.props[aptKey] = { aptKey, name: pcVivaPayGroup(b) || b.aptName || (typeof aptById === 'function' && aptById(b.aptId) ? aptById(b.aptId).name : '') || '?', items: [], exp: 0, feeMiss: 0 });\n",
       "count": 1
     },
     {
-      "note": "Tests: Pc17 Verandas not grouped; Pc18 Votsala dedupe",
+      "note": "Tests: Pc17 Verandas not grouped; Pc18 same-name stays both count",
       "find": "      assertEq('Pc16 Votsala clearGroup = one BDC line (summed)', _v16.length === 1 && Math.abs(_v16[0].exp - 150) < 0.011 && _v16[0].items.length === 2, true);\n      S.apts = _sa16; S.bks = _sb16;\n    }\n",
-      "replace": "      assertEq('Pc16 Votsala clearGroup = one BDC line (summed)', _v16.length === 1 && Math.abs(_v16[0].exp - 150) < 0.011 && _v16[0].items.length === 2, true);\n      // Pc17: Verandas clearGroup is for monthly clear — NOT a Viva pay group\n      S.apts = [\n        { id:'r1', name:'The Athenian Veranda', clearGroup:'Verandas' },\n        { id:'r2', name:'The Athenian Veranda 2', clearGroup:'Verandas' }\n      ];\n      S.bks = [\n        { platform:'Booking.com', aptId:'r1', aptName:'The Athenian Veranda', guestName:'A', checkIn:'14/7/2026', checkOut:'15/7/2026', payout:100 },\n        { platform:'Booking.com', aptId:'r2', aptName:'The Athenian Veranda 2', guestName:'B', checkIn:'14/7/2026', checkOut:'15/7/2026', payout:50 }\n      ];\n      const _c17 = pcCompute(new Date(2026,6,24));\n      const _v17 = (_c17.batches || []).flatMap(function (g) { return g.lines || []; });\n      assertEq('Pc17 Verandas clearGroup stays per-apartment on BDC', _v17.length === 2, true);\n      // Pc18: duplicate Hosthub sync of same Votsala reservation counts once\n      S.apts = [\n        { id:'v1', name:'Votsala 1 Luxury Stay with Patio', clearGroup:'Votsala' },\n        { id:'v2', name:'Votsala 2 Luxury Stay with Patio', clearGroup:'Votsala' }\n      ];\n      S.bks = [\n        { platform:'Booking.com', aptId:'v1', aptName:'Votsala 1 Luxury Stay with Patio', guestName:'ELISA Postolache', checkIn:'11/8/2026', checkOut:'12/8/2026', payout:59 },\n        { platform:'Booking.com', aptId:'v2', aptName:'Votsala 2 Luxury Stay with Patio', guestName:'ELISA Postolache', checkIn:'11/8/2026', checkOut:'12/8/2026', payout:59 }\n      ];\n      const _c18 = pcCompute(new Date(2026,7,20));\n      const _v18 = (_c18.batches || []).flatMap(function (g) { return g.lines || []; })\n        .filter(function (l) { return /votsala/i.test(String(l.name || l.aptKey || '')); });\n      assertEq('Pc18 duplicate Votsala reservation counted once', _v18.length === 1 && _v18[0].items.length === 1 && Math.abs(_v18[0].exp - 59) < 0.011, true);\n      S.apts = _sa16; S.bks = _sb16;\n    }\n",
+      "replace": "      assertEq('Pc16 Votsala clearGroup = one BDC line (summed)', _v16.length === 1 && Math.abs(_v16[0].exp - 150) < 0.011 && _v16[0].items.length === 2, true);\n      // Pc17: Verandas clearGroup is for monthly clear — NOT a Viva pay group\n      S.apts = [\n        { id:'r1', name:'The Athenian Veranda', clearGroup:'Verandas' },\n        { id:'r2', name:'The Athenian Veranda 2', clearGroup:'Verandas' }\n      ];\n      S.bks = [\n        { platform:'Booking.com', aptId:'r1', aptName:'The Athenian Veranda', guestName:'A', checkIn:'14/7/2026', checkOut:'15/7/2026', payout:100 },\n        { platform:'Booking.com', aptId:'r2', aptName:'The Athenian Veranda 2', guestName:'B', checkIn:'14/7/2026', checkOut:'15/7/2026', payout:50 }\n      ];\n      const _c17 = pcCompute(new Date(2026,6,24));\n      const _v17 = (_c17.batches || []).flatMap(function (g) { return g.lines || []; });\n      assertEq('Pc17 Verandas clearGroup stays per-apartment on BDC', _v17.length === 2, true);\n      // Same guest on two Votsala units is two real bookings — both must remain in the line.\n      S.apts = [\n        { id:'v1', name:'Votsala 1 Luxury Stay with Patio', clearGroup:'Votsala' },\n        { id:'v2', name:'Votsala 2 Luxury Stay with Patio', clearGroup:'Votsala' }\n      ];\n      S.bks = [\n        { platform:'Booking.com', aptId:'v1', aptName:'Votsala 1 Luxury Stay with Patio', guestName:'ELISA Postolache', checkIn:'11/8/2026', checkOut:'12/8/2026', payout:59 },\n        { platform:'Booking.com', aptId:'v2', aptName:'Votsala 2 Luxury Stay with Patio', guestName:'ELISA Postolache', checkIn:'11/8/2026', checkOut:'12/8/2026', payout:59 }\n      ];\n      const _c18 = pcCompute(new Date(2026,7,20));\n      const _v18 = (_c18.batches || []).flatMap(function (g) { return g.lines || []; })\n        .filter(function (l) { return /votsala/i.test(String(l.name || l.aptKey || '')); });\n      assertEq('Pc18 same-name Votsala stays both count', _v18.length === 1 && _v18[0].items.length === 2 && Math.abs(_v18[0].exp - 118) < 0.011, true);\n      S.apts = _sa16; S.bks = _sb16;\n    }\n",
       "count": 1
     }
   ],
@@ -32,12 +32,12 @@
       "note": "Verandas not Viva-grouped"
     },
     {
-      "has": "Pc18 duplicate Votsala reservation counted once",
-      "note": "ELISA-style dedupe"
+      "has": "Pc18 same-name Votsala stays both count",
+      "note": "two ELISA-style stays both kept"
     },
     {
-      "has": "p._seen[dupKey]",
-      "note": "BDC line dedupe"
+      "hasNot": "p._seen[dupKey]",
+      "note": "no guest/date dedupe"
     }
   ]
 }

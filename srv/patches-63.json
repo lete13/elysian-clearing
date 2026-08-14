@@ -1,7 +1,7 @@
 {
   "baseSha256": "0b8e2be7e709da4075b85668d8947095ae3ab530e3fdb93986296727e782cf34",
-  "expectedSha256": "62d30458360c514e2d6541d3179b53124364d3980e0b9f969cf4d63eeb329b78",
-  "builtAt": "2026-08-14 Viva: Votsala-only BDC group + reservation dedupe",
+  "expectedSha256": "c2f7a281f9ad30a3ba44d53a9792ac71721f3451f37eabfc26f623a8754abb85",
+  "builtAt": "2026-08-14 Viva: Votsala-only BDC group (keep same-name stays)",
   "patches": [
     {
       "note": "Viva: pay-group only Votsala BDC (not Verandas clearGroup)",
@@ -10,15 +10,9 @@
       "count": 1
     },
     {
-      "note": "vivaExpectedUnits: dedupe identical BDC reservations",
-      "find": "    if (chan === 'bdc') {\n      const co = pcvParseDMY(b.checkOut); if (!co) continue;\n      const thu = pcvThursday(co);\n      if (thu < from || thu > t) continue;\n      const aptKey = pcvAptKey(b, apts);\n      const key = 'bdc|' + pcvISO(thu) + '|' + aptKey;\n      const u = bdc[key] || (bdc[key] = { key, chan: 'bdc', date: thu, exp: 0, label: pcvAptLabel(b, apts) + ' — Thu ' + pcvISO(thu) });\n      u.exp += amt;\n    } else {\n",
-      "replace": "    if (chan === 'bdc') {\n      const co = pcvParseDMY(b.checkOut); if (!co) continue;\n      const thu = pcvThursday(co);\n      if (thu < from || thu > t) continue;\n      const aptKey = pcvAptKey(b, apts);\n      const key = 'bdc|' + pcvISO(thu) + '|' + aptKey;\n      const u = bdc[key] || (bdc[key] = { key, chan: 'bdc', date: thu, exp: 0, label: pcvAptLabel(b, apts) + ' — Thu ' + pcvISO(thu), _seen: Object.create(null) });\n      const dupKey = pcvNormG(b.guestName) + '|' + String(b.checkIn || '') + '|' + String(b.checkOut || '') + '|' + Number(amt).toFixed(2);\n      if (u._seen[dupKey]) continue;\n      u._seen[dupKey] = 1;\n      u.exp += amt;\n    } else {\n",
-      "count": 1
-    },
-    {
-      "note": "viva-selftest: Verandas not grouped; Votsala dedupe",
+      "note": "viva-selftest: Verandas not grouped; same-name stays both count",
       "find": "  ok('Votsala clearGroup → one BDC unit', vUnits.filter(u => u.chan === 'bdc').length === 1);\n  ok('Votsala clearGroup sums payouts (150)', !!vLine && Math.abs(vLine.exp - 150) < 0.001);\n  ok('Votsala mark key uses group name', !!vLine && vLine.key === 'bdc|2026-07-16|votsala');\n\n  const credits = [\n",
-      "replace": "  ok('Votsala clearGroup → one BDC unit', vUnits.filter(u => u.chan === 'bdc').length === 1);\n  ok('Votsala clearGroup sums payouts (150)', !!vLine && Math.abs(vLine.exp - 150) < 0.001);\n  ok('Votsala mark key uses group name', !!vLine && vLine.key === 'bdc|2026-07-16|votsala');\n\n  const verandaData = {\n    payChk: { marks: {}, cfg: { from: '2026-07-01', tol: 1 } },\n    apts: [\n      { id: 'r1', name: 'The Athenian Veranda', clearGroup: 'Verandas' },\n      { id: 'r2', name: 'The Athenian Veranda 2', clearGroup: 'Verandas' },\n    ],\n    bks: [\n      { platform: 'Booking.com', aptId: 'r1', aptName: 'The Athenian Veranda', guestName: 'A', checkIn: '14/7/2026', checkOut: '15/7/2026', payout: 100 },\n      { platform: 'Booking.com', aptId: 'r2', aptName: 'The Athenian Veranda 2', guestName: 'B', checkIn: '14/7/2026', checkOut: '15/7/2026', payout: 50 },\n    ],\n  };\n  const verUnits = vivaExpectedUnits(verandaData, today).filter(u => u.chan === 'bdc');\n  ok('Verandas clearGroup stays per-apartment (not Viva-grouped)', verUnits.length === 2);\n\n  const dupData = {\n    payChk: { marks: {}, cfg: { from: '2026-07-01', tol: 1 } },\n    apts: [\n      { id: 'v1', name: 'Votsala 1 Luxury Stay with Patio', clearGroup: 'Votsala' },\n      { id: 'v2', name: 'Votsala 2 Luxury Stay with Patio', clearGroup: 'Votsala' },\n    ],\n    bks: [\n      { platform: 'Booking.com', aptId: 'v1', aptName: 'Votsala 1 Luxury Stay with Patio', guestName: 'ELISA Postolache', checkIn: '11/8/2026', checkOut: '12/8/2026', payout: 59 },\n      { platform: 'Booking.com', aptId: 'v2', aptName: 'Votsala 2 Luxury Stay with Patio', guestName: 'ELISA Postolache', checkIn: '11/8/2026', checkOut: '12/8/2026', payout: 59 },\n    ],\n  };\n  const dupUnits = vivaExpectedUnits(dupData, D(2026, 8, 20)).filter(u => u.chan === 'bdc');\n  ok('Duplicate Votsala reservation counted once', dupUnits.length === 1 && Math.abs(dupUnits[0].exp - 59) < 0.001);\n\n  const credits = [\n",
+      "replace": "  ok('Votsala clearGroup → one BDC unit', vUnits.filter(u => u.chan === 'bdc').length === 1);\n  ok('Votsala clearGroup sums payouts (150)', !!vLine && Math.abs(vLine.exp - 150) < 0.001);\n  ok('Votsala mark key uses group name', !!vLine && vLine.key === 'bdc|2026-07-16|votsala');\n\n  const verandaData = {\n    payChk: { marks: {}, cfg: { from: '2026-07-01', tol: 1 } },\n    apts: [\n      { id: 'r1', name: 'The Athenian Veranda', clearGroup: 'Verandas' },\n      { id: 'r2', name: 'The Athenian Veranda 2', clearGroup: 'Verandas' },\n    ],\n    bks: [\n      { platform: 'Booking.com', aptId: 'r1', aptName: 'The Athenian Veranda', guestName: 'A', checkIn: '14/7/2026', checkOut: '15/7/2026', payout: 100 },\n      { platform: 'Booking.com', aptId: 'r2', aptName: 'The Athenian Veranda 2', guestName: 'B', checkIn: '14/7/2026', checkOut: '15/7/2026', payout: 50 },\n    ],\n  };\n  const verUnits = vivaExpectedUnits(verandaData, today).filter(u => u.chan === 'bdc');\n  ok('Verandas clearGroup stays per-apartment (not Viva-grouped)', verUnits.length === 2);\n\n  const sameNameData = {\n    payChk: { marks: {}, cfg: { from: '2026-07-01', tol: 1 } },\n    apts: [\n      { id: 'v1', name: 'Votsala 1 Luxury Stay with Patio', clearGroup: 'Votsala' },\n      { id: 'v2', name: 'Votsala 2 Luxury Stay with Patio', clearGroup: 'Votsala' },\n    ],\n    bks: [\n      { platform: 'Booking.com', aptId: 'v1', aptName: 'Votsala 1 Luxury Stay with Patio', guestName: 'ELISA Postolache', checkIn: '11/8/2026', checkOut: '12/8/2026', payout: 59 },\n      { platform: 'Booking.com', aptId: 'v2', aptName: 'Votsala 2 Luxury Stay with Patio', guestName: 'ELISA Postolache', checkIn: '11/8/2026', checkOut: '12/8/2026', payout: 59 },\n    ],\n  };\n  const snUnits = vivaExpectedUnits(sameNameData, D(2026, 8, 20)).filter(u => u.chan === 'bdc');\n  ok('Same-name Votsala stays both count (118)', snUnits.length === 1 && Math.abs(snUnits[0].exp - 118) < 0.001);\n\n  const credits = [\n",
       "count": 1
     }
   ],
@@ -32,12 +26,12 @@
       "note": "Verandas selftest"
     },
     {
-      "has": "Duplicate Votsala reservation counted once",
-      "note": "dedupe selftest"
+      "has": "Same-name Votsala stays both count",
+      "note": "ELISA-style both kept"
     },
     {
-      "has": "u._seen[dupKey]",
-      "note": "server BDC dedupe"
+      "hasNot": "u._seen[dupKey]",
+      "note": "no guest/date dedupe"
     }
   ]
 }
