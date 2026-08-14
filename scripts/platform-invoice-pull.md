@@ -76,10 +76,14 @@ AIRBNB_HOST_EMAIL='…' AIRBNB_HOST_PASSWORD='…' \
 
    Platform Invoices → Collect → **Connect Airbnb**.  
    The server signs in with `AIRBNB_HOST_EMAIL` / `AIRBNB_HOST_PASSWORD`.  
-   When Airbnb sends an email/SMS code, enter it in the same screen → Submit code.  
+   Prefer an **email** code when Airbnb offers it (Resend as email).  
+   When Airbnb sends a code, enter it in the same screen → Submit code.  
    Session is stored in the vault; then **Pull Airbnb**.
 
-   Advanced fallback (laptop JSON paste) still works via the error panel’s “Paste session JSON”.
+   **If Airbnb only offers SMS** (common for datacenter/server logins): texts usually
+   never arrive and email may not be offered. Cancel Connect and use **Paste session JSON**
+   from a normal browser (run `platform-invoice-save-session.js --channel=airbnb --headed`
+   on a laptop, then paste the printed storageState into the app).
 
 3. Review → Ship.
 
