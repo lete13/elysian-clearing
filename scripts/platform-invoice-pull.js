@@ -71,6 +71,32 @@ function loadAirbnbLimit() {
   return n > 0 ? n : 0;
 }
 
+function platformStoreLabel(channel) {
+  const c = String(channel || '').toLowerCase();
+  if (c === 'booking' || c === 'bdc') return 'Booking.com';
+  return 'Airbnb';
+}
+
+function aptStoreFolder(name) {
+  const s = String(name || 'Apartment')
+    .replace(/[\\/]+/g, ' ')
+    .replace(/[^\w.\-\u00C0-\u024F\u0370-\u03FF ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (s || 'Apartment').slice(0, 60);
+}
+
+/** Durable store path: Platform / month / apartment / kind-code.pdf */
+function piInvoiceStoreRel(opts) {
+  const plat = platformStoreLabel(opts && opts.channel);
+  const month = String((opts && opts.month) || 'unknown');
+  const apt = aptStoreFolder((opts && (opts.aptName || opts.partner)) || 'Apartment');
+  const kind = String((opts && opts.kind) || 'invoice').replace(/[^\w-]+/g, '_') || 'invoice';
+  const code = String((opts && (opts.code || opts.reservationId)) || '').replace(/[^\w-]+/g, '_');
+  const leaf = code ? kind + '-' + code + '.pdf' : kind + '.pdf';
+  return plat + '/' + month + '/' + apt + '/' + leaf;
+}
+
 /** Hosthub channel reservation codes for Airbnb (confirmation codes). */
 function loadAirbnbReservations() {
   try {
@@ -672,16 +698,17 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
   const reservationUrl = page.url();
 
   async function saveIfInvoice(targetPage, kind, how, idHint) {
-    const fname =
-      'airbnb-' +
-      kind +
-      '-' +
-      code +
-      (idHint ? '-' + String(idHint).replace(/[^\w.-]+/g, '').slice(0, 24) : '') +
-      '-' +
-      month +
-      '.pdf';
-    const cap = await tryCaptureInvoicePage(targetPage, context, dir, fname);
+    const rel = piInvoiceStoreRel({
+      channel: 'airbnb',
+      month: month,
+      aptName: aptName,
+      kind: kind,
+      code: code + (idHint ? '-' + String(idHint).replace(/[^\w.-]+/g, '').slice(0, 16) : ''),
+    });
+    const storeRoot = path.resolve(dir, '..');
+    const abs = path.join(storeRoot, rel);
+    ensureDir(path.dirname(abs));
+    const cap = await tryCaptureInvoicePage(targetPage, context, path.dirname(abs), path.basename(rel));
     lastLanded = cap.url;
     lastLookedLikeInvoice = cap.lookedLikeInvoice;
     if (!cap.saved) return false;
@@ -690,10 +717,10 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       channel: 'airbnb',
       kind,
       scope: 'leased',
-      partner: kind === 'credit_note' ? 'credit_note:' + code : aptId || aptName || code,
+      partner: aptName || aptId || code,
       aptName: aptName,
       reservationId: code,
-      filename: cap.saved.filename,
+      filename: rel.replace(/\\/g, '/'),
       path: cap.saved.path,
       bytes: cap.saved.bytes,
       source: 'portal',
@@ -1000,17 +1027,25 @@ async function downloadBookingInvoicesForProperty(page, month, dir, files, error
       el.click({ timeout: 5000 }).catch(() => null),
     ]);
     if (!download) continue;
-    const suggested =
-      download.suggestedFilename() ||
-      `booking-${(partner || 'apt').toString().replace(/[^\w.\-]+/g, '_').slice(0, 40)}-${month}-${got + 1}.pdf`;
-    const saved = await saveDownload(download, dir, suggested.replace(/[^\w.\-]+/g, '_'));
+    const aptName = apt.aptName || prop.name || partner || 'Apartment';
+    const rel = piInvoiceStoreRel({
+      channel: 'booking',
+      month,
+      aptName,
+      kind: 'invoice',
+      code: String(apt.aptId || aptName || 'apt').replace(/\s+/g, '_').slice(0, 40),
+    });
+    const storeRoot = path.resolve(dir, '..');
+    const abs = path.join(storeRoot, rel);
+    ensureDir(path.dirname(abs));
+    const saved = await saveDownload(download, path.dirname(abs), path.basename(rel));
     files.push({
       channel: 'booking',
       kind: 'invoice',
       scope: 'leased',
-      partner,
-      aptName: apt.aptName || prop.name || '',
-      filename: saved.filename,
+      partner: aptName,
+      aptName,
+      filename: rel.replace(/\\/g, '/'),
       path: saved.path,
       bytes: saved.bytes,
       source: 'portal',

@@ -1,0 +1,39 @@
+{
+ "baseSha256": "b563b4962d6399ee97b0287e78cecbe18ff4ecae3955de97e8e7d1e418c9100b",
+ "expectedSha256": "e0590f310b166af6c9f5d4689e268c9958c16fcfc2d148309bf0f88fcfff97dd",
+ "builtAt": "2026-08-14 Store platform invoices by apartment / month / Airbnb",
+ "patches": [
+  {
+   "note": "Store pulled invoices under apartment name, not credit_note bucket",
+   "find": "        let partner = '';\n        if (f.kind === 'credit_note') partner = 'credit_note';\n        else if (f.partner) partner = String(f.partner).slice(0, 120);\n        else if (f.aptName) partner = String(f.aptName).slice(0, 120);",
+   "replace": "        let partner = String((f.aptName || f.partner || '')).slice(0, 120);\n        if (/^credit_note\\b/i.test(partner)) partner = String(f.aptName || '').slice(0, 120);",
+   "count": 1
+  },
+  {
+   "note": "List vault by platform then apartment then filename",
+   "find": "         FROM platform_invoices WHERE month=$1 ORDER BY channel, scope, id`, [month]);",
+   "replace": "         FROM platform_invoices WHERE month=$1 ORDER BY channel, partner, filename, id`, [month]);",
+   "count": 1
+  },
+  {
+   "note": "Email pack sorted platform / apartment / filename",
+   "find": "    if (!rows.length) return res.status(400).json({ error: 'No invoices in this pack yet — upload or pull first' });\n    let bytes = 0;\n    const mailAtts = [];\n    for (const r of rows) {\n      const buf = Buffer.from(r.data, 'base64'); bytes += buf.length;\n      mailAtts.push({ filename: r.filename || (r.channel + '.pdf'), content: buf, contentType: r.mime || 'application/pdf' });\n    }",
+   "replace": "    if (!rows.length) return res.status(400).json({ error: 'No invoices in this pack yet — upload or pull first' });\n    rows.sort(function (a, b) {\n      return String(a.channel || '').localeCompare(String(b.channel || '')) ||\n        String(a.partner || '').localeCompare(String(b.partner || '')) ||\n        String(a.filename || '').localeCompare(String(b.filename || ''));\n    });\n    let bytes = 0;\n    const mailAtts = [];\n    for (const r of rows) {\n      const buf = Buffer.from(r.data, 'base64'); bytes += buf.length;\n      mailAtts.push({ filename: r.filename || (r.channel + '.pdf'), content: buf, contentType: r.mime || 'application/pdf' });\n    }",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "let partner = String((f.aptName || f.partner || '')).slice(0, 120);",
+   "note": "apartment is the store key"
+  },
+  {
+   "has": "ORDER BY channel, partner, filename, id",
+   "note": "vault ordered by platform then apartment"
+  },
+  {
+   "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+   "note": "still harvests live Connect"
+  }
+ ]
+}

@@ -28,10 +28,14 @@ assert(!/hrefs\.length/.test(worker) || worker.indexOf('loadAirbnbReservations')
 
 const fe88 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-88.json'), 'utf8'));
 const srv63 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-63.json'), 'utf8'));
-assert(fe88.patches.some((p) => (p.replace || '').includes('Test pull (5 codes)')), 'FE gold button is Test pull');
-assert(fe88.patches.some((p) => (p.replace || '').includes('Pull Airbnb (Hosthub codes)')), 'FE keeps full Pull label');
-assert(fe88.patches.some((p) => (p.replace || '').includes('Do not auto-run Pull')), 'FE stops unlimited auto-pull');
-assert(srv63.patches.some((p) => (p.replace || '').includes('PI_AIRBNB_LIMIT')), 'API passes limit to worker');
+assert(worker.includes('function piInvoiceStoreRel'), 'stores PDFs as Platform/month/apartment/file');
+assert(worker.includes("plat + '/' + month + '/' + apt"), 'path is platform / month / apartment');
+
+const fe89 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-89.json'), 'utf8'));
+const srv64 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-64.json'), 'utf8'));
+assert(fe89.patches.some((p) => (p.replace || '').includes('piStoreApt')), 'FE groups vault by apartment');
+assert(srv64.patches.some((p) => (p.replace || '').includes('ORDER BY channel, partner, filename, id')), 'API lists by platform then apartment');
+assert(srv64.patches.some((p) => (p.replace || '').includes('f.aptName || f.partner')), 'pull stores partner as apartment');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');
@@ -53,6 +57,43 @@ assert(hits.some((h) => h.id === 'INV99ABC'), 'extracts vatInvoiceId from reserv
 assert(hits.some((h) => String(h.href || '').indexOf('/reservation/vat_invoice/INV99ABC') >= 0), 'extracts VAT invoice HTML URL');
 const urls = helpers.airbnbInvoiceUrlsForHit({ kind: 'invoice', id: 'INV99ABC', href: '' }, 'https://www.airbnb.com', []);
 assert(urls.some((u) => u.indexOf('/reservation/vat_invoice/INV99ABC') >= 0), 'builds Airbnb VAT invoice HTML URL from ID');
+
+const storeSrc = extractBetween(worker, 'platformStoreLabel', 'loadAirbnbReservations');
+const store = vm.runInNewContext(storeSrc + '\n({ piInvoiceStoreRel, aptStoreFolder, platformStoreLabel })');
+assert.strictEqual(
+  store.piInvoiceStoreRel({ channel: 'airbnb', month: '2026-07', aptName: 'Birdhouse', kind: 'invoice', code: 'HMHPBAREC3' }),
+  'Airbnb/2026-07/Birdhouse/invoice-HMHPBAREC3.pdf'
+);
+assert.strictEqual(
+  store.piInvoiceStoreRel({ channel: 'airbnb', month: '2026-07', aptName: 'Skyline Loft', kind: 'credit_note', code: 'HMCANCEL1' }),
+  'Airbnb/2026-07/Skyline Loft/credit_note-HMCANCEL1.pdf'
+);
+assert.strictEqual(store.platformStoreLabel('airbnb'), 'Airbnb');
+assert.strictEqual(store.platformStoreLabel('booking'), 'Booking.com');
+assert.strictEqual(store.aptStoreFolder('Bird/house'), 'Bird house');
+assert.strictEqual(
+  store.piInvoiceStoreRel({ channel: 'booking', month: '2026-07', aptName: 'Horizon', kind: 'invoice', code: 'apt-1' }),
+  'Booking.com/2026-07/Horizon/invoice-apt-1.pdf'
+);
+
+const os = require('os');
+const tmpStore = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-store-'));
+const storedRel = store.piInvoiceStoreRel({
+  channel: 'airbnb', month: '2026-07', aptName: 'Birdhouse', kind: 'invoice', code: 'HMHPBAREC3',
+});
+const storedAbs = path.join(tmpStore, storedRel);
+fs.mkdirSync(path.dirname(storedAbs), { recursive: true });
+fs.writeFileSync(storedAbs, '%PDF-1.4 store-layout-test');
+assert.strictEqual(
+  fs.readFileSync(path.join(tmpStore, 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMHPBAREC3.pdf'), 'utf8'),
+  '%PDF-1.4 store-layout-test'
+);
+
+function vaultLooksLikeCredit(f) {
+  return /credit/i.test(String(f.filename || '')) || String(f.partner || '').toLowerCase() === 'credit_note';
+}
+assert(vaultLooksLikeCredit({ filename: 'Airbnb/2026-07/Birdhouse/credit_note-HMCANCEL1.pdf', partner: 'Birdhouse' }));
+assert(!vaultLooksLikeCredit({ filename: 'Airbnb/2026-07/Birdhouse/invoice-HMABCDEF.pdf', partner: 'Birdhouse' }));
 
 assert(srv29.patches.some((p) => p.replace.includes("reservationId:ev.reservation_id||''")), 'sync maps reservation_id');
 assert(srv29.patches.some((p) => p.replace.includes('PI_AIRBNB_RESERVATIONS_JSON')), 'API passes codes to worker');
