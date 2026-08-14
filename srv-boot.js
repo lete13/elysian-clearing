@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 // srv-boot.js — server release bootstrap (mirrors the fe/patches.json mechanism).
-// Applies the srv/patches*.json chain to server.js at boot: ordered exact string
-// replacements, gated by baseSha256 (the server.js the patches expect) and
-// expectedSha256 (the result). Releases chain: srv/patches.json, then
-// srv/patches-2.json, -3.json … each file starts where the previous one ended,
-// so a release is a small new file instead of a rewrite of one ever-growing
-// patches.json. ALL-OR-NOTHING: any failure (missing file, base drift, anchor
-// count mismatch, result sha mismatch) logs the reason and starts the unpatched
-// server.js instead, so the app never goes down on a bad patch set.
-// Consolidation: upload the full patched server.js via GitHub web, reset
-// srv/patches.json to {"patches":[]} and delete the chain files in the same
-// release — the base-drift gate makes a missed reset safe.
+//
+// FLOW: read server.js → apply srv/patches.json, then patches-2…N (gap stops the
+// chain) → each file gated by baseSha256 + expectedSha256 → write server.gen.js
+// → require it. ALL-OR-NOTHING: any failure logs the reason and starts the
+// unpatched server.js so the site never goes down on a bad patch set.
+//
+// 2026-08-14 consolidation baked srv patches 1–68 into server.js; srv/patches.json
+// is empty. New server releases can add patches again (or edit server.js directly).
+// Empty patches.json → start server.js as-is (no server.gen.js).
+//
+// Dry-run: SRVBOOT_DRYRUN=1 exits after apply/fallback without listening.
 'use strict';
 const fs = require('fs');
 const path = require('path');
