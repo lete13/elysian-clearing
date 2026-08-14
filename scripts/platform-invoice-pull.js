@@ -235,78 +235,17 @@ async function tryFillOtp(page, dir) {
 }
 
 async function ensureAirbnbLoggedIn(page, context, dir, errors) {
-  const email = process.env.AIRBNB_HOST_EMAIL || '';
-  const pass = process.env.AIRBNB_HOST_PASSWORD || '';
   const stored = await loadStorageState('AIRBNB');
   if (stored && stored.__error) {
     errors.push({ channel: 'airbnb', error: 'AIRBNB session invalid: ' + stored.__error });
     return false;
   }
-  if (!stored && (!email || !pass)) {
+  if (!stored) {
     errors.push({
       channel: 'airbnb',
-      error: 'Connect Airbnb session (or set AIRBNB_HOST_EMAIL / AIRBNB_HOST_PASSWORD)',
+      error: 'No Airbnb session. Click Connect Airbnb, enter the email code, wait until it says connected, then Pull.',
     });
     return false;
-  }
-
-  if (!stored) {
-    await page.goto('https://www.airbnb.com/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    for (const sel of ['button:has-text("Accept")', 'button:has-text("OK")', '[data-testid="accept-btn"]']) {
-      const b = page.locator(sel).first();
-      if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
-    }
-
-    const emailInput = page
-      .locator('#phone-or-email, input[name="email"], input[type="email"], input[autocomplete="username"]')
-      .first();
-    await emailInput.waitFor({ state: 'visible', timeout: 20000 });
-    await emailInput.fill(email);
-    await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
-    await page.waitForTimeout(2500);
-
-    let bodyText = await page.locator('body').innerText().catch(() => '');
-    if (/confirmation code|one-time|verify your|we.ll send/i.test(bodyText) && !(await page.locator('input[type="password"]').count())) {
-      const filled = await tryFillOtp(page, dir);
-      if (!filled) {
-        errors.push({
-          channel: 'airbnb',
-          error:
-            'Airbnb asked for OTP. Connect a saved host session once (Platform Invoices → Connect Airbnb), then Pull runs unattended.',
-        });
-        await page.screenshot({ path: path.join(dir, '_login-otp.png'), fullPage: true }).catch(() => {});
-        return false;
-      }
-    }
-
-    const passInput = page.locator('input[name="password"], input[type="password"]').first();
-    if (await passInput.count()) {
-      await passInput.waitFor({ timeout: 20000 });
-      await passInput.fill(pass);
-      await page.locator('button:has-text("Log in"), button:has-text("Sign in"), button[type="submit"]').first().click();
-      await page.waitForTimeout(4000);
-    }
-
-    bodyText = await page.locator('body').innerText().catch(() => '');
-    if (/confirmation code|one-time|verify your/i.test(bodyText)) {
-      const filled = await tryFillOtp(page, dir);
-      if (!filled) {
-        errors.push({
-          channel: 'airbnb',
-          error: 'Airbnb MFA/OTP blocked password login — reconnect Airbnb session in the app.',
-        });
-        await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
-        return false;
-      }
-    }
-    if (/captcha|unusual activity/i.test(bodyText)) {
-      errors.push({
-        channel: 'airbnb',
-        error: 'Airbnb blocked login (captcha/unusual activity). Reconnect Airbnb session from a normal browser.',
-      });
-      await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
-      return false;
-    }
   }
 
   await page.goto('https://www.airbnb.com/hosting/reservations', {

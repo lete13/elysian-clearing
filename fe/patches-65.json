@@ -1,0 +1,22 @@
+{
+ "baseSha256": "d55f8b79bcddf2f3eba5e70921b96de2e9f8b7b513916948db4001cebf17b1b7",
+ "expectedSha256": "e4794911d7b7c32cf6988cc39af13c4edc5cb0534a72bdd1f0304fb605e8f0ba",
+ "builtAt": "2026-08-14 Connect cannot succeed without the email OTP",
+ "patches": [
+  {
+   "note": "Connect UI: email code required",
+   "find": "Connecting Airbnb\u2026",
+   "replace": "Connecting Airbnb \u2014 email code required\u2026"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Connecting Airbnb \u2014 email code required",
+   "note": "connect copy"
+  },
+  {
+   "hasNot": ">Connecting Airbnb\u2026<",
+   "note": "old ellipsis title gone"
+  }
+ ]
+}

@@ -1,0 +1,40 @@
+{
+ "baseSha256": "58ba840294bdb811ea3dd1d8d15c10d4132b7da14b198da3643feda033a99e9d",
+ "expectedSha256": "b08abc2e24e6b5c0cde73f70bc13ed6069c58cd58a41b7e5bef0f8ef1b29fa67",
+ "builtAt": "2026-08-14 Connect cannot succeed without the email OTP",
+ "patches": [
+  {
+   "note": "FinishAndSave only after OTP was accepted",
+   "find": "async function piAirbnbFinishAndSave(job) {\n  const page = job.page;\n  const context = job.context;\n  // Prefer staying on whatever Airbnb navigated to after auth; then open hosting\n  await page.waitForTimeout(1500);\n",
+   "replace": "async function piAirbnbFinishAndSave(job) {\n  if (!job || !job._piOtpAccepted) {\n    throw new Error('Airbnb Connect requires the email code. Enter it in Collect \u2014 do not Pull until the code is accepted.');\n  }\n  const page = job.page;\n  const context = job.context;\n  // Prefer staying on whatever Airbnb navigated to after auth; then open hosting\n  await page.waitForTimeout(1500);\n"
+  },
+  {
+   "note": "Login worker never saves a session (OTP route is the only connect path)",
+   "find": "    if (!(await piAirbnbPageLooksLoggedIn(page))) {\n      throw new Error('Airbnb Connect did not reach Hosting. Cancel and Connect again (the email code is required).');\n    }\n\n    await piAirbnbFinishAndSave(job);\n",
+   "replace": "    throw new Error('Airbnb did not open the email-code screen. Cancel and Connect again. Do not Pull until Connect asks for a code.');\n"
+  },
+  {
+   "note": "OTP route marks accepted then FinishAndSave",
+   "find": "      await piAirbnbFinishAndSave(job);\n      return res.json({ ok: true, job: piLoginPublic(job) });\n",
+   "replace": "      job._piOtpAccepted = true;\n      await piAirbnbFinishAndSave(job);\n      return res.json({ ok: true, job: piLoginPublic(job) });\n"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "job._piOtpAccepted = true",
+   "note": "OTP marks accepted"
+  },
+  {
+   "has": "did not open the email-code screen",
+   "note": "worker cannot connect without OTP"
+  },
+  {
+   "has": "Connect requires the email code",
+   "note": "FinishAndSave gated"
+  },
+  {
+   "hasNot": "Airbnb Connect did not reach Hosting. Cancel and Connect again (the email code is required).",
+   "note": "old worker finish path gone"
+  }
+ ]
+}
