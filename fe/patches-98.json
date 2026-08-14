@@ -1,0 +1,71 @@
+{
+ "baseSha256": "257074062e55a768b39e6bd693d2155437e870cdf814606ada51e936c4ed7a3c",
+ "expectedSha256": "eef5c8ecb221b17a220bdf7ba236eb1940a5116d7668ff20a47bd5711575f954",
+ "builtAt": "2026-08-14 Open PDFs by apartment in Collect vault",
+ "patches": [
+  {
+   "note": "Collect vault heading: PDFs by apartment",
+   "find": "      <div id=\"pi-collect-summary\" style=\"font-size:12.5px;margin-bottom:10px\"></div>\n      <div id=\"pi-leased-list\" style=\"font-size:12.5px;min-height:40px\"></div>",
+   "replace": "      <div id=\"pi-collect-summary\" style=\"font-size:12.5px;margin-bottom:10px\"></div>\n      <div id=\"pi-vault-heading\" style=\"font-weight:700;font-size:13px;margin:12px 0 6px\">PDFs by apartment — click Open to view</div>\n      <div id=\"pi-leased-list\" style=\"font-size:12.5px;min-height:40px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>",
+   "count": 1
+  },
+  {
+   "note": "Review also lists PDFs by apartment with Open",
+   "find": "      <div id=\"pi-review\" style=\"font-size:12.5px;line-height:1.55\"></div>",
+   "replace": "      <div id=\"pi-review\" style=\"font-size:12.5px;line-height:1.55\"></div>\n      <div id=\"pi-vault-heading-review\" style=\"font-weight:700;font-size:13px;margin:12px 0 6px\">PDFs by apartment — click Open to view</div>\n      <div id=\"pi-review-list\" style=\"font-size:12.5px;min-height:40px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>",
+   "count": 1
+  },
+  {
+   "note": "Vault rows: filename + Open link to PDF file",
+   "find": "        '<span>' + (leaf || it.filename || '') + partnerBit +\n        ' <span style=\"color:var(--tx3);font-size:11px\">' + (it.source || '') + '</span></span>' +\n        '<span style=\"display:flex;gap:6px;align-items:center\">' + tag +\n        '<button class=\"btn sm\" style=\"padding:2px 8px\" onclick=\"piDelete(\\'' + id + '\\')\">Delete</button></span></div>';",
+   "replace": "        '<span><a href=\"/api/platform-invoices/' + id + '/file\" target=\"_blank\" rel=\"noopener\">' + (leaf || it.filename || 'invoice.pdf') + '</a>' + partnerBit +\n        ' <span style=\"color:var(--tx3);font-size:11px\">' + (it.source || '') + '</span></span>' +\n        '<span style=\"display:flex;gap:6px;align-items:center\">' + tag +\n        '<a class=\"btn sm\" style=\"padding:2px 8px;text-decoration:none\" href=\"/api/platform-invoices/' + id + '/file\" target=\"_blank\" rel=\"noopener\">Open</a>' +\n        '<button class=\"btn sm\" style=\"padding:2px 8px\" onclick=\"piDelete(\\'' + id + '\\')\">Delete</button></span></div>';",
+   "count": 1
+  },
+  {
+   "note": "Review renders the same apartment vault list",
+   "find": "      '<div style=\"margin-top:10px\">Shipping will email the Elysian pack to accountants as the finished product for this month.</div>';\n  }",
+   "replace": "      '<div style=\"margin-top:10px\">Shipping will email the Elysian pack to accountants as the finished product for this month.</div>' +\n      '<div style=\"margin-top:8px;color:var(--tx3)\">Open each PDF under PDFs by apartment below.</div>';\n    renderList('pi-review-list', leased);\n  }",
+   "count": 1
+  },
+  {
+   "note": "Successful pull points at PDFs by apartment vault",
+   "find": "      msg('Pulled ' + n + ' Airbnb PDF(s) from ' + codes + ' Hosthub code(s)' +\n        (errTxt ? (' · notes: ' + errTxt) : ''), true);",
+   "replace": "      msg('Pulled ' + n + ' Airbnb PDF(s) from ' + codes + ' Hosthub code(s)' +\n        (errTxt ? (' · notes: ' + errTxt) : '') +\n        ' — open them under PDFs by apartment below', true);\n      var vault = document.getElementById('pi-vault-heading') || document.getElementById('pi-leased-list');\n      if (vault) try { vault.scrollIntoView({ block: 'start' }); } catch (eScroll) {}",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "PDFs by apartment — click Open to view",
+   "note": "vault heading"
+  },
+  {
+   "has": "/api/platform-invoices/' + id + '/file",
+   "note": "Open hits file route"
+  },
+  {
+   "has": "open them under PDFs by apartment below",
+   "note": "pull success points at vault"
+  },
+  {
+   "has": "pi-review-list",
+   "note": "Review lists PDFs too"
+  },
+  {
+   "has": "Test pull (5 codes)",
+   "note": "test pull kept"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full pull kept"
+  },
+  {
+   "has": "Airbnb pull saved 0 PDFs",
+   "note": "zero-PDF copy kept"
+  },
+  {
+   "has": "channel: 'airbnb'",
+   "note": "Airbnb-only pull"
+  }
+ ]
+}

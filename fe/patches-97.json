@@ -1,71 +1,87 @@
 {
  "baseSha256": "edfb76dc0fb670a68e583ea2362dd254bfb4d04536fc0b67169752ee12cfab96",
- "expectedSha256": "264f5f2a433b197d2c5b5bf79b821ec4d1d171139334f4b6328140a05479e208",
- "builtAt": "2026-08-14 Open PDFs by apartment in Collect vault",
+ "expectedSha256": "257074062e55a768b39e6bd693d2155437e870cdf814606ada51e936c4ed7a3c",
+ "builtAt": "2026-08-14 Daily Ops: real stuck cleans + keep unpriced bookings (not date-format)",
  "patches": [
   {
-   "note": "Collect vault heading: PDFs by apartment",
-   "find": "      <div id=\"pi-collect-summary\" style=\"font-size:12.5px;margin-bottom:10px\"></div>\n      <div id=\"pi-leased-list\" style=\"font-size:12.5px;min-height:40px\"></div>",
-   "replace": "      <div id=\"pi-collect-summary\" style=\"font-size:12.5px;margin-bottom:10px\"></div>\n      <div id=\"pi-vault-heading\" style=\"font-weight:700;font-size:13px;margin:12px 0 6px\">PDFs by apartment — click Open to view</div>\n      <div id=\"pi-leased-list\" style=\"font-size:12.5px;min-height:40px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>",
+   "note": "Apt/clean key helpers + carry cleanDone across type flips",
+   "find": "function _opsOnOpsDate(bkDate, opsIso) {\n  const a = _opsDateParts(bkDate), b = _opsDateParts(opsIso);\n  return !!(a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);\n}\n",
+   "replace": "function _opsOnOpsDate(bkDate, opsIso) {\n  const a = _opsDateParts(bkDate), b = _opsDateParts(opsIso);\n  return !!(a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);\n}\nfunction _opsAptKeyList(r) {\n  const out = [];\n  if (!r) return out;\n  if (r.aptId != null && String(r.aptId) !== '') out.push(String(r.aptId));\n  if (r.aptName != null && String(r.aptName) !== '') out.push(String(r.aptName));\n  return out;\n}\nfunction _opsCleanTypeOf(r) {\n  return String((r && r.cleanType) || 'turnover');\n}\nfunction _opsCleanStorageKey(r) {\n  return String((r && (r.aptId || r.aptName)) || '') + '::' + _opsCleanTypeOf(r);\n}\n// Snapshot / rebuild keys drift when aptId fills in later, or when rental-info\n// flips refresh ↔ sofa_bed — carry operator progress across those aliases.\nfunction _opsLookupSavedClean(savedByKey, row) {\n  if (!savedByKey || !row) return null;\n  const exact = _opsCleanStorageKey(row);\n  if (savedByKey[exact]) return savedByKey[exact];\n  const types = [_opsCleanTypeOf(row), 'turnover', 'refresh', 'sofa_bed'];\n  const seenT = {};\n  for (let ti = 0; ti < types.length; ti++) {\n    const t = types[ti];\n    if (seenT[t]) continue;\n    seenT[t] = true;\n    const keys = _opsAptKeyList(row);\n    for (let ki = 0; ki < keys.length; ki++) {\n      const k = keys[ki] + '::' + t;\n      if (savedByKey[k]) return savedByKey[k];\n    }\n  }\n  return null;\n}\nfunction _opsIndexSavedCleans(list) {\n  const savedByKey = {};\n  (list || []).forEach(function (ex) {\n    if (!ex) return;\n    savedByKey[_opsCleanStorageKey(ex)] = ex;\n    _opsAptKeyList(ex).forEach(function (k) {\n      savedByKey[k + '::' + _opsCleanTypeOf(ex)] = ex;\n    });\n  });\n  return savedByKey;\n}\n",
    "count": 1
   },
   {
-   "note": "Review also lists PDFs by apartment with Open",
-   "find": "      <div id=\"pi-review\" style=\"font-size:12.5px;line-height:1.55\"></div>",
-   "replace": "      <div id=\"pi-review\" style=\"font-size:12.5px;line-height:1.55\"></div>\n      <div id=\"pi-vault-heading-review\" style=\"font-weight:700;font-size:13px;margin:12px 0 6px\">PDFs by apartment — click Open to view</div>\n      <div id=\"pi-review-list\" style=\"font-size:12.5px;min-height:40px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>",
+   "note": "Snapshot overlay indexes aptId AND aptName (cleanDone drift)",
+   "find": "  const snapRows = (snap.rows || []).filter(function (r) { return !_opsIsCleanStub(r); });\n  const snapByKey = {};\n  snapRows.forEach(function (r) { snapByKey[String(r.aptId || r.aptName)] = r; });\n  const OPS_OVERLAY = ['cleanerName','cleanerNames','cleanDone','cleanTask','cleanTaskNote','comments','alreadyCleaned','cleanedDate','lateCheckout','checkoutRequested','arrivalTime','parkBed','earlyCheckin','isPriority','priorityManual','checkinManual'];\n\n  const _merged = freshRows.map(function (f) {\n    const r = snapByKey[String(f.aptId || f.aptName)] || {};\n    const out = Object.assign({}, f);\n    if (snapByKey[String(f.aptId || f.aptName)]) {\n      OPS_OVERLAY.forEach(function (k) {\n        if (r[k] != null) out[k] = r[k];\n      });\n    }\n",
+   "replace": "  const snapRows = (snap.rows || []).filter(function (r) { return !_opsIsCleanStub(r); });\n  const snapByKey = {};\n  snapRows.forEach(function (r) {\n    const keys = (typeof _opsAptKeyList === 'function') ? _opsAptKeyList(r) : [String(r.aptId || r.aptName)];\n    keys.forEach(function (k) { snapByKey[k] = r; });\n  });\n  const OPS_OVERLAY = ['cleanerName','cleanerNames','cleanDone','cleanTask','cleanTaskNote','comments','alreadyCleaned','cleanedDate','lateCheckout','checkoutRequested','arrivalTime','parkBed','earlyCheckin','isPriority','priorityManual','checkinManual'];\n\n  const _merged = freshRows.map(function (f) {\n    const fKeys = (typeof _opsAptKeyList === 'function') ? _opsAptKeyList(f) : [String(f.aptId || f.aptName)];\n    let r = null;\n    for (let i = 0; i < fKeys.length; i++) { if (snapByKey[fKeys[i]]) { r = snapByKey[fKeys[i]]; break; } }\n    r = r || {};\n    const out = Object.assign({}, f);\n    if (fKeys.some(function (k) { return !!snapByKey[k]; })) {\n      OPS_OVERLAY.forEach(function (k) {\n        if (r[k] != null) out[k] = r[k];\n      });\n    }\n",
    "count": 1
   },
   {
-   "note": "Vault rows: filename + Open link to PDF file",
-   "find": "        '<span>' + (leaf || it.filename || '') + partnerBit +\n        ' <span style=\"color:var(--tx3);font-size:11px\">' + (it.source || '') + '</span></span>' +\n        '<span style=\"display:flex;gap:6px;align-items:center\">' + tag +\n        '<button class=\"btn sm\" style=\"padding:2px 8px\" onclick=\"piDelete(\\'' + id + '\\')\">Delete</button></span></div>';",
-   "replace": "        '<span><a href=\"/api/platform-invoices/' + id + '/file\" target=\"_blank\" rel=\"noopener\">' + (leaf || it.filename || 'invoice.pdf') + '</a>' + partnerBit +\n        ' <span style=\"color:var(--tx3);font-size:11px\">' + (it.source || '') + '</span></span>' +\n        '<span style=\"display:flex;gap:6px;align-items:center\">' + tag +\n        '<a class=\"btn sm\" style=\"padding:2px 8px;text-decoration:none\" href=\"/api/platform-invoices/' + id + '/file\" target=\"_blank\" rel=\"noopener\">Open</a>' +\n        '<button class=\"btn sm\" style=\"padding:2px 8px\" onclick=\"piDelete(\\'' + id + '\\')\">Delete</button></span></div>';",
+   "note": "Default Ops date follows opsWorkingDate / local sticky day",
+   "find": "function _opsDefaultOpsDate() {\n  _opsEnsure();\n  const today = _opsTodayStr();\n  if (S.daily && S.daily.cleansCompleteFor && S.daily.cleansCompleteFor[today]) {\n    return _opsAddDays(today, 1);\n  }\n  return today;\n}\n",
+   "replace": "function _opsDefaultOpsDate() {\n  _opsEnsure();\n  const today = _opsTodayStr();\n  let sticky = '';\n  try { sticky = localStorage.getItem('e_opsWorkingDate') || ''; } catch (e) {}\n  if (!sticky && S.daily && S.daily.opsWorkingDate) sticky = String(S.daily.opsWorkingDate);\n  if (S.daily && S.daily.cleansCompleteFor && S.daily.cleansCompleteFor[today]) {\n    const next = _opsAddDays(today, 1);\n    if (sticky && sticky > next) return sticky;\n    return next;\n  }\n  // If the crew already advanced past today, stay there after refresh.\n  if (sticky && sticky > today) return sticky;\n  return today;\n}\n",
    "count": 1
   },
   {
-   "note": "Review renders the same apartment vault list",
-   "find": "      '<div style=\"margin-top:10px\">Shipping will email the Elysian pack to accountants as the finished product for this month.</div>';\n  }",
-   "replace": "      '<div style=\"margin-top:10px\">Shipping will email the Elysian pack to accountants as the finished product for this month.</div>' +\n      '<div style=\"margin-top:8px;color:var(--tx3)\">Open each PDF under PDFs by apartment below.</div>';\n    renderList('pi-review-list', leased);\n  }",
+   "note": "Flush cleanDone to DB immediately (poll cannot wipe checks)",
+   "find": "function opsToggleCleanDoneKey(key, checked) {\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  r.cleanDone = !!checked;\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n  _opsMaybeAdvanceAfterCleans();\n  if (typeof renderOps === 'function') renderOps();\n}\n",
+   "replace": "function opsToggleCleanDoneKey(key, checked) {\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  r.cleanDone = !!checked;\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n  // Immediate DB write — poll cannot wipe checks (debounced save lost them).\n  if (typeof saveToDb === 'function' && typeof _dbAvailable !== 'undefined' && _dbAvailable) saveToDb();\n  _opsMaybeAdvanceAfterCleans();\n  if (typeof renderOps === 'function') renderOps();\n}\n",
    "count": 1
   },
   {
-   "note": "Successful pull points at PDFs by apartment vault",
-   "find": "      msg('Pulled ' + n + ' Airbnb PDF(s) from ' + codes + ' Hosthub code(s)' +\n        (errTxt ? (' · notes: ' + errTxt) : ''), true);",
-   "replace": "      msg('Pulled ' + n + ' Airbnb PDF(s) from ' + codes + ' Hosthub code(s)' +\n        (errTxt ? (' · notes: ' + errTxt) : '') +\n        ' — open them under PDFs by apartment below', true);\n      var vault = document.getElementById('pi-vault-heading') || document.getElementById('pi-leased-list');\n      if (vault) try { vault.scrollIntoView({ block: 'start' }); } catch (eScroll) {}",
+   "note": "Rebuild extras with dual-key / type-flip cleanDone merge",
+   "find": "  const savedByKey = {};\n  _opsCleanExtras.forEach(function (ex) {\n    savedByKey[String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '')] = ex;\n  });\n  _opsCleanExtras = rawExtras.map(function (ex) {\n    const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '');\n    const prev = savedByKey[k];\n    if (prev) {\n      ex.cleanerName = prev.cleanerName || '';\n      ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : _opsCleanerList(prev);\n      ex.cleanDone = !!prev.cleanDone;\n      ex.cleanTask = prev.cleanTask || ex.cleanTask || '';\n      ex.cleanTaskNote = prev.cleanTaskNote || '';\n      ex.comments = prev.comments || prev.cleanTaskNote || '';\n    }\n",
+   "replace": "  const savedByKey = (typeof _opsIndexSavedCleans === 'function')\n    ? _opsIndexSavedCleans(_opsCleanExtras)\n    : (function () {\n      const m = {};\n      _opsCleanExtras.forEach(function (ex) {\n        m[String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || 'turnover')] = ex;\n      });\n      return m;\n    })();\n  _opsCleanExtras = rawExtras.map(function (ex) {\n    const prev = (typeof _opsLookupSavedClean === 'function')\n      ? _opsLookupSavedClean(savedByKey, ex)\n      : savedByKey[String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || 'turnover')];\n    if (prev) {\n      ex.cleanerName = prev.cleanerName || '';\n      ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : _opsCleanerList(prev);\n      ex.cleanDone = !!prev.cleanDone;\n      ex.cleanTask = prev.cleanTask || ex.cleanTask || '';\n      ex.cleanTaskNote = prev.cleanTaskNote || '';\n      ex.comments = prev.comments || prev.cleanTaskNote || '';\n    }\n",
+   "count": 1
+  },
+  {
+   "note": "Check-in-only extras merge via dual-key lookup",
+   "find": "  if (typeof _opsCheckinOnlyScheduleExtras === 'function') {\n    // Also remember cleans from the saved snapshot — extras rebuilt above may have\n    // dropped check-in-only sofa rows before this push (18/23 stuck).\n    try {\n      const snapEx = ((S.daily && S.daily.snapshots && S.daily.snapshots[_opsDate]) || {}).cleanExtras || [];\n      snapEx.forEach(function (ex) {\n        const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '');\n        if (!savedByKey[k]) savedByKey[k] = ex;\n      });\n    } catch (e) {}\n    _opsCheckinOnlyScheduleExtras(Array.from(occupied).concat(Array.from(extraApts))).forEach(function (ex) {\n      const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '');\n      if (_opsCleanExtras.some(function (e) {\n        return String(e.aptId || e.aptName) + '::' + String(e.cleanType || '') === k;\n      })) return;\n      const prev = savedByKey[k];\n      if (prev) {\n        ex.cleanerName = prev.cleanerName || '';\n        ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : ((typeof _opsCleanerList === 'function') ? _opsCleanerList(prev) : []);\n        ex.cleanDone = !!prev.cleanDone;\n        ex.cleanTask = prev.cleanTask || ex.cleanTask || '';\n        ex.cleanTaskNote = prev.cleanTaskNote || ex.cleanTaskNote || '';\n        ex.comments = prev.comments || prev.cleanTaskNote || ex.comments || '';\n      }\n      _opsCleanExtras.push(ex);\n    });\n  }\n",
+   "replace": "  if (typeof _opsCheckinOnlyScheduleExtras === 'function') {\n    // Also remember cleans from the saved snapshot — extras rebuilt above may have\n    // dropped check-in-only sofa rows before this push (18/23 stuck).\n    try {\n      const snapEx = ((S.daily && S.daily.snapshots && S.daily.snapshots[_opsDate]) || {}).cleanExtras || [];\n      snapEx.forEach(function (ex) {\n        if (typeof _opsIndexSavedCleans === 'function') {\n          const more = _opsIndexSavedCleans([ex]);\n          Object.keys(more).forEach(function (k) { if (!savedByKey[k]) savedByKey[k] = more[k]; });\n        } else {\n          const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || 'turnover');\n          if (!savedByKey[k]) savedByKey[k] = ex;\n        }\n      });\n    } catch (e) {}\n    _opsCheckinOnlyScheduleExtras(Array.from(occupied).concat(Array.from(extraApts))).forEach(function (ex) {\n      const k = (typeof _opsCleanStorageKey === 'function') ? _opsCleanStorageKey(ex) : (String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || 'turnover'));\n      if (_opsCleanExtras.some(function (e) {\n        const ek = (typeof _opsCleanStorageKey === 'function') ? _opsCleanStorageKey(e) : (String(e.aptId || e.aptName) + '::' + String(e.cleanType || 'turnover'));\n        return ek === k;\n      })) return;\n      const prev = (typeof _opsLookupSavedClean === 'function') ? _opsLookupSavedClean(savedByKey, ex) : savedByKey[k];\n      if (prev) {\n        ex.cleanerName = prev.cleanerName || '';\n        ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : ((typeof _opsCleanerList === 'function') ? _opsCleanerList(prev) : []);\n        ex.cleanDone = !!prev.cleanDone;\n        ex.cleanTask = prev.cleanTask || ex.cleanTask || '';\n        ex.cleanTaskNote = prev.cleanTaskNote || ex.cleanTaskNote || '';\n        ex.comments = prev.comments || prev.cleanTaskNote || ex.comments || '';\n      }\n      _opsCleanExtras.push(ex);\n    });\n  }\n",
+   "count": 1
+  },
+  {
+   "note": "Rental-info load re-renders Ops so sofa/refresh types + checks stay aligned",
+   "find": "    _opsRentalInfo = data || {};\n    _opsRentalInfoLoading = false;\n    _opsApplySofaCommentsAll();\n    const tbody = document.getElementById('ops-tbody');\n    if (tbody && _opsRows && _opsRows.length) {\n      tbody.innerHTML = _opsRows.map(function (row, idx) { return _opsBuildRow(row, idx); }).join('');\n      if (typeof _opsAutoSave === 'function') _opsAutoSave();\n    }\n",
+   "replace": "    _opsRentalInfo = data || {};\n    _opsRentalInfoLoading = false;\n    _opsApplySofaCommentsAll();\n    // Full re-render: cleaning extras may flip refresh↔sofa_bed once capacity loads.\n    if (typeof renderOps === 'function' && document.getElementById('tab-ops') && document.getElementById('tab-ops').classList.contains('active')) {\n      renderOps();\n    } else {\n      const tbody = document.getElementById('ops-tbody');\n      if (tbody && _opsRows && _opsRows.length) {\n        tbody.innerHTML = _opsRows.map(function (row, idx) { return _opsBuildRow(row, idx); }).join('');\n        if (typeof _opsAutoSave === 'function') _opsAutoSave();\n      }\n    }\n",
+   "count": 1
+  },
+  {
+   "note": "Client Hosthub sync keeps unpriced bookings (Skarlatos)",
+   "find": "      if (!b.aptName) continue;\n      if (b.gross === 0 && b.payout === 0 && b.bkv === 0) continue;\n",
+   "replace": "      if (!b.aptName) continue;\n      // Do NOT drop zero-fee bookings — new/unpriced reservations still need Daily Ops dates.\n      if (b.gross === 0 && b.payout === 0 && b.bkv === 0 && !b.checkIn && !b.checkOut) continue;\n",
+   "count": 1
+  },
+  {
+   "note": "HH import keeps unpriced bookings with dates",
+   "find": "    if (gross === 0 && payout === 0 && bkv === 0) continue;\n",
+   "replace": "    // Keep calendar rows even when fees are still 0 (new reservations).\n    if (gross === 0 && payout === 0 && bkv === 0 && !ciStr && !coStr) continue;\n",
    "count": 1
   }
  ],
  "assertions": [
   {
-   "has": "PDFs by apartment — click Open to view",
-   "note": "vault heading"
+   "has": "function _opsLookupSavedClean",
+   "note": "type-flip cleanDone carry"
   },
   {
-   "has": "/api/platform-invoices/' + id + '/file",
-   "note": "Open hits file route"
+   "has": "function _opsAptKeyList",
+   "note": "dual apt keys"
   },
   {
-   "has": "open them under PDFs by apartment below",
-   "note": "pull success points at vault"
+   "has": "e_opsWorkingDate",
+   "note": "sticky working day read"
   },
   {
-   "has": "pi-review-list",
-   "note": "Review lists PDFs too"
+   "has": "poll cannot wipe checks",
+   "note": "immediate saveToDb on toggle"
   },
   {
-   "has": "Test pull (5 codes)",
-   "note": "test pull kept"
+   "has": "unpriced reservations still need Daily Ops",
+   "note": "keep zero-fee bookings"
   },
   {
-   "has": "Pull Airbnb (Hosthub codes)",
-   "note": "full pull kept"
-  },
-  {
-   "has": "Airbnb pull saved 0 PDFs",
-   "note": "zero-PDF copy kept"
-  },
-  {
-   "has": "channel: 'airbnb'",
-   "note": "Airbnb-only pull"
+   "has": "flip refresh↔sofa_bed once capacity loads",
+   "note": "rental-info full re-render"
   }
  ]
 }
