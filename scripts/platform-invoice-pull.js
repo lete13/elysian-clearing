@@ -473,7 +473,11 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
     }
 
     let pulled = 0;
+    let idx = 0;
+    const total = byCode.size;
     for (const resv of byCode.values()) {
+      idx += 1;
+      console.log(JSON.stringify({ event: 'progress', done: idx, total: total, saved: files.length, code: resv.code }));
       pulled += await pullAirbnbDocsForCode(page, context, month, dir, files, errors, resv, apts);
     }
     if (!pulled) {
