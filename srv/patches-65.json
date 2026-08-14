@@ -1,0 +1,23 @@
+{
+ "baseSha256": "e0590f310b166af6c9f5d4689e268c9958c16fcfc2d148309bf0f88fcfff97dd",
+ "expectedSha256": "1d747176dc87e7b28f69b466c8035137507c68d42df676485f775b065762ec1a",
+ "builtAt": "2026-08-14 FE chain limit raised to patches-110 for Daily Ops day-stick",
+ "patches": [
+  {
+   "note": "FE bootstrap: allow fe/patches-N.json through N=110",
+   "find": "for (let cn = 2; cn <= 90; cn++) { /* legacy note: cn <= 40 */ /* cn <= 80 */",
+   "replace": "for (let cn = 2; cn <= 110; cn++) { /* legacy note: cn <= 40 */ /* cn <= 80 */ /* cn <= 90 */",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "cn <= 110",
+   "note": "FE chain through 110"
+  },
+  {
+   "has": "cn <= 90",
+   "note": "previous limit kept in comment"
+  }
+ ]
+}
