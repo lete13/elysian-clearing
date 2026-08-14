@@ -1,0 +1,91 @@
+{
+ "baseSha256": "91006198944158ee2834eafc59004931ac3a6b3b80771dd0664dcd1add59496f",
+ "expectedSha256": "d0fd8c4460a066fe4c2e579a7b9a07b19c041331ca9f67f084e07df7114e413d",
+ "builtAt": "2026-08-14 Daily Ops: stick on next day after cleans complete",
+ "patches": [
+  {
+   "note": "Athens-local calendar day for Ops (not UTC)",
+   "find": "function _opsTodayStr() {\n  return new Date().toISOString().slice(0,10);\n}\n",
+   "replace": "function _opsTodayStr() {\n  try {\n    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Athens', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());\n  } catch (e) {\n    return new Date().toISOString().slice(0, 10);\n  }\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Sticky Ops working day: cleansCompleteFor + opsWorkingDate + local backup",
+   "find": "function _opsDefaultOpsDate() {\n  _opsEnsure();\n  const today = _opsTodayStr();\n  if (S.daily && S.daily.cleansCompleteFor && S.daily.cleansCompleteFor[today]) {\n    return _opsAddDays(today, 1);\n  }\n  return today;\n}\n",
+   "replace": "function _opsDefaultOpsDate() {\n  _opsEnsure();\n  const today = _opsTodayStr();\n  try {\n    const loc = localStorage.getItem('e_opsWorkingDate');\n    if (loc && /^\\d{4}-\\d{2}-\\d{2}$/.test(loc)) {\n      if (!S.daily.opsWorkingDate || loc > S.daily.opsWorkingDate) S.daily.opsWorkingDate = loc;\n    }\n  } catch (e) {}\n  const wd = S.daily && S.daily.opsWorkingDate;\n  if (wd && /^\\d{4}-\\d{2}-\\d{2}$/.test(wd) && wd >= today) return wd;\n  if (S.daily && S.daily.cleansCompleteFor && S.daily.cleansCompleteFor[today]) {\n    return _opsAddDays(today, 1);\n  }\n  return today;\n}\nfunction opsGoToday() {\n  _opsDate = (typeof _opsDefaultOpsDate === 'function') ? _opsDefaultOpsDate() : _opsTodayStr();\n  renderOps();\n}\nfunction _opsRememberWorkingDate(d) {\n  if (!d || !/^\\d{4}-\\d{2}-\\d{2}$/.test(d)) return;\n  _opsEnsure();\n  S.daily.opsWorkingDate = d;\n  try { localStorage.setItem('e_opsWorkingDate', d); } catch (e) {}\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Advance schedule ignores check-in-only / non-clean extras",
+   "find": "function _opsScheduleRowsForAdvance() {\n  const main = (_opsRows || []).filter(function (r) {\n    return !_opsIsCleanStub(r) && !r.isExtended && !r.isPreparation && !r.isMaintenance && !r.isCheckinOnly;\n  });\n  const keys = new Set();\n  const out = [];\n  main.concat(_opsCleanExtras || []).forEach(function (r) {\n    const k = String(r.aptId || r.aptName) + '::' + String(r.cleanType || 'turnover');\n    if (keys.has(k)) return;\n    keys.add(k);\n    out.push(r);\n  });\n  return out;\n}\n",
+   "replace": "function _opsScheduleRowsForAdvance() {\n  function keep(r) {\n    return !!(r && !_opsIsCleanStub(r) && !r.isExtended && !r.isPreparation && !r.isMaintenance && !r.isCheckinOnly\n      && r.checkinSameDay !== 'checkin_only');\n  }\n  const main = (_opsRows || []).filter(keep);\n  const keys = new Set();\n  const out = [];\n  main.concat((_opsCleanExtras || []).filter(keep)).forEach(function (r) {\n    const k = String(r.aptId || r.aptName) + '::' + String(r.cleanType || 'turnover');\n    if (keys.has(k)) return;\n    keys.add(k);\n    out.push(r);\n  });\n  return out;\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Advance sticks via opsWorkingDate; never undo cleansCompleteFor; flush DB",
+   "find": "function _opsMaybeAdvanceAfterCleans() {\n  const rows = _opsScheduleRowsForAdvance();\n  if (!rows.length) return false;\n  const allDone = rows.every(function (r) { return !!r.cleanDone; });\n  _opsEnsure();\n  S.daily.cleansCompleteFor = S.daily.cleansCompleteFor || {};\n  if (!allDone) {\n    if (S.daily.cleansCompleteFor[_opsDate]) {\n      delete S.daily.cleansCompleteFor[_opsDate];\n      if (typeof save === 'function') save();\n    }\n    return false;\n  }\n  if (S.daily.cleansCompleteFor[_opsDate]) return false;\n  S.daily.cleansCompleteFor[_opsDate] = true;\n  const next = _opsAddDays(_opsDate, 1);\n  if (typeof save === 'function') save();\n  if (typeof toast === 'function') {\n    toast('Πρόγραμμα καθαρισμού ολοκληρώθηκε — Daily Ops → ' + _opsFmtDate(next), 'ok');\n  }\n  _opsDate = next;\n  return true;\n}\n",
+   "replace": "function _opsMaybeAdvanceAfterCleans() {\n  const rows = _opsScheduleRowsForAdvance();\n  if (!rows.length) return false;\n  const allDone = rows.every(function (r) { return !!r.cleanDone; });\n  _opsEnsure();\n  S.daily.cleansCompleteFor = S.daily.cleansCompleteFor || {};\n  // Incomplete schedule must NOT clear cleansCompleteFor — that flipped Ops\n  // back to the previous day after a successful advance (extras / peek / race).\n  if (!allDone) return false;\n  if (S.daily.cleansCompleteFor[_opsDate]) return false;\n  S.daily.cleansCompleteFor[_opsDate] = true;\n  const next = _opsAddDays(_opsDate, 1);\n  if (typeof _opsRememberWorkingDate === 'function') _opsRememberWorkingDate(next);\n  else S.daily.opsWorkingDate = next;\n  if (typeof save === 'function') save();\n  // Immediate flush so a teammate poll / stale debounced POST cannot wipe the stick.\n  if (typeof saveToDb === 'function' && typeof _dbAvailable !== 'undefined' && _dbAvailable) saveToDb();\n  if (typeof toast === 'function') {\n    toast('Πρόγραμμα καθαρισμού ολοκληρώθηκε — Daily Ops → ' + _opsFmtDate(next), 'ok');\n  }\n  _opsDate = next;\n  return true;\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Today button uses sticky working day, not raw calendar today",
+   "find": "onclick=\"_opsDate=_opsTodayStr();renderOps()\"",
+   "replace": "onclick=\"opsGoToday()\"",
+   "count": 1
+  },
+  {
+   "note": "Highlight Today when on sticky working day",
+   "find": "const isToday   = _opsDate === _opsTodayStr();",
+   "replace": "const isToday   = _opsDate === ((typeof _opsDefaultOpsDate === 'function') ? _opsDefaultOpsDate() : _opsTodayStr());",
+   "count": 1
+  },
+  {
+   "note": "After DB load, snap back to sticky day if viewing a completed calendar today",
+   "find": "if (document.getElementById('tab-ops')?.classList.contains('active')) {\n      // Ops tab open — merge any new bookings into current view\n      const curDate = _opsDate || _opsTodayStr();",
+   "replace": "if (document.getElementById('tab-ops')?.classList.contains('active')) {\n      // Ops tab open — merge any new bookings into current view\n      try {\n        const _today = (typeof _opsTodayStr === 'function') ? _opsTodayStr() : '';\n        const _sticky = (typeof _opsDefaultOpsDate === 'function') ? _opsDefaultOpsDate() : _today;\n        if (_opsDate && _today && S.daily && S.daily.cleansCompleteFor && S.daily.cleansCompleteFor[_today] && _opsDate === _today) {\n          _opsDate = _sticky;\n        }\n        if (!_opsDate) _opsDate = _sticky || _today;\n      } catch (e) {}\n      const curDate = _opsDate || _opsTodayStr();",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "timeZone: 'Europe/Athens'",
+   "note": "Athens-local Ops today"
+  },
+  {
+   "has": "function opsGoToday",
+   "note": "Today respects sticky working day"
+  },
+  {
+   "has": "function _opsRememberWorkingDate",
+   "note": "persist ops working day"
+  },
+  {
+   "has": "e_opsWorkingDate",
+   "note": "localStorage backup for working day"
+  },
+  {
+   "has": "S.daily.opsWorkingDate",
+   "note": "shared sticky working day"
+  },
+  {
+   "has": "Incomplete schedule must NOT clear cleansCompleteFor",
+   "note": "no undo of day complete"
+  },
+  {
+   "has": "r.checkinSameDay !== 'checkin_only'",
+   "note": "advance ignores check-in-only extras"
+  },
+  {
+   "has": "onclick=\"opsGoToday()\"",
+   "note": "Today button wired to sticky helper"
+  },
+  {
+   "hasNot": "delete S.daily.cleansCompleteFor[_opsDate];",
+   "note": "advance no longer deletes completion"
+  },
+  {
+   "has": "_opsTodayStr()",
+   "note": "legacy today helper still present"
+  }
+ ]
+}
