@@ -1,0 +1,842 @@
+# Patch history (pre-consolidation)
+
+Baked into `index.html` / `server.js` on 2026-08-14.
+FE: 590 ops across 100 files → `7b05b19f208885ae8c912e9ef7c63c0e89afe35bb93da9a092cf0b592726b111`
+SRV: 241 ops across 68 files → `5b1d1fd084ce071592bd25d977c1a1b66f5ea97cb804f184c2c039ed10275c7c`
+
+## Frontend
+
+- `fe/patches.json`: Send: fix out-of-scope _period that silently skipped every TAKK/payment attachment
+- `fe/patches.json`: Monthly Close: capture the channel selection with the confirmed report
+- `fe/patches.json`: Monthly Close: the Email step opens the email itself once the report has rendered
+- `fe/patches.json`: Config: clearing group field (apartments cleared together share one pipeline)
+- `fe/patches.json`: Monthly Close: grouped apartments form one queue unit, tracked on the first member
+- `fe/patches.json`: Monthly Close: counters stay in apartments so a group clears all of its members
+- `fe/patches.json`: Monthly Close: header and legend totals read apartments, not units
+- `fe/patches.json`: Monthly Close: legend not-started reads apartments
+- `fe/patches.json`: Monthly Close: opening a grouped report selects every member
+- `fe/patches.json`: Monthly Close: restore the confirmed channel selection after showTab clears it
+- `fe/patches.json`: Monthly Close: grouped confirmation reads every member packet, not just the first
+- `fe/patches.json`: Monthly Close: freeze combined totals, member IDs and overrides with the confirmation
+- `fe/patches.json`: Persistence: Monthly Close state saved to localStorage by save()
+- `fe/patches.json`: Persistence: Monthly Close state kept in the post-load localStorage rewrite
+- `fe/patches.json`: Persistence: Monthly Close state restored from localStorage at boot
+- `fe/patches.json`: Send: proofs from /api/proofs for every report apartment and every month the period touches; client state fallback
+- `fe/patches.json`: Send: attachment size guard - skip proofs that would push the email over the server cap, and say so
+- `fe/patches.json`: Monthly Close: email is the final stage - drop the receipt pseudo-stage (APY issues with the send)
+- `fe/patches.json`: Monthly Close: email is the final stage - drop the invoice pseudo-stage (TPY issues with the send)
+- `fe/patches.json`: Monthly Close: funnel ends at Email - remove receipt/invoice columns
+- `fe/patches.json`: Report lock: preserve email/oxygen stamps through relocks - they drive the Monthly Close ticks
+- `fe/patches.json`: Config: up to three owner email addresses per apartment
+- `fe/patches.json`: Send: owner email goes to every configured address (up to three per apartment)
+- `fe/patches.json`: Annual Tracker: month rows carry the cleared owner remittance
+- `fe/patches.json`: Annual Tracker: totals include the cleared remittance
+- `fe/patches.json`: Annual Tracker: Remitted column header
+- `fe/patches.json`: Annual Tracker: Remitted cell per month (cleared amount from the close)
+- `fe/patches.json`: Annual Tracker: Remitted total in the footer
+- `fe/patches.json`: Config: Add fixed charge works on apartments created before the field existed
+- `fe/patches.json`: Monthly Close: the Email stage only ticks for sends made after this close's confirmation
+- `fe/patches.json`: Monthly Close: comments box on the focus card, saved with the close record
+- `fe/patches.json`: Monthly Close: mcSetComment stores the comment on the close record
+- `fe/patches.json`: Monthly Close: the Email step carries the close comment into the send window
+- `fe/patches.json`: Send: close comments appear as a Notes section in the owner message
+- `fe/patches.json`: PDF: read the Monthly Close comment for this apartment and month
+- `fe/patches.json`: PDF: Notes for this period section above the footer
+- `fe/patches.json`: Config: _emailClean extracts a plain address from pasted 'Name <addr>' formats
+- `fe/patches.json`: Config: fixed-charge label value is HTML-escaped
+- `fe/patches.json`: Close header: styles for the daily pace chip
+- `fe/patches.json`: Close header: compute apartments-per-day needed to send everything by the 10th
+- `fe/patches.json`: Close header: pace chip shown next to the legend
+- `fe/patches.json`: Focus view: search bar in the toolbar (was List-only)
+- `fe/patches.json`: Search: typing keeps keyboard focus through re-renders
+- `fe/patches.json`: Focus view: the queue narrows to apartments matching the search
+- `fe/patches.json`: Focus view: match counter in the progress row while searching
+- `fe/patches.json`: Focus view: no-match message instead of the all-closed banner
+- `fe/patches.json`: Focus view: Up next lists only matching apartments
+- `fe/patches.json`: Focus view: Previous cycles within the search matches
+- `fe/patches.json`: Focus view: Skip cycles within the search matches
+- `fe/patches.json`: Send: helpers to build a fixed, predictable attachment filename
+- `fe/patches.json`: Send: track whether declining the invoice step should cancel the whole send
+- `fe/patches.json`: Send: period used by every attachment's fixed filename
+- `fe/patches.json`: Send: declining Issue invoice cancels the whole send (Elysian Ithaki: email went out with no invoice after Cancel was pressed on this dialog)
+- `fe/patches.json`: Send: stop before the fetch when the invoice step was declined - the email must not go out on its own
+- `fe/patches.json`: Send: invoice attachment uses the fixed naming scheme, keeping the document number
+- `fe/patches.json`: Send: proof attachments get a fixed name instead of the uploaded filename; index suffix if more than one per type
+- `fe/patches.json`: Send: proof attachment push uses the fixed filename builder
+- `fe/patches.json`: Send: proof document kinds named TAKK_Issuance / TAKK_Payment / Payment_Proof
+- `fe/patches.json`: Report: negative expense lines (credit notes) are tagged CREDIT
+- `fe/patches.json`: Report: expense row amounts carry their real sign - a stored credit no longer prints --75,00
+- `fe/patches.json`: Report: expense totals formatted with their real sign
+- `fe/patches.json`: PDF: expense rows carry their real sign; credit notes marked; negative VAT shown
+- `fe/patches.json`: PDF: expense totals formatted with their real sign
+- `fe/patches.json`: Expenses: expToggleMonth expands/collapses a month group
+- `fe/patches.json`: Expenses: rows bucketed per month (newest first, latest month open by default)
+- `fe/patches.json`: Expenses: month header rows with totals; collapsed months hide their rows
+- `fe/patches.json`: Cash Flow: Tools menu entry
+- `fe/patches.json`: Cash Flow: tab panel
+- `fe/patches.json`: Cash Flow: showTab renders the tab
+- `fe/patches.json`: Cash Flow: renderer - MA table (15/30/60d), internal-transfer toggle + list, SVG chart of 30d MAs and net position
+- `fe/patches.json`: Cash Flow: chart window state + setter
+- `fe/patches.json`: Cash Flow: chart window honours the selected range and builds the selector
+- `fe/patches.json`: Cash Flow: range buttons rendered next to the chart title
+- `fe/patches.json`: Cash Flow: empty-state copy no longer promises a fixed 130 days
+- `fe/patches-2.json`: Monthly Close: skip-month helpers and the password-gated Not-needed action
+- `fe/patches-2.json`: Monthly Close: apartments marked not-needed leave the queue
+- `fe/patches-2.json`: Monthly Close: not-needed apartments counted separately, never as sent
+- `fe/patches-2.json`: Monthly Close: progress and pace measure what actually needs clearing
+- `fe/patches-2.json`: Monthly Close: pace counts only apartments that still need clearing
+- `fe/patches-2.json`: Monthly Close: legend shows the not-needed tally
+- `fe/patches-2.json`: Monthly Close: focus card flags an apartment whose previous month was skipped
+- `fe/patches-2.json`: Monthly Close: Not-needed button on the focus card
+- `fe/patches-2.json`: Monthly Close: list view shows the not-needed state with an undo, and the previous-month flag
+- `fe/patches-2.json`: Monthly Close: all-clear banner acknowledges skipped apartments
+- `fe/patches-3.json`: Property Info: distinct short column heads (two "Fire" and two "Emergency" columns before)
+- `fe/patches-3.json`: Portfolio overview: column heads use the short label and may wrap instead of being cut
+- `fe/patches-3.json`: Portfolio overview: wider table now the heads are readable
+- `fe/patches-3.json`: Property Info: owner-contact helpers and the phone field writer
+- `fe/patches-3.json`: Portfolio overview: owner contacts list under the compliance matrix
+- `fe/patches-3.json`: Property Info: owner contact block on the property page
+- `fe/patches-3.json`: Configuration: owner phone next to the owner emails
+- `fe/patches-4.json`: Property Info: channel-listing link storage, validation and the shared link cell
+- `fe/patches-4.json`: Property Info: Channel listings block on the property page
+- `fe/patches-4.json`: Portfolio overview: Airbnb and Booking.com columns on the contacts table
+- `fe/patches-4.json`: Portfolio overview: a link cell per channel on every row
+- `fe/patches-4.json`: Portfolio overview: contacts card now also covers listings, and counts the gaps
+- `fe/patches-4.json`: Portfolio overview: missing-link counts beside the missing-contact counts
+- `fe/patches-4.json`: Portfolio overview: wider contacts table for the two extra columns
+- `fe/patches-5.json`: Areas: station reference data, per-apartment area setting and route comparator
+- `fe/patches-5.json`: Configuration: Area selector per apartment, defaulting to the detected station
+- `fe/patches-5.json`: Configuration: fill every unset area from the stored location data
+- `fe/patches-5.json`: Performance: an area set in Configuration decides the category, ahead of the name lists
+- `fe/patches-5.json`: Daily Ops: row-kind classifier (extended / preparation / maintenance / owner) and route ordering
+- `fe/patches-5.json`: Daily Ops: checkout rows carry their kind flags
+- `fe/patches-5.json`: Daily Ops: arrival-only rows ordered by route and classified too
+- `fe/patches-5.json`: Daily Ops: an arrival-only block named "prep"/"extend" is not a fresh arrival
+- `fe/patches-5.json`: Daily Ops: non-turnovers sink to the bottom of the generated list
+- `fe/patches-5.json`: Daily Ops: saved snapshots pick up fresh detection, manual overrides still win
+- `fe/patches-5.json`: Daily Ops: a colour per row kind
+- `fe/patches-5.json`: Daily Ops: owner highlight on the row
+- `fe/patches-5.json`: Daily Ops: row uses the owner styling
+- `fe/patches-5.json`: Daily Ops: apartment cell shows the kind badge, owner badge and area
+- `fe/patches-5.json`: Daily Ops: per-row buttons to correct the detected kind
+- `fe/patches-5.json`: Daily Ops: the manual-override handlers
+- `fe/patches-5.json`: Performance: default the table to route order
+- `fe/patches-5.json`: Performance: route order as a sort mode
+- `fe/patches-5.json`: Performance: compare by route position when sorting by area
+- `fe/patches-5.json`: Performance: the Property header cycles route order, A-Z, Z-A
+- `fe/patches-6.json`: Leads: in the main nav, with the Tools menu pinned beside the scrolling strip
+- `fe/patches-6.json`: Leads: an empty panel, filled by renderLeads
+- `fe/patches-6.json`: The nav scrolls instead of shoving the Tools menu off the screen
+- `fe/patches-6.json`: Monthly Close: the gold it was written for is finally defined
+- `fe/patches-6.json`: Leads: the tab itself
+- `fe/patches-7.json`: Leads sits second in the nav, not thirteenth where nothing is visible
+- `fe/patches-7.json`: ... right after the Dashboard
+- `fe/patches-7.json`: The nav says out loud that there is more of it
+- `fe/patches-7.json`: Leads is part of the operator and accountant workspaces too
+- `fe/patches-7.json`: ... and the accountant one
+- `fe/patches-7.json`: ... and it is wired up
+- `fe/patches-7.json`: Opening a tab that is already in view no longer drags the strip
+- `fe/patches-7.json`: The header gives a phone its width back
+- `fe/patches-7.json`: ... and spends it on the tabs
+- `fe/patches-8.json`: Leads: an archived lead can be restored from the row you found it on
+- `fe/patches-8.json`: Leads: the archive opens as a list, since a board of one stage is not a board
+- `fe/patches-8.json`: Leads: ... and the board/list choice is remembered per view
+- `fe/patches-8.json`: Leads: the archive renders as rows
+- `fe/patches-8.json`: Leads: a restored lead says where it went
+- `fe/patches-8.json`: Leads: the restore control and the archive reason have somewhere to live
+- `fe/patches-9.json`: theme+sidebar+home CSS
+- `fe/patches-9.json`: home nav button
+- `fe/patches-9.json`: theme toggle button
+- `fe/patches-9.json`: role labels
+- `fe/patches-9.json`: home panel
+- `fe/patches-9.json`: main-content id
+- `fe/patches-9.json`: showTab home dispatch
+- `fe/patches-9.json`: apply shows home
+- `fe/patches-9.json`: apply allows home on fallback
+- `fe/patches-9.json`: workspace toast labels
+- `fe/patches-9.json`: icon leads
+- `fe/patches-9.json`: icon mt
+- `fe/patches-9.json`: icon rev
+- `fe/patches-9.json`: icon ops
+- `fe/patches-9.json`: icon perf
+- `fe/patches-9.json`: icon pinfo
+- `fe/patches-9.json`: icon tools
+- `fe/patches-9.json`: icon hhapi
+- `fe/patches-9.json`: icon imports
+- `fe/patches-9.json`: icon co
+- `fe/patches-9.json`: icon pay
+- `fe/patches-9.json`: icon cash
+- `fe/patches-9.json`: icon log
+- `fe/patches-9.json`: loadFromDb applyPrefs hook
+- `fe/patches-9.json`: injected home/theme/role JS
+- `fe/patches-10.json`: Monthly Close: comment draft helpers so remounts cannot wipe mid-typing
+- `fe/patches-10.json`: Monthly Close: comments textarea keeps a live draft and restores after remount
+- `fe/patches-10.json`: Monthly Close: renderMt captures and flushes the comments draft before rebuild
+- `fe/patches-10.json`: Monthly Close: restore comments focus and caret after panel.innerHTML rebuild
+- `fe/patches-11.json`: CSS: notifications, identity bar, task form & rows
+- `fe/patches-11.json`: apply(): Performance visible for Accounting
+- `fe/patches-11.json`: apply(): Performance allowed for Accounting
+- `fe/patches-11.json`: JS: assignable tasks, notifications, My-tasks dashboard
+- `fe/patches-12.json`: Add Kostas to the identity list with the Operations profile
+- `fe/patches-13.json`: Daily Ops: kind buttons use short text labels instead of emoji
+- `fe/patches-13.json`: Daily Ops: managed auto-comments (late / priority / sofa) + Property Info cache
+- `fe/patches-13.json`: Daily Ops: Late CO writes Late Checkout: 12:00; Priority writes PRIORITY
+- `fe/patches-13.json`: Daily Ops: Late + Priority (red) + sofa badges; PRIORITY/SOFA badges on the apt name
+- `fe/patches-13.json`: Daily Ops: Priority and sofa-prep comments render in red
+- `fe/patches-13.json`: Daily Ops: restyle kind buttons as compact text pills
+- `fe/patches-13.json`: Daily Ops: widen the kind-actions column for the text pills
+- `fe/patches-13.json`: Daily Ops: header renamed Late / Pri for the two flag buttons
+- `fe/patches-13.json`: Daily Ops: load Property Info and apply sofa-prep comments on render
+- `fe/patches-13.json`: Property Info: Base capacity + sleeping configuration above Max guests
+- `fe/patches-13.json`: Property Info: render base capacity and sleeping config in the House rules column
+- `fe/patches-13.json`: Property Info: mirror base capacity onto the apartment + Daily Ops cache
+- `fe/patches-13.json`: Property Info: after save, refresh the Daily Ops rental-info cache
+- `fe/patches-14.json`: Leads: task-first styles (My tasks cards, clickable load chips, next action)
+- `fe/patches-14.json`: Leads: default to My tasks, keep a person filter
+- `fe/patches-14.json`: Leads: map your name to a team key, and define what counts as an open task
+- `fe/patches-14.json`: Leads: load chips open that persons task list
+- `fe/patches-14.json`: Leads: task list renderer — one card per assigned open lead
+- `fe/patches-14.json`: Leads: My tasks / Everyone / Board / Archive chrome
+- `fe/patches-14.json`: Leads: view switcher understands My tasks and Everyone
+- `fe/patches-14.json`: Leads: ticket opens with the next action for the assignee
+- `fe/patches-14.json`: Leads: new lead form can assign the open task to someone
+- `fe/patches-14.json`: Leads: create sends the chosen assignee so the open task lands on them
+- `fe/patches-14.json`: Leads: deep-link opener for Home and pending ticket after reload
+- `fe/patches-14.json`: Home: Leads action card says open lead tasks
+- `fe/patches-14.json`: Home: My tasks list includes assigned open leads as open tasks
+- `fe/patches-14.json`: Home: fetch assigned open leads into My tasks
+- `fe/patches-14.json`: Home: open lead tasks chip beside open ops tasks
+- `fe/patches-14.json`: Home: non-ops workspaces get an open-lead-tasks chip too
+- `fe/patches-14.json`: Home: changing who you are refreshes open lead tasks
+- `fe/patches-15.json`: Leads: next-action copy — explain once, button marks the step done
+- `fe/patches-15.json`: Leads: load chips use friendly names (John, not Giannis)
+- `fe/patches-15.json`: Leads: You-are picker shows John for the giannis key
+- `fe/patches-15.json`: Leads: task cards — clear pipeline, one next action, reassign, plain SLA
+- `fe/patches-15.json`: Leads: Everyone groups use friendly assignee names
+- `fe/patches-15.json`: Leads: empty state uses friendly assignee name
+- `fe/patches-15.json`: Leads: ticket next-action banner without duplicated label
+- `fe/patches-15.json`: Leads: ticket assignee dropdown uses friendly names
+- `fe/patches-15.json`: Leads: reassign toast uses friendly names
+- `fe/patches-15.json`: Leads: styles for pipeline line, SLA plain language, assignee on the card
+- `fe/patches-15.json`: Home: open-lead rows use clearer next-step copy
+- `fe/patches-16.json`: Persist cleaner roster in local save()
+- `fe/patches-16.json`: Persist cleaner roster in saveToDb payload
+- `fe/patches-16.json`: Load cleaner roster from the DB blob
+- `fe/patches-16.json`: Persist cleaner roster when rewriting localStorage after a DB load
+- `fe/patches-16.json`: Daily Ops: ensure the per-day extra assignment bag exists
+- `fe/patches-16.json`: Daily Ops: cleaner roster helpers, extra clean rows, assignment setters
+- `fe/patches-16.json`: Daily Ops: render cleaner-assignment table under the checkout list
+- `fe/patches-16.json`: Daily Ops: drop leaked cleaner assignments when a snapshot date mismatches
+- `fe/patches-17.json`: Daily Ops: link cleaner notes to apartment comments + cleaning-table screenshot
+- `fe/patches-17.json`: Daily Ops: apartment comments mirror into the cleaning-table note column
+- `fe/patches-17.json`: Daily Ops: searchable cleaners, default Καθαρισμός, linked notes, screenshot target
+- `fe/patches-18.json`: Daily Ops: auto-PRIORITY for same-day check-ins (with manual override)
+- `fe/patches-18.json`: Daily Ops: apply same-day priority on render
+- `fe/patches-18.json`: Daily Ops: Pri toggle records priorityManual so auto rule does not fight it
+- `fe/patches-18.json`: Daily Ops: re-evaluate priority when same-day check-in cell is toggled
+- `fe/patches-19.json`: Daily Ops: match same-day check-in by aptId or aptName
+- `fe/patches-19.json`: Daily Ops: drop cleaning-table stub rows from snapshots; keep cleanExtras
+- `fe/patches-19.json`: Daily Ops: use cleaned snapRows in merge
+- `fe/patches-19.json`: Daily Ops: long-stay comment tag + keep cleanTaskNote in sync
+- `fe/patches-19.json`: Daily Ops: apply long-stay comments with sofa pass
+- `fe/patches-19.json`: Daily Ops: declare _opsCleanExtras state
+- `fe/patches-19.json`: Daily Ops: clean-row helpers persist extras separately (no stub pollution)
+- `fe/patches-19.json`: Daily Ops: reworked cleaning schedule UI + extras isolation + multi-comment chips
+- `fe/patches-19.json`: Daily Ops: autosave strips stubs and stores cleanExtras
+- `fe/patches-19.json`: Daily Ops: mirror comments into cleaning textarea (multi-comment)
+- `fe/patches-20.json`: Leads: stop using .tt/.ts/.tm — they collide with the toggle switch
+- `fe/patches-20.json`: Leads: mobile stack uses renamed side column
+- `fe/patches-20.json`: Leads: task card markup uses ld-task-name (not the toggle .tt)
+- `fe/patches-20.json`: Leads: prettyPerson keeps a single clean name line
+- `fe/patches-21.json`: Daily Ops: default date advances after all cleans confirmed done
+- `fe/patches-21.json`: Daily Ops: open on advanced default date when todays cleans are done
+- `fe/patches-21.json`: Daily Ops: schedule-check uses advanced default date
+- `fe/patches-21.json`: Daily Ops: tab open uses advanced default date
+- `fe/patches-21.json`: ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ: emphasize cleaner name field
+- `fe/patches-21.json`: ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ: rename + screenshot-friendly header, buttons outside shot
+- `fe/patches-21.json`: Screenshot filename uses programma-katharismou
+- `fe/patches-22.json`: Leads: finish renaming leftover .ts / .tm on the task card
+- `fe/patches-22.json`: Leads: harden task-name styles so nothing can crush the title
+- `fe/patches-23.json`: Άδειες: duration field prefills the next N days
+- `fe/patches-23.json`: Screenshot: flatten form controls for crisp cleaner names
+- `fe/patches-23.json`: Cleaner name field: clearer weight/spacing for screenshot
+- `fe/patches-23.json`: Άδειες duration UI; Ρεπό/Οδηγοί/Ιματισμός inside screenshot
+- `fe/patches-24.json`: Άδειες: clear continuation days when name cleared or duration shortened
+- `fe/patches-25.json`: Add Michalis to the identity list with the Operations profile
+- `fe/patches-25.json`: Workspace follows the signed-in profile (Popi stays Accounting, not forced to Operations)
+- `fe/patches-25.json`: Hide Admin/Accounting/Operations switcher except for Lefteris (Admin)
+- `fe/patches-25.json`: Dashboard cards follow the signed-in profile, not a blanket operator lock
+- `fe/patches-25.json`: Accountant still sees money; only Operations is finance-free
+- `fe/patches-25.json`: whoami stores profile and sets identity from the login
+- `fe/patches-25.json`: Personal accounts: the login name is who you are (no You-are picker)
+- `fe/patches-25.json`: Home identity bar: lock the name when signed in with a personal account
+- `fe/patches-26.json`: Workspace: allowed profiles from the account; dual-role users can switch
+- `fe/patches-26.json`: Show the workspace switcher when the account has more than one profile (or is Admin)
+- `fe/patches-26.json`: Dashboard cards follow the chosen workspace among the account's allowed profiles
+- `fe/patches-26.json`: whoami stores the list of workspaces this account may open
+- `fe/patches-27.json`: Log out button next to signed-in name + elysianLogout()
+- `fe/patches-27.json`: Tools menu: Platform Invoices
+- `fe/patches-27.json`: Platform Invoices tab panel
+- `fe/patches-27.json`: Platform Invoices UI helpers
+- `fe/patches-28.json`: Multi-cleaner helpers per apartment
+- `fe/patches-28.json`: Persist cleanerNames on clean extras
+- `fe/patches-28.json`: Normalize cleanerNames list for each schedule row
+- `fe/patches-28.json`: Cleaning schedule: multi-cleaner chips + add field
+- `fe/patches-28.json`: Screenshot renders all assigned cleaners crisply
+- `fe/patches-29.json`: Daily Ops: apartment address helpers
+- `fe/patches-29.json`: Daily Ops list shows Name (address)
+- `fe/patches-29.json`: Cleaning schedule shows Name (address)
+- `fe/patches-29.json`: Property Info: editable street address on apartment
+- `fe/patches-29.json`: Property Info UI: street address field
+- `fe/patches-29.json`: Driver routes: assign schedule apartments + comment tags
+- `fe/patches-29.json`: Drivers at bottom with route apartment picker
+- `fe/patches-29.json`: Route comments highlighted as chips
+- `fe/patches-30.json`: Leads: Welcome email button on the ticket contact row
+- `fe/patches-30.json`: Leads: first-contact next action is send welcome email
+- `fe/patches-30.json`: Leads: To contact stage hint names the welcome email
+- `fe/patches-30.json`: Leads: welcome button + composer modal styles
+- `fe/patches-30.json`: Leads: welcome email composer (GR/EN) with matching brochure attach
+- `fe/patches-30.json`: Home: open-lead next action matches welcome email
+- `fe/patches-31.json`: Leads task card: Email opens welcome composer with brochure
+- `fe/patches-31.json`: Leads ticket: Email button opens personalised welcome + brochure
+- `fe/patches-31.json`: Welcome email: personalise subject/body from the lead's name
+- `fe/patches-31.json`: Welcome modal shows the lead's name
+- `fe/patches-32.json`: Leads task card: Delete next to Call/Email
+- `fe/patches-32.json`: Leads erase: yes/no confirm only — no password prompt
+- `fe/patches-33.json`: Leads: priority city badge + card accent styles
+- `fe/patches-33.json`: Leads: detect Athens/Thessaloniki priority from address & answers
+- `fe/patches-33.json`: Leads tasks: sort Athens/Thessaloniki above other open leads
+- `fe/patches-33.json`: Leads task card: priority class for Athens/Thessaloniki
+- `fe/patches-33.json`: Leads task card: Priority · Athens/Thessaloniki badge
+- `fe/patches-33.json`: Leads board cards: Athens/Thessaloniki priority badge
+- `fe/patches-33.json`: Leads board: priority cities first within each stage
+- `fe/patches-33.json`: Leads list: priority accent for Athens/Thessaloniki
+- `fe/patches-33.json`: Leads ticket: show city priority in the header
+- `fe/patches-34.json`: SOP copy: ASAP, BDC month-after via admin.booking.com, Airbnb dating
+- `fe/patches-34.json`: Elysian-tax pack header ASAP
+- `fe/patches-34.json`: Other-groups pack header ASAP
+- `fe/patches-34.json`: Hosthub health check button + panel
+- `fe/patches-34.json`: piHealth + richer piPull progress
+- `fe/patches-35.json`: Logout: clear storage and hit session /api/logout
+- `fe/patches-36.json`: Daily Ops: upgrade Δεν ξέρουμε ακόμα → Ναι when a same-day booking syncs in
+- `fe/patches-36.json`: Daily Ops: manual Ναι/Όχι/unknown clicks set checkinManual so auto refresh does not fight the operator
+- `fe/patches-37.json`: Defer SheetJS; drop render-blocking html2canvas/jsPDF (already lazy-loaded)
+- `fe/patches-37.json`: Do not block first paint on PDF libraries
+- `fe/patches-37.json`: Load Inter after first paint (system fonts already in the stack)
+- `fe/patches-37.json`: Show nav immediately; apply account restrictions when whoami returns
+- `fe/patches-37.json`: Slim loading bar when local cache exists; full overlay only on cold start
+- `fe/patches-37.json`: Do not block Home on Dashboard/Config render; overlay only when there is no cache
+- `fe/patches-37.json`: Fetch /api/db/data in parallel with server-config
+- `fe/patches-38.json`: Change log: logClick helper (debounced UI clicks)
+- `fe/patches-38.json`: Change log: record tab opens as clicks
+- `fe/patches-38.json`: Change log: record logout as a click
+- `fe/patches-38.json`: Change Log UI: kind filter (changes/clicks) + badges
+- `fe/patches-39.json`: Accountant workspace: Platform Invoices as primary tab
+- `fe/patches-39.json`: Move Platform Invoices into main nav (accounting-visible)
+- `fe/patches-39.json`: Remove duplicate Platform Invoices from Tools dropdown
+- `fe/patches-39.json`: Replace Platform Invoices tab with guided accounting pipeline
+- `fe/patches-39.json`: Replace Platform Invoices JS with pipeline controller
+- `fe/patches-40.json`: Helpers: cleaners free for Ρεπό/Άδειες/Ιματισμός (not on cleaning table)
+- `fe/patches-40.json`: Ρεπό / Ιματισμός: dropdown of free cleaners (sorted), not free text
+- `fe/patches-40.json`: Άδειες: dropdown of free cleaners (sorted), not free text
+- `fe/patches-40.json`: Faster DB save debounce (800ms, 350ms on Daily Ops)
+- `fe/patches-40.json`: Faster DB poll on Daily Ops (~8s) so other users see changes sooner
+- `fe/patches-40.json`: Toggle fast DB sync when entering/leaving Daily Ops
+- `fe/patches-40.json`: Keep _opsFastSave on while rendering Daily Ops
+- `fe/patches-41.json`: Daily Ops: Παρκοκρεβάτο + Early check-in managed comment tags
+- `fe/patches-41.json`: Daily Ops: manual Παρκοκρεβάτο + Early check-in toggles write into comments
+- `fe/patches-41.json`: Daily Ops row: Παρκ/Early state + blue comment styling flag
+- `fe/patches-41.json`: Daily Ops: blue ΠΑΡΚ / EARLY badges on apartment name
+- `fe/patches-41.json`: Daily Ops: Παρκ + Early operator buttons (blue)
+- `fe/patches-41.json`: Daily Ops comments field: blue when Παρκοκρεβάτο / Early check-in
+- `fe/patches-41.json`: Cleaning table: Παρκοκρεβάτο / Early check-in chips in blue (clue color)
+- `fe/patches-42.json`: Report: the Elysian-charges subtotal says that it excludes the management fee
+- `fe/patches-42.json`: Report: the Net Earnings caption stops claiming the management fee is already out
+- `fe/patches-42.json`: Report PDF: same, on the printed summary where the mismatch is visible
+- `fe/patches-43.json`: Guard shared saves with a generation so stale writes cannot wipe newer local edits
+- `fe/patches-43.json`: saveToDb: capture generation and mark in-flight before POST
+- `fe/patches-43.json`: loadFromDb: cancel pending saves so they cannot overwrite freshly loaded (or local) state wrongly
+- `fe/patches-43.json`: DB poll: never reload over pending local Daily Ops / save edits (prevents cleaner wipe)
+- `fe/patches-43.json`: Παρκ/Early: snapshot before re-render so comments + cleaners are not discarded
+- `fe/patches-43.json`: Date-mismatch snapshot: clear cleanerNames too (multi-cleaner), not only cleanerName
+- `fe/patches-44.json`: Expect panel: Booking apartment checklist slot
+- `fe/patches-44.json`: Collect panel: apartment select + checklist + stronger pull copy
+- `fe/patches-44.json`: Review ship button gates incomplete Booking apartments
+- `fe/patches-44.json`: Booking apartment helpers + expect counts apartments
+- `fe/patches-44.json`: Vault list shows partner + Booking retag control
+- `fe/patches-44.json`: Collect summary uses apartment coverage
+- `fe/patches-44.json`: Review copy uses apartment expect
+- `fe/patches-44.json`: Upload tags Booking PDFs to selected apartment
+- `fe/patches-44.json`: Pull treats 0 PDFs as failure and shows portal error text
+- `fe/patches-44.json`: Ship warns when Booking apartments incomplete
+- `fe/patches-44.json`: Reload refreshes Booking checklist after vault changes
+- `fe/patches-44.json`: Header reminds Booking one-per-apartment
+- `fe/patches-45.json`: Collect panel: pull-first, connect sessions, upload emergency-only
+- `fe/patches-45.json`: Header: automated pull wording
+- `fe/patches-45.json`: Connect session UI + apartment-aware automated pull
+- `fe/patches-45.json`: Reload renders portal session status
+- `fe/patches-45.json`: Entering Collect auto-runs pull when vault incomplete
+- `fe/patches-45.json`: Month change allows another auto-pull
+- `fe/patches-46.json`: Nav shows platinv for any allowed account (John), any workspace
+- `fe/patches-47.json`: Home: Open leads default extended; arrow toggles minimise
+- `fe/patches-48.json`: Daily Ops: assigned-set helpers + auto-fill unassigned cleaners into Ρεπό
+- `fe/patches-48.json`: personSelect: exclude cleaners already assigned to other staff blocks
+- `fe/patches-48.json`: Άδειες select uses assigned-aware available list
+- `fe/patches-48.json`: Daily Ops: Εφημερία (On-call) block + sync unassigned → Ρεπό before render
+- `fe/patches-48.json`: opsSetDailyExtra: re-sync Ρεπό after On-call/Άδειες/Ιματισμός/Οδηγοί changes
+- `fe/patches-49.json`: Expect: Airbnb Hosthub confirmation codes primary; Booking expect dimmed
+- `fe/patches-49.json`: Collect: Pull Airbnb from Hosthub codes (VAT Invoicer-style); hide Booking pull for now
+- `fe/patches-49.json`: piHealth builds Airbnb reservationId lists + checklists
+- `fe/patches-49.json`: piPull sends channel=airbnb + airbnbReservations from Hosthub expect
+- `fe/patches-49.json`: Collect auto-pull when Hosthub Airbnb codes still missing from vault
+- `fe/patches-50.json`: Expect: load/backfill Airbnb codes from /api/platform-invoices/airbnb-codes
+- `fe/patches-50.json`: Pull: ask server to resolve Hosthub codes when browser list is empty
+- `fe/patches-51.json`: Pull: show reconnectHint when Airbnb session expired
+- `fe/patches-51.json`: Collect: show laptop Connect Airbnb steps when session missing
+- `fe/patches-52.json`: Collect: Connect Airbnb uses in-app OTP flow
+- `fe/patches-52.json`: Collect: Airbnb connect panel for OTP
+- `fe/patches-52.json`: In-app Airbnb Connect wizard (start login, OTP, poll)
+- `fe/patches-53.json`: OTP panel: prefer email messaging + Resend as email
+- `fe/patches-53.json`: piResendAirbnbOtp calls /resend preferring email
+- `fe/patches-54.json`: OTP panel: SMS-stuck banner + Paste session JSON
+- `fe/patches-54.json`: Resend messaging respects smsStuck
+- `fe/patches-55.json`: OTP panel expects email code; drop paste-primary SMS banner
+- `fe/patches-55.json`: Resend status uses server hint only
+- `fe/patches-56.json`: Connect start: parse JSON safely
+- `fe/patches-56.json`: Connect poll: parse JSON safely
+- `fe/patches-57.json`: FE marker: OTP input typing fix deployed
+- `fe/patches-58.json`: Soft-update awaiting_otp panel so poll does not clear typed digits
+- `fe/patches-59.json`: OTP hint: newest code only, avoid Resend
+- `fe/patches-60.json`: Deploy marker for password overlay fix
+- `fe/patches-61.json`: OTP hint: email is sent on Connect; Resend once
+- `fe/patches-62.json`: OTP hint: one email; ignore resend cooldown
+- `fe/patches-63.json`: OTP hint: Resend locked 1 minute
+- `fe/patches-63.json`: Soft-update Resend countdown on poll
+- `fe/patches-63.json`: Resend button id for countdown
+- `fe/patches-63.json`: Stamp OTP wait start when panel first renders
+- `fe/patches-63.json`: Clear OTP wait stamp when panel hides
+- `fe/patches-63.json`: Reset OTP wait stamp on new Connect
+- `fe/patches-63.json`: Block Resend clicks during 1-minute Airbnb cooldown
+- `fe/patches-64.json`: Pull 0-PDF expired copy: in-app Connect
+- `fe/patches-65.json`: Connect UI: email code required
+- `fe/patches-66.json`: Show Airbnb page snippet on Connect failure
+- `fe/patches-67.json`: Connect wait copy while signing in
+- `fe/patches-68.json`: Render live clickable Airbnb captcha image
+- `fe/patches-68.json`: Map image clicks back to the live Airbnb browser
+- `fe/patches-69.json`: Reports: apply cleaning and months overrides per apartment on grouped reports
+- `fe/patches-69.json`: Reports: month stepper on grouped rows, keyed by apartment
+- `fe/patches-69.json`: Reports: business-tax month stepper on grouped apartments
+- `fe/patches-69.json`: Reports: cleaning stay stepper on each grouped apartment row
+- `fe/patches-69.json`: Reports: software/fixed-charge month stepper on grouped apartments
+- `fe/patches-69.json`: Reports: cleaning/months steppers take an apartment id (grouped reports)
+- `fe/patches-69.json`: Reports: cleaning reset takes an apartment id
+- `fe/patches-69.json`: Revenue snapshot: honor each grouped apartment's own months override
+- `fe/patches-69.json`: Monthly Close: freeze per-member cleaning and months overrides on grouped confirm
+- `fe/patches-69.json`: calcAptPacket: cleaning override is per apartment, including grouped reports
+- `fe/patches-69.json`: Self-tests: grouped report members can have independent cleaning and months overrides
+- `fe/patches-70.json`: Mark the email-first live picture relay
+- `fe/patches-71.json`: Config: re-clicking the active profile pill must not reset Business tax and other Advanced flags
+- `fe/patches-71.json`: Persistence: never POST localStorage to the shared DB before loadFromDb (stale clients wipe email stamps and config)
+- `fe/patches-71.json`: Persistence: an empty database still allows later saves
+- `fe/patches-71.json`: Persistence: poll skips reload while Configuration fields are being edited
+- `fe/patches-71.json`: Config: do not rebuild the form while an input is focused (poll/save used to wipe unsaved owner emails)
+- `fe/patches-71.json`: Config: saving an owner email or tax amount must not rebuild the card (loses sibling fields still being typed)
+- `fe/patches-71.json`: Config: owner email fields are text so pasted Name <addr> still saves (type=email blocked onchange)
+- `fe/patches-71.json`: Config: owner email 2 is text so pasted addresses still save
+- `fe/patches-71.json`: Config: owner email 3 is text so pasted addresses still save
+- `fe/patches-71.json`: Send: mirror the email stamp onto each apartment lock and the close record so a dropped grouped key cannot un-tick Monthly Close
+- `fe/patches-71.json`: Monthly Close: Email stage also honours the close-record stamp (survives a dropped rptLocks key)
+- `fe/patches-71.json`: Monthly Close: confirmation writes remit onto every report member, not only the group card
+- `fe/patches-72.json`: Tell user Verify settles without starting another challenge
+- `fe/patches-73.json`: Monthly Close: after a pipeline send, return to the queue on the next apartment
+- `fe/patches-73.json`: Send: Monthly Close pipeline returns to Monthly Tasks instead of staying on the report
+- `fe/patches-74.json`: CAPTCHA tile response refreshes only the screenshot element
+- `fe/patches-74.json`: Polling does not replace an active CAPTCHA image between tile clicks
+- `fe/patches-75.json`: OTP action copy reflects the real Airbnb submission
+- `fe/patches-76.json`: Explain that Resend waits for Airbnb confirmation
+- `fe/patches-77.json`: Format one concise production-safe OTP diagnostic line
+- `fe/patches-77.json`: Refresh OTP diagnostics without replacing typed input
+- `fe/patches-77.json`: Render OTP diagnostic only when submit facts exist
+- `fe/patches-77.json`: Send a Verify hint for the screenshot bottom-right button region
+- `fe/patches-77.json`: Include the boolean Verify hint with validated click coordinates
+- `fe/patches-78.json`: save(): persist cleanerRoles with cleaners in localStorage e_v3
+- `fe/patches-78.json`: saveToDb payload includes cleanerRoles
+- `fe/patches-78.json`: loadFromDb: restore cleanerRoles
+- `fe/patches-78.json`: loadFromDb localStorage rewrite includes cleanerRoles
+- `fe/patches-78.json`: load(): restore cleaners + cleanerRoles from localStorage
+- `fe/patches-78.json`: loadFromDb: refresh Employees when emp tab active
+- `fe/patches-78.json`: nav: Υπάλληλοι tab next to Daily Ops
+- `fe/patches-78.json`: CSS icon for emp tab
+- `fe/patches-78.json`: tab panel for emp
+- `fe/patches-78.json`: showTab: renderEmployees for emp
+- `fe/patches-78.json`: operator profile includes emp with ops
+- `fe/patches-78.json`: insert renderEmployees + crew handoff helpers before opsManageCleaners
+- `fe/patches-78.json`: Καθαρίστριες modal: roles + open Υπάλληλοι + refresh both UIs
+- `fe/patches-78.json`: role helpers + role-aware available list + Cleaner-only auto-Ρεπό
+- `fe/patches-78.json`: Κατάσταση / Ανά καθαρίστρια sort
+- `fe/patches-78.json`: drivers datalist + cleaners datalist
+- `fe/patches-78.json`: driver inputs use ops-drivers-datalist
+- `fe/patches-78.json`: toolbar: sort + Αντιγραφή λίστας + Screenshot
+- `fe/patches-78.json`: crew-sheet marker on ops-cleaning-shot
+- `fe/patches-78.json`: opsCopyCleaningImage: compact crew sheet (drop empty staff rows / +γραμμή)
+- `fe/patches-78.json`: opsAddCleanerKey refreshes Employees
+- `fe/patches-78.json`: opsRemoveCleanerAt refreshes Employees
+- `fe/patches-78.json`: opsSetDailyExtra refreshes Employees after non-repo changes
+- `fe/patches-79.json`: Soft-update the live Airbnb browser without wiping the type box
+- `fe/patches-79.json`: Render one interactive browser for CAPTCHA, OTP and login variants
+- `fe/patches-79.json`: Add interactive click, type, key and refresh controls
+- `fe/patches-79.json`: Polling keeps the interactive browser panel mounted
+- `fe/patches-80.json`: Tell the user Pull reuses the live in-app browser
+- `fe/patches-80.json`: Add Save session for Pull on the live browser
+- `fe/patches-80.json`: Wire Save session to the live-browser save route
+- `fe/patches-81.json`: Daily Ops: cancelled bookings are not checkouts on the cleaning schedule
+- `fe/patches-81.json`: Daily Ops: nights-from-dates + sofa excess helpers for check-in-only schedule rows
+- `fe/patches-81.json`: Daily Ops: same-day check-in nights fall back to check-in/out dates
+- `fe/patches-81.json`: Daily Ops: check-in-only nights fall back to check-in/out dates
+- `fe/patches-81.json`: Daily Ops: live check-in-only clears a stale snapshot checkout guest
+- `fe/patches-81.json`: Cleaning schedule: check-in-only sofa arrivals (e.g. Athenian Cedar 6 ppl) are extras, not turnovers
+- `fe/patches-81.json`: Cleaning schedule: copy check-in-only sofa comments onto extras, or add a SOFA BED row
+- `fe/patches-81.json`: Refresh/sofa extras stringify keys, detect sofa from capacity, and keep sofa_bed when a vacant arrival also needs sofas
+- `fe/patches-82.json`: Daily Ops: drop vanished snapshot rows; clear frozen check-in nights/people when there is no arrival
+- `fe/patches-82.json`: Daily Ops: sofa prep comments only when there is a check-in
+- `fe/patches-82.json`: Daily Ops: long-stay comment only when there is a check-in
+- `fe/patches-82.json`: Daily Ops: nights suffix only on confirmed same-day check-in (Ναι)
+- `fe/patches-83.json`: Daily Ops: check-ins/checkouts always come from live bookings; snapshot only overlays operator fields
+- `fe/patches-83.json`: Daily Ops: remove the Snapshot button — Hosthub check-ins change all the time
+- `fe/patches-83.json`: Daily Ops: drop snapshot time chip next to the removed button
+- `fe/patches-84.json`: nav label Personnel
+- `fe/patches-84.json`: tab HTML comment
+- `fe/patches-84.json`: section comment
+- `fe/patches-84.json`: renderEmployees h2 title
+- `fe/patches-84.json`: modal link Open Personnel (keep legacy Άνοιγμα Υπαλλήλων token)
+- `fe/patches-85.json`: Poll the background Pull job and explain proxy upstream errors
+- `fe/patches-86.json`: Payments Check: apt key uses clearGroup (Votsala paid together)
+- `fe/patches-86.json`: Payments Check: BDC line label uses clearing group name
+- `fe/patches-86.json`: applyDefaults: fill blank clearGroup from defaults
+- `fe/patches-86.json`: applyDefaults: heal Votsala* → clearGroup Votsala
+- `fe/patches-86.json`: DEFAULT_APT_CONFIG: Votsala 1 Luxury Stay with Patio clearGroup=Votsala
+- `fe/patches-86.json`: DEFAULT_APT_CONFIG: Votsala 2 Luxury Stay with Patio clearGroup=Votsala
+- `fe/patches-86.json`: DEFAULT_APT_CONFIG: Votsala 3 Deluxe & Modern Apartment in Piraeus clearGroup=Votsala
+- `fe/patches-86.json`: DEFAULT_APT_CONFIG: Votsala 4 Small & Elegant Apartment in Piraeus clearGroup=Votsala
+- `fe/patches-86.json`: DEFAULT_APT_CONFIG: Votsala 5 Luxury Studio with Balcony in Piraeus clearGroup=Votsala
+- `fe/patches-86.json`: DEFAULT_APT_CONFIG: Votsala 6 Deluxe & Modern Apartment in Piraeus clearGroup=Votsala
+- `fe/patches-86.json`: DEFAULT_APT_CONFIG: Votsala 7 Small & Elegant Apartment in Piraeus clearGroup=Votsala
+- `fe/patches-86.json`: DEFAULT_APT_CONFIG: Votsala 8 Elegant & Modern Apartment in Piraeus clearGroup=Votsala
+- `fe/patches-86.json`: Tests: Pc16 Votsala clearGroup batches as one BDC credit
+- `fe/patches-87.json`: crew poster builder for WhatsApp image share
+- `fe/patches-87.json`: opsCopyCleaningImage uses dedicated crew poster
+- `fe/patches-87.json`: prominent crew share bar above cleaning schedule
+- `fe/patches-88.json`: Collect copy: Test pull then invoice-ID flow
+- `fe/patches-88.json`: Gold Test pull (5 codes); keep Pull Airbnb (Hosthub codes)
+- `fe/patches-88.json`: piPull accepts limit
+- `fe/patches-88.json`: slice codes and pass limit on POST
+- `fe/patches-88.json`: progress copy says test vs all
+- `fe/patches-88.json`: re-enable both pull buttons
+- `fe/patches-88.json`: stop Collect auto-run of unlimited Pull
+- `fe/patches-89.json`: dense compact by-cleaner crew poster for short screenshots
+- `fe/patches-89.json`: capture toast + white bg for dense poster
+- `fe/patches-90.json`: Vault list grouped by platform then apartment then month
+- `fe/patches-90.json`: Close grouped vault rows
+- `fe/patches-90.json`: Credit notes labeled from filename; row shows leaf under apartment group
+- `fe/patches-90.json`: Row shows store leaf (kind-code.pdf), channel lives in group header
+- `fe/patches-90.json`: Review lists PDFs per apartment per platform
+- `fe/patches-91.json`: Collect Stop pull button next to Pull Airbnb
+- `fe/patches-91.json`: piStopPull posts pull-stop; watch treats cancelled/404 as stopped
+- `fe/patches-92.json`: Finish/watch treat vanished job id as Pull stopped, not an error
+- `fe/patches-92.json`: Watch 404 body and catch show Pull stopped
+- `fe/patches-92.json`: piPull catch: vanished job is a stop, not a failure
+- `fe/patches-93.json`: Crew poster includes Ιματισμός and driver routes
+- `fe/patches-93.json`: On-screen Ιματισμός + drivers full-width under schedule
+- `fe/patches-93.json`: WhatsApp text list includes Ιματισμός and driver routes
+- `fe/patches-93.json`: Ιματισμός card drops duplicate title under section header
+- `fe/patches-94.json`: Find clean rows by aptId::cleanType so extras do not miss toggles
+- `fe/patches-94.json`: Cleaning-row keys are aptId::cleanType, JSON-safe for inline handlers
+- `fe/patches-94.json`: Checkbox / cleaner / task / comments handlers use JSON key
+- `fe/patches-94.json`: opsRemoveCleanerAt JSON key
+- `fe/patches-94.json`: opsAddCleanerKey Enter JSON key
+- `fe/patches-94.json`: opsAddCleanerKey onchange JSON key
+- `fe/patches-94.json`: opsSetCleanFieldKey cleanTask JSON key
+- `fe/patches-94.json`: opsSetCleanFieldKey comments JSON key
+- `fe/patches-95.json`: Calendar-day match for bookings (15/08 vs 15/8 vs ISO)
+- `fe/patches-95.json`: _opsAutoRows uses calendar-day match for checkout/check-in
+- `fe/patches-95.json`: _opsAutoRows check-in-only uses calendar-day match
+- `fe/patches-95.json`: _opsExtraCleanRows arrivals use calendar-day match
+- `fe/patches-95.json`: _opsExtraCleanRows sofa loop uses calendar-day match
+- `fe/patches-95.json`: Merge saved cleanDone into check-in-only sofa extras
+- `fe/patches-95.json`: Day advance sticks; never clear cleansCompleteFor on incomplete
+- `fe/patches-95.json`: Advance schedule ignores pure check-in-only extras without clean work flags
+- `fe/patches-96.json`: Collect copy: latest 5 Hosthub ids; stay page → total price → VAT invoice
+- `fe/patches-96.json`: Expect rows carry Hosthub created timestamps for latest-N sort
+- `fe/patches-96.json`: piPull posts created timestamps with each Hosthub code
+- `fe/patches-96.json`: Test pull slices latest Hosthub codes, not list order
+- `fe/patches-96.json`: Status copy says latest N Hosthub codes
+- `fe/patches-97.json`: Apt/clean key helpers + carry cleanDone across type flips
+- `fe/patches-97.json`: Snapshot overlay indexes aptId AND aptName (cleanDone drift)
+- `fe/patches-97.json`: Default Ops date follows opsWorkingDate / local sticky day
+- `fe/patches-97.json`: Flush cleanDone to DB immediately (poll cannot wipe checks)
+- `fe/patches-97.json`: Rebuild extras with dual-key / type-flip cleanDone merge
+- `fe/patches-97.json`: Check-in-only extras merge via dual-key lookup
+- `fe/patches-97.json`: Rental-info load re-renders Ops so sofa/refresh types + checks stay aligned
+- `fe/patches-97.json`: Client Hosthub sync keeps unpriced bookings (Skarlatos)
+- `fe/patches-97.json`: HH import keeps unpriced bookings with dates
+- `fe/patches-98.json`: Collect vault heading: PDFs by apartment
+- `fe/patches-98.json`: Review also lists PDFs by apartment with Open
+- `fe/patches-98.json`: Vault rows: filename + Open link to PDF file
+- `fe/patches-98.json`: Review renders the same apartment vault list
+- `fe/patches-98.json`: Successful pull points at PDFs by apartment vault
+- `fe/patches-99.json`: opsRestartCleaningSchedule — wipe ✓ for current Ops day
+- `fe/patches-99.json`: Restart button on cleaning schedule toolbar
+- `fe/patches-100.json`: Daily Ops visual layer: _opsUiStyles() + _opsAptLines() helpers
+- `fe/patches-100.json`: Check-in / check-out cells use the shared pill + cell classes
+- `fe/patches-100.json`: _opsBuildRow: name/address hierarchy, badge row, 30px toggles, 18px checkbox
+- `fe/patches-100.json`: renderOps: sticky command bar, tasks strip, board header, sticky table head
+- `fe/patches-100.json`: renderOps: tasks + notes become one zone-3 footer
+- `fe/patches-100.json`: empty-state row spans all ten columns
+- `fe/patches-100.json`: cleaning schedule rows: name/address split, 18px check, calmer chrome
+- `fe/patches-100.json`: staff blocks (Εφημερία/Ρεπό/Άδειες/Ιματισμός) share the block classes
+- `fe/patches-100.json`: cleaning schedule header: big done/total + progress bar, sticky navy head
+- `fe/patches-100.json`: cleaning row keys survive the HTML attribute (inline handlers were cut at the quote)
+
+## Server
+
+- `srv/patches.json`: Viva Cash Flow: daily income/expense aggregation endpoints + 06:00 Athens auto-refresh
+- `srv/patches.json`: Cash Flow: store the largest in/out movements with counterparties (identify the Eurobank sweeps)
+- `srv/patches.json`: Cash Flow: topOut/topIn stored on the record
+- `srv/patches.json`: Cash Flow: internal = transfer to the company's OWN account (counterparty names ELYSIAN) - any-Eurobank matching would wrongly exclude owner remittances
+- `srv/patches.json`: Cash Flow: history window configurable via VIVA_CASHFLOW_DAYS
+- `srv/patches.json`: Cash Flow: cfRefresh accepts a per-run span override
+- `srv/patches.json`: Cash Flow: the span drives the fetch window
+- `srv/patches.json`: Cash Flow: the day buckets follow the span
+- `srv/patches.json`: Cash Flow: record reports the span it covered, plus the first day that actually had activity
+- `srv/patches.json`: Cash Flow: refresh accepts ?days=N and gets a longer timeout for big windows
+- `srv/patches.json`: Viva Search: raise the page cap so multi-year windows are not silently truncated
+- `srv/patches.json`: Cash Flow: trim the empty lead-in so the cache holds exactly the real history
+- `srv/patches-2.json`: FE bootstrap: apply the fe/patches-N.json release chain after the base file
+- `srv/patches-2.json`: FE bootstrap: report the whole chain in /api/fe-info
+- `srv/patches-2.json`: FE bootstrap: boot log reports the whole chain
+- `srv/patches-3.json`: Property Info: rental_info table and the /api/rental-info endpoints the tab calls, plus /api/whoami
+- `srv/patches-4.json`: Leads: tables, config, assignment rule, duplicate guard and the single ingest door
+- `srv/patches-4.json`: Leads: Meta pull, five-minute poll and the lead/asset endpoints
+- `srv/patches-5.json`: Leads: archive keeps two years and the first Meta import is bounded
+- `srv/patches-5.json`: Leads: the list is searchable across name, contact, form, campaign and archive reason
+- `srv/patches-5.json`: Leads: the list query runs the search
+- `srv/patches-5.json`: Leads: the Meta pull never reaches back past the configured start date
+- `srv/patches-5.json`: Leads: daily sweep tombstones archived leads past the retention window
+- `srv/patches-6.json`: Leads: property columns added to an existing table, not just to new ones
+- `srv/patches-6.json`: Leads: extract address, size, bedrooms and bathrooms from the form answers
+- `srv/patches-6.json`: Leads: the extracted property details are stored on the lead
+- `srv/patches-6.json`: Leads: property values bound into the insert
+- `srv/patches-6.json`: Leads: property extraction runs for every source, Meta or manual
+- `srv/patches-6.json`: Leads: extraction happens before the insert
+- `srv/patches-6.json`: Leads: the address is searchable too
+- `srv/patches-6.json`: Leads: a phone number pasted with its spaces still finds the lead
+- `srv/patches-6.json`: Leads: a manual lead can carry the property details straight in
+- `srv/patches-7.json`: Leads: erasing a lead also clears the property details it volunteered
+- `srv/patches-7.json`: Leads: tombstones erased before that fix are cleaned up as well
+- `srv/patches-8.json`: Leads: the property extractor moves to module scope so it is callable from anywhere
+- `srv/patches-8.json`: Leads: ... and lands just above the function that used to hide it
+- `srv/patches-8.json`: Leads: the create response names the assignee (leadIngest already knows it)
+- `srv/patches-8.json`: Leads: the property details can be corrected as the lead is qualified
+- `srv/patches-8.json`: Leads: the assignment record reads like a sentence, not like a JSON dump
+- `srv/patches-8.json`: Auto-sync: stop calling a function that was never written
+- `srv/patches-9.json`: Meta: pin a Graph API version that is not about to expire, and let it be overridden without a deploy
+- `srv/patches-9.json`: Meta: the status endpoint says which piece is missing
+- `srv/patches-10.json`: Meta: the helper I added no longer collides with the one that was already there
+- `srv/patches-10.json`: Meta: ... and the status endpoint calls it by its new name
+- `srv/patches-10.json`: Meta: accept a User token as well as a Page token
+- `srv/patches-10.json`: Meta: the status endpoint reports the resolved Page, not the raw token holder
+- `srv/patches-10.json`: Meta: a call can use the Page token rather than the configured one
+- `srv/patches-10.json`: Meta: and the token scrubbing covers whichever one was used
+- `srv/patches-10.json`: Meta: ... including in a non-JSON body
+- `srv/patches-10.json`: Meta: the pull resolves the Page as well, and uses its token
+- `srv/patches-10.json`: Meta: the per-form lead fetch uses the Page token too
+- `srv/patches-10.json`: Meta: the sync log says which Page it read
+- `srv/patches-10.json`: Meta: a Page can be named when the token manages more than one
+- `srv/patches-11.json`: Meta: the status endpoint reports which permissions the token actually carries
+- `srv/patches-12.json`: Meta: the status identifies which token is loaded, without revealing it
+- `srv/patches-13.json`: Meta: a pull can be told to start from the floor rather than the watermark
+- `srv/patches-13.json`: Meta: ... and backfill means exactly that
+- `srv/patches-13.json`: Meta: a run that found no forms does not get to move the watermark
+- `srv/patches-13.json`: Meta: the endpoint takes backfill
+- `srv/patches-14.json`: FE bootstrap: allow fe/patches-N.json through N=40
+- `srv/patches-15.json`: Auth: USERS_JSON personal accounts with profile, APP_PASSWORD remains master fallback
+- `srv/patches-15.json`: whoami: return the signed-in user, profile and tab access
+- `srv/patches-16.json`: parseUsers: profiles[] so an account can hold Accounting and Operations
+- `srv/patches-16.json`: Auth request carries the full profiles list
+- `srv/patches-16.json`: Boot log names every workspace on the account
+- `srv/patches-16.json`: whoami returns profiles[]
+- `srv/patches-17.json`: Logout endpoint always challenges Basic Auth
+- `srv/patches-17.json`: Accountant tab access includes Platform Invoices
+- `srv/patches-17.json`: Platform invoices API: store, send packs, portal-pull gate
+- `srv/patches-18.json`: Leads: seed EN+GR company brochures into lead_assets when missing
+- `srv/patches-18.json`: Leads: GET /api/lead-assets/:key returns one asset with data
+- `srv/patches-19.json`: Leads DELETE: no password required — FE confirms with yes/no
+- `srv/patches-20.json`: Default platform-invoice recipients
+- `srv/patches-20.json`: Status reports playwright + admin.booking.com
+- `srv/patches-20.json`: Pull endpoint runs Playwright worker and stores PDFs
+- `srv/patches-21.json`: Replace Basic Auth gate with session cookie + /login form
+- `srv/patches-22.json`: Login page brand + title → Elysian Command Center
+- `srv/patches-22.json`: Login page document title → Elysian Command Center
+- `srv/patches-23.json`: Keep patched HTML in memory and gzip it once at boot
+- `srv/patches-23.json`: Cache gzipped index.html after applying the FE chain
+- `srv/patches-23.json`: Login: instant Opening overlay; do not Clear-Site-Data (that delays navigation)
+- `srv/patches-23.json`: Do not wipe storage on login — logout already does; Clear-Site-Data blocks the redirect
+- `srv/patches-23.json`: Gzip the SPA HTML from memory; gzip large JSON; skip static index
+- `srv/patches-24.json`: Change log: table, logEvent, diffSummary, POST/GET /api/changelog (changes + clicks)
+- `srv/patches-24.json`: Proofs: allow law5170 month namespace used by Property Info
+- `srv/patches-24.json`: Change log: blocked booking wipe
+- `srv/patches-24.json`: Change log: blocked expense wipe
+- `srv/patches-24.json`: Change log: data save with diff summary
+- `srv/patches-24.json`: Change log: proof upload (db)
+- `srv/patches-24.json`: Change log: proof upload (memory)
+- `srv/patches-24.json`: Change log: proof delete (db)
+- `srv/patches-24.json`: Change log: Property Info save
+- `srv/patches-25.json`: FE bootstrap: allow fe/patches-N.json through N=50
+- `srv/patches-26.json`: PATCH /api/platform-invoices/:id to tag Booking apartment (partner)
+- `srv/patches-27.json`: Portal session vault helpers + status + connect endpoints
+- `srv/patches-27.json`: Pull uses DB sessions, apartment hints, partner tags, session refresh
+- `srv/patches-28.json`: John user gets accountant tabs including platinv
+- `srv/patches-29.json`: Hosthub sync: map calendar-event reservation_id → booking.reservationId (Airbnb confirmation code)
+- `srv/patches-29.json`: Pull API: pass Hosthub Airbnb reservation codes to worker as PI_AIRBNB_RESERVATIONS_JSON
+- `srv/patches-29.json`: Pull API response includes airbnbCodes count from Hosthub-driven pull
+- `srv/patches-30.json`: Sync: extract Airbnb confirmation code from more Hosthub reservation_id shapes
+- `srv/patches-30.json`: Platform invoices: resolve Airbnb codes from DB + live Hosthub backfill; GET /airbnb-codes
+- `srv/patches-30.json`: Pull: if client sends no codes, resolve from DB/Hosthub before worker
+- `srv/patches-30.json`: Pull response: airbnbSource from server resolve
+- `srv/patches-31.json`: Clear expired Airbnb/Booking portal sessions from vault
+- `srv/patches-31.json`: Do not refresh vault from worker when session expired
+- `srv/patches-31.json`: Pull response clears expired session + reconnectHint
+- `srv/patches-32.json`: FE bootstrap: allow fe/patches-N.json through N=80
+- `srv/patches-33.json`: In-app Airbnb Connect with OTP endpoints (no laptop terminal)
+- `srv/patches-33.json`: Status advertises inAppConnectAirbnb when creds+playwright ready
+- `srv/patches-34.json`: Login job public payload includes pageSnippet
+- `srv/patches-34.json`: Prefer email OTP delivery + richer awaiting_otp hints
+- `srv/patches-34.json`: Resend Airbnb OTP endpoint (prefer email)
+- `srv/patches-35.json`: Login job exposes delivery/canEmail/smsStuck/clickables
+- `srv/patches-35.json`: Aggressive email OTP switch + SMS-stuck detection
+- `srv/patches-35.json`: Resend uses refresh meta + clearer SMS-stuck hint
+- `srv/patches-36.json`: Prefer email via Try another way + fallback-option-email-otp
+- `srv/patches-36.json`: SMS-stuck hint keeps email path (no paste JSON)
+- `srv/patches-36.json`: Resend recognizes Send a new code
+- `srv/patches-36.json`: Stealth Chromium + email OTP before password
+- `srv/patches-37.json`: Restore POST /login and GET /login/:jobId removed by patches-36
+- `srv/patches-38.json`: Detect email OTP page (sent a code / #otp-code-input)
+- `srv/patches-38.json`: Type OTP with delay; support auto-submit
+- `srv/patches-38.json`: FinishAndSave: refuse if still on OTP; richer hosting check
+- `srv/patches-38.json`: OTP route: stay awaiting if code not accepted; password after OTP
+- `srv/patches-39.json`: Fill OTP via DOM events (no click; overlays block pointer)
+- `srv/patches-39.json`: Refresh meta: do not re-trigger email prefer while on email OTP
+- `srv/patches-40.json`: Delivery kind: trust #otp-code-input / sent a code to email
+- `srv/patches-40.json`: Fill OTP via keyboard.type (auto-submit)
+- `srv/patches-40.json`: Snapshot meta without clicking; refresh only forcePrefer
+- `srv/patches-40.json`: Mark awaiting: prefer email at most once
+- `srv/patches-40.json`: OTP submit fail: snapshot only, never email another code
+- `srv/patches-40.json`: Resend uses snapshot after explicit resend click
+- `srv/patches-41.json`: Dismiss overlays + force password fill; force Prefer clicks
+- `srv/patches-41.json`: Worker: no password click under modal
+- `srv/patches-41.json`: OTP route: fill password via helper
+- `srv/patches-41.json`: Fill OTP dismisses overlays first
+- `srv/patches-42.json`: Wait for email OTP page after clicking Get a code via email
+- `srv/patches-42.json`: Resend clicks Send a new code
+- `srv/patches-42.json`: Mark awaiting after confirmed email send
+- `srv/patches-42.json`: Worker: email OTP before password; do not skip send
+- `srv/patches-42.json`: Resend route snapshot-only after Send a new code
+- `srv/patches-43.json`: PreferEmail: never click if already on OTP page
+- `srv/patches-43.json`: Resend respects 1-minute cooldown
+- `srv/patches-43.json`: Mark awaiting does not send another email
+- `srv/patches-43.json`: Worker calls PreferEmail once then waits
+- `srv/patches-43.json`: Failed OTP: do not tell user to wait for a newer unsent email
+- `srv/patches-43.json`: Failed OTP after password: use existing latest email
+- `srv/patches-43.json`: Resend route reports cooldown
+- `srv/patches-44.json`: PreferEmail: one email_otp POST; click the button not a parent span
+- `srv/patches-44.json`: Fill OTP with trusted pressSequentially; do not Escape
+- `srv/patches-44.json`: Resend: cooldown only, never PreferEmail again
+- `srv/patches-44.json`: Arm email_otp POST guard when the login page is created
+- `srv/patches-44.json`: Failed OTP: if digits did not land, retry same code; else wait then Resend
+- `srv/patches-44.json`: Resend route: fix undefined ok; honest cooldown copy
+- `srv/patches-44.json`: Awaiting hint: Resend locked 1 minute
+- `srv/patches-44.json`: Post-password OTP: wait then Resend
+- `srv/patches-45.json`: Logged-in means hosting URL without login/OTP/password UI
+- `srv/patches-45.json`: Never FinishAndSave from password page (Connect without OTP saved a dead session)
+- `srv/patches-45.json`: Expired-session hint: in-app Connect, not laptop JSON
+- `srv/patches-46.json`: FinishAndSave only after OTP was accepted
+- `srv/patches-46.json`: Login worker never saves a session (OTP route is the only connect path)
+- `srv/patches-46.json`: OTP route marks accepted then FinishAndSave
+- `srv/patches-47.json`: PreferEmail: real click + wait for email option visible; no latch on miss
+- `srv/patches-47.json`: Worker waits for password step; airlock error before leftover-login; snippet on fail
+- `srv/patches-48.json`: FillPassword without Escape; recaptcha human-check helpers
+- `srv/patches-48.json`: PreferEmail accepts retry after recaptcha
+- `srv/patches-48.json`: PreferEmail retry does not early-return on 420
+- `srv/patches-48.json`: Worker: password first, then email OTP, then recaptcha
+- `srv/patches-49.json`: Expose captcha dimensions/revision in public login job
+- `srv/patches-49.json`: Keep picture captcha alive and continue same browser after clicks
+- `srv/patches-49.json`: Password bot check becomes interactive captcha state
+- `srv/patches-49.json`: Email bot check becomes interactive captcha state
+- `srv/patches-49.json`: Resume an active captcha job instead of starting another browser
+- `srv/patches-49.json`: Captcha screenshot and coordinate-click routes
+- `srv/patches-50.json`: Ignore hidden/stale reCAPTCHA frames
+- `srv/patches-51.json`: Email OTP first; picture challenge is relayed, not password-dead-ended
+- `srv/patches-52.json`: DB: union-merge rptLocks, ownerRemit, monthlyClose and apartment emails so a stale client cannot drop a just-sent report
+- `srv/patches-52.json`: DB: helpers for stale-client map/config merge
+- `srv/patches-52.json`: Email: record a changelog row for every successful send (lock stamps can still be overwritten)
+- `srv/patches-53.json`: Wait for the original email request after captcha without retrying it
+- `srv/patches-53.json`: Queue captcha coordinate clicks so browser interactions never overlap
+- `srv/patches-54.json`: OTP waits for its own visible input to leave, never a mounted background password
+- `srv/patches-54.json`: OTP route only fills a visible password after the OTP modal leaves
+- `srv/patches-54.json`: Identify clicks inside the visible reCAPTCHA Verify button
+- `srv/patches-54.json`: CAPTCHA tile clicks refresh quickly; only Verify runs long continuation
+- `srv/patches-54.json`: OTP URL fallback requires a real route transition and a true 15-second wait
+- `srv/patches-55.json`: Submit exact OTP through active modal, visible global control, or input Enter
+- `srv/patches-55.json`: Capture visible Airbnb OTP validation separately from an unchanged UI
+- `srv/patches-55.json`: Do not call unchanged OTP UI a rejection without Airbnb validation
+- `srv/patches-56.json`: Count settled email-OTP responses
+- `srv/patches-56.json`: Record every email-OTP response status
+- `srv/patches-56.json`: Resend succeeds only after Airbnb HTTP 200 confirmation
+- `srv/patches-56.json`: Resend hint is honest when Airbnb does not confirm delivery
+- `srv/patches-57.json`: Keep CAPTCHA-delayed Connect jobs alive for 30 minutes
+- `srv/patches-57.json`: Serialize only sanitized OTP diagnostic fields
+- `srv/patches-57.json`: Expose the latest sanitized OTP diagnostic on the public job
+- `srv/patches-57.json`: Track only sanitized auth request metadata while OTP is submitting
+- `srv/patches-57.json`: Capture actual OTP DOM facts without code or page content
+- `srv/patches-57.json`: Start a fresh bounded diagnostic for this OTP submit
+- `srv/patches-57.json`: Report failed exact typing as submit method none
+- `srv/patches-57.json`: Finalize sanitized DOM and request diagnostics after OTP submission
+- `srv/patches-57.json`: Associate auth events with the submit action before it fires
+- `srv/patches-57.json`: Publish the completed OTP diagnostic through the job
+- `srv/patches-57.json`: Accept a validated frontend Verify-region hint before unreliable frame bounds
+- `srv/patches-58.json`: Expose active interactive browser dimensions and a safe URL
+- `srv/patches-58.json`: Add interactive browser state machine and session saver
+- `srv/patches-58.json`: Unknown Airbnb login variants become user-operated instead of errors
+- `srv/patches-58.json`: Resume active user-operated browser jobs
+- `srv/patches-58.json`: Poll Hosting while the user operates the live browser
+- `srv/patches-58.json`: Add screenshot, click, type, key and refresh routes
+- `srv/patches-59.json`: Ignore hidden login fields and recognize logged-in Airbnb surfaces
+- `srv/patches-59.json`: OTP detection requires a visible code field, not leftover copy
+- `srv/patches-59.json`: Expose whether the live browser already saved cookies
+- `srv/patches-59.json`: Idle logged-in interactive browser saves cookies then Hosting
+- `srv/patches-59.json`: Manual save route for the in-app browser
+- `srv/patches-59.json`: Pull harvests cookies from the live Connect browser before spawning the worker
+- `srv/patches-60.json`: FE bootstrap: allow fe/patches-N.json through N=90
+- `srv/patches-61.json`: Pull returns a job immediately; worker + harvest run in the background
+- `srv/patches-62.json`: Viva: pcvAptKey/pcvAptLabel honour clearGroup
+- `srv/patches-62.json`: vivaExpectedUnits: key/label by clearGroup when set
+- `srv/patches-62.json`: viva-selftest: Votsala clearGroup batches as one credit
+- `srv/patches-63.json`: Slice Hosthub codes by limit before spawning worker
+- `srv/patches-63.json`: Store limit on pull job body
+- `srv/patches-63.json`: Hint says Test pull when limited
+- `srv/patches-64.json`: Store pulled invoices under apartment name, not credit_note bucket
+- `srv/patches-64.json`: List vault by platform then apartment then filename
+- `srv/patches-64.json`: Email pack sorted platform / apartment / filename
+- `srv/patches-65.json`: FE bootstrap through patches-100
+- `srv/patches-65.json`: Cancel helper + Stop pull routes
+- `srv/patches-65.json`: Killed worker with no JSON is cancelled, not a crash
+- `srv/patches-65.json`: Finished ingest after stop is cancelled and keeps saved PDFs
+- `srv/patches-66.json`: GET missing pull job is Pull stopped, not 404
+- `srv/patches-66.json`: Cancel of a vanished job is Pull stopped
+- `srv/patches-67.json`: Sort helpers for latest-N Hosthub codes
+- `srv/patches-67.json`: DB/Hosthub rows keep created timestamps
+- `srv/patches-67.json`: Client-posted codes keep created timestamps
+- `srv/patches-67.json`: Limit takes latest Hosthub created, not list order
+- `srv/patches-67.json`: Job hint says latest when limited
+- `srv/patches-68.json`: Decode stored platform-invoice PDF bytes
+- `srv/patches-68.json`: GET /api/platform-invoices/:id/file serves the PDF for viewing

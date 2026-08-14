@@ -31,6 +31,8 @@ const PORT = process.env.PORT || 3000;
 // Consolidation: when patches accumulate, upload a fresh full index.html via
 // GitHub web and reset patches.json to {"patches": []} in the same release.
 const FE_INFO = { source: 'repo-file', patches: 0, bytes: 0, sha256: '', builtAt: '', error: '' };
+let FE_HTML = '';
+let FE_HTML_GZ = null;
 (function feBootstrap() {
   const fsB = require('fs'), crypto = require('crypto');
   const sha256 = s => crypto.createHash('sha256').update(s).digest('hex');
@@ -58,9 +60,34 @@ const FE_INFO = { source: 'repo-file', patches: 0, bytes: 0, sha256: '', builtAt
     if (spec.expectedSha256 && spec.expectedSha256 !== sha) {
       throw new Error('patched result sha256 ' + sha.slice(0, 12) + '… ≠ expected ' + String(spec.expectedSha256).slice(0, 12) + '…');
     }
+    // Release chain: fe/patches-2.json, fe/patches-3.json ... Each file starts
+    // where the previous one ended (its baseSha256 is the previous file's
+    // expectedSha256), so a release is a small new file instead of a rewrite of
+    // one ever-growing patches.json. Any mismatch throws and the whole set is
+    // discarded, exactly as before.
+    let chainSha = sha, chainOps = ops.length, chainBuilt = spec.builtAt || '';
+    for (let cn = 2; cn <= 100; cn++) { /* legacy note: cn <= 40 */ /* cn <= 80 */ /* cn <= 90 */
+      const cf = path.join(__dirname, 'fe', 'patches-' + cn + '.json');
+      if (!fsB.existsSync(cf)) break;
+      const cs = JSON.parse(fsB.readFileSync(cf, 'utf8'));
+      const cops = cs.patches || [];
+      if (cs.baseSha256 && cs.baseSha256 !== chainSha) throw new Error('fe/patches-' + cn + '.json base ' + String(cs.baseSha256).slice(0, 12) + ' does not continue the chain (' + chainSha.slice(0, 12) + ')');
+      cops.forEach((p, i) => {
+        const n = html.split(p.find).length - 1;
+        const want = p.count || 1;
+        if (n !== want) throw new Error('fe/patches-' + cn + '.json patch #' + (i + 1) + (p.note ? ' (' + p.note + ')' : '') + ': anchor found ' + n + 'x, expected ' + want + 'x');
+        html = html.split(p.find).join(p.replace);
+      });
+      chainSha = sha256(html);
+      if (cs.expectedSha256 && cs.expectedSha256 !== chainSha) throw new Error('fe/patches-' + cn + '.json result ' + chainSha.slice(0, 12) + ' does not match its expected ' + String(cs.expectedSha256).slice(0, 12));
+      chainOps += cops.length;
+      if (cs.builtAt) chainBuilt = cs.builtAt;
+    }
+    FE_HTML = html;
+    try { FE_HTML_GZ = require('zlib').gzipSync(Buffer.from(html)); } catch (e) { FE_HTML_GZ = null; }
     fsB.writeFileSync(idx, html);
-    Object.assign(FE_INFO, { source: 'repo-file+patches', patches: ops.length, bytes: Buffer.byteLength(html), sha256: sha, builtAt: spec.builtAt || '' });
-    console.log('  FE: applied ' + ops.length + ' patch(es) to index.html (' + FE_INFO.bytes + ' bytes, sha256 ' + sha.slice(0, 12) + '…)');
+    Object.assign(FE_INFO, { source: 'repo-file+patches', patches: chainOps, bytes: Buffer.byteLength(html), sha256: chainSha, builtAt: chainBuilt });
+    console.log('  FE: applied ' + chainOps + ' patch(es) to index.html (' + FE_INFO.bytes + ' bytes, sha256 ' + chainSha.slice(0, 12) + '…)');
   } catch (e) {
     FE_INFO.source = 'repo-file (patches FAILED)';
     FE_INFO.error = e.message;
@@ -132,20 +159,272 @@ if (connStr) {
 const APP_PASSWORD   = process.env.APP_PASSWORD   || '';
 const SERVER_API_KEY = process.env.HOSTHUB_API_KEY || '';
 
-if (APP_PASSWORD) {
+function parseUsers(raw) {
+  try {
+    const j = JSON.parse(raw || '[]');
+    const TABS = {
+      management: 'all',
+      accountant: ['home','dash','leads','mt','rpt','exp','ann','perf','pinfo','imports','pay','platinv'],
+      operator:   ['home','dash','leads','ops','perf','pinfo','co'],
+    };
+    function normProfile(p) {
+      p = String(p || '').toLowerCase();
+      if (p === 'admin' || p === 'management') return 'management';
+      if (p === 'accounting' || p === 'accountant') return 'accountant';
+      if (p === 'operations' || p === 'operator') return 'operator';
+      return '';
+    }
+    return Array.isArray(j) ? j.filter(u => u && u.user && u.pass).map(u => {
+      let profiles = [];
+      if (Array.isArray(u.profiles) && u.profiles.length) {
+        profiles = u.profiles.map(normProfile).filter(Boolean);
+      } else {
+        const one = normProfile(u.profile || u.role) || (u.access === 'all' ? 'management' : 'operator');
+        profiles = [one];
+      }
+      const seen = {};
+      profiles = profiles.filter(function (p) { if (seen[p]) return false; seen[p] = 1; return true; });
+      if (!profiles.length) profiles = ['operator'];
+      const profile = profiles[0];
+      let access = 'all';
+      if (profiles.indexOf('management') < 0) {
+        const tabs = [];
+        profiles.forEach(function (p) {
+          const t = TABS[p];
+          if (Array.isArray(t)) t.forEach(function (x) { if (tabs.indexOf(x) < 0) tabs.push(x); });
+        });
+        access = tabs;
+      }
+      // John (operations) also runs Platform Invoices — grant accountant tabs incl. platinv.
+      if (/^john$/i.test(String(u.user))) {
+        if (profiles.indexOf('accountant') < 0) profiles.push('accountant');
+        if (access !== 'all') {
+          if (!Array.isArray(access)) access = [];
+          (TABS.accountant || []).forEach(function (x) {
+            if (access.indexOf(x) < 0) access.push(x);
+          });
+          if (access.indexOf('platinv') < 0) access.push('platinv');
+        }
+      }
+      return { user: String(u.user), pass: String(u.pass), profile: profile, profiles: profiles, access: access };
+    }) : [];
+  } catch (e) { console.error('[auth] USERS_JSON parse error:', e.message); return []; }
+}
+const USERS = parseUsers(process.env.USERS_JSON);
+if (USERS.length) console.log('  ✓  Accounts:', USERS.map(u => u.user + ' (' + (u.profiles || [u.profile]).join('+') + ')').join(', '));
+
+// ── Session auth (cookie) ─────────────────────────────────────────────────────
+// Basic Auth cannot be cleared in Chrome, so Log out can never work while the
+// browser keeps sending cached Authorization. Access is gated by an httpOnly
+// session cookie instead. /login is a normal form; /api/logout clears the cookie.
+const cryptoAuth = require('crypto');
+const SESSION_SECRET = process.env.SESSION_SECRET || APP_PASSWORD || 'elysian-dev-session';
+const SESSION_COOKIE = 'elysian_sess';
+const SESSION_DAYS = 14;
+
+function parseCookies(req) {
+  const out = {};
+  String(req.headers.cookie || '').split(/;\s*/).forEach(function (part) {
+    if (!part) return;
+    const i = part.indexOf('=');
+    if (i < 0) out[part] = '';
+    else out[part.slice(0, i)] = part.slice(i + 1);
+  });
+  return out;
+}
+function b64url(buf) {
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+function b64urlJson(obj) { return b64url(JSON.stringify(obj)); }
+function fromB64url(s) {
+  s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+  while (s.length % 4) s += '=';
+  return Buffer.from(s, 'base64').toString('utf8');
+}
+function signSession(payload) {
+  const body = b64urlJson(payload);
+  const sig = cryptoAuth.createHmac('sha256', SESSION_SECRET).update(body).digest('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  return body + '.' + sig;
+}
+function readSession(req) {
+  const raw = parseCookies(req)[SESSION_COOKIE];
+  if (!raw) return null;
+  const parts = String(raw).split('.');
+  if (parts.length !== 2) return null;
+  const expect = cryptoAuth.createHmac('sha256', SESSION_SECRET).update(parts[0]).digest('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  if (expect !== parts[1]) return null;
+  try {
+    const payload = JSON.parse(fromB64url(parts[0]));
+    if (!payload || !payload.user || !payload.exp || payload.exp < Date.now()) return null;
+    return payload;
+  } catch (e) { return null; }
+}
+function cookieSecure(req) {
+  const proto = String((req && req.headers && req.headers['x-forwarded-proto']) || '');
+  return proto === 'https' || !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PUBLIC_DOMAIN);
+}
+function setSessionCookie(res, payload, req) {
+  const token = signSession(payload);
+  const maxAge = SESSION_DAYS * 86400;
+  const secure = cookieSecure(req);
+  res.append('Set-Cookie', SESSION_COOKIE + '=' + token + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + maxAge + (secure ? '; Secure' : ''));
+}
+function clearSessionCookie(res, req) {
+  const secure = cookieSecure(req);
+  res.append('Set-Cookie', SESSION_COOKIE + '=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' + (secure ? '; Secure' : ''));
+  res.append('Set-Cookie', 'elysian_reauth=; Path=/; Max-Age=0; SameSite=Lax');
+  res.append('Set-Cookie', 'elysian_realm=; Path=/; Max-Age=0; SameSite=Lax');
+}
+function lookupAccount(user, pass) {
+  const u = String(user || '');
+  const pw = String(pass || '');
+  const acct = USERS.find(x => x.user.toLowerCase() === u.toLowerCase() && x.pass === pw);
+  if (acct) return { user: acct.user, access: acct.access, profile: acct.profile, profiles: acct.profiles, mode: USERS.length ? 'users' : 'legacy' };
+  if (APP_PASSWORD && pw === APP_PASSWORD) {
+    return { user: u || 'admin', access: 'all', profile: 'management', profiles: ['management'], mode: USERS.length ? 'users' : 'legacy' };
+  }
+  return null;
+}
+function wantsHtml(req) {
+  const accept = String(req.headers.accept || '');
+  if (req.path === '/' || req.path === '/index.html') return true;
+  return accept.includes('text/html') && !String(req.path || '').startsWith('/api/');
+}
+function loginPage(err) {
+  const msg = err ? '<div style="color:#f87171;font-size:13px;margin:0 0 12px">' + String(err).replace(/</g, '&lt;') + '</div>' : '';
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · Elysian Command Center</title>
+<style>
+  html,body{margin:0;min-height:100%;font-family:system-ui,-apple-system,sans-serif;background:#0f1720;color:#e5e7eb}
+  .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{width:100%;max-width:380px;background:#16283A;border:1px solid #C9A84C44;border-radius:14px;padding:28px 26px 24px;box-shadow:0 18px 50px #0006}
+  .brand{color:#C9A84C;font-weight:700;font-size:20px;letter-spacing:.02em;margin:0 0 4px}
+  .sub{color:#94a3b8;font-size:13px;margin:0 0 20px}
+  label{display:block;font-size:12px;color:#94a3b8;margin:0 0 6px}
+  input{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #334155;background:#0f1720;color:#e5e7eb;font-size:14px;margin:0 0 14px}
+  input:focus{outline:none;border-color:#C9A84C}
+  button{width:100%;padding:11px 14px;border:0;border-radius:8px;background:#C9A84C;color:#111;font-weight:700;font-size:14px;cursor:pointer}
+  button:hover{filter:brightness(1.05)}
+  button:disabled{opacity:.75;cursor:wait;filter:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #boot{display:none;position:fixed;inset:0;background:#0f1720;z-index:20;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+</style></head><body><div id="boot"><div class="brand">Elysian Command Center</div><div style="width:32px;height:32px;border:3px solid #C9A84C;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite"></div><div class="sub">Opening workspace…</div></div><div class="wrap"><form class="card" method="POST" action="/api/login" autocomplete="username" onsubmit="var b=this.querySelector('button'); if(b.disabled) return false; b.disabled=true; b.textContent='Opening Command Center…'; var o=document.getElementById('boot'); if(o) o.style.display='flex';">
+  <div class="brand">Elysian Command Center</div>
+  <p class="sub">Sign in with your account</p>
+  ${msg}
+  <label for="user">Username</label>
+  <input id="user" name="user" required autocomplete="username" autofocus>
+  <label for="pass">Password</label>
+  <input id="pass" name="pass" type="password" required autocomplete="current-password">
+  <button type="submit">Sign in</button>
+</form></div></body></html>`;
+}
+
+app.get('/login', (req, res) => {
+  if (readSession(req)) return res.redirect('/');
+  res.set('Cache-Control', 'no-store');
+  res.status(200).type('html').send(loginPage(''));
+});
+
+app.post('/api/login', express.urlencoded({ extended: false }), (req, res) => {
+  const body = req.body || {};
+  const acct = lookupAccount(body.user, body.pass);
+  if (!acct) {
+    res.set('Cache-Control', 'no-store');
+    return res.status(401).type('html').send(loginPage('Wrong username or password.'));
+  }
+  const payload = {
+    user: acct.user,
+    access: acct.access,
+    profile: acct.profile,
+    profiles: acct.profiles,
+    mode: acct.mode,
+    exp: Date.now() + SESSION_DAYS * 86400 * 1000,
+  };
+  setSessionCookie(res, payload, req);
+  res.set('Cache-Control', 'no-store');
+  return res.redirect('/');
+});
+
+app.get('/api/logout', (req, res) => {
+  clearSessionCookie(res, req);
+  res.set('Cache-Control', 'no-store');
+  // Drop client storage so the SPA cannot look "still signed in" from bfcache/localStorage.
+  res.set('Clear-Site-Data', '"storage"');
+  res.status(200).type('html').send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Signed out</title>
+<meta http-equiv="refresh" content="0;url=/login?signedout=1">
+</head><body style="margin:0;font-family:system-ui,sans-serif;background:#0f1720;color:#e5e7eb;display:flex;min-height:100vh;align-items:center;justify-content:center">
+<div style="text-align:center;padding:32px">
+  <div style="font-size:18px;font-weight:600;margin-bottom:8px">Signed out</div>
+  <a href="/login?signedout=1" style="color:#C9A84C">Sign in again</a>
+</div>
+<script>
+try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+location.replace('/login?signedout=1');
+</script>
+</body></html>`);
+});
+
+if (APP_PASSWORD || USERS.length) {
   app.use((req, res, next) => {
-    if (req.path === '/health' || req.path === '/api/fe-info') return next();
-    const auth = req.headers['authorization'] || '';
-    const b64  = auth.replace(/^Basic\s+/i, '');
-    const [, pw] = Buffer.from(b64, 'base64').toString().split(':');
-    if (pw === APP_PASSWORD) return next();
-    res.set('WWW-Authenticate', 'Basic realm="Elysian Clearing"');
-    res.status(401).send('Authentication required');
+    if (req.path === '/health' || req.path === '/api/fe-info' || req.path === '/api/logout'
+      || req.path === '/login' || req.path === '/api/login') return next();
+    const sess = readSession(req);
+    if (sess) {
+      req.acctUser = sess.user;
+      req.acctAccess = sess.access || 'all';
+      req.acctProfile = sess.profile || 'management';
+      req.acctProfiles = sess.profiles || [sess.profile || 'management'];
+      return next();
+    }
+    // Do NOT fall back to Basic Auth — Chrome would keep the previous user forever.
+    res.set('Cache-Control', 'no-store');
+    if (wantsHtml(req)) return res.redirect('/login');
+    return res.status(401).json({ error: 'Authentication required', login: '/login' });
   });
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-app.use(express.static(__dirname));
+function sendAppHtml(req, res) {
+  const html = FE_HTML || require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+  const etag = FE_INFO.sha256 ? '"' + FE_INFO.sha256 + '"' : undefined;
+  if (etag && String(req.headers['if-none-match'] || '') === etag) {
+    res.status(304).end();
+    return;
+  }
+  res.set('Cache-Control', 'private, max-age=0, must-revalidate');
+  if (etag) res.set('ETag', etag);
+  const ae = String(req.headers['accept-encoding'] || '');
+  if (FE_HTML_GZ && /\bgzip\b/.test(ae)) {
+    res.set('Content-Encoding', 'gzip');
+    res.set('Vary', 'Accept-Encoding');
+    res.type('html');
+    res.send(FE_HTML_GZ);
+    return;
+  }
+  res.type('html').send(html);
+}
+app.get('/', sendAppHtml);
+app.get('/index.html', sendAppHtml);
+app.use((req, res, next) => {
+  const ae = String(req.headers['accept-encoding'] || '');
+  if (!/\bgzip\b/.test(ae)) return next();
+  const origJson = res.json.bind(res);
+  res.json = function (obj) {
+    try {
+      const raw = JSON.stringify(obj === undefined ? null : obj);
+      if (Buffer.byteLength(raw) < 2048) return origJson(obj);
+      const gz = require('zlib').gzipSync(raw);
+      res.set('Content-Encoding', 'gzip');
+      res.set('Vary', 'Accept-Encoding');
+      res.type('json');
+      return res.send(gz);
+    } catch (e) { return origJson(obj); }
+  };
+  next();
+});
+app.use(express.static(__dirname, { index: false }));
 app.use(express.json({ limit: '50mb' }));
 
 // ── Hosthub helpers ───────────────────────────────────────────────────────────
@@ -306,11 +585,13 @@ app.post('/api/db/data', async (req, res) => {
       // ANTI-WIPE BOOKINGS
       if (dbBks > 10 && inBks === 0) {
         console.warn('[db] BLOCKED write: would wipe', dbBks, 'bookings');
+        logEvent(req, 'data', '⚠ blocked wipe', 'write would have deleted ' + dbBks + ' bookings');
         return res.status(409).json({ error: 'Write blocked: would delete ' + dbBks + ' bookings.', blocked: true });
       }
       // ANTI-WIPE EXPENSES
       if (dbExps > 0 && inExps === 0 && dbBks > 0) {
         console.warn('[db] BLOCKED write: would wipe', dbExps, 'expenses');
+        logEvent(req, 'data', '⚠ blocked wipe', 'write would have deleted ' + dbExps + ' expenses');
         return res.status(409).json({ error: 'Write blocked: would delete ' + dbExps + ' expenses.', blocked: true });
       }
 
@@ -354,6 +635,24 @@ app.post('/api/db/data', async (req, res) => {
       const dbPc = existing.payChk && existing.payChk.marks && typeof existing.payChk.marks === 'object' ? Object.keys(existing.payChk.marks).length : 0;
       const inPc = payload.payChk  && payload.payChk.marks  && typeof payload.payChk.marks  === 'object' ? Object.keys(payload.payChk.marks).length  : 0;
       if (dbPc > 0 && inPc === 0) payload.payChk = existing.payChk;
+
+      // Stale-client last-write-wins: a Daily Ops save from a laptop that had not
+      // yet polled can drop rptLocks keys (email stamps), ownerRemit rows, and
+      // blank out apartment emails / Business tax. Union-merge those maps and
+      // restore non-empty config fields the incoming blob cleared.
+      payload.rptLocks = mergeKeepMap(existing.rptLocks, payload.rptLocks, mergeRptLock);
+      payload.ownerRemit = mergeKeepMap(existing.ownerRemit, payload.ownerRemit);
+      payload.monthlyClose = mergeMonthlyClose(existing.monthlyClose, payload.monthlyClose);
+      if (existing.revenue || payload.revenue) {
+        const er = existing.revenue || {}, pr = payload.revenue || {};
+        payload.revenue = Object.assign({}, er, pr, {
+          cleaning: mergeKeepMap(er.cleaning, pr.cleaning),
+          mgmt: mergeKeepMap(er.mgmt, pr.mgmt)
+        });
+      }
+      if (Array.isArray(existing.apts) && Array.isArray(payload.apts) && payload.apts.length) {
+        payload.apts = mergeAptsProtect(existing.apts, payload.apts);
+      }
     }
 
     await pool.query(
@@ -363,6 +662,7 @@ app.post('/api/db/data', async (req, res) => {
       ['main', JSON.stringify(payload)]
     );
     const ts = await pool.query("SELECT updated_at FROM app_data WHERE key = 'main'");
+    logEvent(req, 'data', 'save', diffSummary(existing, payload));
     // Also capture a trend snapshot from the saved data (covers manual refresh).
     if (Array.isArray(payload.bks) && payload.bks.length) {
       await saveSnapshot(pool, payload.bks, payload.apts || []);
@@ -403,6 +703,2562 @@ const _memProofs = new Map();   // no-DB fallback
 let   _memProofSeq = 1;
 const PROOF_MAX_B64 = 30 * 1024 * 1024; // ~22 MB raw file
 
+// ── Property Info: amenities, guest FAQs, house rules, Law 5170 compliance ───
+// One row per rental so two people saving different apartments cannot clobber
+// each other. Compliance file blobs stay in proof_files; this table holds only
+// the references. Self-healing DDL, same pattern as the proofs table below.
+let _rentalInfoReady = false;
+async function ensureRentalInfoTable() {
+  if (_rentalInfoReady || !pool) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rental_info (
+      rental_id   TEXT PRIMARY KEY,
+      data        JSONB       NOT NULL,
+      updated_by  TEXT,
+      updated_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  _rentalInfoReady = true;
+}
+function riShape(b) {
+  const o = (b && typeof b === 'object') ? b : {};
+  return {
+    amenities:  (o.amenities  && typeof o.amenities  === 'object') ? o.amenities  : {},
+    faqs:       Array.isArray(o.faqs) ? o.faqs : [],
+    houseRules: (o.houseRules && typeof o.houseRules === 'object') ? o.houseRules : {},
+    compliance: (o.compliance && typeof o.compliance === 'object') ? o.compliance : {},
+  };
+}
+// GET /api/rental-info — the whole portfolio as { rentalId: record }
+app.get('/api/rental-info', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureRentalInfoTable();
+    const r = await pool.query('SELECT rental_id, data FROM rental_info');
+    const out = {};
+    r.rows.forEach(row => { out[row.rental_id] = row.data || {}; });
+    res.json(out);
+  } catch (e) { console.error('[rental-info] list failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+// GET /api/rental-info/:id — one apartment ({} when it was never saved)
+app.get('/api/rental-info/:id', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureRentalInfoTable();
+    const r = await pool.query('SELECT data FROM rental_info WHERE rental_id = $1', [String(req.params.id)]);
+    res.json((r.rows[0] && r.rows[0].data) || {});
+  } catch (e) { console.error('[rental-info] read failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+// POST /api/rental-info/:id — replace one apartment's record
+app.post('/api/rental-info/:id', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Missing rental id.' });
+    await ensureRentalInfoTable();
+    const by = String((req.body && req.body._by) || req.headers['x-user'] || '').slice(0, 80) || null;
+    const shaped = riShape(req.body);
+    const r = await pool.query(
+      `INSERT INTO rental_info (rental_id, data, updated_by, updated_at)
+       VALUES ($1, $2::jsonb, $3, NOW())
+       ON CONFLICT (rental_id) DO UPDATE SET data = $2::jsonb, updated_by = $3, updated_at = NOW()
+       RETURNING updated_at`,
+      [id, JSON.stringify(shaped), by]
+    );
+    logEvent(req, 'pinfo', 'save', id + ' · ' +
+      Object.values(shaped.amenities || {}).filter(a => a && a.on).length + ' amenities · ' +
+      (shaped.faqs || []).length + ' FAQs · ' + Object.keys(shaped.compliance || {}).length + ' compliance items');
+    res.json({ ok: true, updatedAt: r.rows[0] && r.rows[0].updated_at });
+  } catch (e) { console.error('[rental-info] save failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+// GET /api/whoami — who this browser is signed in as. Without APP_PASSWORD there
+// is no sign-in at all, so report nobody rather than inventing an identity.
+// Meta lead ads pull. Guarded exactly like Viva: without credentials every
+// endpoint answers politely and the cron does nothing, so the rest of the
+// pipeline is fully usable before Meta access is sorted out.
+const META_TOKEN = process.env.META_PAGE_TOKEN || '';
+// Graph API versions last about two and a half years and then stop existing -
+// and a call to a dead version does not fail, it silently falls back to the
+// oldest one still alive, which is how an integration starts behaving oddly
+// with nothing in the logs. v21.0 expires 2027-01-21; v25.0 runs to 2028-07-29.
+// The env var means the next bump is a Railway variable, not a release.
+const META_API = 'https://graph.facebook.com/' + (process.env.META_API_VERSION || 'v25.0');
+const metaConfigured = () => !!META_TOKEN;
+function metaFieldsToLead(l, form) {
+  const f = {};
+  (l.field_data || []).forEach(function (fd) {
+    const k = String(fd.name || '').toLowerCase();
+    const v = Array.isArray(fd.values) ? fd.values.join(', ') : String(fd.values || '');
+    f[k] = v;
+  });
+  const pick = function (keys) { for (const k of keys) if (f[k]) return f[k]; return ''; };
+  return {
+    source: 'meta', metaLeadId: String(l.id), createdTime: l.created_time || null,
+    formId: (form && form.id) || l.form_id || null, formName: (form && form.name) || null,
+    campaign: l.campaign_name || null, adset: l.adset_name || null, adId: l.ad_id || null,
+    fullName: pick(['full_name', 'name', 'first_name']) + (f.last_name && !f.full_name ? ' ' + f.last_name : ''),
+    email: pick(['email', 'work_email']),
+    phone: pick(['phone_number', 'phone', 'mobile']),
+    fields: f, raw: l,
+  };
+}
+async function metaGet(url) {
+  const r = await fetch(url, { timeout: 20000 });
+  const j = await r.json().catch(function () { return null; });
+  if (!r.ok) throw new Error('Meta ' + r.status + ': ' + ((j && j.error && j.error.message) || 'request failed'));
+  return j;
+}
+// Pull leads created since the last successful run (with a small overlap, since
+// leadIngest is idempotent on meta_lead_id and duplicates cost nothing).
+async function metaPull(trigger, opts) {
+  if (!metaConfigured()) throw new Error('Meta is not configured (set META_PAGE_TOKEN in Railway -> Variables).');
+  if (!pool) throw new Error('No database configured.');
+  await ensureLeadTables();
+  const cfg = await leadCfg();
+  let sinceRow = null;
+  try { const r = await pool.query('SELECT data FROM app_data WHERE key = $1', ['leads_meta_state']); sinceRow = r.rows[0] && r.rows[0].data; } catch (e) {}
+  let sinceSec = Math.floor(((sinceRow && sinceRow.lastRunMs) || (Date.now() - 7 * 864e5)) / 1000) - 600;   // 10 min overlap
+  // Never import anything older than metaSinceDate. Without this the very first
+  // pull imports the account's entire history in one go and the assignment rule
+  // shares the whole backlog out before anyone has looked at it.
+  const floorSec = cfg.metaSinceDate
+    ? Math.floor(new Date(cfg.metaSinceDate + 'T00:00:00Z').getTime() / 1000) : null;
+  // Normally the floor only moves the window forward - it is a guard, not a
+  // target. A backfill is the deliberate opposite: start at the floor whatever
+  // the watermark says. Safe to repeat as often as you like, because leadIngest
+  // is idempotent on meta_lead_id and a re-seen lead costs nothing.
+  if (opts && opts.backfill && isFinite(floorSec)) sinceSec = floorSec;
+  else if (isFinite(floorSec) && floorSec > sinceSec) sinceSec = floorSec;
+  const page = await metaResolvePage();
+  if (page.error) throw new Error(page.error + (page.hint ? ' — ' + page.hint : ''));
+  const PTOK = page.token;
+  let forms = (cfg.metaFormIds || []).map(function (id) { return { id: String(id), name: null }; });
+  if (!forms.length) {
+    const fj = await metaGet(META_API + '/' + page.id + '/leadgen_forms?limit=100&fields=id,name&access_token=' + encodeURIComponent(PTOK));
+    forms = (fj.data || []).map(function (f) { return { id: f.id, name: f.name }; });
+  }
+  let seen = 0, created = 0;
+  for (const form of forms) {
+    let url = META_API + '/' + form.id + '/leads?limit=100&filtering=' +
+      encodeURIComponent(JSON.stringify([{ field: 'time_created', operator: 'GREATER_THAN', value: sinceSec }])) +
+      '&access_token=' + encodeURIComponent(PTOK);
+    let pages = 0;
+    while (url && pages++ < 20) {
+      const j = await metaGet(url);
+      for (const l of (j.data || [])) {
+        seen++;
+        const res = await leadIngest(metaFieldsToLead(l, form), 'meta');
+        if (!res.duplicate) created++;
+      }
+      url = (j.paging && j.paging.next) || null;
+    }
+  }
+  // A run that found no forms looked at nothing, so it has no business claiming
+  // everything up to now has been seen. Recording it as the watermark is how
+  // sixty days of backfill silently became ten minutes.
+  const state = { lastRunMs: forms.length ? Date.now() : ((sinceRow && sinceRow.lastRunMs) || 0),
+                  trigger: trigger, forms: forms.length, seen: seen, created: created,
+                  page: { id: page.id, name: page.name } };
+  await pool.query(`INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb)
+                    ON CONFLICT (key) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`, ['leads_meta_state', JSON.stringify(state)]);
+  console.log('[leads][meta] ' + trigger + ': ' + forms.length + ' form(s), ' + seen + ' seen, ' + created + ' new');
+  return state;
+}
+// Retention: archived leads are kept for archiveRetentionMonths (two years by
+// default) and then tombstoned - personal data removed, the row kept so the
+// funnel history stays intact. Converted leads are never touched. Runs once a
+// day, claim-the-date guarded like the other crons.
+async function leadRetentionSweep() {
+  if (!pool) return;
+  await ensureLeadTables();
+  const cfg = await leadCfg();
+  const months = parseInt(cfg.archiveRetentionMonths, 10);
+  if (!isFinite(months) || months <= 0) return;
+  const r = await pool.query(
+    `UPDATE leads SET full_name = NULL, email = NULL, phone = NULL, raw = '{}'::jsonb,
+            fields = '{}'::jsonb, meta_lead_id = NULL, status = 'erased',
+            events = events || $1::jsonb, updated_at = NOW()
+       WHERE archived_at IS NOT NULL AND apt_id IS NULL AND status <> 'erased'
+         AND archived_at < NOW() - ($2 || ' months')::interval
+       RETURNING id`,
+    [JSON.stringify([leadEvent('erased', 'system', 'archive retention: older than ' + months + ' months')]), String(months)]);
+  if (r.rows.length) console.log('[leads] retention sweep tombstoned ' + r.rows.length + ' archived lead(s)');
+}
+setInterval(async function () {
+  try {
+    if (!pool) return;
+    const a = vivaAthensNow();
+    if (a.hour !== 4) return;                       // quiet hour
+    const k = 'leads_retention_state';
+    const q = await pool.query('SELECT data FROM app_data WHERE key = $1', [k]);
+    const d = (q.rows[0] && q.rows[0].data) || {};
+    if (d.lastDate === a.date) return;
+    d.lastDate = a.date;
+    await pool.query(`INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb)
+                      ON CONFLICT (key) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`, [k, JSON.stringify(d)]);
+    await leadRetentionSweep();
+  } catch (e) { console.error('[leads] retention sweep error:', e.message); }
+}, 30 * 60 * 1000);
+
+// Every 5 minutes. Silent and harmless until Meta is configured.
+setInterval(function () {
+  if (!metaConfigured() || !pool) return;
+  metaPull('cron').catch(function (e) { console.error('[leads][meta] cron error:', e.message); });
+}, 5 * 60 * 1000);
+
+// Endpoints
+app.get('/api/leads', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureLeadTables();
+    const view = String(req.query.view || 'active');
+    const where = view === 'archived' ? 'archived_at IS NOT NULL' : view === 'all' ? 'TRUE' : 'archived_at IS NULL';
+    // Free-text search. Matters most on the archive, which holds two years of
+    // leads: without it, finding "that owner in Glyfada from last spring" means
+    // scrolling. Erased tombstones hold no personal data so they simply miss.
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const qWhere = q ? ` AND (
+        lower(coalesce(full_name,'')) LIKE $1 OR lower(coalesce(email,'')) LIKE $1
+        OR regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g') LIKE $1
+        OR lower(coalesce(form_name,'')) LIKE $1 OR lower(coalesce(campaign,'')) LIKE $1
+        OR lower(coalesce(archive_reason,'')) LIKE $1 OR lower(coalesce(owner,'')) LIKE $1
+        OR lower(coalesce(property_address,'')) LIKE $1 OR lower(coalesce(property_size,'')) LIKE $1
+        OR ($2::text IS NOT NULL AND regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g') LIKE $2) )` : '';
+    // A phone number gets pasted the way it is displayed - "694 443 3748" - but
+    // the column is compared digits-only, so the spaces would find nothing.
+    const qDigits = q.replace(/\D/g, '');
+    const qArgs = q ? ['%' + q.replace(/[%_]/g, '') + '%', qDigits.length >= 4 ? '%' + qDigits + '%' : null] : [];
+    const r = await pool.query('SELECT * FROM leads WHERE ' + where + qWhere + ' ORDER BY COALESCE(created_time, updated_at) DESC LIMIT 2000', qArgs);
+    res.json({ ok: true, leads: r.rows, config: await leadCfg(), metaConfigured: metaConfigured() });
+  } catch (e) { console.error('[leads] list failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+app.post('/api/leads', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureLeadTables();
+    const b = req.body || {};
+    if (!String(b.fullName || '').trim()) return res.status(400).json({ error: 'A name is required.' });
+    if (!String(b.email || '').trim() && !String(b.phone || '').trim()) return res.status(400).json({ error: 'An email or a phone number is required.' });
+    if (!b.force) {
+      const dup = await leadFindDuplicate(b.email, b.phone, null);
+      if (dup) return res.status(409).json({ error: 'duplicate', duplicate: dup });
+    }
+    const out = await leadIngest({
+      source: b.source || 'manual', fullName: b.fullName, email: b.email, phone: b.phone,
+      fields: Object.assign({}, b.fields || {}, {
+        // let the same extractor handle them, so manual and Meta leads agree
+        'property address': b.propertyAddress || '', 'property size': b.propertySize || '',
+        bedrooms: b.bedrooms || '', bathrooms: b.bathrooms || '',
+      }), formName: b.note || null, raw: { manual: true, note: b.note || '' },
+    }, b.by || 'team');
+    if (b.owner) await pool.query('UPDATE leads SET owner = $2, assigned_at = NOW(), stage = CASE WHEN stage = $3 THEN $4 ELSE stage END WHERE id = $1', [out.id, String(b.owner), 'new', 'to_contact']);
+    res.json({ ok: true, id: out.id, owner: b.owner || out.owner || null });
+  } catch (e) { console.error('[leads] create failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+app.patch('/api/leads/:id', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureLeadTables();
+    const id = parseInt(req.params.id, 10);
+    const b = req.body || {}, by = String(b.by || 'team');
+    const cur = await pool.query('SELECT * FROM leads WHERE id = $1', [id]);
+    if (!cur.rows[0]) return res.status(404).json({ error: 'Lead not found.' });
+    const row = cur.rows[0];
+    const sets = [], vals = [id]; const ev = [];
+    const put = function (col, v) { vals.push(v); sets.push(col + ' = $' + vals.length); };
+    if (b.stage && b.stage !== row.stage) {
+      if (LEAD_ALL_STAGES.indexOf(b.stage) === -1) return res.status(400).json({ error: 'Unknown stage.' });
+      put('stage', b.stage); put('stage_changed_at', new Date().toISOString());
+      if (b.stage === 'lost') { put('status', 'lost'); put('lost_reason', String(b.lostReason || '')); }
+      else if (b.stage === 'live') { put('status', 'won'); put('won_at', new Date().toISOString()); }
+      else put('status', 'open');
+      if (b.stage === 'contacted' && !row.first_contact_at) put('first_contact_at', new Date().toISOString());
+      ev.push(leadEvent('stage', by, row.stage + ' -> ' + b.stage + (b.lostReason ? ' (' + b.lostReason + ')' : '')));
+    }
+    if (b.owner !== undefined && b.owner !== row.owner) {
+      put('owner', b.owner || null); put('assigned_at', new Date().toISOString());
+      ev.push(leadEvent('assigned', by, 'to ' + (b.owner || 'nobody') + ' (manual)'));
+    }
+    ['full_name','email','phone','apt_id'].forEach(function (c) {
+      const k = c === 'full_name' ? 'fullName' : c === 'apt_id' ? 'aptId' : c;
+      if (b[k] !== undefined && b[k] !== row[c]) { put(c, b[k] || null); ev.push(leadEvent('edit', by, c)); }
+    });
+    // The form answer is where the property details start, not the last word:
+    // half of them arrive as a range or a guess and get corrected on the call.
+    const LEAD_PROP_EDIT = {
+      propertyAddress: 'property_address', propertySize: 'property_size',
+      propertyType: 'property_type', bedrooms: 'bedrooms', bathrooms: 'bathrooms',
+    };
+    Object.keys(LEAD_PROP_EDIT).forEach(function (k) {
+      const c = LEAD_PROP_EDIT[k];
+      if (b[k] === undefined || b[k] === row[c]) return;
+      put(c, b[k] || null); ev.push(leadEvent('edit', by, c));
+      if (c === 'bedrooms')  put('bedrooms_n',  leadInt(b[k]));
+      if (c === 'bathrooms') put('bathrooms_n', leadInt(b[k]));
+    });
+    if (b.fields) { put('fields', JSON.stringify(b.fields)); ev.push(leadEvent('edit', by, 'details')); }
+    if (b.note) ev.push(leadEvent('note', by, String(b.note).slice(0, 500)));
+    if (b.emailSent) ev.push(leadEvent('email', by, String(b.emailSent).slice(0, 300)));
+    if (!sets.length && !ev.length) return res.json({ ok: true, unchanged: true });
+    vals.push(JSON.stringify(ev)); sets.push('events = events || $' + vals.length + '::jsonb');
+    sets.push('updated_at = NOW()');
+    await pool.query('UPDATE leads SET ' + sets.join(', ') + ' WHERE id = $1', vals);
+    res.json({ ok: true });
+  } catch (e) { console.error('[leads] update failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+// Archive: the everyday removal. Reversible, keeps everything.
+app.post('/api/leads/:id/archive', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureLeadTables();
+    const b = req.body || {}, by = String(b.by || 'team');
+    const restore = !!b.restore;
+    const ev = JSON.stringify([leadEvent(restore ? 'restored' : 'archived', by, String(b.reason || ''))]);
+    const r = await pool.query(
+      restore ? `UPDATE leads SET archived_at = NULL, archived_by = NULL, archive_reason = NULL, events = events || $2::jsonb, updated_at = NOW() WHERE id = $1 RETURNING id`
+              : `UPDATE leads SET archived_at = NOW(), archived_by = $3, archive_reason = $4, events = events || $2::jsonb, updated_at = NOW() WHERE id = $1 RETURNING id`,
+      restore ? [parseInt(req.params.id, 10), ev] : [parseInt(req.params.id, 10), ev, by, String(b.reason || '')]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Lead not found.' });
+    res.json({ ok: true });
+  } catch (e) { console.error('[leads] archive failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+// Permanent delete: for a genuine erasure request, and nothing else. Wipes the
+// personal data, keeps a tombstone so the funnel counts stay honest and the
+// erasure is provable. Refused once the lead has become an apartment - that is
+// a live business relationship with its own retention basis.
+app.delete('/api/leads/:id', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureLeadTables();
+    const b = req.body || {};
+    const id = parseInt(req.params.id, 10);
+    const cur = await pool.query('SELECT apt_id, source, stage FROM leads WHERE id = $1', [id]);
+    if (!cur.rows[0]) return res.status(404).json({ error: 'Lead not found.' });
+    if (cur.rows[0].apt_id) return res.status(409).json({ error: 'This lead has become an apartment. Unlink it first if you really mean to erase it.' });
+    const ev = JSON.stringify([leadEvent('erased', String(b.by || 'team'), 'personal data removed on request')]);
+    await pool.query(
+      `UPDATE leads SET full_name = NULL, email = NULL, phone = NULL, raw = '{}'::jsonb, fields = '{}'::jsonb,
+              meta_lead_id = NULL, status = 'erased', archived_at = COALESCE(archived_at, NOW()),
+              -- an address is personal data, and a 3-bed 85 m2 maisonette in a named
+              -- suburb re-identifies its owner even without the street. "Personal data
+              -- removed" has to mean these too, not just the name and the phone.
+              property_address = NULL, property_size = NULL, property_type = NULL,
+              bedrooms = NULL, bathrooms = NULL, bedrooms_n = NULL, bathrooms_n = NULL,
+              events = $2::jsonb, updated_at = NOW() WHERE id = $1`, [id, ev]);
+    console.log('[leads] erased #' + id + ' (tombstone kept)');
+    res.json({ ok: true });
+  } catch (e) { console.error('[leads] delete failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+app.post('/api/leads/config', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    const cfg = Object.assign({}, LEAD_CFG_DEFAULT, req.body || {});
+    await pool.query(`INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb)
+                      ON CONFLICT (key) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`, [LEAD_CFG_KEY, JSON.stringify(cfg)]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// One call to Meta, with the token kept out of everything that comes back.
+// node-fetch puts the whole request URL in its parse errors, so returning a raw
+// failure here would print the access token into the response AND the logs.
+async function metaCall(path, qs, token) {
+  const tok = token || META_TOKEN;
+  const url = META_API + path + '?' + qs + '&access_token=' + encodeURIComponent(tok);
+  const safe = META_API + path + '?' + qs;   // the only form of the URL that may be quoted
+  let r;
+  try { r = await fetch(url); }
+  catch (e) { return { error: 'Could not reach ' + safe + ' (' + e.message.split(tok).join('[token]').split(META_TOKEN).join('[token]') + ')' }; }
+  const body = await r.text();
+  let j;
+  try { j = JSON.parse(body); }
+  catch (e) {
+    return { error: 'Meta answered ' + r.status + ' with something that is not JSON: ' +
+      body.slice(0, 120).split(tok).join('[token]').split(META_TOKEN).join('[token]') };
+  }
+  if (j.error) return { error: j.error.message, code: j.error.code, sub: j.error.error_subcode };
+  return { data: j };
+}
+// A Page token answers /me with the Page. A User token answers with the person,
+// and the Pages they manage hang off /me/accounts - each with its own Page token
+// attached, which is the documented way to get one. Resolve either shape to
+// {id, name, token} so nothing downstream has to care which was pasted in.
+let _metaPage = null;
+async function metaResolvePage() {
+  if (_metaPage) return _metaPage;
+  const me = await metaCall('/me', 'fields=id,name');
+  if (me.error) return { error: me.error, code: me.code };
+  // Only a Page has leadgen_forms, so that is the test for which kind this is.
+  const probe = await metaCall('/' + me.data.id + '/leadgen_forms', 'limit=1');
+  if (!probe.error) return (_metaPage = { id: me.data.id, name: me.data.name, token: META_TOKEN, kind: 'page' });
+  const acc = await metaCall('/me/accounts', 'fields=id,name,access_token&limit=100');
+  if (acc.error) return { error: acc.error, code: acc.code,
+    hint: 'This looks like a User token, but it cannot list the Pages it manages - pages_show_list is missing.' };
+  const pages = acc.data.data || [];
+  if (!pages.length) return { error: 'That token manages no Pages.',
+    hint: 'It is a User token for ' + me.data.name + ', and pages_show_list returned nothing. Check the token was made for the right person.' };
+  const cfg = await leadCfg();
+  const want = String(cfg.metaPageId || '').trim();
+  const hit = want ? pages.filter(function (p) { return String(p.id) === want; })[0] : (pages.length === 1 ? pages[0] : null);
+  if (!hit) return { error: want ? 'Page ' + want + ' is not one this token manages.' : 'This token manages ' + pages.length + ' Pages - say which one.',
+    pages: pages.map(function (p) { return { id: p.id, name: p.name }; }),
+    hint: 'Set metaPageId in the leads config to the right one.' };
+  return (_metaPage = { id: hit.id, name: hit.name, token: hit.access_token, kind: 'page-via-user', via: me.data.name });
+}
+// Is the token real, does it still work, and can it actually see the forms?
+// Three different failures that all look the same from here: no leads arriving.
+app.get('/api/leads/meta/status', async (req, res) => {
+  const out = { configured: metaConfigured(), apiVersion: META_API.split('/').pop() };
+  // A short hash of the token, so "did the Railway variable actually change?"
+  // has an answer. Reveals nothing - it is one-way and truncated - but two
+  // readings with the same fingerprint are certainly the same token.
+  if (META_TOKEN) out.tokenFingerprint =
+    require('crypto').createHash('sha256').update(META_TOKEN).digest('hex').slice(0, 8) +
+    ' (' + META_TOKEN.length + ' chars)';
+  out.processStartedAt = new Date(Date.now() - Math.round(process.uptime() * 1000)).toISOString();
+  if (!out.configured) return res.status(503).json(Object.assign(out, { error: 'No META_PAGE_TOKEN set.' }));
+  try {
+    // Ask Meta what this token can actually do before diagnosing anything else.
+    // A token generated in the Explorer without ticking the boxes carries only
+    // public_profile, and every later failure is downstream of that.
+    const NEEDED = ['leads_retrieval', 'pages_show_list', 'pages_read_engagement', 'pages_manage_ads', 'ads_management'];
+    const perm = await metaCall('/me/permissions', 'limit=100');
+    if (!perm.error) {
+      const rows = perm.data.data || [];
+      const granted = rows.filter(function (p) { return p.status === 'granted'; }).map(function (p) { return p.permission; });
+      const declined = rows.filter(function (p) { return p.status !== 'granted'; }).map(function (p) { return p.permission; });
+      out.granted = granted;
+      if (declined.length) out.declined = declined;
+      out.missing = NEEDED.filter(function (p) { return granted.indexOf(p) === -1; });
+      if (out.missing.length) return res.status(502).json(Object.assign(out, {
+        error: 'The token is missing ' + out.missing.length + ' of the permissions this needs: ' + out.missing.join(', ') + '.',
+        hint: 'Regenerate it in the Graph API Explorer with those boxes ticked - a token only carries what was selected at the moment it was made.' }));
+    }
+    const me = await metaCall('/me', 'fields=id,name');
+    if (me.error) return res.status(502).json(Object.assign(out, {
+      error: me.error, code: me.code,
+      hint: me.code === 190 ? 'That token is expired or was revoked - generate a new one.' : undefined }));
+    out.token = { id: me.data.id, name: me.data.name };
+    const page = await metaResolvePage();
+    if (page.error) return res.status(502).json(Object.assign(out, page));
+    out.page = { id: page.id, name: page.name, tokenKind: page.kind };
+    const f = await metaCall('/' + page.id + '/leadgen_forms', 'fields=id,name,leads_count,status&limit=50', page.token);
+    if (f.error) return res.status(502).json(Object.assign(out, { error: f.error, code: f.code,
+      hint: 'The Page resolved but its lead forms are not readable - leads_retrieval and pages_show_list are the usual missing ones.' }));
+    out.forms = (f.data.data || []).map(function (x) { return { id: x.id, name: x.name, leads: x.leads_count, status: x.status }; });
+    const st = await pool.query('SELECT data FROM app_data WHERE key = $1', ['leads_meta_state']).catch(function () { return { rows: [] }; });
+    out.lastRun = st.rows[0] && st.rows[0].data;
+    const cfg = await leadCfg();
+    out.sinceDate = cfg.metaSinceDate || null;
+    out.formFilter = (cfg.metaFormIds || []).length ? cfg.metaFormIds : 'every form the token can see';
+    res.json(out);
+  } catch (e) { res.status(500).json(Object.assign(out, { error: String(e.message || e).replace(META_TOKEN, '[token]') })); }
+});
+app.post('/api/leads/meta/pull', async (req, res) => {
+  try {
+    // 503 = "not set up yet", matching the database and email endpoints, so the
+    // UI can tell "Meta isn't connected" apart from "the pull failed".
+    if (!metaConfigured()) return res.status(503).json({ error: 'Meta is not connected (set META_PAGE_TOKEN in Railway -> Variables).' });
+    res.json({ ok: true, state: await metaPull(req.body && req.body.backfill ? 'backfill' : 'manual',
+                                                { backfill: !!(req.body && req.body.backfill) }) });
+  }
+  catch (e) { console.error('[leads][meta] pull failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+// Brochure / draft contract, swapped in the UI rather than in a deploy.
+app.get('/api/lead-assets', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureLeadTables();
+    const full = String(req.query.full || '') === '1';
+    const r = await pool.query(full ? 'SELECT * FROM lead_assets' : 'SELECT key, filename, mime, size, version, updated_by, updated_at FROM lead_assets');
+    res.json({ ok: true, assets: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/lead-assets/:key', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureLeadTables();
+    const r = await pool.query('SELECT * FROM lead_assets WHERE key = $1', [String(req.params.key || '')]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Asset not found.' });
+    res.json({ ok: true, asset: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/lead-assets', async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'No database configured.' });
+    await ensureLeadTables();
+    const b = req.body || {};
+    if (!b.key || !b.dataB64 || !b.filename) return res.status(400).json({ error: 'key, filename and dataB64 are required.' });
+    const size = Buffer.from(String(b.dataB64), 'base64').length;
+    if (size > 15 * 1024 * 1024) return res.status(413).json({ error: 'That file is over 15 MB.' });
+    await pool.query(
+      `INSERT INTO lead_assets (key, filename, mime, size, version, data, updated_by, updated_at)
+       VALUES ($1,$2,$3,$4,1,$5,$6,NOW())
+       ON CONFLICT (key) DO UPDATE SET filename = $2, mime = $3, size = $4,
+         version = lead_assets.version + 1, data = $5, updated_by = $6, updated_at = NOW()`,
+      [String(b.key), String(b.filename), String(b.mime || 'application/octet-stream'), size, String(b.dataB64), String(b.by || 'team')]);
+    res.json({ ok: true, size: size });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/whoami', (req, res) => {
+  if (!APP_PASSWORD && !USERS.length) return res.json({ user: null });
+  res.json({
+    user: req.acctUser || null,
+    access: req.acctAccess || 'all',
+    profile: req.acctProfile || 'management',
+    profiles: req.acctProfiles || [req.acctProfile || 'management'],
+    mode: USERS.length ? 'users' : 'legacy'
+  });
+});
+
+// ── Platform invoices (Airbnb / Booking.com host-portal PDFs) ────────────────
+// These are invoices the platforms issue TO Elysian (ενδοκοινοτικά). They do NOT
+// appear in Greek expense/myDATA imports. Monthly work: pull from the host
+// portals → pack leased for E-New Generation (20th) and B2B for partners (25th).
+const PLATFORM_INV_MAX_B64 = 20 * 1024 * 1024; // ~15 MB binary
+const PLATFORM_INV_ACCOUNTANT = process.env.PLATFORM_INVOICE_ACCOUNTANT_EMAIL || 'info@e-newgeneration.gr, info@elysianproperties.eu';
+let _platInvReady = false;
+const _memPlatInv = new Map();
+let _memPlatInvSeq = 1;
+async function ensurePlatInvTable() {
+  if (_platInvReady || !pool) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS platform_invoices (
+    id SERIAL PRIMARY KEY,
+    month TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    partner TEXT DEFAULT '',
+    filename TEXT,
+    mime TEXT,
+    size INT,
+    source TEXT DEFAULT 'upload',
+    uploaded_by TEXT,
+    data TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  _platInvReady = true;
+}
+function platInvMeta(r) {
+  return {
+    id: r.id, month: r.month, channel: r.channel, scope: r.scope, partner: r.partner || '',
+    filename: r.filename, mime: r.mime, size: r.size, source: r.source, uploadedBy: r.uploaded_by,
+    createdAt: r.created_at || r.createdAt
+  };
+}
+function platInvPdfBuffer(row) {
+  const raw = String((row && row.data) || '').replace(/^data:[^;]+;base64,/, '');
+  if (!raw) return Buffer.alloc(0);
+  return Buffer.from(raw, 'base64');
+}
+function platInvFileLeaf(row) {
+  return String((row && row.filename) || 'invoice.pdf').split('/').pop() || 'invoice.pdf';
+}
+
+async function piLoadPortalSession(channel) {
+  const ch = String(channel || '').toLowerCase();
+  if (ch !== 'airbnb' && ch !== 'booking') return null;
+  const key = 'pi_portal_session_' + ch;
+  if (pool) {
+    try {
+      const r = await pool.query('SELECT data FROM app_data WHERE key=$1', [key]);
+      if (r.rows.length && r.rows[0].data) {
+        const d = r.rows[0].data;
+        return typeof d === 'string' ? JSON.parse(d) : d;
+      }
+    } catch (e) { console.error('[platform-invoices] session read', e.message); }
+  }
+  return null;
+}
+async function piSavePortalSession(channel, storageState, by) {
+  const ch = String(channel || '').toLowerCase();
+  if (ch !== 'airbnb' && ch !== 'booking') throw new Error('channel must be airbnb|booking');
+  if (!storageState || typeof storageState !== 'object') throw new Error('storageState object required');
+  const key = 'pi_portal_session_' + ch;
+  const payload = {
+    storageState,
+    updatedAt: new Date().toISOString(),
+    updatedBy: by || ''
+  };
+  if (pool) {
+    await pool.query(
+      `INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb)
+       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data`,
+      [key, JSON.stringify(payload)]
+    );
+  }
+  return payload;
+}
+async function piSessionMeta(channel) {
+  const row = await piLoadPortalSession(channel);
+  if (!row || !row.storageState) return { connected: false };
+  return { connected: true, updatedAt: row.updatedAt || null, updatedBy: row.updatedBy || null };
+}
+async function piClearPortalSession(channel) {
+  const ch = String(channel || '').toLowerCase();
+  if (ch !== 'airbnb' && ch !== 'booking') return false;
+  const key = 'pi_portal_session_' + ch;
+  if (pool) {
+    try { await pool.query('DELETE FROM app_data WHERE key=$1', [key]); return true; }
+    catch (e) { console.error('[platform-invoices] clear session', e.message); return false; }
+  }
+  return false;
+}
+function piErrorsIndicateExpiredSession(errors, channel) {
+  const ch = String(channel || '').toLowerCase();
+  return (errors || []).some(function (e) {
+    if (String((e && e.channel) || '').toLowerCase() !== ch) return false;
+    const msg = String((e && (e.error || e.hint || '')) || '');
+    return /session expired|reconnect .*session|Connect Airbnb session|OTP blocked|captcha\/unusual|MFA\/OTP/i.test(msg);
+  });
+}
+
+app.get('/api/platform-invoices/status', async (req, res) => {
+  let playwrightOk = false;
+  try { require.resolve('playwright'); playwrightOk = true; } catch (e) {}
+  const airbnbSession = await piSessionMeta('airbnb');
+  const bookingSession = await piSessionMeta('booking');
+  const airbnbCreds = !!(process.env.AIRBNB_HOST_EMAIL && process.env.AIRBNB_HOST_PASSWORD);
+  const bookingCreds = !!(process.env.BOOKING_HOST_EMAIL && process.env.BOOKING_HOST_PASSWORD);
+  const airbnbEnvSession = !!(process.env.AIRBNB_STORAGE_STATE_B64 || process.env.AIRBNB_STORAGE_STATE);
+  const bookingEnvSession = !!(process.env.BOOKING_STORAGE_STATE_B64 || process.env.BOOKING_STORAGE_STATE);
+  const airbnbReady = playwrightOk && (airbnbSession.connected || airbnbEnvSession || airbnbCreds);
+  const bookingReady = playwrightOk && (bookingSession.connected || bookingEnvSession || bookingCreds);
+  res.json({
+    accountantEmail: PLATFORM_INV_ACCOUNTANT || null,
+    airbnbConfigured: airbnbCreds || airbnbSession.connected || airbnbEnvSession,
+    bookingConfigured: bookingCreds || bookingSession.connected || bookingEnvSession,
+    airbnbSession,
+    bookingSession,
+    airbnbReady,
+    bookingReady,
+    pullAvailable: !!(airbnbReady || bookingReady),
+    playwright: playwrightOk,
+    bookingExtranet: 'https://admin.booking.com/',
+    automation: 'pull-first',
+    inAppConnectAirbnb: !!(playwrightOk && airbnbCreds),
+    note: 'Automated pull. Booking.com = one invoice per apartment via admin.booking.com. Connect portal sessions once if captcha/OTP blocks password login; Pull refreshes sessions and downloads PDFs.'
+  });
+});
+app.put('/api/platform-invoices/sessions/:channel', async (req, res) => {
+  try {
+    const channel = String(req.params.channel || '').toLowerCase();
+    const b = req.body || {};
+    let state = b.storageState;
+    if (!state && b.storageStateB64) {
+      state = JSON.parse(Buffer.from(String(b.storageStateB64), 'base64').toString('utf8'));
+    }
+    if (!state && typeof b.stateJson === 'string') state = JSON.parse(b.stateJson);
+    if (!state || typeof state !== 'object') return res.status(400).json({ error: 'storageState or storageStateB64 required' });
+    const saved = await piSavePortalSession(channel, state, req.acctUser || b.by || '');
+    res.json({ ok: true, channel, updatedAt: saved.updatedAt });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+app.delete('/api/platform-invoices/sessions/:channel', async (req, res) => {
+  try {
+    const channel = String(req.params.channel || '').toLowerCase();
+    if (channel !== 'airbnb' && channel !== 'booking') return res.status(400).json({ error: 'channel must be airbnb|booking' });
+    const key = 'pi_portal_session_' + channel;
+    if (pool) await pool.query('DELETE FROM app_data WHERE key=$1', [key]);
+    res.json({ ok: true, channel });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── In-app Airbnb Connect (OTP in the UI — no laptop terminal) ───────────────
+const _piLoginJobs = new Map();
+const PI_LOGIN_TTL_MS = 30 * 60 * 1000;
+
+function piOtpDiagnosticPublic(diag) {
+  if (!diag || typeof diag !== 'object') return null;
+  const methods = { auto: true, button: true, enter: true, none: true };
+  const events = Array.isArray(diag.events) ? diag.events.slice(-8).map(function (event) {
+    const status = Number(event && event.status);
+    const timestamp = Number(event && event.timestamp);
+    const method = String((event && event.method) || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 10);
+    const submitMethod = String((event && event.submitMethod) || 'none').toLowerCase();
+    return {
+      path: String((event && event.path) || '').split(/[?#]/)[0].slice(0, 200),
+      method: method,
+      status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+      timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+      submitMethod: methods[submitMethod] ? submitMethod : 'none'
+    };
+  }) : [];
+  const dom = diag.dom && typeof diag.dom === 'object' ? diag.dom : {};
+  const submitMethod = String(dom.submitMethod || 'none').toLowerCase();
+  return {
+    events: events,
+    dom: {
+      inputVisible: dom.inputVisible === true,
+      inputCount: Math.max(0, Math.min(20, Number(dom.inputCount) || 0)),
+      formExists: dom.formExists === true,
+      submitMethod: methods[submitMethod] ? submitMethod : 'none',
+      validation: dom.validation === true
+    }
+  };
+}
+
+function piLoginPublic(job) {
+  if (!job) return null;
+  return {
+    id: job.id,
+    channel: job.channel,
+    status: job.status,
+    error: job.error || null,
+    hint: job.hint || null,
+    pageSnippet: job.pageSnippet || null,
+    delivery: job.delivery || null,
+    canEmail: !!job.canEmail,
+    smsStuck: !!job.smsStuck,
+    clickables: Array.isArray(job.clickables) ? job.clickables.slice(0, 24) : null,
+    captcha: job.status === 'awaiting_captcha' ? {
+      width: 1440,
+      height: 900,
+      rev: job.captchaRev || 0
+    } : null,
+    diagnostics: job.otpDiagnostic ? { otp: piOtpDiagnosticPublic(job.otpDiagnostic) } : null,
+    interactive: job.page ? {
+      width: 1440,
+      height: 900,
+      rev: job.interactiveRev || 0,
+      url: (function () {
+        try { return String(job.page.url() || '').replace(/[?#].*$/, '').slice(0, 200); }
+        catch (e) { return ''; }
+      })()
+    } : null,
+    sessionSaved: !!job._piSessionSaved,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt
+  };
+}
+async function piLoginCleanup(job, keepPublic) {
+  try { if (job && job.browser) await job.browser.close().catch(function () {}); } catch (e) {}
+  if (job) {
+    job.browser = null;
+    job.context = null;
+    job.page = null;
+    if (!keepPublic) _piLoginJobs.delete(job.id);
+  }
+}
+function piLoginSweep() {
+  const now = Date.now();
+  for (const [id, job] of _piLoginJobs.entries()) {
+    if (now - (job.createdAt || now) > PI_LOGIN_TTL_MS) piLoginCleanup(job, false);
+  }
+}
+(function () {
+  const t = setInterval(piLoginSweep, 60000);
+  if (t && typeof t.unref === 'function') t.unref();
+})();
+
+async function piAirbnbPageLooksLoggedIn(page) {
+  const url = page.url();
+  // Login footer contains the word "Hosting" — never treat body text as logged-in.
+  if (/log.?in|sign.?in|authenticate/i.test(url)) return false;
+  if (await page.locator('input[type="password"]:visible, #otp-code-input:visible, #phone-or-email:visible').count()) return false;
+  const text = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ');
+  if (/enter your password|log in to continue|try another way|verify that you.?re human/i.test(text) && !/airbnb\.com\/hosting/i.test(url)) return false;
+  if (/airbnb\.com\/hosting(\/|$|\?)/i.test(url)) return true;
+  if (/airbnb\.com\/(account(?:-settings)?|users\/show|become-a-host)(\/|$|\?)/i.test(url)) return true;
+  const avatar = await page.locator('[data-testid="header-avatar"]:visible, [data-testid="cypress-headernav-profile"]:visible').count();
+  return avatar > 0;
+}
+async function piAirbnbPageLooksReadyToSave(page) {
+  const url = page.url();
+  if (!url || !/airbnb\.com/i.test(url)) return false;
+  if (await piAirbnbHasHumanCheck(page)) return false;
+  if (await page.locator('input[type="password"]:visible, #otp-code-input:visible, #phone-or-email:visible').count()) return false;
+  return true;
+}
+async function piAirbnbSaveLiveSession(job) {
+  if (!job || !job.context) return false;
+  const state = await job.context.storageState();
+  const cookies = (state && Array.isArray(state.cookies)) ? state.cookies : [];
+  if (cookies.length < 3) return false;
+  await piSavePortalSession('airbnb', state, job.by || 'in-app-connect');
+  job._piSessionSaved = true;
+  job.updatedAt = Date.now();
+  return true;
+}
+async function piAirbnbHarvestLiveJobs() {
+  let saved = false;
+  for (const job of _piLoginJobs.values()) {
+    if (!job || !job.page || !job.context) continue;
+    if (job.status === 'error' || job.status === 'starting' || job.status === 'logging_in') continue;
+    try {
+      await piAirbnbRunBrowserAction(job, async function () {
+        if (await piAirbnbHasHumanCheck(job.page)) return;
+        const ready = (await piAirbnbPageLooksLoggedIn(job.page)) || (await piAirbnbPageLooksReadyToSave(job.page));
+        if (!ready) return;
+        job._piOtpAccepted = true;
+        saved = (await piAirbnbSaveLiveSession(job)) || saved;
+        try {
+          await piAirbnbFinishAndSave(job);
+        } catch (eSave) {
+          if (job._piSessionSaved) {
+            job.status = 'connected';
+            job.error = null;
+            job.hint = 'Airbnb session saved from the in-app browser. You can Pull now.';
+            job.updatedAt = Date.now();
+          }
+        }
+      });
+    } catch (eHarvest) {}
+  }
+  return saved;
+}
+async function piAirbnbNeedsOtp(page) {
+  const otpVisible = await page.locator('#otp-code-input:visible, input[autocomplete="one-time-code"]:visible').count();
+  return otpVisible > 0;
+}
+async function piAirbnbOtpDeliveryKind(page) {
+  const text = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ').trim();
+  if (await page.locator('#otp-code-input').count()) return 'email';
+  if (/sent a code to\s+[\w.+-]+@[\w.-]+/i.test(text)) return 'email';
+  if (/whats\s*app/i.test(text)) return 'whatsapp';
+  if (/we texted|sent a text|texted a code|text message|\bsms\b/i.test(text)) return 'sms';
+  if (/email/i.test(text) && !/we texted|sent a text|texted a code|text message|\bsms\b/i.test(text)) return 'email';
+  return 'unknown';
+}
+async function piAirbnbOtpDeliveryHint(page, meta) {
+  meta = meta || {};
+  const text = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ').trim();
+  const email = (text.match(/[\w.+-]+@[\w.-]+\.\w+/) || [])[0];
+  const phone = (text.match(/\*{2,}\d{2,4}|\d{2,3}\*{2,}\d{2,4}|ending in\s*\d{2,4}/i) || [])[0];
+  const kind = meta.delivery || await piAirbnbOtpDeliveryKind(page);
+  if (meta.smsStuck || (kind === 'sms' && meta.canEmail === false)) {
+    return 'Airbnb still on SMS' + (phone ? (' (' + phone + ')') : '') +
+      '. Tap Resend as email — Connect now forces Try another way → email when Airbnb offers it.';
+  }
+  if (kind === 'email') {
+    return 'Airbnb usually emails this code' + (email ? (' to ' + email) : ' (check the host inbox + spam)') + '.';
+  }
+  if (kind === 'whatsapp') {
+    return 'Airbnb says it sent a WhatsApp code' + (phone ? (' (' + phone + ')') : '') + '. Check WhatsApp on the host phone.';
+  }
+  if (kind === 'sms') {
+    return 'Airbnb says it sent a text' + (phone ? (' (' + phone + ')') : '') +
+      '. If it does not arrive within a minute, tap Resend as email — or Paste session JSON if email is not offered.';
+  }
+  return 'Check the Airbnb host email inbox first (and spam). SMS often does not arrive for this login.';
+}
+async function piAirbnbClickMatching(page, patterns, opts) {
+  opts = opts || {};
+  const maxLen = opts.maxLen || 100;
+  const clicked = await page.evaluate(function (args) {
+    var pats = args.patterns || [];
+    var maxLen = args.maxLen || 100;
+    function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
+    var res = [];
+    for (var i = 0; i < pats.length; i++) {
+      try { res.push(new RegExp(pats[i], 'i')); } catch (e) {}
+    }
+    var nodes = Array.prototype.slice.call(document.querySelectorAll(
+      'button, a, [role="button"], [role="link"], [role="menuitem"], [role="option"], label, summary'
+    ));
+    var extras = Array.prototype.slice.call(document.querySelectorAll('div, span, p, li'));
+    for (var e = 0; e < extras.length; e++) {
+      var el = extras[e];
+      var t0 = norm(el.innerText);
+      if (!t0 || t0.length > maxLen) continue;
+      if (el.childElementCount > 4) continue;
+      nodes.push(el);
+    }
+    var seen = [];
+    for (var n = 0; n < nodes.length; n++) {
+      var node = nodes[n];
+      if (!node || seen.indexOf(node) >= 0) continue;
+      seen.push(node);
+      var t = norm(node.innerText || node.textContent);
+      if (!t || t.length > maxLen) continue;
+      var ok = false;
+      for (var r = 0; r < res.length; r++) {
+        if (res[r].test(t)) { ok = true; break; }
+      }
+      if (!ok) continue;
+      try {
+        node.scrollIntoView({ block: 'center', inline: 'nearest' });
+        node.click();
+        return t;
+      } catch (err) {}
+    }
+    return null;
+  }, { patterns: patterns, maxLen: maxLen });
+  if (clicked) await page.waitForTimeout(opts.wait || 1400);
+  return clicked;
+}
+async function piAirbnbListClickables(page) {
+  return page.evaluate(function () {
+    function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
+    var out = [];
+    var nodes = document.querySelectorAll('button, a, [role="button"], [role="link"], [role="menuitem"], label');
+    for (var i = 0; i < nodes.length; i++) {
+      var t = norm(nodes[i].innerText || nodes[i].textContent);
+      if (!t || t.length > 80) continue;
+      if (out.indexOf(t) < 0) out.push(t);
+      if (out.length >= 30) break;
+    }
+    return out;
+  }).catch(function () { return []; });
+}
+async function piAirbnbOpenOtpOptions(page) {
+  return !!(await piAirbnbClickMatching(page, [
+    'more options', 'other options', 'try another', 'another way', 'another method',
+    'get a code another', 'need help', "didn'?t get", 'did not get', "haven'?t received",
+    'have not received', 'choose a different', 'different method', 'άλλες επιλογές',
+    'άλλος τρόπος', 'δεν έλαβα', 'βοήθεια'
+  ], { wait: 1200 }));
+}
+async function piAirbnbDismissOverlays(page) {
+  try { await page.keyboard.press('Escape'); } catch (e) {}
+  await page.waitForTimeout(300);
+  try { await page.keyboard.press('Escape'); } catch (e) {}
+  await page.waitForTimeout(200);
+}
+async function piAirbnbFillPassword(page, pass) {
+  // Do not press Escape — that dismisses reCAPTCHA / Airlock.
+  const modalClose = page.locator('#dls-modal-container [aria-label="Close"], [aria-label="Close"]').first();
+  if (await modalClose.count()) await modalClose.click({ timeout: 2000 }).catch(function () {});
+  const has = await page.locator('input[name="password"], input[type="password"]').count();
+  if (!has) return false;
+  const passInput = page.locator('input[name="password"], input[type="password"]').first();
+  await passInput.click({ timeout: 4000 }).catch(function () {});
+  await passInput.fill('', { force: true, timeout: 8000 }).catch(function () {});
+  await passInput.pressSequentially(String(pass || ''), { delay: 28, force: true }).catch(async function () {
+    await page.keyboard.type(String(pass || ''), { delay: 28 });
+  });
+  const cont = page.locator('button:has-text("Continue"), button:has-text("Log in"), button:has-text("Sign in"), button[type="submit"]').first();
+  if (await cont.count()) await cont.click({ timeout: 5000 }).catch(function () {
+    return cont.click({ force: true, timeout: 4000 });
+  }).catch(function () {});
+  await page.waitForTimeout(5000);
+  return true;
+}
+async function piAirbnbHasHumanCheck(page) {
+  const airlock = page.locator('#airlock-inline-container').first();
+  if (await airlock.count() && await airlock.isVisible().catch(function () { return false; })) return true;
+  const anchor = page.locator('iframe[src*="recaptcha/api2/anchor"]').first();
+  if (await anchor.count() && await anchor.isVisible().catch(function () { return false; })) return true;
+  const challenge = page.locator('iframe[src*="recaptcha/api2/bframe"]').first();
+  if (await challenge.count()) {
+    const box = await challenge.boundingBox().catch(function () { return null; });
+    if (box && box.y >= 0 && box.width > 100 && box.height > 100) return true;
+  }
+  const t = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ');
+  return /verify that you.?re human|select all images|click verify/i.test(t);
+}
+async function piAirbnbPassHumanCheck(page) {
+  if (!(await piAirbnbHasHumanCheck(page))) return false;
+  const modalClose = page.locator('#dls-modal-container [aria-label="Close"], [aria-label="Close"]').first();
+  if (await modalClose.count()) await modalClose.click({ timeout: 2500 }).catch(function () {});
+  await page.waitForTimeout(500);
+  const box = page.frameLocator('iframe[src*="recaptcha/api2/anchor"]').first();
+  try {
+    await box.locator('#recaptcha-anchor').click({ timeout: 6000 });
+  } catch (e) {
+    await box.locator('.recaptcha-checkbox-border').click({ timeout: 4000 }).catch(function () {});
+  }
+  const start = Date.now();
+  while (Date.now() - start < 10000) {
+    if (await page.locator('#otp-code-input').count()) return true;
+    const checked = await box.locator('#recaptcha-anchor').getAttribute('aria-checked').catch(function () { return null; });
+    if (checked === 'true') return true;
+    const bf = page.locator('iframe[src*="recaptcha/api2/bframe"]').first();
+    const geom = await bf.boundingBox().catch(function () { return null; });
+    if (geom && geom.y > 0 && geom.height > 120) return false;
+    await page.waitForTimeout(500);
+  }
+  return false;
+}
+async function piAirbnbMarkAwaitingCaptcha(job) {
+  if (!job || !job.page) return false;
+  if (!(await piAirbnbHasHumanCheck(job.page))) return false;
+  job.status = 'awaiting_captcha';
+  job.error = null;
+  job.hint = 'Airbnb needs a picture check. Click every matching picture in the image below, then click the blue Verify button inside the image.';
+  job.captchaRev = (job.captchaRev || 0) + 1;
+  job.updatedAt = Date.now();
+  return true;
+}
+async function piAirbnbInteractiveSnapshot(job, hint) {
+  if (!job || !job.page) return;
+  job.interactiveRev = (job.interactiveRev || 0) + 1;
+  job.updatedAt = Date.now();
+  if (hint) job.hint = hint;
+}
+async function piAirbnbRunBrowserAction(job, fn) {
+  const previous = job._piBrowserActionTail || Promise.resolve();
+  let release;
+  const thisAction = new Promise(function (resolve) { release = resolve; });
+  job._piBrowserActionTail = thisAction;
+  await previous.catch(function () {});
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+async function piAirbnbInteractiveAdvance(job) {
+  if (!job || !job.page || job._piFinishing) return;
+  const page = job.page;
+  try {
+    if (page.isClosed && page.isClosed()) return;
+  } catch (eClosed) { return; }
+  if ((await piAirbnbPageLooksLoggedIn(page)) || (await piAirbnbPageLooksReadyToSave(page))) {
+    job._piFinishing = true;
+    job._piOtpAccepted = true;
+    try {
+      await piAirbnbSaveLiveSession(job);
+      await piAirbnbFinishAndSave(job);
+    } catch (eSave) {
+      job._piFinishing = false;
+      if (job._piSessionSaved) {
+        job.status = 'connected';
+        job.error = null;
+        job.hint = 'Airbnb session saved from the in-app browser. You can Pull now.';
+        job.updatedAt = Date.now();
+        return;
+      }
+      job._piOtpAccepted = false;
+      job.status = 'interactive';
+      job.error = null;
+      await piAirbnbInteractiveSnapshot(job, 'Hosting was not confirmed yet. Keep operating Airbnb below until Hosting opens.');
+    }
+    return;
+  }
+  if (await piAirbnbHasHumanCheck(page)) {
+    job.status = 'awaiting_captcha';
+    job.error = null;
+    await piAirbnbInteractiveSnapshot(job, 'Complete Airbnb verification directly in the interactive browser below.');
+    return;
+  }
+  if ((await page.locator('#otp-code-input:visible').count().catch(function () { return 0; })) || (await piAirbnbNeedsOtp(page))) {
+    job.status = 'awaiting_otp';
+    job.error = null;
+    await piAirbnbInteractiveSnapshot(job, 'Click the code field in the Airbnb screen, type the newest email code, then press Enter.');
+    return;
+  }
+  job.status = 'interactive';
+  job.error = null;
+  await piAirbnbInteractiveSnapshot(job, 'Operate Airbnb directly below. Complete password/code prompts until Hosting opens.');
+}
+async function piAirbnbContinueAfterCaptcha(job) {
+  const page = job.page;
+  const settleUntil = Date.now() + 15000;
+  while (true) {
+    // A tile click normally leaves the challenge visible. Return it immediately;
+    // only Verify removes the challenge and needs the longer settling window.
+    if (await piAirbnbHasHumanCheck(page)) {
+      await piAirbnbMarkAwaitingCaptcha(job);
+      return;
+    }
+    if ((await page.locator('#otp-code-input').count()) || (await piAirbnbNeedsOtp(page))) {
+      await piAirbnbMarkAwaitingOtp(job);
+      return;
+    }
+    if (await piAirbnbPageLooksLoggedIn(page)) {
+      job._piOtpAccepted = true;
+      await piAirbnbFinishAndSave(job);
+      return;
+    }
+    if (Date.now() >= settleUntil) break;
+    job.status = 'starting';
+    job.error = null;
+    job.hint = 'Picture check completed. Waiting for Airbnb to continue the original email-code request…';
+    job.updatedAt = Date.now();
+    await page.waitForTimeout(400);
+  }
+  job.status = 'error';
+  job.error = 'Airbnb accepted the picture check but did not continue the original email-code request. Click Try again to start a fresh Connect attempt.';
+  job.hint = 'No additional email-code request was sent.';
+  job.updatedAt = Date.now();
+  await piLoginCleanup(job, true);
+}
+async function piAirbnbWaitForEmailOtpPage(page, ms) {
+  const start = Date.now();
+  while (Date.now() - start < (ms || 8000)) {
+    if (await page.locator('#otp-code-input').count()) return true;
+    const t = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ');
+    if (/we sent a code to\s+[\w.+-]+@/i.test(t)) return true;
+    await page.waitForTimeout(400);
+  }
+  return !!(await page.locator('#otp-code-input').count());
+}
+async function piAirbnbWaitForEmailOtpPage(page, ms) {
+  const start = Date.now();
+  while (Date.now() - start < (ms || 8000)) {
+    if (await page.locator('#otp-code-input').count()) return true;
+    const t = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ');
+    if (/we sent a code to\s+[\w.+-]+@/i.test(t)) return true;
+    await page.waitForTimeout(400);
+  }
+  return !!(await page.locator('#otp-code-input').count());
+}
+function piAirbnbAuthPath(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || ''));
+    if (!/(^|\.)airbnb\.[a-z.]+$/i.test(parsed.hostname)) return '';
+    const pathname = String(parsed.pathname || '');
+    return /\/(?:api\/[^/]+\/)?auth(?:\/|$)/i.test(pathname) ? pathname.slice(0, 200) : '';
+  } catch (e) { return ''; }
+}
+function piAirbnbRecordOtpAuthRequest(page, req) {
+  if (!page || !page._piOtpCollecting) return;
+  const path = piAirbnbAuthPath(req.url());
+  if (!path) return;
+  const event = {
+    path: path,
+    method: String(req.method() || '').toUpperCase(),
+    status: null,
+    timestamp: Date.now(),
+    submitMethod: page._piOtpSubmitMethod || 'auto'
+  };
+  page._piOtpAuthEvents = (Array.isArray(page._piOtpAuthEvents) ? page._piOtpAuthEvents : []).concat([event]).slice(-8);
+}
+function piAirbnbRecordOtpAuthResponse(page, res) {
+  if (!page || !page._piOtpCollecting) return;
+  const path = piAirbnbAuthPath(res.url());
+  if (!path) return;
+  const method = String(res.request().method() || '').toUpperCase();
+  const events = Array.isArray(page._piOtpAuthEvents) ? page._piOtpAuthEvents : [];
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].status == null && events[i].path === path && events[i].method === method) {
+      events[i].status = res.status();
+      return;
+    }
+  }
+}
+function piAirbnbArmEmailOtpGuard(page) {
+  if (!page || page._piEmailOtpArmed) return;
+  page._piEmailOtpArmed = true;
+  page._piEmailOtpPosts = 0;
+  page._piEmailOtpResponses = 0;
+  page._piEmailOtpOk = 0;
+  page._piEmailOtpLast = 0;
+  page.on('request', function (req) {
+    piAirbnbRecordOtpAuthRequest(page, req);
+    if (req.method() === 'POST' && /\/api\/v2\/auth\/challenge\/email_otp/i.test(req.url())) {
+      page._piEmailOtpPosts = (page._piEmailOtpPosts || 0) + 1;
+    }
+  });
+  page.on('response', function (res) {
+    piAirbnbRecordOtpAuthResponse(page, res);
+    if (/\/api\/v2\/auth\/challenge\/email_otp/i.test(res.url())) {
+      page._piEmailOtpResponses = (page._piEmailOtpResponses || 0) + 1;
+      page._piEmailOtpLast = res.status();
+      if (res.status() === 200) page._piEmailOtpOk = (page._piEmailOtpOk || 0) + 1;
+    }
+  });
+}
+async function piAirbnbPreferEmailDelivery(page, opts) {
+  opts = opts || {};
+  piAirbnbArmEmailOtpGuard(page);
+  if (await page.locator('#otp-code-input').count()) return 'email';
+  const t0 = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ');
+  if (/we sent a code to\s+[\w.+-]+@/i.test(t0)) return 'email';
+  if (!opts.retry && ((page._piEmailOtpOk || 0) > 0 || ((page._piEmailOtpPosts || 0) > 0 && page._piEmailOtpLast !== 420) || page._piPreferEmailClicked)) {
+    return (await piAirbnbWaitForEmailOtpPage(page, 8000)) ? 'email' : null;
+  }
+  if (opts.retry) page._piPreferEmailClicked = false;
+
+  var tryWay = page.locator('button:has-text("Try another way")').first();
+  if (await tryWay.count()) {
+    try {
+      await tryWay.waitFor({ state: 'visible', timeout: 8000 });
+      await tryWay.click({ timeout: 5000 });
+    } catch (e) {
+      await tryWay.click({ force: true, timeout: 4000 }).catch(function () {});
+    }
+  }
+  var emailOpt = page.locator('[data-testid="fallback-option-email-otp"]').first();
+  try {
+    await emailOpt.waitFor({ state: 'visible', timeout: 8000 });
+  } catch (e2) {
+    emailOpt = page.getByText(/get a code via email/i).first();
+  }
+  if (await emailOpt.count()) {
+    page._piPreferEmailClicked = true;
+    try {
+      await emailOpt.click({ timeout: 5000 });
+    } catch (e3) {
+      await emailOpt.click({ force: true, timeout: 4000 }).catch(function () {});
+    }
+    if (await piAirbnbWaitForEmailOtpPage(page, 12000)) return 'email';
+  }
+  return (await page.locator('#otp-code-input').count()) ? 'email' : null;
+}
+async function piAirbnbResendCode(page) {
+  const body = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ');
+  if (/wait 1 minute before requesting a code/i.test(body)) {
+    return { ok: false, cooldown: true, status: page._piEmailOtpLast || 0 };
+  }
+  var sendNew = page.locator('button:has-text("send a new code"), a:has-text("send a new code")').first();
+  if (!(await sendNew.count()) || !(await sendNew.isVisible().catch(function () { return false; }))) {
+    return { ok: false, cooldown: false, status: 0 };
+  }
+  const beforeResponses = page._piEmailOtpResponses || 0;
+  const beforeOk = page._piEmailOtpOk || 0;
+  try {
+    await sendNew.click({ timeout: 4000 });
+  } catch (eClick) {
+    return { ok: false, cooldown: false, status: 0 };
+  }
+  const deadline = Date.now() + 6000;
+  while (Date.now() < deadline && (page._piEmailOtpResponses || 0) <= beforeResponses) {
+    await page.waitForTimeout(200);
+  }
+  const after = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ');
+  const responded = (page._piEmailOtpResponses || 0) > beforeResponses;
+  const accepted = responded && (page._piEmailOtpOk || 0) > beforeOk && page._piEmailOtpLast === 200;
+  return {
+    ok: accepted,
+    cooldown: /wait 1 minute before requesting a code/i.test(after),
+    status: responded ? (page._piEmailOtpLast || 0) : 0
+  };
+}
+async function piAirbnbCaptureOtpDiagnostic(page, single) {
+  const inputCount = await page.locator('#otp-code-input').count().catch(function () { return 0; });
+  const inputVisible = inputCount > 0 && await page.locator('#otp-code-input').first().isVisible().catch(function () { return false; });
+  const formExists = await single.evaluate(function (input) { return !!input.form; }).catch(function () { return false; });
+  page._piOtpDiagnostic = {
+    events: Array.isArray(page._piOtpAuthEvents) ? page._piOtpAuthEvents.slice(-8) : [],
+    dom: {
+      inputVisible: inputVisible,
+      inputCount: inputCount,
+      formExists: formExists,
+      submitMethod: page._piOtpSubmitMethod || 'none',
+      validation: page._piOtpValidationError === true
+    }
+  };
+  page._piOtpCollecting = false;
+}
+
+async function piAirbnbFillOtp(page, otp) {
+  const code = String(otp || '').replace(/\D/g, '');
+  if (!code) throw new Error('Empty OTP');
+  const single = page.locator('#otp-code-input').first();
+  if (!(await single.count())) throw new Error('OTP input not found on Airbnb page');
+  await single.waitFor({ state: 'visible', timeout: 8000 });
+  page._piOtpAuthEvents = [];
+  page._piOtpSubmitMethod = 'auto';
+  page._piOtpValidationError = false;
+  page._piOtpCollecting = true;
+  // Do not press Escape — that leaves the email-code step. Trusted sequential
+  // typing lets Airbnb's own input handlers auto-submit the completed code.
+  await single.click({ force: true, timeout: 4000 }).catch(function () {});
+  await single.fill('', { force: true }).catch(function () {});
+  await single.pressSequentially(code, { delay: 90 });
+  let got = String(await single.inputValue().catch(function () { return ''; })).replace(/\D/g, '');
+  if (got !== code) {
+    await single.click({ force: true }).catch(function () {});
+    await page.keyboard.press('ControlOrMeta+A').catch(function () {});
+    await page.keyboard.press('Backspace').catch(function () {});
+    await page.keyboard.type(code, { delay: 90 });
+    got = String(await single.inputValue().catch(function () { return ''; })).replace(/\D/g, '');
+  }
+  page._piOtpTyped = got;
+  page._piOtpExpected = code;
+  if (got !== code) {
+    page._piOtpSubmitMethod = 'none';
+    await piAirbnbCaptureOtpDiagnostic(page, single);
+    return false;
+  }
+
+  // The final digit does not auto-submit every Airbnb variant. Prefer a visible,
+  // enabled Continue/Submit in the active login modal (including sibling footers),
+  // then a visible global control. Hidden password-page buttons are excluded.
+  const submitSelector = 'button:visible:not([disabled]):not([aria-disabled="true"]), [role="button"]:visible:not([aria-disabled="true"])';
+  let otpContinue = null;
+  let otpScope = single.locator('xpath=ancestor::*[@id="dls-modal-container"][1]');
+  if (!(await otpScope.count())) otpScope = single.locator('xpath=ancestor::*[@role="dialog"][1]');
+  if (await otpScope.count()) {
+    otpContinue = otpScope.locator(submitSelector).filter({ hasText: /^\s*(Continue|Submit)\s*$/i }).first();
+  }
+  if (!otpContinue || !(await otpContinue.count())) {
+    otpContinue = page.locator(submitSelector).filter({ hasText: /^\s*(Continue|Submit)\s*$/i }).first();
+  }
+  let submitted = false;
+  if (await otpContinue.count()) {
+    page._piOtpSubmitMethod = 'button';
+    try {
+      await otpContinue.click({ timeout: 3000 });
+      submitted = true;
+    } catch (eClick) {
+      page._piOtpSubmitMethod = (page._piOtpAuthEvents || []).length ? 'auto' : 'none';
+    }
+  }
+  if (!submitted) {
+    page._piOtpSubmitMethod = 'enter';
+    try {
+      await single.press('Enter', { timeout: 3000 });
+      submitted = true;
+    } catch (eEnter) {
+      page._piOtpSubmitMethod = (page._piOtpAuthEvents || []).length ? 'auto' : 'none';
+    }
+  }
+  page._piOtpSubmitted = submitted;
+
+  // The password field stays mounted behind Airbnb's OTP modal, so it cannot
+  // signal acceptance. Wait up to 15s for the OTP input itself to leave/hide,
+  // or for navigation to the authenticated Hosting/account route.
+  const otpUrl = page.url();
+  try {
+    await Promise.race([
+      page.waitForFunction(function () {
+        var el = document.querySelector('#otp-code-input');
+        if (!el) return true;
+        var rect = el.getBoundingClientRect();
+        var style = window.getComputedStyle(el);
+        return !rect.width || !rect.height || style.display === 'none' || style.visibility === 'hidden';
+      }, null, { timeout: 15000 }),
+      page.waitForURL(function (url) {
+        return url.toString() !== otpUrl && /hosting|account/i.test(url.pathname);
+      }, { timeout: 15000 })
+    ]);
+  } catch (e) {}
+  const otpAlerts = await page.locator('[role="alert"]:visible, [aria-live="assertive"]:visible, [aria-live="polite"]:visible').allInnerTexts().catch(function () { return []; });
+  const otpAlertText = otpAlerts.join(' ').replace(/\s+/g, ' ');
+  page._piOtpValidationError = /(?:code|verification).{0,80}(?:incorrect|invalid|expired|doesn.t match|try again)|(?:incorrect|invalid|expired).{0,80}(?:code|verification)/i.test(otpAlertText);
+  await piAirbnbCaptureOtpDiagnostic(page, single);
+  return true;
+}
+async function piAirbnbSnapshotOtpMeta(job) {
+  let delivery = await piAirbnbOtpDeliveryKind(job.page);
+  job.delivery = delivery;
+  job.canEmail = delivery === 'email';
+  job.smsStuck = delivery === 'sms' && !job.canEmail;
+  job.hint = await piAirbnbOtpDeliveryHint(job.page, {
+    delivery: job.delivery,
+    canEmail: job.canEmail,
+    smsStuck: job.smsStuck
+  });
+  job.updatedAt = Date.now();
+  try {
+    job.pageSnippet = (await job.page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ').trim().slice(0, 320);
+  } catch (e) { job.pageSnippet = ''; }
+  try {
+    job.clickables = await piAirbnbListClickables(job.page);
+  } catch (e) { job.clickables = []; }
+}
+async function piAirbnbRefreshOtpMeta(job, opts) {
+  opts = opts || {};
+  // Never re-request email while already on email OTP unless explicitly forced (Resend)
+  if (opts.forcePrefer) {
+    await piAirbnbPreferEmailDelivery(job.page);
+  }
+  await piAirbnbSnapshotOtpMeta(job);
+}
+async function piAirbnbMarkAwaitingOtp(job) {
+  // Snapshot only. PreferEmail must already have run exactly once in the worker.
+  job.status = 'awaiting_otp';
+  await piAirbnbSnapshotOtpMeta(job);
+  if (await job.page.locator('#otp-code-input').count()) {
+    job.hint = 'One code was emailed. Enter it below. Resend is locked for 1 minute — tapping it earlier will not send.';
+  } else {
+    job.hint = 'Airbnb did not show the email-code screen. Cancel and Connect once more.';
+  }
+}
+async function piAirbnbFinishAndSave(job) {
+  if (!job || !job._piOtpAccepted) {
+    throw new Error('Airbnb Connect requires the email code. Enter it in Collect — do not Pull until the code is accepted.');
+  }
+  const page = job.page;
+  const context = job.context;
+  // Prefer staying on whatever Airbnb navigated to after auth; then open hosting
+  await page.waitForTimeout(1500);
+  if (await piAirbnbNeedsOtp(page)) {
+    throw new Error('Still on Airbnb verification — enter the newest email code and Submit again.');
+  }
+  const targets = [
+    'https://www.airbnb.com/hosting/reservations',
+    'https://www.airbnb.com/hosting',
+    'https://www.airbnb.com/hosting/today'
+  ];
+  let loggedIn = false;
+  for (let t = 0; t < targets.length; t++) {
+    await page.goto(targets[t], { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(function () {});
+    await page.waitForTimeout(2500);
+    if (await piAirbnbNeedsOtp(page)) {
+      throw new Error('Airbnb still wants a verification code after login. Enter the newest email code.');
+    }
+    if (await piAirbnbPageLooksLoggedIn(page)) { loggedIn = true; break; }
+  }
+  if (!loggedIn) {
+    const url = page.url();
+    const snip = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ').trim().slice(0, 160);
+    throw new Error('Airbnb login did not reach Hosting (url=' + url + '). ' + (snip || 'Check credentials/OTP and try again.'));
+  }
+  const state = await context.storageState();
+  await piSavePortalSession('airbnb', state, job.by || 'in-app-connect');
+  job.status = 'connected';
+  job.updatedAt = Date.now();
+  job.hint = 'Airbnb connected. You can Pull now.';
+  await piLoginCleanup(job, true);
+}
+async function piAirbnbLaunchBrowser(pw) {
+  const args = ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--no-sandbox'];
+  const proxy = process.env.PLAYWRIGHT_PROXY_SERVER || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+  const opts = { headless: true, args: args };
+  if (proxy) opts.proxy = { server: proxy };
+  try {
+    return await pw.chromium.launch(Object.assign({}, opts, { channel: 'chrome' }));
+  } catch (e) {
+    return await pw.chromium.launch(opts);
+  }
+}
+async function piAirbnbNewContext(browser) {
+  const context = await browser.newContext({
+    acceptDownloads: true,
+    viewport: { width: 1440, height: 900 },
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    locale: 'en-US',
+    timezoneId: process.env.PI_AIRBNB_TZ || 'Europe/Athens',
+    geolocation: { latitude: 37.9838, longitude: 23.7275 },
+    permissions: ['geolocation'],
+    extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' }
+  });
+  await context.addInitScript(function () {
+    Object.defineProperty(navigator, 'webdriver', { get: function () { return undefined; } });
+    window.chrome = { runtime: {} };
+  });
+  return context;
+}
+async function piAirbnbLoginWorker(job) {
+  const email = process.env.AIRBNB_HOST_EMAIL || '';
+  const pass = process.env.AIRBNB_HOST_PASSWORD || '';
+  let pw;
+  try { pw = require('playwright'); } catch (e) {
+    job.status = 'error';
+    job.error = 'playwright is not installed on this deploy';
+    job.updatedAt = Date.now();
+    return;
+  }
+  try {
+    job.status = 'starting';
+    job.updatedAt = Date.now();
+    const browser = await piAirbnbLaunchBrowser(pw);
+    job.browser = browser;
+    const context = await piAirbnbNewContext(browser);
+    job.context = context;
+    const page = await context.newPage();
+    job.page = page;
+    piAirbnbArmEmailOtpGuard(page);
+
+    await page.goto('https://www.airbnb.com/login', { waitUntil: 'domcontentloaded', timeout: 90000 });
+    await page.waitForTimeout(1500);
+    for (const sel of ['button:has-text("Accept")', 'button:has-text("Accept all")', 'button:has-text("OK")', '[data-testid="accept-btn"]']) {
+      const b = page.locator(sel).first();
+      if (await b.count()) await b.click({ timeout: 2000 }).catch(function () {});
+    }
+    const emailInput = page.locator('#phone-or-email, input[name="email"], input[type="email"], input[autocomplete="username"]').first();
+    await emailInput.waitFor({ state: 'visible', timeout: 30000 });
+    await emailInput.click();
+    await emailInput.fill('');
+    await emailInput.type(email, { delay: 35 });
+    await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
+    try {
+      await Promise.race([
+        page.locator('button:has-text("Try another way")').first().waitFor({ state: 'visible', timeout: 20000 }),
+        page.locator('input[type="password"]').first().waitFor({ state: 'visible', timeout: 20000 }),
+        page.locator('#otp-code-input').first().waitFor({ state: 'visible', timeout: 20000 })
+      ]);
+    } catch (eWait) {}
+    await page.waitForTimeout(2500);
+
+    async function piAirbnbAwaitOtpOrDone() {
+      if ((await page.locator('#otp-code-input').count()) || (await piAirbnbNeedsOtp(page))) {
+        await piAirbnbMarkAwaitingOtp(job);
+        return true;
+      }
+      if (await piAirbnbPageLooksLoggedIn(page)) {
+        job._piOtpAccepted = true;
+        await piAirbnbFinishAndSave(job);
+        return true;
+      }
+      return false;
+    }
+
+    if (await piAirbnbAwaitOtpOrDone()) return;
+
+    // Do not stop at the old "Signing in with the host password…" path.
+    // Exactly one Get-a-code-via-email click for this job. Airbnb may answer
+    // with a visible reCAPTCHA; keep that
+    // browser alive and relay the picture grid into Collect instead of failing.
+    job.hint = 'Opening Get a code via email…';
+    job.updatedAt = Date.now();
+    await piAirbnbPreferEmailDelivery(page);
+    if (await piAirbnbAwaitOtpOrDone()) return;
+    if (await piAirbnbHasHumanCheck(page) || page._piEmailOtpLast === 420) {
+      const passed = await piAirbnbPassHumanCheck(page);
+      if (await piAirbnbAwaitOtpOrDone()) return;
+      if (passed) {
+        await piAirbnbPreferEmailDelivery(page, { retry: true });
+        if (await piAirbnbAwaitOtpOrDone()) return;
+      }
+      if (await piAirbnbMarkAwaitingCaptcha(job)) return;
+    }
+
+    const bodyText = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\s+/g, ' ');
+    job.pageSnippet = bodyText.slice(0, 320);
+    try { job.clickables = await piAirbnbListClickables(page); } catch (eC) { job.clickables = []; }
+    // Keep the server-owned browser alive for direct user operation instead of
+    // failing on an Airbnb page variant automation does not understand.
+    job.status = 'interactive';
+    job.error = null;
+    job.pageSnippet = bodyText.slice(0, 320);
+    job.hint = 'Operate Airbnb directly below. Complete password/code prompts until Hosting opens.';
+    await piAirbnbInteractiveSnapshot(job);
+    return;
+    if (/select all images|click verify/i.test(bodyText)) {
+      throw new Error('Airbnb showed a picture check. Wait a minute, Cancel, and Connect again — do not Pull until Connect asks for the email code.');
+    }
+    if (/airlock|arkose|security check|unusual activity|captcha|verify that you.?re human/i.test(bodyText) || page._piEmailOtpLast === 420) {
+      throw new Error('Airbnb blocked this login (bot check). Cancel and Connect again — do not Pull until Connect asks for the email code.');
+    }
+    if (await page.locator('input[type="password"], #phone-or-email').count() || /enter your password|try another way/i.test(bodyText)) {
+      throw new Error('Airbnb is still on login (no email code screen). Cancel and Connect again — do not Pull until Connect asks for the email code and reaches Hosting.');
+    }
+    throw new Error('Airbnb did not open the email-code screen. Cancel and Connect again. Do not Pull until Connect asks for a code.');
+  } catch (e) {
+    job.status = 'error';
+    job.error = e.message || String(e);
+    job.updatedAt = Date.now();
+    await piLoginCleanup(job, true);
+  }
+}
+
+app.post('/api/platform-invoices/sessions/airbnb/login', async (req, res) => {
+  try {
+    piLoginSweep();
+    if (!(process.env.AIRBNB_HOST_EMAIL && process.env.AIRBNB_HOST_PASSWORD)) {
+      return res.status(503).json({
+        error: 'Airbnb host credentials not configured on the server',
+        hint: 'Set AIRBNB_HOST_EMAIL and AIRBNB_HOST_PASSWORD on Railway.'
+      });
+    }
+    let playwrightOk = false;
+    try { require.resolve('playwright'); playwrightOk = true; } catch (e) {}
+    if (!playwrightOk) return res.status(503).json({ error: 'playwright is not installed on this deploy' });
+
+    for (const job of _piLoginJobs.values()) {
+      if (job.status === 'starting' || job.status === 'awaiting_otp' || job.status === 'awaiting_captcha' || job.status === 'logging_in' || job.status === 'interactive') {
+        return res.json({ ok: true, job: piLoginPublic(job), resumed: true });
+      }
+    }
+    const jobId = 'al' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const job = {
+      id: jobId,
+      channel: 'airbnb',
+      status: 'starting',
+      error: null,
+      hint: 'Starting Airbnb login…',
+      by: req.acctUser || (req.body && req.body.by) || '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      browser: null,
+      context: null,
+      page: null
+    };
+    _piLoginJobs.set(jobId, job);
+    piAirbnbLoginWorker(job);
+    res.json({ ok: true, job: piLoginPublic(job) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/platform-invoices/sessions/airbnb/login/:jobId', async (req, res) => {
+  piLoginSweep();
+  const job = _piLoginJobs.get(String(req.params.jobId || ''));
+  if (!job) return res.status(404).json({ error: 'Login job not found or expired — start Connect again' });
+  if (job.page && (job.status === 'interactive' || job.status === 'awaiting_otp' || job.status === 'awaiting_captcha')) {
+    try {
+      await piAirbnbRunBrowserAction(job, async function () { await piAirbnbInteractiveAdvance(job); });
+    } catch (eAdvance) {}
+  }
+  res.json({ ok: true, job: piLoginPublic(job) });
+});
+
+app.get('/api/platform-invoices/sessions/airbnb/login/:jobId/browser.png', async (req, res) => {
+  try {
+    const job = _piLoginJobs.get(String(req.params.jobId || ''));
+    if (!job || !job.page) return res.status(404).json({ error: 'No active Airbnb browser' });
+    const png = await piAirbnbRunBrowserAction(job, async function () {
+      return await job.page.screenshot({ type: 'png' });
+    });
+    res.set('Cache-Control', 'no-store, max-age=0');
+    res.type('png').send(png);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/browser/click', async (req, res) => {
+  try {
+    const job = _piLoginJobs.get(String(req.params.jobId || ''));
+    if (!job || !job.page) return res.status(409).json({ error: 'No active Airbnb browser', job: piLoginPublic(job) });
+    const x = Number(req.body && req.body.x);
+    const y = Number(req.body && req.body.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1440 || y < 0 || y > 900) {
+      return res.status(400).json({ error: 'Invalid browser coordinates' });
+    }
+    await piAirbnbRunBrowserAction(job, async function () {
+      await job.page.mouse.click(x, y);
+      await job.page.waitForTimeout(350);
+      await piAirbnbInteractiveAdvance(job);
+    });
+    res.json({ ok: true, job: piLoginPublic(job) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/browser/type', async (req, res) => {
+  try {
+    const job = _piLoginJobs.get(String(req.params.jobId || ''));
+    if (!job || !job.page) return res.status(409).json({ error: 'No active Airbnb browser', job: piLoginPublic(job) });
+    const text = String((req.body && req.body.text) || '');
+    if (!text || text.length > 256) return res.status(400).json({ error: 'Type 1-256 characters' });
+    await piAirbnbRunBrowserAction(job, async function () {
+      await job.page.keyboard.type(text, { delay: 45 });
+      await job.page.waitForTimeout(350);
+      await piAirbnbInteractiveAdvance(job);
+    });
+    res.json({ ok: true, job: piLoginPublic(job) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/browser/key', async (req, res) => {
+  try {
+    const job = _piLoginJobs.get(String(req.params.jobId || ''));
+    if (!job || !job.page) return res.status(409).json({ error: 'No active Airbnb browser', job: piLoginPublic(job) });
+    const key = String((req.body && req.body.key) || '');
+    const allowed = ['Enter', 'Tab', 'Escape', 'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+    if (allowed.indexOf(key) < 0) return res.status(400).json({ error: 'Unsupported browser key' });
+    await piAirbnbRunBrowserAction(job, async function () {
+      await job.page.keyboard.press(key);
+      await job.page.waitForTimeout(500);
+      await piAirbnbInteractiveAdvance(job);
+    });
+    res.json({ ok: true, job: piLoginPublic(job) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/browser/save', async (req, res) => {
+  try {
+    const job = _piLoginJobs.get(String(req.params.jobId || ''));
+    if (!job || !job.page) return res.status(409).json({ error: 'No active Airbnb browser', job: piLoginPublic(job) });
+    await piAirbnbRunBrowserAction(job, async function () {
+      job._piOtpAccepted = true;
+      await piAirbnbSaveLiveSession(job);
+      try { await piAirbnbFinishAndSave(job); } catch (eSave) {
+        if (job._piSessionSaved) {
+          job.status = 'connected';
+          job.error = null;
+          job.hint = 'Airbnb session saved from the in-app browser. You can Pull now.';
+          job.updatedAt = Date.now();
+        } else {
+          throw eSave;
+        }
+      }
+    });
+    if (!job._piSessionSaved && job.status !== 'connected') {
+      return res.status(409).json({ error: 'Airbnb is not logged in yet — pass the code screen first', job: piLoginPublic(job) });
+    }
+    res.json({ ok: true, job: piLoginPublic(job) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/browser/refresh', async (req, res) => {
+  try {
+    const job = _piLoginJobs.get(String(req.params.jobId || ''));
+    if (!job || !job.page) return res.status(409).json({ error: 'No active Airbnb browser', job: piLoginPublic(job) });
+    await piAirbnbRunBrowserAction(job, async function () { await piAirbnbInteractiveAdvance(job); });
+    res.json({ ok: true, job: piLoginPublic(job) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/platform-invoices/sessions/airbnb/login/:jobId/captcha.png', async (req, res) => {
+  try {
+    const job = _piLoginJobs.get(String(req.params.jobId || ''));
+    if (!job || job.status !== 'awaiting_captcha' || !job.page) {
+      return res.status(404).json({ error: 'No active Airbnb picture check' });
+    }
+    const png = await job.page.screenshot({ type: 'png' });
+    res.set('Cache-Control', 'no-store, max-age=0');
+    res.type('png').send(png);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+async function piAirbnbCaptchaClickIsVerify(page, x, y) {
+  const frames = page.frames().slice().reverse();
+  for (const frame of frames) {
+    if (!/recaptcha.*\/bframe/i.test(frame.url())) continue;
+    const verify = frame.locator('#recaptcha-verify-button').first();
+    if (!(await verify.count()) || !(await verify.isVisible().catch(function () { return false; }))) continue;
+    const box = await verify.boundingBox().catch(function () { return null; });
+    if (box && x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height) return true;
+  }
+  return false;
+}
+
+app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/captcha/click', async (req, res) => {
+  const job = _piLoginJobs.get(String(req.params.jobId || ''));
+  if (!job || !job.page) {
+    return res.status(409).json({ error: 'Job is not waiting for a picture check', job: piLoginPublic(job) });
+  }
+  const previousClick = job._piCaptchaClickTail || Promise.resolve();
+  let releaseClick;
+  const thisClick = new Promise(function (resolve) { releaseClick = resolve; });
+  job._piCaptchaClickTail = thisClick;
+  await previousClick.catch(function () {});
+  try {
+    if (job.status !== 'awaiting_captcha' || !job.page) {
+      return res.status(409).json({ error: 'Picture check changed while this click was queued', job: piLoginPublic(job) });
+    }
+    const x = Number(req.body && req.body.x);
+    const y = Number(req.body && req.body.y);
+    const verifyHint = req.body && req.body.captchaVerify;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1440 || y < 0 || y > 900) {
+      return res.status(400).json({ error: 'Invalid picture-check coordinates' });
+    }
+    if (verifyHint !== undefined && typeof verifyHint !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid picture-check Verify hint' });
+    }
+    const captchaVerify = verifyHint === true || await piAirbnbCaptchaClickIsVerify(job.page, x, y);
+    job.hint = captchaVerify ? 'Checking your picture answer with Airbnb…' : 'Applying your picture selection…';
+    job.updatedAt = Date.now();
+    await job.page.mouse.click(x, y);
+    if (captchaVerify) {
+      await job.page.waitForTimeout(1800);
+      await piAirbnbContinueAfterCaptcha(job);
+    } else {
+      await job.page.waitForTimeout(400);
+      job.status = 'awaiting_captcha';
+      job.error = null;
+      job.hint = 'Selection registered. Continue choosing matching pictures, then click Verify.';
+      job.updatedAt = Date.now();
+    }
+    res.json({ ok: true, captchaVerify: captchaVerify, job: piLoginPublic(job) });
+  } catch (e) {
+    job.status = 'error';
+    job.error = e.message || String(e);
+    job.updatedAt = Date.now();
+    await piLoginCleanup(job, true);
+    res.status(500).json({ error: e.message, job: piLoginPublic(job) });
+  } finally {
+    releaseClick();
+    if (job._piCaptchaClickTail === thisClick) delete job._piCaptchaClickTail;
+  }
+});
+
+app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/otp', async (req, res) => {
+  try {
+    const job = _piLoginJobs.get(String(req.params.jobId || ''));
+    if (!job) return res.status(404).json({ error: 'Login job not found or expired — start Connect again' });
+    if (job.status !== 'awaiting_otp') {
+      return res.status(409).json({ error: 'Job is not waiting for OTP', job: piLoginPublic(job) });
+    }
+    const otp = String((req.body && (req.body.otp || req.body.code)) || '').trim();
+    if (!/^\d{4,8}$/.test(otp)) return res.status(400).json({ error: 'Enter the 4–8 digit Airbnb code' });
+    job.status = 'logging_in';
+    job.hint = 'Submitting code…';
+    job.updatedAt = Date.now();
+    try {
+      await piAirbnbFillOtp(job.page, otp);
+      job.otpDiagnostic = job.page._piOtpDiagnostic || null;
+      if (await piAirbnbNeedsOtp(job.page)) {
+        // Snapshot only — never Prefer/Resend here (that emails a new code and invalidates the one just typed)
+        await piAirbnbSnapshotOtpMeta(job);
+        job.status = 'awaiting_otp';
+        const typed = String(job.page._piOtpTyped || '');
+        const expected = String(job.page._piOtpExpected || otp).replace(/\D/g, '');
+        if (typed !== expected) {
+          job.hint = 'Could not type that code into Airbnb. Submit the same code again (do not Resend yet).';
+        } else if (job.page._piOtpValidationError) {
+          job.hint = 'Airbnb says that code is invalid or expired. Enter only the newest email code; request a new code manually only if needed.';
+        } else if (job.page._piOtpSubmitted) {
+          job.hint = 'Airbnb is still showing the code screen without an invalid-code message. Submit the same newest code once more; do not Resend yet.';
+        } else {
+          job.hint = 'The digits reached Airbnb, but the code screen could not be submitted. Submit the same newest code again; do not Resend yet.';
+        }
+        job.updatedAt = Date.now();
+        return res.json({ ok: true, job: piLoginPublic(job) });
+      }
+      const pass = process.env.AIRBNB_HOST_PASSWORD || '';
+      if (await job.page.locator('input[name="password"]:visible, input[type="password"]:visible').count()) {
+        await piAirbnbFillPassword(job.page, pass);
+      }
+      if (await piAirbnbNeedsOtp(job.page)) {
+        await piAirbnbSnapshotOtpMeta(job);
+        job.status = 'awaiting_otp';
+        job.hint = 'Airbnb still wants a code after password. Wait a full minute, tap Resend once, then enter only the new email.';
+        job.updatedAt = Date.now();
+        return res.json({ ok: true, job: piLoginPublic(job) });
+      }
+      job._piOtpAccepted = true;
+      await piAirbnbFinishAndSave(job);
+      return res.json({ ok: true, job: piLoginPublic(job) });
+    } catch (e) {
+      job.status = 'error';
+      job.error = e.message || String(e);
+      job.updatedAt = Date.now();
+      await piLoginCleanup(job, true);
+      return res.status(500).json({ error: job.error, job: piLoginPublic(job) });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/resend', async (req, res) => {
+  try {
+    const job = _piLoginJobs.get(String(req.params.jobId || ''));
+    if (!job) return res.status(404).json({ error: 'Login job not found or expired — start Connect again' });
+    if (job.status !== 'awaiting_otp' || !job.page) {
+      return res.status(409).json({ error: 'Job is not waiting for a code', job: piLoginPublic(job) });
+    }
+    const result = await piAirbnbResendCode(job.page);
+    await piAirbnbSnapshotOtpMeta(job);
+    if (result && result.cooldown) {
+      job.hint = 'Airbnb will not email another code yet — do not Resend (Airbnb often waits 1 minute and will not send).';
+    } else if (result && result.ok && !result.cooldown) {
+      job.hint = 'Asked Airbnb for one new email. Enter only that newest code; older emails will not work.';
+    } else {
+      job.hint = result && result.status
+        ? ('Airbnb did not accept the resend request (status ' + result.status + '). Do not keep clicking Resend; wait and use the newest email already received.')
+        : 'Airbnb did not confirm a new email was sent. Do not keep clicking Resend; wait a full minute before trying once.';
+    }
+    job.updatedAt = Date.now();
+    res.json({ ok: true, resent: !!(result && result.ok && !result.cooldown), cooldown: !!(result && result.cooldown), job: piLoginPublic(job) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/cancel', async (req, res) => {
+  const job = _piLoginJobs.get(String(req.params.jobId || ''));
+  if (job) await piLoginCleanup(job, false);
+  res.json({ ok: true });
+});
+
+
+app.get('/api/platform-invoices', async (req, res) => {
+  const month = String(req.query.month || '');
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'month=YYYY-MM required' });
+  if (pool) {
+    try {
+      await ensurePlatInvTable();
+      const r = await pool.query(
+        `SELECT id, month, channel, scope, partner, filename, mime, size, source, uploaded_by, created_at
+         FROM platform_invoices WHERE month=$1 ORDER BY channel, partner, filename, id`, [month]);
+      return res.json({ ok: true, month, items: r.rows.map(platInvMeta) });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  const items = [..._memPlatInv.values()].filter(x => x.month === month).map(platInvMeta);
+  res.json({ ok: true, month, items, db: false });
+});
+app.get('/api/platform-invoices/:id/file', async (req, res) => {
+  const id = req.params.id;
+  function sendPdf(row) {
+    if (!row) return res.status(404).json({ error: 'not found' });
+    const buf = platInvPdfBuffer(row);
+    if (!buf.length) return res.status(404).json({ error: 'empty file' });
+    const leaf = platInvFileLeaf(row).replace(/"/g, '');
+    res.setHeader('Content-Type', row.mime || 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="' + leaf + '"');
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    return res.end(buf);
+  }
+  if (pool && /^\d+$/.test(id)) {
+    try {
+      await ensurePlatInvTable();
+      const r = await pool.query('SELECT id, filename, mime, data FROM platform_invoices WHERE id=$1', [id]);
+      if (!r.rows.length) return res.status(404).json({ error: 'not found' });
+      return sendPdf(r.rows[0]);
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  const row = _memPlatInv.get(id);
+  if (!row) return res.status(404).json({ error: 'not found' });
+  return sendPdf(row);
+});
+app.post('/api/platform-invoices', async (req, res) => {
+  const b = req.body || {};
+  if (!/^\d{4}-\d{2}$/.test(b.month || '')) return res.status(400).json({ error: 'Invalid month' });
+  const channel = String(b.channel || '').toLowerCase();
+  const scope = String(b.scope || '').toLowerCase();
+  if (channel !== 'airbnb' && channel !== 'booking') return res.status(400).json({ error: 'channel must be airbnb|booking' });
+  if (scope !== 'leased' && scope !== 'b2b') return res.status(400).json({ error: 'scope must be leased|b2b' });
+  if (!b.dataB64 || typeof b.dataB64 !== 'string') return res.status(400).json({ error: 'Missing file data' });
+  if (b.dataB64.length > PLATFORM_INV_MAX_B64) return res.status(413).json({ error: 'File too large' });
+  const row = {
+    month: b.month, channel, scope, partner: String(b.partner || '').slice(0, 120),
+    filename: b.name || (channel + '.pdf'), mime: b.mime || 'application/pdf',
+    size: parseInt(b.size, 10) || null, source: b.source || 'upload',
+    uploaded_by: b.by || req.acctUser || '', data: b.dataB64
+  };
+  if (pool) {
+    try {
+      await ensurePlatInvTable();
+      const r = await pool.query(
+        `INSERT INTO platform_invoices (month, channel, scope, partner, filename, mime, size, source, uploaded_by, data)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, created_at`,
+        [row.month, row.channel, row.scope, row.partner, row.filename, row.mime, row.size, row.source, row.uploaded_by, row.data]);
+      return res.json({ ok: true, id: r.rows[0].id, createdAt: r.rows[0].created_at });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  const id = 'p' + (_memPlatInvSeq++);
+  _memPlatInv.set(id, { ...row, id, created_at: new Date().toISOString() });
+  res.json({ ok: true, id, db: false });
+});
+app.patch('/api/platform-invoices/:id', async (req, res) => {
+  const id = req.params.id;
+  const partner = String((req.body && req.body.partner) || '').slice(0, 120);
+  if (!id) return res.status(400).json({ error: 'id required' });
+  if (pool && /^\d+$/.test(id)) {
+    try {
+      await ensurePlatInvTable();
+      const r = await pool.query(
+        'UPDATE platform_invoices SET partner=$1 WHERE id=$2 RETURNING id, partner, channel, filename',
+        [partner, id]
+      );
+      if (!r.rows.length) return res.status(404).json({ error: 'not found' });
+      return res.json({ ok: true, item: platInvMeta(r.rows[0]) });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  const row = _memPlatInv.get(id);
+  if (!row) return res.status(404).json({ error: 'not found' });
+  row.partner = partner;
+  _memPlatInv.set(id, row);
+  res.json({ ok: true, item: platInvMeta(row), db: false });
+});
+app.delete('/api/platform-invoices/:id', async (req, res) => {
+  const id = req.params.id;
+  if (pool && /^\d+$/.test(id)) {
+    try {
+      await ensurePlatInvTable();
+      await pool.query('DELETE FROM platform_invoices WHERE id=$1', [id]);
+      return res.json({ ok: true });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  if (_memPlatInv.delete(id)) return res.json({ ok: true });
+  res.status(404).json({ error: 'not found' });
+});
+app.post('/api/platform-invoices/send', async (req, res) => {
+  try {
+    if (!emailConfigured()) return res.status(503).json({ error: 'Email is not configured' });
+    const b = req.body || {};
+    const month = String(b.month || '');
+    const scope = String(b.scope || '').toLowerCase();
+    if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'Invalid month' });
+    if (scope !== 'leased' && scope !== 'b2b') return res.status(400).json({ error: 'scope must be leased|b2b' });
+    let to = emailSplitAddrs(b.to);
+    if (!to.length && scope === 'leased' && PLATFORM_INV_ACCOUNTANT) to = emailSplitAddrs(PLATFORM_INV_ACCOUNTANT);
+    if (!to.length) return res.status(400).json({ error: 'No recipient (set to= or PLATFORM_INVOICE_ACCOUNTANT_EMAIL)' });
+    const partner = String(b.partner || '');
+    let rows = [];
+    if (pool) {
+      await ensurePlatInvTable();
+      const q = partner
+        ? await pool.query(`SELECT * FROM platform_invoices WHERE month=$1 AND scope=$2 AND partner=$3`, [month, scope, partner])
+        : await pool.query(`SELECT * FROM platform_invoices WHERE month=$1 AND scope=$2`, [month, scope]);
+      rows = q.rows;
+    } else {
+      rows = [..._memPlatInv.values()].filter(x => x.month === month && x.scope === scope && (!partner || x.partner === partner));
+    }
+    if (!rows.length) return res.status(400).json({ error: 'No invoices in this pack yet — upload or pull first' });
+    rows.sort(function (a, b) {
+      return String(a.channel || '').localeCompare(String(b.channel || '')) ||
+        String(a.partner || '').localeCompare(String(b.partner || '')) ||
+        String(a.filename || '').localeCompare(String(b.filename || ''));
+    });
+    let bytes = 0;
+    const mailAtts = [];
+    for (const r of rows) {
+      const buf = Buffer.from(r.data, 'base64'); bytes += buf.length;
+      mailAtts.push({ filename: r.filename || (r.channel + '.pdf'), content: buf, contentType: r.mime || 'application/pdf' });
+    }
+    if (bytes > EMAIL_MAX_BYTES) return res.status(413).json({ error: 'Pack too large for one email' });
+    const label = scope === 'leased'
+      ? ('Elysian leased units — Airbnb/Booking.com invoices ' + month)
+      : ('B2B platform invoices ' + month + (partner ? (' — ' + partner) : ''));
+    const transporter = nodemailer.createTransport({
+      host: EMAIL.host, port: EMAIL.port, secure: EMAIL.secure,
+      auth: { user: EMAIL.user, pass: EMAIL.pass },
+    });
+    const info = await transporter.sendMail({
+      from: EMAIL.from,
+      to: to.join(', '),
+      subject: b.subject || label,
+      text: b.text || ('Attached: ' + rows.length + ' platform invoice(s) for ' + month + ' (' + scope + ').\n\nThese are Airbnb/Booking.com host invoices (ενδοκοινοτικά), not Greek domestic expenses.\n\n— Elysian Clearing'),
+      attachments: mailAtts,
+    });
+    console.log('[platform-invoices] sent', month, scope, rows.length, '→', to.join(','));
+    res.json({ ok: true, count: rows.length, messageId: info.messageId, to });
+  } catch (e) {
+    console.error('[platform-invoices] send', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+function piYmFromUnix(t) {
+  if (t == null || t === '') return '';
+  let n = Number(t);
+  if (!isFinite(n)) { const s = String(t); return s.length >= 7 ? s.slice(0, 7) : ''; }
+  if (n < 1e12) n *= 1000;
+  const d = new Date(n);
+  if (isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function piNormAirbnbCode(raw) {
+  const code = String(raw || '').trim().toUpperCase();
+  return /^[A-Z0-9]{6,20}$/.test(code) ? code : '';
+}
+function piAirbnbCreatedMs(r) {
+  const raw = r && r.createdOnChannel != null && r.createdOnChannel !== '' ? r.createdOnChannel : (r && r.created);
+  if (raw == null || raw === '') return 0;
+  const n = Number(raw);
+  if (isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n;
+  const parsed = Date.parse(String(raw));
+  return isFinite(parsed) ? parsed : 0;
+}
+function piSortAirbnbReservationsLatest(list) {
+  return (list || []).slice().sort(function (a, b) { return piAirbnbCreatedMs(b) - piAirbnbCreatedMs(a); });
+}
+function piAirbnbRowsFromBookings(month, bks) {
+  const inv = [], credit = [], missing = [];
+  (bks || []).forEach(function (b) {
+    const plat = String((b && (b.platform || b.channel)) || '').toLowerCase();
+    if (plat.indexOf('air') < 0) return;
+    const createdYm = piYmFromUnix(b.createdOnChannel != null ? b.createdOnChannel : b.created);
+    const cancelYm = piYmFromUnix(b.cancelledAt);
+    const code = piNormAirbnbCode(b.reservationId || b.reservation_id || b.confirmationCode || '');
+    const row = {
+      code: code,
+      aptId: String((b && b.aptId) || '').trim(),
+      aptName: String((b && b.aptName) || '').trim(),
+      guestName: String((b && b.guestName) || '').trim(),
+      hosthubId: String((b && b.id) || '').trim(),
+      created: b && b.created != null ? b.created : null,
+      createdOnChannel: b && b.createdOnChannel != null ? b.createdOnChannel : (b && b.created_on_channel != null ? b.created_on_channel : null)
+    };
+    if (createdYm === month) {
+      if (code) inv.push(Object.assign({}, row, { kind: 'invoice' }));
+      else missing.push(Object.assign({}, row, { kind: 'invoice' }));
+    }
+    if (b && b.cancelled && cancelYm === month) {
+      if (code) credit.push(Object.assign({}, row, { kind: 'credit_note' }));
+      else missing.push(Object.assign({}, row, { kind: 'credit_note' }));
+    }
+  });
+  return { inv: inv, credit: credit, missing: missing };
+}
+async function piLoadDbBookings() {
+  if (!pool) return [];
+  try {
+    const r = await pool.query("SELECT data FROM app_data WHERE key='main'");
+    const data = r.rows[0] && r.rows[0].data;
+    return (data && Array.isArray(data.bks)) ? data.bks : [];
+  } catch (e) {
+    return [];
+  }
+}
+async function piPersistReservationIds(updates) {
+  if (!pool || !updates || !updates.length) return 0;
+  try {
+    const r = await pool.query("SELECT data FROM app_data WHERE key='main'");
+    if (!r.rows.length) return 0;
+    const data = r.rows[0].data || {};
+    const bks = Array.isArray(data.bks) ? data.bks : [];
+    const byId = {};
+    updates.forEach(function (u) { if (u.hosthubId && u.code) byId[u.hosthubId] = u.code; });
+    let n = 0;
+    bks.forEach(function (b) {
+      const id = String(b.id || '');
+      if (byId[id] && !piNormAirbnbCode(b.reservationId)) {
+        b.reservationId = byId[id];
+        n++;
+      }
+    });
+    if (!n) return 0;
+    data.bks = bks;
+    await pool.query("UPDATE app_data SET data=$1, updated_at=NOW() WHERE key='main'", [data]);
+    return n;
+  } catch (e) {
+    console.error('[platform-invoices] persist reservationId', e.message);
+    return 0;
+  }
+}
+async function piBackfillAirbnbCodesFromHosthub(rows) {
+  const apiKey = SERVER_API_KEY;
+  if (!apiKey) return { rows: rows || [], fetched: 0, error: 'HOSTHUB_API_KEY not set on server' };
+  const out = [];
+  let fetched = 0;
+  for (const row of (rows || [])) {
+    if (piNormAirbnbCode(row.code) || !row.hosthubId) { out.push(row); continue; }
+    try {
+      const r = await fetch(BASE + '/calendar-events/' + encodeURIComponent(row.hosthubId), { headers: hhH(apiKey) });
+      if (!r.ok) { out.push(row); continue; }
+      const ev = await r.json();
+      const code = piNormAirbnbCode(ev.reservation_id || ev.reservationId || (ev.source && (ev.source.reservation_id || ev.source.confirmation_code)));
+      fetched++;
+      out.push(Object.assign({}, row, { code: code || '' }));
+    } catch (e) {
+      out.push(row);
+    }
+  }
+  return { rows: out, fetched: fetched };
+}
+async function piResolveAirbnbReservations(month, clientList) {
+  const client = (Array.isArray(clientList) ? clientList : []).filter(function (x) { return piNormAirbnbCode(x && x.code); });
+  if (client.length) {
+    return { reservations: client.map(function (x) {
+      return {
+        code: piNormAirbnbCode(x.code),
+        kind: String(x.kind || 'invoice').toLowerCase(),
+        aptId: String(x.aptId || '').trim(),
+        aptName: String(x.aptName || '').trim(),
+        guestName: String(x.guestName || '').trim(),
+        hosthubId: String(x.hosthubId || '').trim(),
+        created: x.created != null ? x.created : null,
+        createdOnChannel: x.createdOnChannel != null ? x.createdOnChannel : null
+      };
+    }), source: 'client', missing: 0, persisted: 0 };
+  }
+  const dbBks = await piLoadDbBookings();
+  let built = piAirbnbRowsFromBookings(month, dbBks);
+  let rows = built.inv.concat(built.credit).concat(built.missing);
+  const beforeMissing = built.missing.length;
+  if (beforeMissing) {
+    const bf = await piBackfillAirbnbCodesFromHosthub(built.missing);
+    const filled = bf.rows.filter(function (x) { return piNormAirbnbCode(x.code); });
+    const still = bf.rows.filter(function (x) { return !piNormAirbnbCode(x.code); });
+    rows = built.inv.concat(built.credit).concat(filled);
+    const persisted = await piPersistReservationIds(filled);
+    built = { inv: built.inv, credit: built.credit, missing: still };
+    return {
+      reservations: rows.filter(function (x) { return piNormAirbnbCode(x.code); }),
+      source: 'db+hosthub',
+      missing: still.length,
+      persisted: persisted,
+      hosthubFetched: bf.fetched
+    };
+  }
+  return {
+    reservations: rows.filter(function (x) { return piNormAirbnbCode(x.code); }),
+    source: 'db',
+    missing: 0,
+    persisted: 0
+  };
+}
+app.get('/api/platform-invoices/airbnb-codes', async (req, res) => {
+  try {
+    const month = String(req.query.month || '');
+    if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'Invalid month' });
+    const resolved = await piResolveAirbnbReservations(month, []);
+    res.json({
+      ok: true,
+      month: month,
+      reservations: resolved.reservations,
+      missing: resolved.missing || 0,
+      source: resolved.source,
+      persisted: resolved.persisted || 0,
+      count: (resolved.reservations || []).length
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+const _piPullJobs = new Map();
+function piPullPublic(job) {
+  if (!job) return null;
+  return {
+    id: job.id,
+    status: job.status,
+    month: job.month,
+    channel: job.channel,
+    hint: job.hint || null,
+    error: job.error || null,
+    saved: job.saved || [],
+    errors: job.errors || [],
+    progress: job.progress || null,
+    airbnbCodes: job.airbnbCodes || 0,
+    workerOk: job.workerOk,
+    sessionsCleared: job.sessionsCleared || [],
+    sessions: job.sessions || null,
+    reconnectHint: job.reconnectHint,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt
+  };
+}
+function piPullParseWorkerStdout(stdout) {
+  const lines = String(stdout || '').trim().split('\n').filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const j = JSON.parse(lines[i]);
+      if (!j || j.event === 'progress') continue;
+      return j;
+    } catch (e) {}
+  }
+  return null;
+}
+function piPullConsumeStdoutLine(job, line) {
+  try {
+    const j = JSON.parse(line);
+    if (j && j.event === 'progress') {
+      job.progress = { done: j.done || 0, total: j.total || 0, saved: j.saved || 0, code: j.code || '' };
+      job.hint = 'Pulling Airbnb ' + (j.done || 0) + '/' + (j.total || 0) +
+        (j.code ? (' · ' + j.code) : '') +
+        (j.saved ? (' · ' + j.saved + ' PDF(s) so far') : '') + '…';
+      job.updatedAt = Date.now();
+    }
+  } catch (e) {}
+}
+async function piExecutePullJob(job) {
+  const b = job.body || {};
+  const month = job.month;
+  const channel = job.channel;
+  const by = job.by || 'portal-pull';
+  job.status = 'running';
+  job.hint = 'Saving the live Airbnb session, then pulling VAT PDFs…';
+  job.updatedAt = Date.now();
+  try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}
+  const airbnbSession = await piLoadPortalSession('airbnb');
+  const bookingSession = await piLoadPortalSession('booking');
+  const airbnbOk = !!(airbnbSession && airbnbSession.storageState) ||
+    !!(process.env.AIRBNB_STORAGE_STATE_B64 || process.env.AIRBNB_STORAGE_STATE) ||
+    !!(process.env.AIRBNB_HOST_EMAIL && process.env.AIRBNB_HOST_PASSWORD);
+  const bookingOk = !!(bookingSession && bookingSession.storageState) ||
+    !!(process.env.BOOKING_STORAGE_STATE_B64 || process.env.BOOKING_STORAGE_STATE) ||
+    !!(process.env.BOOKING_HOST_EMAIL && process.env.BOOKING_HOST_PASSWORD);
+  if ((channel === 'airbnb' && !airbnbOk) || (channel === 'booking' && !bookingOk) || (channel === 'all' && !airbnbOk && !bookingOk)) {
+    job.status = 'error';
+    job.error = 'Portal not connected';
+    job.hint = 'Use Connect Airbnb / Connect Booking once (session vault), or set host credentials / STORAGE_STATE_B64 on Railway.';
+    job.updatedAt = Date.now();
+    return;
+  }
+  const pathMod = require('path');
+  const fsMod = require('fs');
+  const osMod = require('os');
+  const outDir = pathMod.join(osMod.tmpdir(), 'pi-pull-' + month + '-' + Date.now());
+  const sessionDir = pathMod.join(osMod.tmpdir(), 'pi-sessions-' + Date.now());
+  fsMod.mkdirSync(outDir, { recursive: true });
+  fsMod.mkdirSync(sessionDir, { recursive: true });
+  try {
+    if (airbnbSession && airbnbSession.storageState) {
+      fsMod.writeFileSync(pathMod.join(sessionDir, 'airbnb.json'), JSON.stringify(airbnbSession.storageState));
+    }
+    if (bookingSession && bookingSession.storageState) {
+      fsMod.writeFileSync(pathMod.join(sessionDir, 'booking.json'), JSON.stringify(bookingSession.storageState));
+    }
+  } catch (e) {
+    job.status = 'error';
+    job.error = 'Could not materialize portal sessions: ' + e.message;
+    job.updatedAt = Date.now();
+    return;
+  }
+  const script = pathMod.join(__dirname, 'scripts', 'platform-invoice-pull.js');
+  const args = [script, '--month=' + month, '--channel=' + channel, '--out=' + outDir, '--session-dir=' + sessionDir, '--save-sessions'];
+  const env = Object.assign({}, process.env, { PI_SESSION_DIR: sessionDir });
+  if (Array.isArray(b.apartments) && b.apartments.length) {
+    env.PI_APARTMENTS_JSON = JSON.stringify(b.apartments.slice(0, 200));
+  }
+  let airbnbReservations = Array.isArray(b.airbnbReservations) ? b.airbnbReservations : [];
+  let airbnbResolveMeta = null;
+  if ((channel === 'airbnb' || channel === 'all') && !airbnbReservations.filter(function (x) { return x && x.code; }).length) {
+    try {
+      airbnbResolveMeta = await piResolveAirbnbReservations(month, []);
+      airbnbReservations = airbnbResolveMeta.reservations || [];
+    } catch (e) {
+      console.error('[platform-invoices] resolve airbnb codes', e.message);
+    }
+  }
+  const limitN = parseInt(b.limit != null ? b.limit : process.env.PI_AIRBNB_LIMIT, 10);
+  if (limitN > 0) {
+    airbnbReservations = piSortAirbnbReservationsLatest(airbnbReservations);
+    airbnbReservations = airbnbReservations.slice(0, limitN);
+  }
+  if (airbnbReservations.length) {
+    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));
+    if (limitN > 0) env.PI_AIRBNB_LIMIT = String(limitN);
+  }
+  job.airbnbCodes = airbnbReservations.length;
+  if ((channel === 'airbnb' || channel === 'all') && !airbnbReservations.length) {
+    job.status = 'error';
+    job.error = 'No Airbnb reservation codes for ' + month;
+    job.hint = 'Sync Hosthub on the Dashboard (bookings need reservationId from Hosthub), then retry Pull. If codes stay missing, Hosthub may not have reservation_id on those events.';
+    job.updatedAt = Date.now();
+    return;
+  }
+  if (b.airbnbOtp) env.AIRBNB_OTP = String(b.airbnbOtp);
+  job.hint = (limitN > 0 ? 'Test pull (latest): ' : '') + 'Pulling Airbnb VAT PDFs from ' + airbnbReservations.length + ' Hosthub code(s)…';
+  job.updatedAt = Date.now();
+  const { spawn } = require('child_process');
+  const child = spawn(process.execPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  job.child = child;
+  let stdout = '', stderr = '', carry = '';
+  const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) {} }, 90 * 60 * 1000);
+  child.stdout.on('data', function (d) {
+    const text = d.toString();
+    stdout += text;
+    carry += text;
+    const parts = carry.split('\n');
+    carry = parts.pop();
+    parts.forEach(function (line) {
+      if (line.trim()) piPullConsumeStdoutLine(job, line.trim());
+    });
+  });
+  child.stderr.on('data', function (d) { stderr += d.toString(); });
+  child.on('error', function (eSpawn) {
+    job.status = 'error';
+    job.error = eSpawn.message || String(eSpawn);
+    job.updatedAt = Date.now();
+  });
+  child.on('close', async function (code) {
+    clearTimeout(timer);
+    if (carry.trim()) piPullConsumeStdoutLine(job, carry.trim());
+    try {
+      let result = piPullParseWorkerStdout(stdout);
+      if (!result) {
+        try { result = JSON.parse(stdout.trim().split('\n').filter(Boolean).pop() || '{}'); }
+        catch (e) { result = null; }
+      }
+      if (!result) {
+        if (job.cancelled) {
+          job.status = 'cancelled';
+          job.error = null;
+          job.hint = 'Pull stopped';
+          job.updatedAt = Date.now();
+          return;
+        }
+        job.status = 'error';
+        job.error = 'Worker returned non-JSON';
+        job.hint = (stderr || stdout).slice(0, 240);
+        job.updatedAt = Date.now();
+        return;
+      }
+      try {
+        let earlyErrors = result.errors || [];
+        for (const ch of ['airbnb', 'booking']) {
+          if (piErrorsIndicateExpiredSession(earlyErrors, ch)) continue;
+          const p = pathMod.join(sessionDir, ch + '.json');
+          if (fsMod.existsSync(p)) {
+            const st = JSON.parse(fsMod.readFileSync(p, 'utf8'));
+            await piSavePortalSession(ch, st, 'portal-pull-refresh');
+          }
+        }
+      } catch (e) { console.error('[platform-invoices] session refresh', e.message); }
+      if (!Array.isArray(result.files)) {
+        job.status = 'error';
+        job.error = result.error || 'Pull failed';
+        job.errors = result.errors || [];
+        job.updatedAt = Date.now();
+        return;
+      }
+      const saved = [];
+      if (pool) await ensurePlatInvTable();
+      for (const f of result.files) {
+        const buf = fsMod.readFileSync(f.path);
+        const dataB64 = buf.toString('base64');
+        let partner = String((f.aptName || f.partner || '')).slice(0, 120);
+        if (/^credit_note\b/i.test(partner)) partner = String(f.aptName || '').slice(0, 120);
+        if (pool) {
+          const dup = await pool.query(
+            `SELECT id FROM platform_invoices WHERE month=$1 AND channel=$2 AND filename=$3 AND size=$4 LIMIT 1`,
+            [month, f.channel, f.filename, buf.length]
+          );
+          if (dup.rows.length) {
+            saved.push({ id: dup.rows[0].id, filename: f.filename, channel: f.channel, kind: f.kind, partner, deduped: true });
+            continue;
+          }
+        }
+        const row = {
+          month, channel: f.channel, scope: f.scope || 'leased', partner,
+          filename: f.filename, mime: 'application/pdf', size: buf.length, source: 'portal',
+          uploaded_by: by, data: dataB64
+        };
+        if (pool) {
+          const r = await pool.query(
+            `INSERT INTO platform_invoices (month, channel, scope, partner, filename, mime, size, source, uploaded_by, data)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+            [row.month, row.channel, row.scope, row.partner, row.filename, row.mime, row.size, row.source, row.uploaded_by, row.data]);
+          saved.push({ id: r.rows[0].id, filename: row.filename, channel: row.channel, kind: f.kind, partner });
+        } else {
+          const id = 'p' + (_memPlatInvSeq++);
+          _memPlatInv.set(id, Object.assign({}, row, { id: id, created_at: new Date().toISOString() }));
+          saved.push({ id: id, filename: row.filename, channel: row.channel, kind: f.kind, partner, db: false });
+        }
+      }
+      try { fsMod.rmSync(sessionDir, { recursive: true, force: true }); } catch (e) {}
+      const pullErrors = result.errors || [];
+      const cleared = [];
+      try {
+        if (piErrorsIndicateExpiredSession(pullErrors, 'airbnb')) {
+          if (await piClearPortalSession('airbnb')) cleared.push('airbnb');
+        }
+        if (piErrorsIndicateExpiredSession(pullErrors, 'booking')) {
+          if (await piClearPortalSession('booking')) cleared.push('booking');
+        }
+      } catch (e) { console.error('[platform-invoices] clear expired session', e.message); }
+      job.saved = saved;
+      job.errors = pullErrors;
+      job.workerOk = !!result.ok;
+      job.exitCode = code;
+      job.airbnbCodes = result.airbnbCodes || airbnbReservations.length || 0;
+      job.sessionsCleared = cleared;
+      job.sessions = {
+        airbnb: !!(await piSessionMeta('airbnb')).connected,
+        booking: !!(await piSessionMeta('booking')).connected
+      };
+      job.reconnectHint = cleared.indexOf('airbnb') >= 0
+        ? 'Airbnb session cleared. Click Connect Airbnb in Collect, enter the email code, wait until it says connected, then Pull again. Do not paste session JSON.'
+        : undefined;
+      job.status = job.cancelled ? 'cancelled' : 'done';
+      job.error = null;
+      job.hint = job.cancelled
+        ? ('Pull stopped' + (saved.length ? (' · kept ' + saved.length + ' PDF(s)') : ''))
+        : (saved.length
+        ? ('Pulled ' + saved.length + ' Airbnb PDF(s) from ' + job.airbnbCodes + ' Hosthub code(s).')
+        : ('Airbnb pull saved 0 PDFs from ' + job.airbnbCodes + ' Hosthub code(s).'));
+      job.updatedAt = Date.now();
+    } catch (eClose) {
+      job.status = 'error';
+      job.error = eClose.message || String(eClose);
+      job.updatedAt = Date.now();
+    }
+  });
+}
+
+app.post('/api/platform-invoices/pull', async (req, res) => {
+  const b = req.body || {};
+  const month = String(b.month || '');
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'Invalid month' });
+  const channel = String(b.channel || 'all').toLowerCase();
+  let playwrightOk = false;
+  try { require.resolve('playwright'); playwrightOk = true; } catch (e) {}
+  if (!playwrightOk) {
+    return res.status(503).json({ error: 'playwright is not installed on this deploy', hint: 'Docker image must include Playwright Chromium' });
+  }
+  for (const existing of _piPullJobs.values()) {
+    if (existing && existing.month === month && existing.channel === channel &&
+        (existing.status === 'starting' || existing.status === 'running')) {
+      return res.json({ ok: true, job: piPullPublic(existing), resumed: true });
+    }
+  }
+  const jobId = 'pp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const job = {
+    id: jobId,
+    month: month,
+    channel: channel,
+    status: 'starting',
+    error: null,
+    hint: 'Starting Airbnb pull in the background…',
+    by: req.acctUser || (b && b.by) || 'portal-pull',
+    body: {
+      apartments: Array.isArray(b.apartments) ? b.apartments : [],
+      airbnbReservations: Array.isArray(b.airbnbReservations) ? b.airbnbReservations : [],
+      airbnbOtp: b.airbnbOtp || '',
+      limit: b.limit
+    },
+    saved: [],
+    errors: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  _piPullJobs.set(jobId, job);
+  setImmediate(function () {
+    piExecutePullJob(job).catch(function (eRun) {
+      job.status = 'error';
+      job.error = eRun.message || String(eRun);
+      job.updatedAt = Date.now();
+    });
+  });
+  res.json({ ok: true, job: piPullPublic(job) });
+});
+
+function piCancelPullJob(job, reason) {
+  if (!job) return false;
+  if (job.status === 'done' || job.status === 'error' || job.status === 'cancelled') return false;
+  job.cancelled = true;
+  job.status = 'cancelling';
+  job.hint = reason || 'Stopping Airbnb pull…';
+  job.updatedAt = Date.now();
+  const child = job.child;
+  if (child && child.pid) {
+    try { child.kill('SIGTERM'); } catch (e) {}
+    setTimeout(function () {
+      if (job.status === 'cancelling') {
+        try { child.kill('SIGKILL'); } catch (e2) {}
+      }
+    }, 2500);
+  } else {
+    job.status = 'cancelled';
+    job.hint = 'Pull stopped';
+  }
+  return true;
+}
+app.get('/api/platform-invoices/pull/:jobId', async (req, res) => {
+  const job = _piPullJobs.get(String(req.params.jobId || ''));
+  if (!job) {
+    return res.json({
+      ok: true,
+      job: {
+        id: String(req.params.jobId || ''),
+        status: 'cancelled',
+        hint: 'Pull stopped',
+        error: null,
+        saved: [],
+        errors: [],
+        gone: true
+      }
+    });
+  }
+  res.json({ ok: true, job: piPullPublic(job) });
+});
+app.post('/api/platform-invoices/pull-stop', async (req, res) => {
+  const stopped = [];
+  for (const job of _piPullJobs.values()) {
+    if (job && (job.status === 'starting' || job.status === 'running' || job.status === 'cancelling')) {
+      piCancelPullJob(job, 'Pull stopped');
+      stopped.push(piPullPublic(job));
+    }
+  }
+  res.json({ ok: true, stopped, hint: stopped.length ? 'Stopping Airbnb pull…' : 'No pull is running' });
+});
+app.post('/api/platform-invoices/pull/:jobId/cancel', async (req, res) => {
+  const job = _piPullJobs.get(String(req.params.jobId || ''));
+  if (!job) {
+    return res.json({
+      ok: true,
+      job: {
+        id: String(req.params.jobId || ''),
+        status: 'cancelled',
+        hint: 'Pull stopped',
+        error: null,
+        saved: [],
+        errors: [],
+        gone: true
+      }
+    });
+  }
+  piCancelPullJob(job, 'Pull stopped');
+  res.json({ ok: true, job: piPullPublic(job) });
+});
+
 // Self-healing table creation: if the server booted before the database was
 // reachable (fresh deploy, DB add-on restart), the startup DDL never ran.
 // Each proofs endpoint re-ensures the table exists (no-op after first success).
@@ -428,10 +3284,288 @@ async function ensureProofTable() {
   _proofTableReady = true;
 }
 
+// Leads pipeline: Meta lead ads and manual leads through to a signed apartment.
+//
+// Storage is two self-healing tables (same pattern as rental_info / proof_files)
+// plus a config blob in app_data. Leads deliberately do NOT live in the main 'S'
+// document - that syncs on every save and would grow without bound.
+//
+// Ingest is source-agnostic: leadIngest() is the single door. The Meta poll
+// calls it, the manual "+ New lead" endpoint calls it, and a webhook can call it
+// later with no change to storage, assignment, email or UI.
+const LEAD_STAGES = ['new','to_contact','contacted','qualified','viewing','proposal','contract_sent','signed','onboarding','live'];
+const LEAD_CLOSED = ['lost','on_hold'];
+const LEAD_ALL_STAGES = LEAD_STAGES.concat(LEAD_CLOSED);
+const LEAD_CFG_KEY = 'leads_config';
+const LEAD_CFG_DEFAULT = {
+  team: [
+    { key: 'lefteris', name: 'Lefteris', active: true, weight: 1, awayUntil: null, canDelete: true },
+    { key: 'george',   name: 'George',   active: true, weight: 1, awayUntil: null, canDelete: true },
+    { key: 'giannis',  name: 'Giannis',  active: true, weight: 1, awayUntil: null, canDelete: false },
+    { key: 'popi',     name: 'Popi',     active: true, weight: 1, awayUntil: null, canDelete: false },
+  ],
+  slaFirstContactHours: 4,      // working hours; configurable in the UI
+  autoSendWelcome: false,       // draft by default - the first email carries a contract
+  archiveUndoDays: 30,
+  archiveRetentionMonths: 24,  // archived leads are kept two years, then tombstoned
+  // The first Meta pull would otherwise sweep in every lead the account has ever
+  // had (374 sat in Leads Center when this was built) and hand the whole backlog
+  // out at once. This floor bounds it; set it to the date you actually want to
+  // start from, or clear it once the backlog has been dealt with.
+  metaSinceDate: '',           // 'YYYY-MM-DD' - nothing older than this is imported
+  deletePassword: '2026',       // same gate as the monthly-close skip
+  metaFormIds: [],              // empty = every form the token can see
+  metaPageId: '',               // only needed when a User token manages several Pages
+};
+let _leadsReady = false;
+async function ensureLeadTables() {
+  if (_leadsReady || !pool) return;
+  // Self-healing, same reason as the proofs table: a deploy can boot before the
+  // database is reachable and then the startup DDL never ran. The leads module
+  // keeps its config and Meta cursor in app_data, so ensure that one too rather
+  // than assuming boot created it.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_data (
+      key VARCHAR(50) PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leads (
+      id            SERIAL PRIMARY KEY,
+      source        TEXT NOT NULL DEFAULT 'manual',
+      meta_lead_id  TEXT,
+      form_id       TEXT, form_name TEXT, campaign TEXT, adset TEXT, ad_id TEXT, page_id TEXT,
+      created_time  TIMESTAMPTZ,
+      raw           JSONB NOT NULL DEFAULT '{}'::jsonb,
+      full_name     TEXT, email TEXT, phone TEXT,
+      fields        JSONB NOT NULL DEFAULT '{}'::jsonb,
+      stage         TEXT NOT NULL DEFAULT 'new',
+      owner         TEXT,
+      status        TEXT NOT NULL DEFAULT 'open',
+      lost_reason   TEXT,
+      created_by    TEXT,
+      assigned_at   TIMESTAMPTZ, first_contact_at TIMESTAMPTZ,
+      stage_changed_at TIMESTAMPTZ DEFAULT NOW(), won_at TIMESTAMPTZ,
+      archived_at   TIMESTAMPTZ, archived_by TEXT, archive_reason TEXT,
+      events        JSONB NOT NULL DEFAULT '[]'::jsonb,
+      apt_id        TEXT,
+      updated_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  // Partial unique index: Meta ids are unique, manual leads (NULL) are exempt.
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_meta ON leads (meta_lead_id) WHERE meta_lead_id IS NOT NULL;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_stage ON leads (stage);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads (owner);`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS lead_assets (
+      key         TEXT PRIMARY KEY,
+      filename    TEXT, mime TEXT, size INTEGER,
+      version     INTEGER NOT NULL DEFAULT 1,
+      data        TEXT NOT NULL,
+      updated_by  TEXT, updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  // ALTER, not just CREATE: the table already exists in production, so new
+  // columns have to be added to it rather than only appearing for fresh installs.
+  await pool.query(`
+    ALTER TABLE leads
+      ADD COLUMN IF NOT EXISTS property_address TEXT,
+      ADD COLUMN IF NOT EXISTS property_size    TEXT,
+      ADD COLUMN IF NOT EXISTS property_type    TEXT,
+      ADD COLUMN IF NOT EXISTS bedrooms         TEXT,
+      ADD COLUMN IF NOT EXISTS bathrooms        TEXT,
+      ADD COLUMN IF NOT EXISTS bedrooms_n       INTEGER,
+      ADD COLUMN IF NOT EXISTS bathrooms_n      INTEGER;
+  `);
+  // Leads erased between the property columns shipping and the line above being
+  // fixed kept their address. Clear those too - idempotent, matches nothing after
+  // the first boot.
+  await pool.query(`
+    UPDATE leads SET property_address = NULL, property_size = NULL, property_type = NULL,
+                     bedrooms = NULL, bathrooms = NULL, bedrooms_n = NULL, bathrooms_n = NULL
+     WHERE status = 'erased' AND property_address IS NOT NULL;
+  `);
+  // Seed EN + GR company brochures once from disk so welcome emails attach the
+  // matching language. Replacing via POST /api/lead-assets still wins — we only
+  // insert when the key is missing. `brochure` stays as a GR alias for older callers.
+  try {
+    const fsLead = require('fs');
+    const seeds = [
+      { key: 'brochure-en', file: 'elysian-management-brochure-en.pdf', name: 'Elysian-Properties-Management-Brochure-EN.pdf' },
+      { key: 'brochure-gr', file: 'elysian-management-brochure-gr.pdf', name: 'Elysian-Properties-Management-Brochure-GR.pdf' },
+      { key: 'brochure',    file: 'elysian-management-brochure-gr.pdf', name: 'Elysian-Properties-Management-Brochure.pdf' }
+    ];
+    for (const s of seeds) {
+      const brochurePath = path.join(__dirname, 'assets', s.file);
+      if (!fsLead.existsSync(brochurePath)) continue;
+      const have = await pool.query(`SELECT 1 FROM lead_assets WHERE key = $1 LIMIT 1`, [s.key]);
+      if (have.rows.length) continue;
+      const buf = fsLead.readFileSync(brochurePath);
+      await pool.query(
+        `INSERT INTO lead_assets (key, filename, mime, size, version, data, updated_by, updated_at)
+         VALUES ($1,$2,'application/pdf',$3,1,$4,'system',NOW())
+         ON CONFLICT (key) DO NOTHING`,
+        [s.key, s.name, buf.length, buf.toString('base64')]);
+      console.log('[leads] seeded ' + s.key + ' (' + buf.length + ' bytes)');
+    }
+  } catch (e) { console.error('[leads] brochure seed skipped:', e.message); }
+  _leadsReady = true;
+}
+async function leadCfg() {
+  if (!pool) return LEAD_CFG_DEFAULT;
+  try {
+    const r = await pool.query('SELECT data FROM app_data WHERE key = $1', [LEAD_CFG_KEY]);
+    const d = (r.rows[0] && r.rows[0].data) || {};
+    return Object.assign({}, LEAD_CFG_DEFAULT, d, { team: Array.isArray(d.team) && d.team.length ? d.team : LEAD_CFG_DEFAULT.team });
+  } catch (e) { return LEAD_CFG_DEFAULT; }
+}
+function leadEvent(type, by, detail) { return { at: new Date().toISOString(), type: type, by: by || 'system', detail: detail || '' }; }
+// Assignment: the available person with the fewest OPEN leads. Weight divides
+// the count, so someone at 0.5 takes half the flow. Ties break on fewest in the
+// last 7 days, then on who was assigned longest ago. Deterministic on purpose -
+// the counts at the moment of assignment go onto the timeline so the decision
+// can always be explained.
+async function leadPickOwner() {
+  const cfg = await leadCfg();
+  const now = Date.now();
+  const avail = (cfg.team || []).filter(function (m) {
+    if (!m.active) return false;
+    if (m.awayUntil && new Date(m.awayUntil).getTime() > now) return false;
+    return true;
+  });
+  if (!avail.length) return { owner: null, counts: {}, reason: 'nobody available' };
+  const q = await pool.query(
+    `SELECT owner,
+            COUNT(*) FILTER (WHERE status = 'open' AND archived_at IS NULL) AS open_now,
+            COUNT(*) FILTER (WHERE assigned_at > NOW() - INTERVAL '7 days') AS last7,
+            MAX(assigned_at) AS last_assigned
+       FROM leads WHERE owner IS NOT NULL GROUP BY owner`);
+  const by = {};
+  q.rows.forEach(function (r) { by[r.owner] = { open: +r.open_now || 0, last7: +r.last7 || 0, last: r.last_assigned ? new Date(r.last_assigned).getTime() : 0 }; });
+  const counts = {};
+  avail.forEach(function (m) { counts[m.key] = (by[m.key] || {}).open || 0; });
+  const scored = avail.map(function (m) {
+    const s = by[m.key] || { open: 0, last7: 0, last: 0 };
+    const w = (typeof m.weight === 'number' && m.weight > 0) ? m.weight : 1;
+    return { key: m.key, load: s.open / w, last7: s.last7, last: s.last };
+  });
+  scored.sort(function (a, b) {
+    if (a.load !== b.load) return a.load - b.load;
+    if (a.last7 !== b.last7) return a.last7 - b.last7;
+    return a.last - b.last;
+  });
+  return { owner: scored[0].key, counts: counts, reason: '' };
+}
+function leadDigits(s) { return String(s || '').replace(/[^0-9]/g, '').slice(-9); }
+// Duplicate guard: same email, or the last 9 digits of the phone, on a lead that
+// is still open. Stops a Meta form on Monday and a phone call on Wednesday
+// becoming two tickets pulling two different people.
+async function leadFindDuplicate(email, phone, excludeId) {
+  const e = String(email || '').trim().toLowerCase(), p = leadDigits(phone);
+  if (!e && !p) return null;
+  const r = await pool.query(
+    `SELECT id, full_name, email, phone, owner, stage FROM leads
+      WHERE archived_at IS NULL AND status = 'open' AND ($3::int IS NULL OR id <> $3)
+        AND ( ($1 <> '' AND lower(email) = $1)
+           OR ($2 <> '' AND length($2) >= 6 AND right(regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g'), 9) = $2) )
+      ORDER BY id LIMIT 1`, [e, p, excludeId || null]);
+  return r.rows[0] || null;
+}
+// Property details out of whatever the lead form asked.
+//
+// Meta forms use custom questions, and ours are in Greek - "Τετραγωνικά
+// Ακινήτου", "Τοποθεσία & Διεύθυνση Ακινήτου". The full answer set is always
+// kept in `fields`, but the ones that decide whether a lead is worth pursuing
+// (where is it, how big, how many rooms) are promoted to real columns so they
+// are visible on the card, searchable, and can pre-fill the apartment record
+// when the lead converts.
+//
+// Matching is on the question key or label, accent- and case-insensitive, and
+// covers Greek and English. A form can be renamed or a new question added
+// without losing anything: unmatched answers still live in `fields`.
+function leadNorm(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // strip Greek/Latin accents
+    .replace(/ς/g, 'σ')                        // final sigma -> sigma
+    .toLowerCase().replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+const LEAD_PROPERTY_MATCHERS = [
+  { col: 'property_address', re: /(τοποθεσια|διευθυνση|περιοχη|address|location|street)/ },
+  { col: 'property_size',    re: /(τετραγωνικ|τ\.?μ|εμβαδον|μεγεθοσ|sq\.?\s?m|square|size)/ },
+  { col: 'bedrooms',         re: /(υπνοδωματ|κρεβατοκαμαρ|δωματι|bedroom|bed\b)/ },
+  { col: 'bathrooms',        re: /(μπανι|λουτρ|bathroom|bath\b|wc)/ },
+  { col: 'property_type',    re: /(τυποσ ακινητου|ειδοσ ακινητου|property type|type of property)/ },
+];
+// leadNorm folds final sigma, so a pattern written with ς could never match a
+// normalised label - the answer would be silently dropped. Say so out loud.
+LEAD_PROPERTY_MATCHERS.forEach(function (m) {
+  if (/ς/.test(m.re.source))
+    console.error('[leads] matcher ' + m.col + ' uses a final sigma and can never match');
+});
+// Pull the first whole number out of an answer: "2 υπνοδωμάτια" -> 2, "50-100
+// τ.μ." -> null (a range is not a count, so it stays as text only).
+function leadInt(v) {
+  const s = String(v || '').trim();
+  if (/\d\s*[-–—\/]\s*\d/.test(s)) return null;
+  const m = s.match(/\d+/);
+  if (!m) return null;
+  const n = parseInt(m[0], 10);
+  return isFinite(n) && n >= 0 && n < 100 ? n : null;
+}
+function leadExtractProperty(fields) {
+  const out = { property_address: null, property_size: null, bedrooms: null, bathrooms: null, property_type: null, bedrooms_n: null, bathrooms_n: null };
+  Object.keys(fields || {}).forEach(function (k) {
+    const v = String(fields[k] == null ? '' : fields[k]).trim();
+    if (!v) return;
+    const nk = leadNorm(k);
+    for (const m of LEAD_PROPERTY_MATCHERS) {
+      if (out[m.col]) continue;                       // first answer wins
+      if (m.re.test(nk)) { out[m.col] = v.slice(0, 400); break; }
+    }
+  });
+  out.bedrooms_n = leadInt(out.bedrooms);
+  out.bathrooms_n = leadInt(out.bathrooms);
+  return out;
+}
+// The single door every lead comes through, whatever the source.
+async function leadIngest(input, by) {
+  await ensureLeadTables();
+  const src = String(input.source || 'manual');
+  if (input.metaLeadId) {
+    const dup = await pool.query('SELECT id FROM leads WHERE meta_lead_id = $1', [String(input.metaLeadId)]);
+    if (dup.rows[0]) return { id: dup.rows[0].id, duplicate: true };   // re-delivery, poll overlap, retry
+  }
+  const pick = await leadPickOwner();
+  const _prop = leadExtractProperty(input.fields || {});
+  const ev = [leadEvent('created', by || (src === 'meta' ? 'meta' : 'team'), 'source: ' + src)];
+  // This line is the whole defence of the assignment rule - it has to be
+  // readable on the ticket, so no raw JSON.
+  if (pick.owner) ev.push(leadEvent('assigned', 'system', 'to ' + pick.owner + ' (open: ' +
+    Object.keys(pick.counts || {}).map(function (k) { return k + ' ' + pick.counts[k]; }).join(', ') + ')'));
+  else ev.push(leadEvent('unassigned', 'system', pick.reason));
+  const r = await pool.query(
+    `INSERT INTO leads (source, meta_lead_id, form_id, form_name, campaign, adset, ad_id, page_id,
+                        created_time, raw, full_name, email, phone, fields, stage, owner, created_by,
+                        assigned_at, events, property_address, property_size, property_type,
+                        bedrooms, bathrooms, bedrooms_n, bathrooms_n)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19::jsonb,
+             $20,$21,$22,$23,$24,$25,$26)
+     RETURNING id`,
+    [src, input.metaLeadId || null, input.formId || null, input.formName || null, input.campaign || null,
+     input.adset || null, input.adId || null, input.pageId || null, input.createdTime || new Date().toISOString(),
+     JSON.stringify(input.raw || {}), input.fullName || null, input.email || null, input.phone || null,
+     JSON.stringify(input.fields || {}), pick.owner ? 'to_contact' : 'new', pick.owner, by || null,
+     pick.owner ? new Date().toISOString() : null, JSON.stringify(ev),
+     _prop.property_address, _prop.property_size, _prop.property_type,
+     _prop.bedrooms, _prop.bathrooms, _prop.bedrooms_n, _prop.bathrooms_n]);
+  console.log('[leads] ingested #' + r.rows[0].id + ' (' + src + ') -> ' + (pick.owner || 'UNASSIGNED'));
+  return { id: r.rows[0].id, duplicate: false, owner: pick.owner };
+}
+
 // POST /api/proofs — upload one proof {month, task, aptId, aptName, name, mime, size, by, dataB64}
 app.post('/api/proofs', async (req, res) => {
   const b = req.body || {};
-  if (!/^\d{4}-\d{2}$/.test(b.month || ''))      return res.status(400).json({ error: 'Invalid month (YYYY-MM expected)' });
+  if (!/^(\d{4}-\d{2}|law5170)$/.test(b.month || ''))      return res.status(400).json({ error: 'Invalid month (YYYY-MM or law5170 expected)' });
   if (!b.task || !b.aptId)                       return res.status(400).json({ error: 'Missing task / aptId' });
   if (!b.dataB64 || typeof b.dataB64 !== 'string') return res.status(400).json({ error: 'Missing file data' });
   if (b.dataB64.length > PROOF_MAX_B64)          return res.status(413).json({ error: 'File too large' });
@@ -448,6 +3582,7 @@ app.post('/api/proofs', async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, uploaded_at`,
         [meta.month, meta.task_key, meta.apt_id, meta.apt_name, meta.filename, meta.mime, meta.size, meta.uploaded_by, b.dataB64]
       );
+      logEvent(req, 'files', 'upload', (meta.month === 'law5170' ? '[Law5170] ' : '[' + meta.month + '] ') + meta.apt_name + ' · ' + meta.task_key + ' · ' + meta.filename);
       return res.json({ ok: true, db: true, id: r.rows[0].id, uploadedAt: r.rows[0].uploaded_at });
     } catch (e) {
       console.error('[proofs] write error:', e.message);
@@ -456,6 +3591,7 @@ app.post('/api/proofs', async (req, res) => {
   }
   const id = 'm' + _memProofSeq++;
   _memProofs.set(id, { ...meta, id, uploaded_at: new Date().toISOString(), data: b.dataB64 });
+  logEvent(req, 'files', 'upload', '[mem] ' + meta.apt_name + ' · ' + meta.task_key + ' · ' + meta.filename);
   res.json({ ok: true, db: false, id });
 });
 
@@ -502,11 +3638,159 @@ app.get('/api/proofs/:id', async (req, res) => {
 app.delete('/api/proofs/:id', async (req, res) => {
   const id = req.params.id;
   if (pool && /^\d+$/.test(id)) {
-    try { await ensureProofTable(); await pool.query(`DELETE FROM proof_files WHERE id = $1`, [parseInt(id)]); return res.json({ ok: true }); }
+    try { await ensureProofTable(); await pool.query(`DELETE FROM proof_files WHERE id = $1`, [parseInt(id)]); logEvent(req, 'files', 'delete', 'proof #' + id); return res.json({ ok: true }); }
     catch (e) { return res.status(500).json({ error: e.message }); }
   }
+  logEvent(req, 'files', 'delete', 'proof #' + id);
   _memProofs.delete(id);
   res.json({ ok: true });
+});
+
+// ── Change log — per-account audit trail (server-stamped usernames) ───────────
+// Captures data changes (saves, uploads, Property Info) and client-posted
+// events (including UI clicks). The client never chooses the username.
+let _logTableReady = false, _logN = 0, _memLogSeq = 1;
+const _memLog = [];
+async function ensureLogTable() {
+  if (_logTableReady || !pool) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS change_log (
+    id SERIAL PRIMARY KEY, ts TIMESTAMPTZ DEFAULT NOW(),
+    username TEXT, area TEXT, action TEXT, details TEXT
+  );`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_changelog_id ON change_log (id DESC);`);
+  _logTableReady = true;
+}
+async function logEvent(req, area, action, details) {
+  const row = {
+    username: String((req && req.acctUser) || 'system').slice(0, 60),
+    area: String(area || 'app').slice(0, 30),
+    action: String(action || 'event').slice(0, 80),
+    details: String(details == null ? '' : details).slice(0, 600),
+  };
+  if (!pool) {
+    _memLog.unshift({ id: _memLogSeq++, ts: new Date().toISOString(), ...row });
+    if (_memLog.length > 8000) _memLog.length = 8000;
+    return;
+  }
+  try {
+    await ensureLogTable();
+    await pool.query(
+      `INSERT INTO change_log (username, area, action, details) VALUES ($1,$2,$3,$4)`,
+      [row.username, row.area, row.action, row.details]
+    );
+    if ((++_logN) % 25 === 0)
+      await pool.query(`DELETE FROM change_log WHERE id < (SELECT COALESCE(MIN(id),0) FROM (SELECT id FROM change_log ORDER BY id DESC LIMIT 8000) t)`);
+  } catch (e) { console.error('[log]', e.message); }
+}
+function mergeKeepMap(oldM, newM, mergeVal) {
+  const oldO = (oldM && typeof oldM === 'object' && !Array.isArray(oldM)) ? oldM : {};
+  const newO = (newM && typeof newM === 'object' && !Array.isArray(newM)) ? newM : {};
+  const out = Object.assign({}, oldO, newO);
+  Object.keys(oldO).forEach(k => {
+    if (!(k in newO)) out[k] = oldO[k];
+    else if (typeof mergeVal === 'function') out[k] = mergeVal(oldO[k], newO[k]);
+  });
+  return out;
+}
+function mergeRptLock(oldL, newL) {
+  const a = oldL && typeof oldL === 'object' ? oldL : {};
+  const b = newL && typeof newL === 'object' ? newL : {};
+  const m = Object.assign({}, a, b);
+  if (a.email && !b.email) m.email = a.email;
+  else if (a.email && b.email && (a.email.at || 0) > (b.email.at || 0)) m.email = a.email;
+  if (a.oxygen && !b.oxygen) m.oxygen = a.oxygen;
+  return m;
+}
+function mergeCloseRec(oldR, newR) {
+  const a = oldR && typeof oldR === 'object' ? oldR : {};
+  const b = newR && typeof newR === 'object' ? newR : {};
+  const m = Object.assign({}, a, b);
+  if (a.remit && !b.remit) m.remit = a.remit;
+  if (a.emailed && !b.emailed) m.emailed = a.emailed;
+  if (a.done && b.done) m.done = Object.assign({}, a.done, b.done);
+  return m;
+}
+function mergeMonthlyClose(oldC, newC) {
+  return mergeKeepMap(oldC, newC, function (om, nm) {
+    return mergeKeepMap(om, nm, mergeCloseRec);
+  });
+}
+function mergeAptsProtect(dbApts, inApts) {
+  const dbById = {}, dbByName = {};
+  (dbApts || []).forEach(a => {
+    if (!a) return;
+    if (a.id) dbById[String(a.id)] = a;
+    if (a.name) dbByName[String(a.name).trim().toLowerCase()] = a;
+  });
+  return (inApts || []).map(apt => {
+    if (!apt) return apt;
+    const old = (apt.id && dbById[String(apt.id)]) || (apt.name && dbByName[String(apt.name).trim().toLowerCase()]);
+    if (!old) return apt;
+    const m = Object.assign({}, old, apt);
+    ['ownerEmail','ownerEmail2','ownerEmail3','clearGroup','ownerName','ownerSurname','ownerPhone'].forEach(f => {
+      if (!String(apt[f] || '').trim() && String(old[f] || '').trim()) m[f] = old[f];
+    });
+    if (old.businessTax && (apt.businessTax === undefined || apt.businessTax === null)) m.businessTax = old.businessTax;
+    if (old.businessTaxAmt != null && (apt.businessTaxAmt === undefined || apt.businessTaxAmt === null || apt.businessTaxAmt === '')) m.businessTaxAmt = old.businessTaxAmt;
+    return m;
+  });
+}
+
+function diffSummary(oldD, newD) {
+  try {
+    const out = [];
+    const keys = [...new Set([...(oldD ? Object.keys(oldD) : []), ...(newD ? Object.keys(newD) : [])])];
+    for (const k of keys) {
+      const a = oldD ? oldD[k] : undefined, b = newD ? newD[k] : undefined;
+      if (Array.isArray(a) || Array.isArray(b)) {
+        const la = Array.isArray(a) ? a.length : 0, lb = Array.isArray(b) ? b.length : 0;
+        if (la !== lb) out.push(k + ' ' + la + '→' + lb);
+        else if (la <= 2000 && JSON.stringify(a) !== JSON.stringify(b)) out.push(k + ' ✎');
+      } else if (a && b && typeof a === 'object' && typeof b === 'object') {
+        const ka = Object.keys(a).length, kb = Object.keys(b).length;
+        if (JSON.stringify(a) !== JSON.stringify(b)) out.push(k + ' ✎' + (ka !== kb ? ' (' + ka + '→' + kb + ' keys)' : ''));
+      } else if (JSON.stringify(a) !== JSON.stringify(b)) out.push(k + ' ✎');
+      if (out.length >= 12) { out.push('…'); break; }
+    }
+    return out.length ? out.join(' · ') : 'saved (no top-level change detected)';
+  } catch (e) { return 'saved'; }
+}
+
+// POST /api/changelog — client events (changes + clicks); user is server-stamped
+app.post('/api/changelog', async (req, res) => {
+  const b = req.body || {};
+  await logEvent(req, b.area, b.action, b.details);
+  res.json({ ok: true });
+});
+// GET /api/changelog?limit=&user=&area=&kind= — newest first
+// kind=changes excludes area=click; kind=clicks keeps only area=click
+app.get('/api/changelog', async (req, res) => {
+  const lim = Math.min(parseInt(req.query.limit, 10) || 300, 500);
+  const kind = String(req.query.kind || '').toLowerCase();
+  const filterRow = (r) => {
+    if (req.query.user && r.username !== req.query.user) return false;
+    if (req.query.area && r.area !== req.query.area) return false;
+    if (kind === 'clicks' && r.area !== 'click') return false;
+    if (kind === 'changes' && r.area === 'click') return false;
+    return true;
+  };
+  if (!pool) {
+    return res.json(_memLog.filter(filterRow).slice(0, lim));
+  }
+  try {
+    await ensureLogTable();
+    const conds = [], vals = [];
+    if (req.query.user) { vals.push(req.query.user); conds.push('username = $' + vals.length); }
+    if (req.query.area) { vals.push(req.query.area); conds.push('area = $' + vals.length); }
+    if (kind === 'clicks') conds.push("area = 'click'");
+    if (kind === 'changes') conds.push("area <> 'click'");
+    vals.push(lim);
+    const r = await pool.query(
+      'SELECT id, ts, username, area, action, details FROM change_log' +
+      (conds.length ? ' WHERE ' + conds.join(' AND ') : '') +
+      ' ORDER BY id DESC LIMIT $' + vals.length, vals);
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── AI schedule check (Daily Ops) ─────────────────────────────────────────────
@@ -824,7 +4108,7 @@ async function runSync(apiKey, onLog) {
       return iso;
     };
     return {
-      id:ev.id, aptId:_aptMatch?.id||'', aptName:_aptName, cancelled:ev.is_visible===false, cancelledAt:ev.cancelled_at||null,
+      id:ev.id, reservationId:String(ev.reservation_id||ev.reservationId||(ev.source&&(ev.source.reservation_id||ev.source.confirmation_code))||'').trim(), aptId:_aptMatch?.id||'', aptName:_aptName, cancelled:ev.is_visible===false, cancelledAt:ev.cancelled_at||null,
       created:ev.created||null, createdOnChannel:ev.created_on_channel||null,
       platform: (()=>{
         const code=(ev.source?.channel_type_code||'').toLowerCase().replace(/[^a-z]/g,'');
@@ -909,7 +4193,13 @@ function scheduleAutoSync() {
   console.log(`  ✓  Auto-sync scheduled → ${nextRun.toISOString()} (in ${mLeft}m ${sLeft}s)`);
 
   setTimeout(async () => {
-    const apiKey = SERVER_API_KEY || (pool ? await getStoredApiKey() : null);
+    // getStoredApiKey() does not exist - it never did. There is no server-side
+    // store for the Hosthub key either: the app keeps it in the browser, in
+    // localStorage.hh_api_key. So on any deploy without SERVER_API_KEY set, this
+    // line threw ReferenceError inside the timer callback, outside the try below,
+    // and took the whole process down every 15 minutes. Production has the
+    // variable set, which is the only reason it has not been biting.
+    const apiKey = SERVER_API_KEY || null;
     if (!apiKey) {
       console.log('[auto-sync] No API key — skipping');
       scheduleAutoSync();
@@ -1213,6 +4503,7 @@ app.post('/api/email/send', async (req, res) => {
       attachments: mailAtts,
     });
     console.log('[email] sent "' + String(b.subject).slice(0, 80) + '" → ' + to.join(', ') + ' (' + Math.round(bytes / 1024) + ' KB, id ' + (info.messageId || '?') + ')');
+    logEvent(req, 'email', 'send', String(b.subject || '').slice(0, 120) + ' · ' + to.length + ' to');
     res.json({ ok: true, messageId: info.messageId || '' });
   } catch (e) {
     console.error('[email] send FAILED:', e.message);
@@ -2091,7 +5382,7 @@ async function vivaMerchantsStrategy(fromISO, toISO, failures) {
     const all = [];
     let ok = true;
     for (const bd of bodies) {
-      for (let page = 1; page <= 40; page++) {
+      for (let page = 1; page <= 200; page++) {
         const url = `${base}/dataservices/v2/accounttransactions/Search?PageSize=500&Page=${page}&OrderBy=Ascending`;
         const r = await vivaHttp(url, { method: 'POST', headers: { Authorization: tk.h, 'Content-Type': 'application/json' }, body: JSON.stringify(bd) });
         if (r.status === 204) break;
@@ -2179,6 +5470,29 @@ const pcvISO   = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(
 const pcvAdd   = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const pcvNormApt = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const pcvNormG   = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+// Mirror client pcAptKey: apartments sharing clearGroup (Votsala) share one mark key.
+function pcvAptKey(b, apts) {
+  let group = '';
+  try {
+    const list = Array.isArray(apts) ? apts : [];
+    let a = null;
+    if (b && b.aptId != null && b.aptId !== '') a = list.find(x => x && String(x.id) === String(b.aptId)) || null;
+    if (!a && b && b.aptName) a = list.find(x => x && x.name === b.aptName) || null;
+    if (a && a.clearGroup) group = String(a.clearGroup).trim();
+  } catch (e) {}
+  const raw = group || (b && b.aptName) || '';
+  return pcvNormApt(raw) || (b && b.aptId) || '?';
+}
+function pcvAptLabel(b, apts) {
+  try {
+    const list = Array.isArray(apts) ? apts : [];
+    let a = null;
+    if (b && b.aptId != null && b.aptId !== '') a = list.find(x => x && String(x.id) === String(b.aptId)) || null;
+    if (!a && b && b.aptName) a = list.find(x => x && x.name === b.aptName) || null;
+    if (a && a.clearGroup && String(a.clearGroup).trim()) return String(a.clearGroup).trim();
+  } catch (e) {}
+  return (b && b.aptName) || '?';
+}
 function pcvParseDMY(v) {
   const m = String(v || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
@@ -2207,6 +5521,7 @@ function vivaExpectedUnits(data, today) {
   const from   = /^\d{4}-\d{2}-\d{2}$/.test(cfg.from || '') ? new Date(cfg.from) : new Date(2026, 0, 1);
   const bdc = {};
   const units = [];
+  const apts = (data && data.apts) || [];
   for (const b of (data && data.bks) || []) {
     if (!b || b.cancelled) continue;
     if (VIVA_BLOCK_NAMES.includes(String(b.guestName || '').toLowerCase().trim())) continue;
@@ -2218,17 +5533,17 @@ function vivaExpectedUnits(data, today) {
       const co = pcvParseDMY(b.checkOut); if (!co) continue;
       const thu = pcvThursday(co);
       if (thu < from || thu > t) continue;
-      const aptKey = pcvNormApt(b.aptName) || b.aptId || '?';
+      const aptKey = pcvAptKey(b, apts);
       const key = 'bdc|' + pcvISO(thu) + '|' + aptKey;
-      const u = bdc[key] || (bdc[key] = { key, chan: 'bdc', date: thu, exp: 0, label: (b.aptName || '?') + ' — Thu ' + pcvISO(thu) });
+      const u = bdc[key] || (bdc[key] = { key, chan: 'bdc', date: thu, exp: 0, label: pcvAptLabel(b, apts) + ' — Thu ' + pcvISO(thu) });
       u.exp += amt;
     } else {
       const ci = pcvParseDMY(b.checkIn); if (!ci) continue;
       const rel = pcvAdd(ci, 1);
       if (rel < from || rel > t) continue;
-      const aptKey = pcvNormApt(b.aptName) || b.aptId || '?';
+      const aptKey = pcvAptKey(b, apts);
       const key = 'abb|' + aptKey + '|' + pcvISO(ci) + '|' + pcvNormG(b.guestName);
-      units.push({ key, chan: 'abb', date: rel, exp: amt, label: (b.aptName || '?') + ' — ' + (b.guestName || '—') + ' (release ' + pcvISO(rel) + ')' });
+      units.push({ key, chan: 'abb', date: rel, exp: amt, label: pcvAptLabel(b, apts) + ' — ' + (b.guestName || '—') + ' (release ' + pcvISO(rel) + ')' });
     }
   }
   Object.values(bdc).forEach(u => units.push(u));
@@ -2442,6 +5757,132 @@ async function vivaCronTick() {
 }
 setInterval(vivaCronTick, 10 * 60 * 1000);   // checks every 10 min; fires once each Saturday 08:00–08:59 Athens
 
+// ── Viva Cash Flow (Tools → Cash Flow tab) ───────────────────────────────────────
+// Daily income vs expenses from the Viva business account. 130-day window:
+// 60 charted days + 60 days of MA60 warm-up + margin.
+// Full history: Viva serves everything back to the account's first transaction
+// (26 Feb 2025). The empty lead-in is trimmed below, so this is an upper bound.
+const CF_DAYS = Math.max(30, Math.min(1200, parseInt(process.env.VIVA_CASHFLOW_DAYS || '', 10) || 730));
+const CF_KEY  = 'viva_cashflow';
+const CF_INTERNAL_PATTERNS = String(process.env.VIVA_INTERNAL_IBANS || '').toLowerCase().split(/[\\s,;]+/).filter(Boolean);
+function cfIsInternal(counterpart) {
+  const c = String(counterpart || '').toLowerCase().replace(/\\s+/g, '');
+  if (CF_INTERNAL_PATTERNS.length) return CF_INTERNAL_PATTERNS.some(p => c.includes(p));
+  // Default: counterparty is an Eurobank account (Greek bank code 026 right
+  // after GRkk) or names Eurobank outright. Pin exact IBANs via VIVA_INTERNAL_IBANS.
+  // Own-account transfers carry the company's own name in the counterparty
+  // ('IBAN - ELYSIAN PROPERTIES ...'). Matching any Eurobank IBAN would be wrong:
+  // owners who bank with Eurobank (e.g. Votsala IKE) receive real remittances.
+  return c.includes('elysian') || c.includes('eurobank');
+}
+// Like vivaNormalizeCredits but keeps the sign - debits ARE the expenses here.
+function cfNormalizeAll(raw) {
+  return (raw || []).map(t => ({
+    id: String(t.accountTransactionId || t.AccountTransactionId || t.TransactionId || t.transactionId || t.Id || t.id || ''),
+    date: new Date(t.created || t.Created || t.InsDate || t.insDate || t.dateCreated || t.Date || t.date || 0),
+    amount: Math.round(((t.amount != null ? +t.amount : +t.Amount) || 0) * 100) / 100,
+    counterpart: String(t.counterPart || t.CounterPart || t.counterpart || t.userDescription || t.Description || t.description || ''),
+    typeId: t.typeId != null ? t.typeId : t.TypeId, subTypeId: t.subTypeId != null ? t.subTypeId : t.SubTypeId,
+  })).filter(t => t.id && t.amount !== 0 && !isNaN(t.date));
+}
+async function cfRefresh(trigger, daysOverride) {
+  if (!vivaConfigured()) throw new Error('Viva credentials not configured (VIVA_TX_USER / VIVA_TX_PASS).');
+  if (!pool) throw new Error('No database configured.');
+  const now = new Date();
+  const _span = Math.max(30, Math.min(1200, parseInt(daysOverride, 10) || CF_DAYS));
+  const from = pcvAdd(pcvDay0(now), -_span);
+  // The merchants v2 Search returns EVERY transaction (credits and debits);
+  // vivaFetchTransactions' fallback filters to credits only - flag that case.
+  const failures = [];
+  let raw = await vivaMerchantsStrategy(from.toISOString(), now.toISOString(), failures);
+  let creditsOnly = false;
+  if (!raw) { raw = await vivaFetchTransactions(from.toISOString(), now.toISOString()); creditsOnly = true; }
+  const txs = cfNormalizeAll(raw);
+  const byDay = {};
+  for (let i = 0; i <= _span; i++) { const d = pcvAdd(from, i); byDay[pcvISO(d)] = { d: pcvISO(d), inc: 0, exp: 0, intIn: 0, intOut: 0 }; }
+  const internals = [];
+  const typeHisto = {};
+  for (const t of txs) {
+    const k = pcvISO(pcvDay0(t.date));
+    const row = byDay[k]; if (!row) continue;
+    const isInt = cfIsInternal(t.counterpart);
+    const th = (t.typeId != null ? t.typeId : '?') + '/' + (t.subTypeId != null ? t.subTypeId : '?') + (t.amount < 0 ? ' out' : ' in');
+    typeHisto[th] = (typeHisto[th] || 0) + 1;
+    if (t.amount > 0) {
+      row.inc = Math.round((row.inc + t.amount) * 100) / 100;
+      if (isInt) row.intIn = Math.round((row.intIn + t.amount) * 100) / 100;
+    } else {
+      const a = -t.amount;
+      row.exp = Math.round((row.exp + a) * 100) / 100;
+      if (isInt) row.intOut = Math.round((row.intOut + a) * 100) / 100;
+    }
+    if (isInt) internals.push({ d: k, amount: t.amount, counterpart: String(t.counterpart || '').slice(0, 60) });
+  }
+  internals.sort((a, b) => a.d < b.d ? 1 : -1);
+  // Diagnostics: biggest movements with their counterparties - used to identify
+  // the internal Eurobank sweep transfers and tune VIVA_INTERNAL_IBANS.
+  const _outs = txs.filter(t => t.amount < 0).sort((a, b) => a.amount - b.amount).slice(0, 15).map(t => ({ d: pcvISO(pcvDay0(t.date)), amount: t.amount, counterpart: String(t.counterpart || '').slice(0, 70), typeId: t.typeId, subTypeId: t.subTypeId }));
+  const _ins = txs.filter(t => t.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 10).map(t => ({ d: pcvISO(pcvDay0(t.date)), amount: t.amount, counterpart: String(t.counterpart || '').slice(0, 70), typeId: t.typeId, subTypeId: t.subTypeId }));
+  // Preserve the cron claim through manual refreshes
+  let prevCron = null;
+  try { const pr = await pool.query('SELECT data FROM app_data WHERE key = $1', [CF_KEY]); prevCron = pr.rows[0] && pr.rows[0].data && pr.rows[0].data.lastCronDate || null; } catch (e) {}
+  // The account's first transaction is its real start - drop the flat zero days
+  // before it so a wide window does not carry months of dead space.
+  const _allRows = Object.values(byDay).sort((a, b) => a.d < b.d ? -1 : 1);
+  const _fi = _allRows.findIndex(r => r.inc || r.exp);
+  const _rows = _fi > 0 ? _allRows.slice(_fi) : _allRows;
+  const rec = {
+    updatedAt: now.toISOString(), trigger, creditsOnly, lastCronDate: prevCron,
+    from: _rows.length ? _rows[0].d : pcvISO(from), to: pcvISO(pcvDay0(now)),
+    txCount: txs.length, typeHisto, spanDays: _span, requestedFrom: pcvISO(from),
+    firstActive: _fi >= 0 ? _allRows[_fi].d : null,
+    days: _rows,
+    internals: internals.slice(0, 40),
+    topOut: _outs, topIn: _ins,
+  };
+  await pool.query(
+    `INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb)
+     ON CONFLICT (key) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`,
+    [CF_KEY, JSON.stringify(rec)]
+  );
+  console.log(`[viva][cashflow] ${trigger}: ${txs.length} tx, ${internals.length} internal-tagged, creditsOnly=${creditsOnly}`);
+  return rec;
+}
+app.get('/api/viva/cashflow', async (req, res) => {
+  try {
+    if (!pool) return res.json({ ok: false, error: 'No database configured.' });
+    const r = await pool.query('SELECT data FROM app_data WHERE key = $1', [CF_KEY]);
+    res.json({ ok: true, configured: vivaConfigured(), data: (r.rows[0] && r.rows[0].data) || null });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post('/api/viva/cashflow/refresh', async (req, res) => {
+  try {
+    const rec = await Promise.race([
+      cfRefresh('manual', req.query && req.query.days),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('Viva cash-flow refresh did not finish in time - check the [viva] lines in the Railway logs.')), 240000)),
+    ]);
+    res.json({ ok: true, txCount: rec.txCount, updatedAt: rec.updatedAt, internals: rec.internals.length, creditsOnly: rec.creditsOnly });
+  } catch (e) {
+    console.error('[viva][cashflow] refresh error:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+// Daily 06:00 Europe/Athens auto-refresh (claim-the-date guard, mirrors vivaCronTick)
+async function cfCronTick() {
+  try {
+    if (!vivaConfigured() || !pool) return;
+    const a = vivaAthensNow();
+    if (a.hour !== 6) return;
+    const r = await pool.query('SELECT data FROM app_data WHERE key = $1', [CF_KEY]);
+    const data = (r.rows[0] && r.rows[0].data) || {};
+    if (data.lastCronDate === a.date) return;
+    data.lastCronDate = a.date;   // claim first so a crash cannot loop-fire
+    await pool.query(`INSERT INTO app_data (key, data) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`, [CF_KEY, JSON.stringify(data)]);
+    await cfRefresh('cron-6am');
+  } catch (e) { console.error('[viva][cashflow] cron error:', e.message); }
+}
+setInterval(cfCronTick, 10 * 60 * 1000);   // fires once, 06:00-06:59 Athens, every day
+
 // ── Offline self-test: node server.js --viva-selftest ─────────────────────────
 function vivaSelfTest() {
   const D = (y, m, d) => new Date(y, m - 1, d);
@@ -2471,6 +5912,24 @@ function vivaSelfTest() {
   const bird = units.find(u => u.key === 'bdc|2026-07-23|birdhouse apartment');
   ok('Birdhouse Thu-23 batch = 69.40+49.82 = 119.22, key matches client format', !!bird && Math.abs(bird.exp - 119.22) < 0.001);
   ok('Airbnb key matches client format', units.some(u => u.key === 'abb|skyline loft|2026-07-20|georgia pap'));
+
+  // Votsala 1+2 share clearGroup → one Booking.com expectation (same as client Payments Check)
+  const votsalaData = {
+    payChk: { marks: {}, cfg: { from: '2026-07-01', tol: 1 } },
+    apts: [
+      { id: 'v1', name: 'Votsala 1 Luxury Stay with Patio', clearGroup: 'Votsala' },
+      { id: 'v2', name: 'Votsala 2 Luxury Stay with Patio', clearGroup: 'Votsala' },
+    ],
+    bks: [
+      { platform: 'Booking.com', aptId: 'v1', aptName: 'Votsala 1 Luxury Stay with Patio', guestName: 'A', checkIn: '14/7/2026', checkOut: '15/7/2026', payout: 100 },
+      { platform: 'Booking.com', aptId: 'v2', aptName: 'Votsala 2 Luxury Stay with Patio', guestName: 'B', checkIn: '14/7/2026', checkOut: '15/7/2026', payout: 50 },
+    ],
+  };
+  const vUnits = vivaExpectedUnits(votsalaData, today);
+  const vLine = vUnits.find(u => u.key && u.key.indexOf('|votsala') >= 0);
+  ok('Votsala clearGroup → one BDC unit', vUnits.filter(u => u.chan === 'bdc').length === 1);
+  ok('Votsala clearGroup sums payouts (150)', !!vLine && Math.abs(vLine.exp - 150) < 0.001);
+  ok('Votsala mark key uses group name', !!vLine && vLine.key === 'bdc|2026-07-16|votsala');
 
   const credits = [
     { id: 't1', date: D(2026, 7, 23), amount: 119.18, counterpart: 'BOOKING.COM B.V.' },          // Birdhouse, 4c rounding → tolerance match

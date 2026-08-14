@@ -1,0 +1,11 @@
+{
+  "note": "Locked at FE/SRV consolidation 2026-08-14. Monthly Close must not change these.",
+  "hashes": {
+    "calcBase": "9f99d0fe5ce52949ca3c75885be784a009fa3a8f3be8948e6acf770f4a5f00fe",
+    "calcAptPacket": "919c1e18188491cbc7627b91fb9c96bc8482315ebc722198d007ed2fb43ff9f7",
+    "HORIZON_JUNE": "e54204ea7bf1874be9664fe6dd07bbfb25d3b62bd301386f3b1f918809bfc5bd",
+    "SKYLINE_JUNE": "c8c07147bc38ee4b9632ab4ef221d4b849b9c0c7f74ad9917f39140fbb10c81d",
+    "COZY_JUNE": "790a115eea9227aef648e2fe9c1e08770b43f5d5c8d5ef019107161ebb8a5bc4",
+    "goldenBlock": "89d8279314ada18dfa703031f80c8f30805b582aee0a91e3553fdfe6a8a481ee"
+  }
+}
