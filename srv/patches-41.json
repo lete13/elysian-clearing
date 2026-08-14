@@ -1,0 +1,45 @@
+{
+ "baseSha256": "1f7b3a71f2017c248e84885015fcc90aa40d646d6483a044271f47933a82dc1e",
+ "expectedSha256": "aae685b7fc8e21344a1aad71154f898e9294a1d4001d8af2494bb2391bd76e46",
+ "builtAt": "2026-08-14 Airbnb password fill force + dismiss Try another way overlay",
+ "patches": [
+  {
+   "note": "Dismiss overlays + force password fill; force Prefer clicks",
+   "find": "async function piAirbnbPreferEmailDelivery(page) {\n  var kind0 = await piAirbnbOtpDeliveryKind(page);\n  if (kind0 === 'email') return 'email';\n  // Password-screen fallback: Try another way → Get a code via email (data-testid)\n  var tryWay = page.getByText(/try another way/i).first();\n  if (await tryWay.count()) {\n    await tryWay.click({ timeout: 2500 }).catch(function () {});\n    await page.waitForTimeout(1200);\n  }\n  var emailOpt = page.locator('[data-testid=\"fallback-option-email-otp\"]').first();\n  if (await emailOpt.count()) {\n    await emailOpt.click({ timeout: 2500 }).catch(function () {});\n    await page.waitForTimeout(2500);\n    if ((await piAirbnbOtpDeliveryKind(page)) === 'email') return 'email';\n  }\n  var hit = await piAirbnbClickMatching(page, [\n    'get a code via email', 'code via email', '^email$', 'email me', 'email a code',\n    'send (an )?email', 'get a code by email', 'send code by email', 'αποστολή.*email', 'με email'\n  ], { wait: 2000 });\n  if (hit) return 'email';\n  await piAirbnbOpenOtpOptions(page);\n  emailOpt = page.locator('[data-testid=\"fallback-option-email-otp\"]').first();\n  if (await emailOpt.count()) {\n    await emailOpt.click({ timeout: 2500 }).catch(function () {});\n    await page.waitForTimeout(2500);\n    if ((await piAirbnbOtpDeliveryKind(page)) === 'email') return 'email';\n  }\n  hit = await piAirbnbClickMatching(page, [\n    'get a code via email', 'code via email', '^email$', 'email me', 'email a code',\n    'send (an )?email', 'get a code by email'\n  ], { wait: 2000 });\n  if (hit) return 'email';\n  hit = await piAirbnbClickMatching(page, ['^whatsapp$', 'whats\\\\s*app'], { wait: 1800 });\n  if (hit) return 'whatsapp';\n  return null;\n}\n",
+   "replace": "async function piAirbnbDismissOverlays(page) {\n  try { await page.keyboard.press('Escape'); } catch (e) {}\n  await page.waitForTimeout(300);\n  try { await page.keyboard.press('Escape'); } catch (e) {}\n  await page.waitForTimeout(200);\n}\nasync function piAirbnbFillPassword(page, pass) {\n  await piAirbnbDismissOverlays(page);\n  const has = await page.locator('input[name=\"password\"], input[type=\"password\"]').count();\n  if (!has) return false;\n  await page.evaluate(function () {\n    var el = document.querySelector('input[name=\"password\"], input[type=\"password\"]');\n    if (!el) return;\n    try { el.focus(); } catch (e) {}\n  });\n  const passInput = page.locator('input[name=\"password\"], input[type=\"password\"]').first();\n  // force: bypass Airbnb \"Try another way\" overlays that intercept pointer events\n  await passInput.fill('', { force: true, timeout: 8000 }).catch(function () {});\n  await passInput.pressSequentially(String(pass || ''), { delay: 25, force: true }).catch(async function () {\n    await page.keyboard.type(String(pass || ''), { delay: 25 });\n  });\n  const cont = page.locator('button:has-text(\"Continue\"), button:has-text(\"Log in\"), button:has-text(\"Sign in\"), button[type=\"submit\"]').first();\n  if (await cont.count()) await cont.click({ force: true, timeout: 5000 }).catch(function () {});\n  await page.waitForTimeout(4000);\n  return true;\n}\nasync function piAirbnbPreferEmailDelivery(page) {\n  var kind0 = await piAirbnbOtpDeliveryKind(page);\n  if (kind0 === 'email') return 'email';\n  var tryWay = page.getByText(/try another way/i).first();\n  if (await tryWay.count()) {\n    await tryWay.click({ force: true, timeout: 2500 }).catch(function () {});\n    await page.waitForTimeout(1200);\n  }\n  var emailOpt = page.locator('[data-testid=\"fallback-option-email-otp\"]').first();\n  if (await emailOpt.count()) {\n    await emailOpt.click({ force: true, timeout: 2500 }).catch(function () {});\n    await page.waitForTimeout(2500);\n    if ((await piAirbnbOtpDeliveryKind(page)) === 'email') return 'email';\n  }\n  var hit = await piAirbnbClickMatching(page, [\n    'get a code via email', 'code via email', '^email$', 'email me', 'email a code',\n    'send (an )?email', 'get a code by email', 'send code by email', 'αποστολή.*email', 'με email'\n  ], { wait: 2000 });\n  if (hit) return 'email';\n  await piAirbnbOpenOtpOptions(page);\n  emailOpt = page.locator('[data-testid=\"fallback-option-email-otp\"]').first();\n  if (await emailOpt.count()) {\n    await emailOpt.click({ force: true, timeout: 2500 }).catch(function () {});\n    await page.waitForTimeout(2500);\n    if ((await piAirbnbOtpDeliveryKind(page)) === 'email') return 'email';\n  }\n  hit = await piAirbnbClickMatching(page, [\n    'get a code via email', 'code via email', '^email$', 'email me', 'email a code',\n    'send (an )?email', 'get a code by email'\n  ], { wait: 2000 });\n  if (hit) return 'email';\n  hit = await piAirbnbClickMatching(page, ['^whatsapp$', 'whats\\\\s*app'], { wait: 1800 });\n  if (hit) return 'whatsapp';\n  await piAirbnbDismissOverlays(page);\n  return null;\n}\n"
+  },
+  {
+   "note": "Worker: no password click under modal",
+   "find": "    const passInput = page.locator('input[name=\"password\"], input[type=\"password\"]').first();\n    if (await passInput.count()) {\n      // One more email-otp attempt from password screen\n      await piAirbnbPreferEmailDelivery(page);\n      await page.waitForTimeout(1500);\n      if (await piAirbnbNeedsOtp(page)) {\n        await piAirbnbMarkAwaitingOtp(job);\n        return;\n      }\n      await passInput.click();\n      await passInput.fill('');\n      await passInput.type(pass, { delay: 30 });\n      await page.locator('button:has-text(\"Continue\"), button:has-text(\"Log in\"), button:has-text(\"Sign in\"), button[type=\"submit\"]').first().click();\n      await page.waitForTimeout(5000);\n    }",
+   "replace": "    if (await page.locator('input[name=\"password\"], input[type=\"password\"]').count()) {\n      // Prefer email OTP from password screen; if modal opens, do not click password underneath it\n      await piAirbnbPreferEmailDelivery(page);\n      await page.waitForTimeout(1500);\n      if (await piAirbnbNeedsOtp(page)) {\n        await piAirbnbMarkAwaitingOtp(job);\n        return;\n      }\n      await piAirbnbDismissOverlays(page);\n      await piAirbnbFillPassword(page, pass);\n    }"
+  },
+  {
+   "note": "OTP route: fill password via helper",
+   "find": "      const pass = process.env.AIRBNB_HOST_PASSWORD || '';\n      const passInput = job.page.locator('input[name=\"password\"], input[type=\"password\"]').first();\n      if (await passInput.count()) {\n        await passInput.focus({ timeout: 3000 }).catch(function () {});\n        await passInput.fill('');\n        await passInput.type(pass, { delay: 30 });\n        await job.page.locator('button:has-text(\"Continue\"), button:has-text(\"Log in\"), button:has-text(\"Sign in\"), button[type=\"submit\"]').first().click({ force: true, timeout: 4000 }).catch(function () {});\n        await job.page.waitForTimeout(5000);\n      }",
+   "replace": "      const pass = process.env.AIRBNB_HOST_PASSWORD || '';\n      if (await job.page.locator('input[name=\"password\"], input[type=\"password\"]').count()) {\n        await piAirbnbFillPassword(job.page, pass);\n      }"
+  },
+  {
+   "note": "Fill OTP dismisses overlays first",
+   "find": "async function piAirbnbFillOtp(page, otp) {\n  const code = String(otp || '').replace(/\\D/g, '');\n  if (!code) throw new Error('Empty OTP');\n  // Focus without click (overlays intercept pointer), then type digits so Airbnb auto-submits\n  await page.evaluate(function () {",
+   "replace": "async function piAirbnbFillOtp(page, otp) {\n  const code = String(otp || '').replace(/\\D/g, '');\n  if (!code) throw new Error('Empty OTP');\n  await piAirbnbDismissOverlays(page);\n  // Focus without click (overlays intercept pointer), then type digits so Airbnb auto-submits\n  await page.evaluate(function () {"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piAirbnbFillPassword",
+   "note": "password helper"
+  },
+  {
+   "has": "piAirbnbDismissOverlays",
+   "note": "escape overlays"
+  },
+  {
+   "has": "pressSequentially",
+   "note": "force sequential type"
+  },
+  {
+   "hasNot": "await passInput.click();",
+   "note": "no password click"
+  }
+ ]
+}
