@@ -58,6 +58,14 @@ assert(
   html.includes("const suffix = (row.checkinSameDay === 'yes' && row.nextNights) ? ' ('+row.nextNights+' νύχτες)' : '';"),
   'nights suffix is not shown on Δεν ξέρουμε ακόμα'
 );
+assert(
+  !html.includes('onclick="opsSaveSnapshot()"'),
+  'Snapshot button is gone — check-ins come from live Hosthub'
+);
+assert(
+  html.includes('Live Hosthub bookings are the source of check-ins/checkouts.'),
+  'Daily Ops list starts from live bookings'
+);
 
 const sandbox = {
   console,
@@ -157,6 +165,7 @@ sandbox.S.daily.snapshots['2026-08-15'] = {
     people: 6,
     nextGuest: 'Phantom Arrival',
     comments: 'Prepare 2 sofa beds · Long stay: 7 nights',
+    cleanerName: 'Maria',
   }],
 };
 
@@ -168,6 +177,7 @@ assert.strictEqual(merged[0].nextNights, null);
 assert.strictEqual(merged[0].people, '');
 assert.strictEqual(merged[0].nextGuest, '');
 assert.strictEqual(merged[0].checkoutGuest, 'Departing Guest');
+assert.strictEqual(merged[0].cleanerName, 'Maria', 'cleaner assignment still overlays from the day save');
 
 sandbox._opsApplySofaComment(merged[0]);
 sandbox._opsApplyLongStayComment(merged[0]);
