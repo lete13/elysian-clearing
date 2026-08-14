@@ -42,6 +42,10 @@ const fe91 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-91.json')
 const srv65 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-65.json'), 'utf8'));
 assert(fe91.patches.some((p) => (p.replace || '').includes('piStopPull')), 'Collect has Stop pull');
 assert(srv65.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/pull-stop'")), 'API stops running pull jobs');
+const fe92 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-92.json'), 'utf8'));
+const srv66 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-66.json'), 'utf8'));
+assert(fe92.patches.some((p) => (p.replace || '').includes('no pull job with that id')), 'vanished job id is Pull stopped');
+assert(srv66.patches.some((p) => (p.replace || '').includes("status: 'cancelled'")), 'missing job GET is cancelled');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');
