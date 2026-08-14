@@ -43,7 +43,7 @@ function extractFn(source, name) {
 const html = applyChain('fe', 'index.html');
 
 assert(
-  html.includes('const checkouts = S.bks.filter(b => !b.cancelled && (b.checkOut === date || b.checkOut === dateFmt));'),
+  html.includes('const checkouts = S.bks.filter(b => !b.cancelled && onDay(b.checkOut));'),
   'cancelled checkouts are ignored when building Daily Ops rows'
 );
 assert(

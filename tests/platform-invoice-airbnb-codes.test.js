@@ -51,10 +51,10 @@ assert(worker.includes('clickAirbnbStayTotalPrice'), 'Help 438: click total pric
 assert(worker.includes('settleAirbnbHostPage'), 'waits for stay-page GraphQL');
 assert(worker.includes('airbnbPortalOrigin'), 'fixture origin override for local stay-click tests');
 
-const fe93 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-93.json'), 'utf8'));
+const fe96 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-96.json'), 'utf8'));
 const srv67 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-67.json'), 'utf8'));
-assert(fe93.patches.some((p) => (p.replace || '').includes('Test pull: latest ')), 'FE test pull is latest N');
-assert(fe93.patches.some((p) => (p.replace || '').includes('createdOnChannel')), 'FE posts Hosthub created dates');
+assert(fe96.patches.some((p) => (p.replace || '').includes('Test pull: latest ')), 'FE test pull is latest N');
+assert(fe96.patches.some((p) => (p.replace || '').includes('createdOnChannel')), 'FE posts Hosthub created dates');
 assert(srv67.patches.some((p) => (p.replace || '').includes('piSortAirbnbReservationsLatest')), 'server sorts latest before limit');
 assert(fe92.patches.some((p) => (p.replace || '').includes('no pull job with that id')), 'vanished job id is Pull stopped');
 assert(srv66.patches.some((p) => (p.replace || '').includes("status: 'cancelled'")), 'missing job GET is cancelled');
