@@ -167,4 +167,18 @@ sandbox.S.bks = [
 const refresh = sandbox._opsExtraCleanRows('2026-08-15', []);
 assert.ok(refresh.some(r => r.cleanType === 'refresh' && r.aptName === 'Empty House'));
 
+sandbox.S.bks = [
+  { id: 'out', aptId: 'cedar-1', aptName: 'The Athenian Cedar', checkOut: '10/8/2026', cancelled: false },
+  cedarStay,
+];
+const vacantSofa = sandbox._opsExtraCleanRows('2026-08-15', []);
+assert.ok(
+  vacantSofa.some(r => r.aptName === 'The Athenian Cedar' && r.cleanType === 'sofa_bed'),
+  'vacant arrival that needs sofas stays SOFA BED, not a plain REFRESH'
+);
+assert.ok(
+  !vacantSofa.some(r => r.aptName === 'The Athenian Cedar' && r.cleanType === 'refresh'),
+  'sofa prep replaces the refresh extra on the same apartment'
+);
+
 console.log('daily-ops-checkin-schedule: ok');
