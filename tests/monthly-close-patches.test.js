@@ -252,6 +252,31 @@ stepCtx.rptMoReset('a2');
 assert.ok(!Object.prototype.hasOwnProperty.call(stepCtx.S.moOverride, 'a2::2026-07-01::2026-07-31'), 'a2 months reset');
 assert.strictEqual(stepCtx.S.moOverride['a1::2026-07-01::2026-07-31'], 2, 'a1 months survive a2 reset');
 
+const rsvCtx = {};
+vm.runInNewContext(
+  extractFn(html, 'parseD') + '\n' +
+  extractFn(html, 'rptBkAptName') + '\n' +
+  extractFn(html, 'rptOrderedBks') + '\n' +
+  'this.parseD = parseD; this.rptBkAptName = rptBkAptName; this.rptOrderedBks = rptOrderedBks;',
+  rsvCtx
+);
+const aptHorizon = { id: 'h1', name: 'Horizon' };
+const aptSkyline = { id: 's1', name: 'Skyline' };
+const mixedBks = [
+  { aptId: 's1', aptName: 'wrong', guestName: 'Zed', checkIn: '05/06/2026' },
+  { aptId: 'h1', aptName: 'wrong', guestName: 'Ann', checkIn: '20/06/2026' },
+  { aptId: 'h1', aptName: 'wrong', guestName: 'Bob', checkIn: '02/06/2026' },
+  { aptId: 's1', aptName: 'wrong', guestName: 'Cara', checkIn: '01/06/2026' },
+];
+const ordered = rsvCtx.rptOrderedBks(mixedBks, [aptHorizon, aptSkyline]);
+assert.deepStrictEqual(ordered.map(b => b.guestName), ['Bob', 'Ann', 'Cara', 'Zed'], 'grouped reservations: first apt then check-in');
+assert.strictEqual(rsvCtx.rptBkAptName(ordered[0], [aptHorizon, aptSkyline]), 'Horizon');
+assert.strictEqual(rsvCtx.rptBkAptName(ordered[2], [aptHorizon, aptSkyline]), 'Skyline');
+assert.strictEqual(html.includes("['Apartment','Channel','Guest','Check-in'"), true, 'screen reservations table has Apartment column');
+assert.strictEqual(html.includes('<th>Apartment</th><th>Guest</th><th>Check-in</th>'), true, 'PDF reservations table has Apartment column');
+assert.ok(html.includes('colspan="6"><b>Total (${bks.length})</b>'), 'PDF footer spans the apartment column');
+assert.strictEqual(mixedBks[0].guestName, 'Zed', 'sort copies the list and does not mutate the source');
+
 
 // ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
 const srvChain = ['patches.json'];
