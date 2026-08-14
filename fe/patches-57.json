@@ -1,0 +1,19 @@
+{
+ "baseSha256": "d4240f73760ad94110fb091e7b016e4df57620c88f9f13abf5ec395aa81b8d9a",
+ "expectedSha256": "bba2174c5011cdbebddd886dc6999fd0d50ad7b910973e0be54946a8185301c2",
+ "builtAt": "2026-08-14 Airbnb OTP hosting fix live",
+ "patches": [
+  {
+   "note": "FE marker: OTP input typing fix deployed",
+   "find": "Connect requests email OTP via Try another way.",
+   "replace": "Connect requests email OTP via Try another way (typed into otp-code-input).",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "otp-code-input",
+   "note": "marker copy"
+  }
+ ]
+}
