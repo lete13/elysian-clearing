@@ -73,6 +73,7 @@ function otpPage(options) {
   };
   const single = {
     count: async () => 1,
+    isVisible: async () => options.inputVisible !== false,
     waitFor: async config => calls.push(['otp.waitFor', config.state]),
     click: async () => calls.push('otp.click'),
     fill: async text => { value = text; calls.push(['otp.fill', text]); },
@@ -82,6 +83,7 @@ function otpPage(options) {
     },
     press: async key => calls.push(['otp.press', key]),
     inputValue: async () => options.neverLands ? '' : value,
+    evaluate: async callback => callback({ form: options.formExists ? {} : null }),
     locator: selector => {
       if (selector.indexOf('@id="dls-modal-container"') >= 0) return ancestor(options.modalContinue ? modalButton : null);
       if (selector.indexOf('@role="dialog"') >= 0) return ancestor(options.hasContinue ? dialogButton : null);
@@ -93,7 +95,7 @@ function otpPage(options) {
   const page = {
     url: () => 'https://www.airbnb.com/login?redirect_url=%2Fhosting',
     locator: selector => {
-      if (selector === '#otp-code-input') return { first: () => single };
+      if (selector === '#otp-code-input') return { count: async () => 1, first: () => single };
       if (selector.indexOf('[role="alert"]') >= 0) return alerts;
       if (selector.indexOf('button:visible') >= 0) return buttonList(globalButton);
       throw new Error('unexpected page selector: ' + selector);
@@ -153,14 +155,18 @@ function resendPage(options) {
 async function main() {
   const server = applyChain('srv', 'server.js');
   const frontend = applyChain('fe', 'index.html');
+  const captureSource = extractFn(server, 'piAirbnbCaptureOtpDiagnostic');
   const fillSource = extractFn(server, 'piAirbnbFillOtp');
   const fillContext = {};
-  vm.runInNewContext(fillSource + '\nthis.fillOtp = piAirbnbFillOtp;', fillContext);
+  vm.runInNewContext(captureSource + '\n' + fillSource + '\nthis.fillOtp = piAirbnbFillOtp;', fillContext);
 
   const accepted = otpPage();
   assert.strictEqual(await fillContext.fillOtp(accepted.page, '123456'), true);
   assert.strictEqual(accepted.page._piOtpTyped, '123456', 'pressSequentially lands the exact digits');
   assert.strictEqual(accepted.page._piOtpExpected, '123456');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(accepted.page._piOtpDiagnostic.dom)), {
+    inputVisible: true, inputCount: 1, formExists: false, submitMethod: 'enter', validation: false,
+  }, 'post-submit diagnostic contains only actual DOM facts');
   assert(accepted.calls.some(call => Array.isArray(call) && call[0] === 'waitForFunction' && call[1] === null && call[2] === 15000), 'exact code waits 15 seconds for OTP input transition');
   assert(!accepted.calls.some(call => Array.isArray(call) && call[0] === 'waitForSelector'), 'background password is never an acceptance signal');
 
@@ -191,10 +197,12 @@ async function main() {
   const rejected = otpPage({ validationError: true, rejectWait: true });
   assert.strictEqual(await fillContext.fillOtp(rejected.page, '445566'), true);
   assert.strictEqual(rejected.page._piOtpValidationError, true, 'visible Airbnb code error is distinguished from unchanged OTP UI');
+  assert.strictEqual(rejected.page._piOtpDiagnostic.dom.validation, true, 'actual validation bool reaches diagnostics');
 
   const missed = otpPage({ dropSequential: true, neverLands: true });
   assert.strictEqual(await fillContext.fillOtp(missed.page, '123456'), false);
   assert.strictEqual(missed.page._piOtpTyped, '', 'failed exact typing remains distinguishable for retry-same-code hint');
+  assert.strictEqual(missed.page._piOtpDiagnostic.dom.submitMethod, 'none', 'failed typing reports no submit');
   assert(!missed.calls.some(call => Array.isArray(call) && call[0] === 'waitForFunction'), 'failed typing returns without falsely waiting for rejection');
 
   assert(fillSource.includes('}, null, { timeout: 15000 })'), 'OTP transition gets a real 15-second Playwright timeout');
@@ -203,6 +211,56 @@ async function main() {
   assert(server.includes('Airbnb is still showing the code screen without an invalid-code message'), 'unchanged OTP UI is not called a rejection');
   assert(server.includes('Airbnb says that code is invalid or expired'), 'visible validation error gets an accurate hint');
   assert(server.includes("input[name=\"password\"]:visible, input[type=\"password\"]:visible"), 'post-OTP password must be visible');
+  assert(server.includes('const PI_LOGIN_TTL_MS = 30 * 60 * 1000;'), 'Connect job survives CAPTCHA work for 30 minutes');
+
+  const publicSource = extractFn(server, 'piOtpDiagnosticPublic');
+  const publicContext = {};
+  vm.runInNewContext(publicSource + '\nthis.clean = piOtpDiagnosticPublic;', publicContext);
+  const publicDiag = JSON.parse(JSON.stringify(publicContext.clean({
+    events: [{
+      path: '/api/v2/auth/login?email=private@example.com#secret',
+      method: 'POST',
+      status: 422,
+      timestamp: 1234,
+      submitMethod: 'button',
+      body: { otp: '123456' },
+      headers: { cookie: 'secret' },
+    }],
+    dom: { inputVisible: true, inputCount: 1, formExists: true, submitMethod: 'button', validation: false },
+    email: 'private@example.com',
+  })));
+  assert.deepStrictEqual(publicDiag.events[0], {
+    path: '/api/v2/auth/login', method: 'POST', status: 422, timestamp: 1234, submitMethod: 'button',
+  }, 'public diagnostic serializes only path, method, status, timestamp and submit method');
+  assert(!JSON.stringify(publicDiag).includes('private@example.com') && !JSON.stringify(publicDiag).includes('123456'),
+    'public diagnostic cannot leak email, query, code, body or headers');
+
+  const authPathSource = extractFn(server, 'piAirbnbAuthPath');
+  const authRequestSource = extractFn(server, 'piAirbnbRecordOtpAuthRequest');
+  const authResponseSource = extractFn(server, 'piAirbnbRecordOtpAuthResponse');
+  const authContext = { URL };
+  vm.runInNewContext(authPathSource + '\n' + authRequestSource + '\n' + authResponseSource +
+    '\nthis.recordRequest = piAirbnbRecordOtpAuthRequest; this.recordResponse = piAirbnbRecordOtpAuthResponse;', authContext);
+  const diagPage = { _piOtpCollecting: true, _piOtpSubmitMethod: 'button', _piOtpAuthEvents: [] };
+  const authRequest = {
+    url: () => 'https://www.airbnb.com/api/v2/auth/login?otp=123456&email=private%40example.com',
+    method: () => 'POST',
+  };
+  authContext.recordRequest(diagPage, authRequest);
+  authContext.recordResponse(diagPage, {
+    url: authRequest.url,
+    request: () => authRequest,
+    status: () => 422,
+  });
+  assert.strictEqual(diagPage._piOtpAuthEvents.length, 1);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(diagPage._piOtpAuthEvents[0])), {
+    path: '/api/v2/auth/login', method: 'POST', status: 422,
+    timestamp: diagPage._piOtpAuthEvents[0].timestamp, submitMethod: 'button',
+  }, 'runtime tracker retains only sanitized auth metadata');
+  assert.strictEqual(authContext.recordRequest(diagPage, {
+    url: () => 'https://www.airbnb.com/sgtm/g/collect?secret=yes', method: () => 'POST',
+  }), undefined);
+  assert.strictEqual(diagPage._piOtpAuthEvents.length, 1, 'non-auth telemetry is excluded');
 
   const resendSource = extractFn(server, 'piAirbnbResendCode');
   const resendContext = {};
@@ -245,12 +303,16 @@ async function main() {
   assert(route.includes('await previousClick.catch(function () {});'), 'CAPTCHA clicks remain serialized');
   assert(route.includes('await job.page.waitForTimeout(400);'), 'tile path waits only 400ms');
   assert(route.includes('if (captchaVerify)'), 'Verify alone takes continuation path');
+  assert(route.includes("verifyHint !== undefined && typeof verifyHint !== 'boolean'"), 'server validates optional Verify hint');
+  assert(route.includes("verifyHint === true || await piAirbnbCaptchaClickIsVerify"), 'explicit frontend Verify hint wins over bad frame coordinates');
   assert(route.includes("job.status = 'awaiting_captcha'"), 'tile path remains awaiting CAPTCHA');
   assert(route.includes('captchaVerify: captchaVerify'), 'response identifies tile versus Verify');
   assert(frontend.includes("j.captchaVerify === false"), 'frontend recognizes a fast tile response');
   assert(frontend.includes("if (!(captchaImg && r.job.status === 'awaiting_captcha'))"), 'polling preserves active CAPTCHA image');
+  assert(frontend.includes('OTP diagnostic: input visible='), 'Connect panel renders the OTP diagnostic line');
+  assert(frontend.includes('captchaVerify: captchaVerify'), 'frontend sends Verify-region classification');
 
-  console.log('airbnb auth flow OK: exact OTP typing, active submit controls, confirmed resend response, bounded wait, fast CAPTCHA tiles');
+  console.log('airbnb auth flow OK: sanitized OTP diagnostics, 30-minute jobs, active submit controls, confirmed resend, robust CAPTCHA Verify');
 }
 
 main().catch(error => {

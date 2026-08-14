@@ -1,0 +1,50 @@
+{
+ "baseSha256": "d6cba799c6c734cceb7123b4f636d9d824898cdddc9d83234148ac1b9c384f45",
+ "expectedSha256": "f92fd7034d2cea2d293ae4bd39681685a6d727301fab800281d091347a8989bd",
+ "builtAt": "2026-08-14 Show sanitized OTP diagnostics and identify CAPTCHA Verify region",
+ "patches": [
+  {
+   "note": "Format one concise production-safe OTP diagnostic line",
+   "find": "  function piRenderAirbnbConnect(job) {",
+   "replace": "  function piOtpDiagnosticText(job) {\n    var otp = job && job.diagnostics && job.diagnostics.otp;\n    if (!otp || !otp.dom) return '';\n    var dom = otp.dom;\n    var events = Array.isArray(otp.events) ? otp.events : [];\n    var latest = events.length ? events[events.length - 1] : null;\n    var auth = 'no auth request observed';\n    if (latest) {\n      var status = latest.status == null ? 'pending' : String(latest.status);\n      var when = latest.timestamp ? new Date(latest.timestamp).toISOString() : 'unknown time';\n      auth = String(latest.method || '?') + ' ' + String(latest.path || '/') + ' → ' + status + ' at ' + when;\n      if (events.length > 1) auth += ' (+' + (events.length - 1) + ' earlier)';\n    }\n    return 'OTP diagnostic: input visible=' + (dom.inputVisible ? 'yes' : 'no') +\n      ', count=' + Number(dom.inputCount || 0) + ', form=' + (dom.formExists ? 'yes' : 'no') +\n      ', submit=' + String(dom.submitMethod || 'none') + ', validation=' + (dom.validation ? 'true' : 'false') +\n      '; auth=' + auth;\n  }\n\n  function piRenderAirbnbConnect(job) {"
+  },
+  {
+   "note": "Refresh OTP diagnostics without replacing typed input",
+   "find": "      var actEl = document.getElementById('pi-airbnb-otp-actions');\n      if (actEl && job.clickables && job.clickables.length) {\n        actEl.textContent = 'Visible actions: ' + job.clickables.slice(0, 12).join(' · ');\n      }\n      var rb = document.getElementById('pi-airbnb-resend');",
+   "replace": "      var actEl = document.getElementById('pi-airbnb-otp-actions');\n      if (actEl && job.clickables && job.clickables.length) {\n        actEl.textContent = 'Visible actions: ' + job.clickables.slice(0, 12).join(' · ');\n      }\n      var diagEl = document.getElementById('pi-airbnb-otp-diagnostic');\n      var diagText = piOtpDiagnosticText(job);\n      if (diagEl) { diagEl.textContent = diagText; diagEl.style.display = diagText ? 'block' : 'none'; }\n      var rb = document.getElementById('pi-airbnb-resend');"
+  },
+  {
+   "note": "Render OTP diagnostic only when submit facts exist",
+   "find": "        '<div id=\"pi-airbnb-otp-actions\" style=\"font-size:10.5px;color:var(--tx3);margin-top:4px\">' +\n        (job.clickables && job.clickables.length\n          ? ('Visible actions: ' + job.clickables.slice(0, 12).map(function (t) { return String(t).replace(/</g,'&lt;'); }).join(' · '))\n          : '') + '</div>';",
+   "replace": "        '<div id=\"pi-airbnb-otp-actions\" style=\"font-size:10.5px;color:var(--tx3);margin-top:4px\">' +\n        (job.clickables && job.clickables.length\n          ? ('Visible actions: ' + job.clickables.slice(0, 12).map(function (t) { return String(t).replace(/</g,'&lt;'); }).join(' · '))\n          : '') + '</div>' +\n        '<div id=\"pi-airbnb-otp-diagnostic\" style=\"font:10.5px var(--mono);color:var(--tx3);margin-top:5px;line-height:1.4;' +\n        (piOtpDiagnosticText(job) ? '' : 'display:none;') + '\">' +\n        piOtpDiagnosticText(job).replace(/</g,'&lt;') + '</div>';"
+  },
+  {
+   "note": "Send a Verify hint for the screenshot bottom-right button region",
+   "find": "    var x = Math.round((ev.clientX - rect.left) * naturalW / rect.width);\n    var y = Math.round((ev.clientY - rect.top) * naturalH / rect.height);\n    img.style.opacity = '0.55';",
+   "replace": "    var x = Math.round((ev.clientX - rect.left) * naturalW / rect.width);\n    var y = Math.round((ev.clientY - rect.top) * naturalH / rect.height);\n    // The live reCAPTCHA dialog is centered in the 1440×900 browser image;\n    // its blue Verify control occupies this bounded bottom-right region.\n    var captchaVerify = x >= naturalW * 0.57 && x <= naturalW * 0.70 &&\n      y >= naturalH * 0.84 && y <= naturalH * 0.94;\n    img.style.opacity = '0.55';"
+  },
+  {
+   "note": "Include the boolean Verify hint with validated click coordinates",
+   "find": "          body: JSON.stringify({ x: x, y: y })",
+   "replace": "          body: JSON.stringify({ x: x, y: y, captchaVerify: captchaVerify })"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "OTP diagnostic: input visible=",
+   "note": "Connect shows concise OTP diagnostic prefix"
+  },
+  {
+   "has": "; auth=' + auth",
+   "note": "diagnostic line includes latest sanitized auth event"
+  },
+  {
+   "has": "body: JSON.stringify({ x: x, y: y, captchaVerify: captchaVerify })",
+   "note": "frontend sends explicit Verify-region hint"
+  },
+  {
+   "has": "x >= naturalW * 0.57 && x <= naturalW * 0.70",
+   "note": "Verify hint is bounded to the screenshot bottom-right region"
+  }
+ ]
+}
