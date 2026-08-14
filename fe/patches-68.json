@@ -1,0 +1,35 @@
+{
+ "baseSha256": "c2735db14a47225f0bc117656252e7d79a9419f46c0bbf2b92e5a586476a1f75",
+ "expectedSha256": "cb44047a276a3935e3d469588fb01b441aa18a78b43831d5cdae932c4e4f4322",
+ "builtAt": "2026-08-14 Solve Airbnb picture check in app",
+ "patches": [
+  {
+   "note": "Render live clickable Airbnb captcha image",
+   "find": "    } else if (st === 'connected') {\n      body = '<div style=\"font-weight:600;color:var(--tx-ok,#059669)\">✓ Airbnb connected</div>' +\n",
+   "replace": "    } else if (st === 'awaiting_captcha') {\n      var capRev = (job.captcha && job.captcha.rev) || Date.now();\n      body = '<div style=\"font-weight:600;margin-bottom:6px\">Complete Airbnb picture check</div>' +\n        '<div style=\"font-size:12.5px;line-height:1.45;margin-bottom:8px\">' +\n        (job.hint || 'Click every matching picture, then click the blue Verify button inside the image.') + '</div>' +\n        '<div style=\"font-size:11px;color:var(--tx3);margin-bottom:6px\">This is the live Airbnb browser. Each click continues the same Connect attempt.</div>' +\n        '<img id=\"pi-airbnb-captcha\" alt=\"Airbnb picture check\" ' +\n        'src=\"/api/platform-invoices/sessions/airbnb/login/' + encodeURIComponent(job.id) + '/captcha.png?v=' + capRev + '\" ' +\n        'onclick=\"piAirbnbCaptchaClick(event)\" ' +\n        'style=\"display:block;width:100%;max-width:720px;height:auto;border:1px solid var(--bdr);border-radius:8px;cursor:crosshair;background:#fff\" />' +\n        '<div style=\"margin-top:8px;display:flex;gap:8px;flex-wrap:wrap\">' +\n        '<button class=\"btn sm\" onclick=\"piAirbnbCaptchaRefresh()\">Refresh image</button>' +\n        '<button class=\"btn sm\" onclick=\"piCancelAirbnbConnect()\">Cancel</button></div>';\n    } else if (st === 'connected') {\n      body = '<div style=\"font-weight:600;color:var(--tx-ok,#059669)\">✓ Airbnb connected</div>' +\n"
+  },
+  {
+   "note": "Map image clicks back to the live Airbnb browser",
+   "find": "  window.piSubmitAirbnbOtp = async function () {\n",
+   "replace": "  window.piAirbnbCaptchaRefresh = function () {\n    var img = document.getElementById('pi-airbnb-captcha');\n    if (!img || !window._piAirbnbLoginId) return;\n    img.src = '/api/platform-invoices/sessions/airbnb/login/' +\n      encodeURIComponent(window._piAirbnbLoginId) + '/captcha.png?v=' + Date.now();\n  };\n  window.piAirbnbCaptchaClick = async function (ev) {\n    var id = window._piAirbnbLoginId;\n    var img = ev && ev.currentTarget;\n    if (!id || !img) return;\n    var rect = img.getBoundingClientRect();\n    var naturalW = img.naturalWidth || 1440;\n    var naturalH = img.naturalHeight || 900;\n    var x = Math.round((ev.clientX - rect.left) * naturalW / rect.width);\n    var y = Math.round((ev.clientY - rect.top) * naturalH / rect.height);\n    img.style.opacity = '0.55';\n    try {\n      var res = await fetch('/api/platform-invoices/sessions/airbnb/login/' +\n        encodeURIComponent(id) + '/captcha/click', {\n          method: 'POST',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify({ x: x, y: y })\n        });\n      var j = await res.json();\n      if (!res.ok && !(j && j.job)) throw new Error((j && j.error) || 'Picture-check click failed');\n      if (j.job) piRenderAirbnbConnect(j.job);\n      if (j.job && j.job.status === 'awaiting_captcha') {\n        msg('Click registered — continue the picture check, then click Verify inside the image', true);\n      } else if (j.job && j.job.status === 'awaiting_otp') {\n        msg('Picture check passed — enter the email code', true);\n      } else if (j.job && j.job.status === 'connected') {\n        msg('Airbnb connected in-app', true);\n        await piReload();\n      } else if (!res.ok) {\n        throw new Error(j.error || 'Picture check failed');\n      }\n    } catch (e) {\n      msg(e.message || String(e), false);\n      if (img) img.style.opacity = '1';\n    }\n  };\n  window.piSubmitAirbnbOtp = async function () {\n"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Complete Airbnb picture check",
+   "note": "captcha panel"
+  },
+  {
+   "has": "piAirbnbCaptchaClick",
+   "note": "captcha click handler"
+  },
+  {
+   "has": "/captcha.png?v=",
+   "note": "live captcha image"
+  },
+  {
+   "has": "/captcha/click",
+   "note": "click relay"
+  }
+ ]
+}
