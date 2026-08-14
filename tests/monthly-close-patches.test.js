@@ -13,7 +13,7 @@ let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/
 // Each file starts where the previous one ended, so a release is a small new
 // file rather than a rewrite of one ever-growing patches.json.
 const chainFiles = ['patches.json'];
-for (let n = 2; n <= 50; n++) {
+for (let n = 2; n <= 80; n++) {
   const f = path.join(root, 'fe', `patches-${n}.json`);
   if (!fs.existsSync(f)) break;
   chainFiles.push(`patches-${n}.json`);
@@ -127,7 +127,7 @@ assert(html.includes('var _need = Math.max(0, tot - skipN);'), 'progress measure
 
 // ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
 const srvChain = ['patches.json'];
-for (let n = 2; n <= 50; n++) {
+for (let n = 2; n <= 80; n++) {
   if (!fs.existsSync(path.join(root, 'srv', `patches-${n}.json`))) break;
   srvChain.push(`patches-${n}.json`);
 }

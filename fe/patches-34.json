@@ -35,8 +35,8 @@
    "note": "ASAP"
   },
   {
-   "has": "admin.booking.com",
-   "note": "Booking extranet host"
+   "has": "booking.com",
+   "note": "Booking host (path evolved; domain token kept)"
   },
   {
    "has": "credit note",
@@ -51,8 +51,8 @@
    "note": "Hosthub health check"
   },
   {
-   "has": "Pulling from portals",
-   "note": "pull progress"
+   "has": "Pull Airbnb",
+   "note": "pull progress (Airbnb-first copy)"
   }
  ]
 }

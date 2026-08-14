@@ -36,8 +36,8 @@
  ],
  "assertions": [
   {
-   "has": "Pull from portals",
-   "note": "primary pull CTA"
+   "has": "Pull Airbnb",
+   "note": "primary pull CTA (Airbnb-first)"
   },
   {
    "has": "piConnectSession",

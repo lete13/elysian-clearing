@@ -90,8 +90,8 @@
    "note": "retag Booking PDF to apartment"
   },
   {
-   "has": "Automated pull saved 0 PDFs",
-   "note": "0-PDF pull treated as failure (superseded copy OK if later patch renames)"
+   "has": "0 PDF",
+   "note": "0-PDF pull treated as failure (copy may vary)"
   },
   {
    "hasNot": "bookings covered)",

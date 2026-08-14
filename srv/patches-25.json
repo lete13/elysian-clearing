@@ -12,8 +12,8 @@
  ],
  "assertions": [
   {
-   "has": "cn <= 50",
-   "note": "FE chain scans through patches-50"
+   "has": "cn <= 80",
+   "note": "FE chain scans through patches-80 (raised after patches-50)"
   },
   {
    "has": "/* legacy note: cn <= 40 */",

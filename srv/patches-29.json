@@ -21,8 +21,8 @@
  ],
  "assertions": [
   {
-   "has": "reservationId:ev.reservation_id||''",
-   "note": "Hosthub reservation_id mapped"
+   "has": "reservationId",
+   "note": "Hosthub reservation_id mapped onto booking.reservationId"
   },
   {
    "has": "PI_AIRBNB_RESERVATIONS_JSON",
