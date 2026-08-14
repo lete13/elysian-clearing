@@ -1,0 +1,22 @@
+{
+ "baseSha256": "155bea16979e156aa2305dc3f52eddb412ff88697fffefc7ee04bae02a177bce",
+ "expectedSha256": "aec15a0462d8ffaca7ea9a619fab8cefeb3abb4ee56eb2774fdc4118bc9e2197",
+ "builtAt": "2026-08-14 Submit Airbnb OTP through active login controls",
+ "patches": [
+  {
+   "note": "OTP action copy reflects the real Airbnb submission",
+   "find": "<button class=\"btn gold\" onclick=\"piSubmitAirbnbOtp()\">Submit code</button>",
+   "replace": "<button class=\"btn gold\" onclick=\"piSubmitAirbnbOtp()\">Submit code to Airbnb</button>"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Submit code to Airbnb",
+   "note": "OTP submit live marker"
+  },
+  {
+   "has": "placeholder=\"code from email\"",
+   "note": "email-code input retained"
+  }
+ ]
+}

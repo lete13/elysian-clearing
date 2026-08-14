@@ -45,9 +45,31 @@ function otpPage(options) {
   options = options || {};
   let value = '';
   const calls = [];
-  const continueButton = {
-    count: async () => options.hasContinue ? 1 : 0,
-    click: async () => calls.push('continue.click'),
+  function button(enabled, name) {
+    return {
+      count: async () => enabled ? 1 : 0,
+      click: async () => {
+        calls.push(name + '.click');
+        if (options.buttonClickFails) throw new Error('covered');
+      },
+    };
+  }
+  function buttonList(candidate) {
+    return {
+      filter: () => ({ first: () => candidate }),
+    };
+  }
+  function ancestor(candidate) {
+    return {
+      count: async () => candidate ? 1 : 0,
+      locator: () => buttonList(candidate || button(false, 'none')),
+    };
+  }
+  const modalButton = button(options.modalContinue, 'modalContinue');
+  const dialogButton = button(options.hasContinue, 'dialogContinue');
+  const globalButton = button(options.globalContinue, 'globalContinue');
+  const alerts = {
+    allInnerTexts: async () => options.validationError ? ['The verification code is invalid. Try again.'] : [],
   };
   const single = {
     count: async () => 1,
@@ -58,19 +80,23 @@ function otpPage(options) {
       value += options.dropSequential ? text.slice(0, -1) : text;
       calls.push(['otp.pressSequentially', text]);
     },
+    press: async key => calls.push(['otp.press', key]),
     inputValue: async () => options.neverLands ? '' : value,
-    locator: () => ({
-      locator: () => ({
-        filter: () => ({ first: () => continueButton }),
-      }),
-    }),
+    locator: selector => {
+      if (selector.indexOf('@id="dls-modal-container"') >= 0) return ancestor(options.modalContinue ? modalButton : null);
+      if (selector.indexOf('@role="dialog"') >= 0) return ancestor(options.hasContinue ? dialogButton : null);
+      if (selector.indexOf('ancestor::form') >= 0) return ancestor(null);
+      throw new Error('unexpected OTP-relative selector: ' + selector);
+    },
   };
   const never = new Promise(() => {});
   const page = {
     url: () => 'https://www.airbnb.com/login?redirect_url=%2Fhosting',
     locator: selector => {
-      assert.strictEqual(selector, '#otp-code-input');
-      return { first: () => single };
+      if (selector === '#otp-code-input') return { first: () => single };
+      if (selector.indexOf('[role="alert"]') >= 0) return alerts;
+      if (selector.indexOf('button:visible') >= 0) return buttonList(globalButton);
+      throw new Error('unexpected page selector: ' + selector);
     },
     keyboard: {
       press: async key => calls.push(['keyboard.press', key]),
@@ -107,7 +133,31 @@ async function main() {
 
   const explicit = otpPage({ hasContinue: true });
   assert.strictEqual(await fillContext.fillOtp(explicit.page, '654321'), true);
-  assert(explicit.calls.includes('continue.click'), 'visible Continue in the OTP form is clicked');
+  assert(explicit.calls.includes('dialogContinue.click'), 'visible Continue in the OTP dialog is clicked');
+
+  const sibling = otpPage({ modalContinue: true, rejectWait: true });
+  assert.strictEqual(await fillContext.fillOtp(sibling.page, '112233'), true);
+  assert(sibling.calls.includes('modalContinue.click'), 'sibling Continue in the active login modal is clicked');
+  assert.strictEqual(sibling.page._piOtpSubmitMethod, 'button');
+
+  const global = otpPage({ globalContinue: true, rejectWait: true });
+  assert.strictEqual(await fillContext.fillOtp(global.page, '223344'), true);
+  assert(global.calls.includes('globalContinue.click'), 'global visible enabled Continue is clicked when no modal ancestor is exposed');
+  assert.strictEqual(global.page._piOtpSubmitMethod, 'button');
+
+  const enter = otpPage({ rejectWait: true });
+  assert.strictEqual(await fillContext.fillOtp(enter.page, '334455'), true);
+  assert(enter.calls.some(call => Array.isArray(call) && call[0] === 'otp.press' && call[1] === 'Enter'), 'Enter is pressed from the OTP input when no button is usable');
+  assert.strictEqual(enter.page._piOtpSubmitMethod, 'enter');
+
+  const coveredButton = otpPage({ modalContinue: true, buttonClickFails: true, rejectWait: true });
+  assert.strictEqual(await fillContext.fillOtp(coveredButton.page, '334466'), true);
+  assert(coveredButton.calls.some(call => Array.isArray(call) && call[0] === 'otp.press' && call[1] === 'Enter'), 'Enter fallback runs when a visible button cannot be clicked');
+  assert.strictEqual(coveredButton.page._piOtpSubmitMethod, 'enter');
+
+  const rejected = otpPage({ validationError: true, rejectWait: true });
+  assert.strictEqual(await fillContext.fillOtp(rejected.page, '445566'), true);
+  assert.strictEqual(rejected.page._piOtpValidationError, true, 'visible Airbnb code error is distinguished from unchanged OTP UI');
 
   const missed = otpPage({ dropSequential: true, neverLands: true });
   assert.strictEqual(await fillContext.fillOtp(missed.page, '123456'), false);
@@ -116,6 +166,9 @@ async function main() {
 
   assert(fillSource.includes('}, null, { timeout: 15000 })'), 'OTP transition gets a real 15-second Playwright timeout');
   assert(!fillSource.includes("waitForSelector('input[type=\"password\"]'"), 'mounted password race removed');
+  assert(fillSource.includes(':visible:not([disabled]):not([aria-disabled="true"])'), 'OTP submit excludes hidden and disabled controls');
+  assert(server.includes('Airbnb is still showing the code screen without an invalid-code message'), 'unchanged OTP UI is not called a rejection');
+  assert(server.includes('Airbnb says that code is invalid or expired'), 'visible validation error gets an accurate hint');
   assert(server.includes("input[name=\"password\"]:visible, input[type=\"password\"]:visible"), 'post-OTP password must be visible');
 
   const verifySource = extractFn(server, 'piAirbnbCaptchaClickIsVerify');
@@ -149,7 +202,7 @@ async function main() {
   assert(frontend.includes("j.captchaVerify === false"), 'frontend recognizes a fast tile response');
   assert(frontend.includes("if (!(captchaImg && r.job.status === 'awaiting_captcha'))"), 'polling preserves active CAPTCHA image');
 
-  console.log('airbnb auth flow OK: exact OTP typing, bounded acceptance wait, visible Continue/password, fast serialized CAPTCHA tiles');
+  console.log('airbnb auth flow OK: exact OTP typing, modal/global Continue, Enter fallback, validation hints, bounded wait, fast CAPTCHA tiles');
 }
 
 main().catch(error => {

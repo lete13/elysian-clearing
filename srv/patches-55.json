@@ -1,0 +1,40 @@
+{
+ "baseSha256": "133531a9e230989e9128267b2a423d83083bc1b65ba41c833bd929e24bce1252",
+ "expectedSha256": "7a35a52b37b8d31414451699ee7baacf201de989eaf442a28d071ddb1b86fae2",
+ "builtAt": "2026-08-14 Robust Airbnb OTP submit and accurate unchanged-screen hints",
+ "patches": [
+  {
+   "note": "Submit exact OTP through active modal, visible global control, or input Enter",
+   "find": "  // Airbnb normally auto-submits the final digit. Some variants expose an\n  // explicit Continue in the OTP form/modal; click only that visible control.\n  let otpContinue = single.locator('xpath=ancestor::form[1]').locator('button:visible').filter({ hasText: /^\\s*Continue\\s*$/i }).first();\n  if (!(await otpContinue.count())) {\n    otpContinue = single.locator('xpath=ancestor::*[@role=\"dialog\"][1]').locator('button:visible').filter({ hasText: /^\\s*Continue\\s*$/i }).first();\n  }\n  if (await otpContinue.count()) {\n    await otpContinue.click({ timeout: 3000 }).catch(function () {});\n  }\n\n  // The password field stays mounted behind Airbnb's OTP modal, so it cannot",
+   "replace": "  // The final digit does not auto-submit every Airbnb variant. Prefer a visible,\n  // enabled Continue/Submit in the active login modal (including sibling footers),\n  // then a visible global control. Hidden password-page buttons are excluded.\n  const submitSelector = 'button:visible:not([disabled]):not([aria-disabled=\"true\"]), [role=\"button\"]:visible:not([aria-disabled=\"true\"])';\n  let otpContinue = null;\n  let otpScope = single.locator('xpath=ancestor::*[@id=\"dls-modal-container\"][1]');\n  if (!(await otpScope.count())) otpScope = single.locator('xpath=ancestor::*[@role=\"dialog\"][1]');\n  if (await otpScope.count()) {\n    otpContinue = otpScope.locator(submitSelector).filter({ hasText: /^\\s*(Continue|Submit)\\s*$/i }).first();\n  }\n  if (!otpContinue || !(await otpContinue.count())) {\n    otpContinue = page.locator(submitSelector).filter({ hasText: /^\\s*(Continue|Submit)\\s*$/i }).first();\n  }\n  let submitted = false;\n  if (await otpContinue.count()) {\n    try {\n      await otpContinue.click({ timeout: 3000 });\n      submitted = true;\n      page._piOtpSubmitMethod = 'button';\n    } catch (eClick) {}\n  }\n  if (!submitted) {\n    try {\n      await single.press('Enter', { timeout: 3000 });\n      submitted = true;\n      page._piOtpSubmitMethod = 'enter';\n    } catch (eEnter) {}\n  }\n  page._piOtpSubmitted = submitted;\n\n  // The password field stays mounted behind Airbnb's OTP modal, so it cannot"
+  },
+  {
+   "note": "Capture visible Airbnb OTP validation separately from an unchanged UI",
+   "find": "      page.waitForURL(function (url) {\n        return url.toString() !== otpUrl && /hosting|account/i.test(url.pathname);\n      }, { timeout: 15000 })\n    ]);\n  } catch (e) {}\n  return true;\n}",
+   "replace": "      page.waitForURL(function (url) {\n        return url.toString() !== otpUrl && /hosting|account/i.test(url.pathname);\n      }, { timeout: 15000 })\n    ]);\n  } catch (e) {}\n  const otpAlerts = await page.locator('[role=\"alert\"]:visible, [aria-live=\"assertive\"]:visible, [aria-live=\"polite\"]:visible').allInnerTexts().catch(function () { return []; });\n  const otpAlertText = otpAlerts.join(' ').replace(/\\s+/g, ' ');\n  page._piOtpValidationError = /(?:code|verification).{0,80}(?:incorrect|invalid|expired|doesn.t match|try again)|(?:incorrect|invalid|expired).{0,80}(?:code|verification)/i.test(otpAlertText);\n  return true;\n}"
+  },
+  {
+   "note": "Do not call unchanged OTP UI a rejection without Airbnb validation",
+   "find": "        if (typed !== expected) {\n          job.hint = 'Could not type that code into Airbnb. Submit the same code again (do not Resend yet).';\n        } else {\n          job.hint = 'Airbnb rejected that code. Wait a full minute, tap Resend once, then enter only the new email — older codes will not work.';\n        }",
+   "replace": "        if (typed !== expected) {\n          job.hint = 'Could not type that code into Airbnb. Submit the same code again (do not Resend yet).';\n        } else if (job.page._piOtpValidationError) {\n          job.hint = 'Airbnb says that code is invalid or expired. Enter only the newest email code; request a new code manually only if needed.';\n        } else if (job.page._piOtpSubmitted) {\n          job.hint = 'Airbnb is still showing the code screen without an invalid-code message. Submit the same newest code once more; do not Resend yet.';\n        } else {\n          job.hint = 'The digits reached Airbnb, but the code screen could not be submitted. Submit the same newest code again; do not Resend yet.';\n        }"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "page._piOtpSubmitMethod = 'button'",
+   "note": "explicit visible button submission"
+  },
+  {
+   "has": "await single.press('Enter'",
+   "note": "input-scoped Enter fallback"
+  },
+  {
+   "has": "page._piOtpValidationError",
+   "note": "visible validation distinction"
+  },
+  {
+   "hasNot": "/opt/cursor/logs/debug.log",
+   "note": "temporary runtime instrumentation absent"
+  }
+ ]
+}
