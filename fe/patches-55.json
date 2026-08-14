@@ -20,8 +20,8 @@
    "note": "email placeholder"
   },
   {
-   "has": "Try another way",
-   "note": "email path copy"
+   "has": "host email inbox",
+   "note": "email-first OTP copy"
   },
   {
    "hasNot": "SMS-only challenge",

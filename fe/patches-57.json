@@ -12,8 +12,8 @@
  ],
  "assertions": [
   {
-   "has": "otp-code-input",
-   "note": "marker copy"
+   "has": "host email inbox",
+   "note": "email OTP copy (marker superseded)"
   }
  ]
 }
