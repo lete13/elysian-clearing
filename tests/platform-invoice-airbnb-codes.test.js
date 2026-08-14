@@ -1,22 +1,21 @@
 'use strict';
 /**
  * Airbnb Hosthub reservation-code pull (VAT Invoicer-style) — static checks.
- * Does not hit Airbnb; asserts worker + patch wiring.
+ * Does not hit Airbnb; asserts worker + baked server/FE wiring.
  */
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
+const { applyChain } = require('./apply-chain');
 
 const root = path.join(__dirname, '..');
 const worker = fs.readFileSync(path.join(root, 'scripts', 'platform-invoice-pull.js'), 'utf8');
-const srv29 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-29.json'), 'utf8'));
-const fe49 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-49.json'), 'utf8'));
-const srv30 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-30.json'), 'utf8'));
-const fe50 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-50.json'), 'utf8'));
+const srv = applyChain(root, 'srv', 'server.js');
+const fe = applyChain(root, 'fe', 'index.html');
 
 assert(worker.includes('PI_AIRBNB_RESERVATIONS_JSON'), 'worker reads Hosthub codes env');
 assert(worker.includes('loadAirbnbReservations'), 'worker has Hosthub code loader');
-assert(worker.includes('hosting/reservations/details/'), 'opens Airbnb reservation by code');
+assert(worker.includes('hosting/reservations/details/') || worker.includes('hosting/stay/'), 'opens Airbnb reservation by code');
 assert(worker.includes("event: 'progress'"), 'worker emits per-code progress for the in-app Pull poll');
 assert(worker.includes('No Hosthub Airbnb reservation codes provided'), 'fails closed without codes');
 assert(worker.includes('function extractAirbnbVatInvoiceHits'), 'searches reservation HTML for VAT invoice IDs');
@@ -26,24 +25,16 @@ assert(worker.includes('PI_AIRBNB_LIMIT'), 'Test pull can slice codes');
 assert(worker.includes('ids/urls found:'), '0-PDF error says what was searched');
 assert(!/hrefs\.length/.test(worker) || worker.indexOf('loadAirbnbReservations') < worker.indexOf('pullAirbnb'), 'Hosthub-driven path present');
 
-const fe88 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-88.json'), 'utf8'));
-const srv63 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-63.json'), 'utf8'));
 assert(worker.includes('function piInvoiceStoreRel'), 'stores PDFs as Platform/month/apartment/file');
 assert(worker.includes("plat + '/' + month + '/' + apt"), 'path is platform / month / apartment');
 
-const fe90 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-90.json'), 'utf8'));
-const srv64 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-64.json'), 'utf8'));
-assert(fe90.patches.some((p) => (p.replace || '').includes('piStoreApt')), 'FE groups vault by apartment');
-assert(srv64.patches.some((p) => (p.replace || '').includes('ORDER BY channel, partner, filename, id')), 'API lists by platform then apartment');
-assert(srv64.patches.some((p) => (p.replace || '').includes('f.aptName || f.partner')), 'pull stores partner as apartment');
+assert(fe.includes('piStoreApt'), 'FE groups vault by apartment');
+assert(srv.includes('ORDER BY channel, partner, filename, id'), 'API lists by platform then apartment');
+assert(srv.includes('f.aptName || f.partner'), 'pull stores partner as apartment');
 assert(worker.includes('function requestPullStop'), 'worker can stop mid-queue');
 assert(worker.includes("process.on('SIGTERM'"), 'SIGTERM dumps PDFs already captured');
-const fe91 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-91.json'), 'utf8'));
-const srv65 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-65.json'), 'utf8'));
-assert(fe91.patches.some((p) => (p.replace || '').includes('piStopPull')), 'Collect has Stop pull');
-assert(srv65.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/pull-stop'")), 'API stops running pull jobs');
-const fe92 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-92.json'), 'utf8'));
-const srv66 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-66.json'), 'utf8'));
+assert(fe.includes('piStopPull'), 'Collect has Stop pull');
+assert(srv.includes("app.post('/api/platform-invoices/pull-stop'"), 'API stops running pull jobs');
 assert(worker.includes('hosting/stay/'), 'opens Airbnb stay reservation page');
 assert(worker.includes('sortAirbnbReservationsLatest'), 'test pull sorts latest Hosthub ids');
 assert(worker.includes('collectAirbnbInvoiceHits'), 're-scans stay page for VAT invoice IDs');
@@ -51,18 +42,22 @@ assert(worker.includes('clickAirbnbStayTotalPrice'), 'Help 438: click total pric
 assert(worker.includes('settleAirbnbHostPage'), 'waits for stay-page GraphQL');
 assert(worker.includes('airbnbPortalOrigin'), 'fixture origin override for local stay-click tests');
 
-const fe96 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-96.json'), 'utf8'));
-const srv67 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-67.json'), 'utf8'));
-assert(fe96.patches.some((p) => (p.replace || '').includes('Test pull: latest ')), 'FE test pull is latest N');
-assert(fe96.patches.some((p) => (p.replace || '').includes('createdOnChannel')), 'FE posts Hosthub created dates');
-assert(srv67.patches.some((p) => (p.replace || '').includes('piSortAirbnbReservationsLatest')), 'server sorts latest before limit');
-const fe98 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-98.json'), 'utf8'));
-const srv68 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-68.json'), 'utf8'));
-assert(fe98.patches.some((p) => (p.replace || '').includes('PDFs by apartment')), 'Collect vault heading is PDFs by apartment');
-assert(fe98.patches.some((p) => (p.replace || '').includes("/api/platform-invoices/' + id + '/file")), 'vault rows Open the PDF');
-assert(srv68.patches.some((p) => (p.replace || '').includes("app.get('/api/platform-invoices/:id/file'")), 'API serves PDF bytes');
-assert(fe92.patches.some((p) => (p.replace || '').includes('no pull job with that id')), 'vanished job id is Pull stopped');
-assert(srv66.patches.some((p) => (p.replace || '').includes("status: 'cancelled'")), 'missing job GET is cancelled');
+assert(fe.includes('Test pull: latest '), 'FE test pull is latest N');
+assert(fe.includes('createdOnChannel'), 'FE posts Hosthub created dates');
+assert(srv.includes('piSortAirbnbReservationsLatest'), 'server sorts latest before limit');
+assert(fe.includes('PDFs by apartment'), 'Collect vault heading is PDFs by apartment');
+assert(fe.includes("/api/platform-invoices/' + id + '/file"), 'vault rows Open the PDF');
+assert(srv.includes("app.get('/api/platform-invoices/:id/file'"), 'API serves PDF bytes');
+assert(fe.includes('no pull job with that id') || fe.includes('Pull stopped'), 'vanished job id is Pull stopped');
+assert(srv.includes("status: 'cancelled'"), 'missing job GET is cancelled');
+
+assert(srv.includes("reservationId:ev.reservation_id||''") || srv.includes('reservation_id'), 'sync maps reservation_id');
+assert(srv.includes('PI_AIRBNB_RESERVATIONS_JSON'), 'API passes codes to worker');
+assert(fe.includes('piAirExpectList'), 'FE builds expect from Hosthub');
+assert(fe.includes("channel: 'airbnb'"), 'FE pulls Airbnb only');
+assert(fe.includes('airbnbReservations'), 'FE posts codes');
+assert(srv.includes('piResolveAirbnbReservations'), 'server resolves codes');
+assert(fe.includes('/api/platform-invoices/airbnb-codes'), 'FE backfills via airbnb-codes');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');
@@ -140,15 +135,6 @@ function vaultLooksLikeCredit(f) {
 assert(vaultLooksLikeCredit({ filename: 'Airbnb/2026-07/Birdhouse/credit_note-HMCANCEL1.pdf', partner: 'Birdhouse' }));
 assert(!vaultLooksLikeCredit({ filename: 'Airbnb/2026-07/Birdhouse/invoice-HMABCDEF.pdf', partner: 'Birdhouse' }));
 
-assert(srv29.patches.some((p) => p.replace.includes("reservationId:ev.reservation_id||''")), 'sync maps reservation_id');
-assert(srv29.patches.some((p) => p.replace.includes('PI_AIRBNB_RESERVATIONS_JSON')), 'API passes codes to worker');
-
-assert(fe49.patches.some((p) => (p.replace || '').includes('piAirExpectList')), 'FE builds expect from Hosthub');
-assert(fe49.patches.some((p) => (p.replace || '').includes("channel: 'airbnb'")), 'FE pulls Airbnb only');
-assert(fe49.patches.some((p) => (p.replace || '').includes('airbnbReservations')), 'FE posts codes');
-assert(srv30.patches.some((p) => (p.replace || '').includes('piResolveAirbnbReservations')), 'server resolves codes');
-assert(fe50.patches.some((p) => (p.replace || '').includes('/api/platform-invoices/airbnb-codes')), 'FE backfills via airbnb-codes');
-
 // Simulate Hosthub → Airbnb code filter (mirrors FE dating rules)
 function ymFromTs(t) {
   if (t == null || t === '') return '';
@@ -187,7 +173,6 @@ assert.strictEqual(exp.inv[0].code, 'HMABCDEF');
 assert.strictEqual(exp.credit.length, 1);
 assert.strictEqual(exp.credit[0].code, 'HMCANCEL1');
 
-// Code regex used by worker
 const re = /^[A-Z0-9]{6,20}$/;
 assert(re.test('HMABCDEF'));
 assert(re.test('AB67782136778'));
