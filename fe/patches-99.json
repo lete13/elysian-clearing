@@ -1,0 +1,33 @@
+{
+ "baseSha256": "eef5c8ecb221b17a220bdf7ba236eb1940a5116d7668ff20a47bd5711575f954",
+ "expectedSha256": "463665c25fa8a4bbccc5f4635a5c00c6698b3a7cc852069f628730d2fd4270f9",
+ "builtAt": "2026-08-14 Daily Ops: restart cleaning schedule day (14/8 unstick)",
+ "patches": [
+  {
+   "note": "opsRestartCleaningSchedule — wipe ✓ for current Ops day",
+   "find": "function opsToggleCleanDoneKey(key, checked) {\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  r.cleanDone = !!checked;\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n  // Immediate DB write — poll cannot wipe checks (debounced save lost them).\n  if (typeof saveToDb === 'function' && typeof _dbAvailable !== 'undefined' && _dbAvailable) saveToDb();\n  _opsMaybeAdvanceAfterCleans();\n  if (typeof renderOps === 'function') renderOps();\n}\n",
+   "replace": "function opsToggleCleanDoneKey(key, checked) {\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  r.cleanDone = !!checked;\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n  // Immediate DB write — poll cannot wipe checks (debounced save lost them).\n  if (typeof saveToDb === 'function' && typeof _dbAvailable !== 'undefined' && _dbAvailable) saveToDb();\n  _opsMaybeAdvanceAfterCleans();\n  if (typeof renderOps === 'function') renderOps();\n}\nfunction opsRestartCleaningSchedule() {\n  const d = _opsDate;\n  if (!d) return;\n  const lbl = (typeof _opsFmtDate === 'function') ? _opsFmtDate(d) : d;\n  if (!confirm('Επανεκκίνηση προγράμματος καθαρισμού για ' + lbl + ';\\n\\nΜηδενίζει όλα τα ✓ (έτοιμα). Κρατά καθαρίστριες και σχόλια.')) return;\n  _opsEnsure();\n  function wipe(r) { if (r) r.cleanDone = false; }\n  (_opsRows || []).forEach(wipe);\n  (_opsCleanExtras || []).forEach(wipe);\n  const snap = (S.daily.snapshots && S.daily.snapshots[d]) || null;\n  if (snap) {\n    (snap.rows || []).forEach(wipe);\n    (snap.cleanExtras || []).forEach(wipe);\n  }\n  S.daily.cleansCompleteFor = S.daily.cleansCompleteFor || {};\n  delete S.daily.cleansCompleteFor[d];\n  S.daily.opsWorkingDate = d;\n  try { localStorage.setItem('e_opsWorkingDate', d); } catch (e) {}\n  clearTimeout(_opsSaveTimer);\n  if (typeof _opsSaveNow === 'function') _opsSaveNow();\n  if (typeof save === 'function') save();\n  if (typeof saveToDb === 'function' && typeof _dbAvailable !== 'undefined' && _dbAvailable) saveToDb();\n  if (typeof toast === 'function') toast('Πρόγραμμα ' + lbl + ' επανεκκινήθηκε — ξανά από 0/' + (((_opsRows||[]).length)||'?'), 'ok');\n  if (typeof renderOps === 'function') renderOps();\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Restart button on cleaning schedule toolbar",
+   "find": "'<button onclick=\"opsManageCleaners()\" title=\"Add or remove cleaners\" style=\"font-size:12px;padding:8px 12px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:rgba(255,255,255,.06);cursor:pointer;color:#E2E8F0;font-weight:600\">Καθαρίστριες</button>' +\n    '</div>' +\n",
+   "replace": "'<button onclick=\"opsManageCleaners()\" title=\"Add or remove cleaners\" style=\"font-size:12px;padding:8px 12px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:rgba(255,255,255,.06);cursor:pointer;color:#E2E8F0;font-weight:600\">Καθαρίστριες</button>' +\n    '<button onclick=\"opsRestartCleaningSchedule()\" title=\"Μηδενίζει τα ✓ της ημέρας και ξεκινά το πρόγραμμα από την αρχή\" style=\"font-size:12px;padding:8px 12px;border:1px solid #FCA5A5;border-radius:10px;background:rgba(220,38,38,.18);cursor:pointer;color:#FECACA;font-weight:700\">Επανεκκίνηση ✓</button>' +\n    '</div>' +\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function opsRestartCleaningSchedule",
+   "note": "restart day cleans"
+  },
+  {
+   "has": "opsRestartCleaningSchedule()",
+   "note": "toolbar button"
+  },
+  {
+   "has": "Επανεκκίνηση ✓",
+   "note": "visible restart label"
+  }
+ ]
+}
