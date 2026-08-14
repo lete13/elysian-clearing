@@ -1,0 +1,75 @@
+{
+ "baseSha256": "36d237e744d6e24c7f120bc8b1a7bfb1295fd30a327615becc0d009ee5209bf2",
+ "expectedSha256": "b905043e63e494dea5f1081598ce1b25619d7282f973c2216e5b030a2a4591e5",
+ "builtAt": "2026-08-14 Test pull latest 5; stay page VAT click",
+ "patches": [
+  {
+   "note": "Collect copy: latest 5 Hosthub ids; stay page → total price → VAT invoice",
+   "find": "        <b>Test pull (5 codes)</b> first: reservation page → VAT invoice ID → invoice HTML → PDF (VAT Invoicer privacy flow).\n        Then <b>Pull Airbnb (Hosthub codes)</b> for the full month. Connect Airbnb once if OTP blocks login.",
+   "replace": "        <b>Test pull (5 codes)</b> uses the latest 5 Hosthub codes: stay/reservation page → click total price → VAT invoice HTML → PDF (Airbnb Help + VAT Invoicer privacy flow).\n        Then <b>Pull Airbnb (Hosthub codes)</b> for the full month. Connect Airbnb once if OTP blocks login.",
+   "count": 1
+  },
+  {
+   "note": "Expect rows carry Hosthub created timestamps for latest-N sort",
+   "find": "        guestName: String(b.guestName || '').trim(),\n        hosthubId: String(b.id || '').trim()\n      };",
+   "replace": "        guestName: String(b.guestName || '').trim(),\n        hosthubId: String(b.id || '').trim(),\n        created: b.created != null ? b.created : null,\n        createdOnChannel: b.createdOnChannel != null ? b.createdOnChannel : null\n      };",
+   "count": 1
+  },
+  {
+   "note": "piPull posts created timestamps with each Hosthub code",
+   "find": "            guestName: x.guestName || ''\n          };",
+   "replace": "            guestName: x.guestName || '',\n            created: x.created != null ? x.created : null,\n            createdOnChannel: x.createdOnChannel != null ? x.createdOnChannel : null\n          };",
+   "count": 1
+  },
+  {
+   "note": "Test pull slices latest Hosthub codes, not list order",
+   "find": "      if (limit > 0) airbnbReservations = airbnbReservations.slice(0, limit);",
+   "replace": "      if (limit > 0) {\n        airbnbReservations = airbnbReservations.slice().sort(function (a, b) {\n          function ms(x) {\n            var t = (x && x.createdOnChannel != null && x.createdOnChannel !== '') ? x.createdOnChannel : (x && x.created);\n            if (t == null || t === '') return 0;\n            var n = Number(t);\n            if (isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n;\n            var d = Date.parse(String(t));\n            return isFinite(d) ? d : 0;\n          }\n          return ms(b) - ms(a);\n        });\n        airbnbReservations = airbnbReservations.slice(0, limit);\n      }",
+   "count": 1
+  },
+  {
+   "note": "Status copy says latest N Hosthub codes",
+   "find": "      ? ('Test pull: first ' + limit + ' Hosthub code(s)…')",
+   "replace": "      ? ('Test pull: latest ' + limit + ' Hosthub code(s)…')",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Test pull (5 codes)",
+   "note": "gold test button kept"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full-month button kept"
+  },
+  {
+   "has": "piPull({ limit: 5 })",
+   "note": "test posts limit 5"
+  },
+  {
+   "has": "Test pull: latest ",
+   "note": "test pull is latest ids"
+  },
+  {
+   "has": "airbnbReservations.slice(0, limit)",
+   "note": "browser still slices before POST"
+  },
+  {
+   "has": "createdOnChannel: x.createdOnChannel",
+   "note": "codes posted with Hosthub dates"
+  },
+  {
+   "has": "channel: 'airbnb'",
+   "note": "Airbnb-only pull"
+  },
+  {
+   "has": "Airbnb pull saved 0 PDFs",
+   "note": "zero-PDF copy kept"
+  },
+  {
+   "has": "Stop pull",
+   "note": "stop kept"
+  }
+ ]
+}

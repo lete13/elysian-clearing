@@ -44,6 +44,18 @@ assert(fe91.patches.some((p) => (p.replace || '').includes('piStopPull')), 'Coll
 assert(srv65.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/pull-stop'")), 'API stops running pull jobs');
 const fe92 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-92.json'), 'utf8'));
 const srv66 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-66.json'), 'utf8'));
+assert(worker.includes('hosting/stay/'), 'opens Airbnb stay reservation page');
+assert(worker.includes('sortAirbnbReservationsLatest'), 'test pull sorts latest Hosthub ids');
+assert(worker.includes('collectAirbnbInvoiceHits'), 're-scans stay page for VAT invoice IDs');
+assert(worker.includes('clickAirbnbStayTotalPrice'), 'Help 438: click total price');
+assert(worker.includes('settleAirbnbHostPage'), 'waits for stay-page GraphQL');
+assert(worker.includes('airbnbPortalOrigin'), 'fixture origin override for local stay-click tests');
+
+const fe93 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-93.json'), 'utf8'));
+const srv67 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-67.json'), 'utf8'));
+assert(fe93.patches.some((p) => (p.replace || '').includes('Test pull: latest ')), 'FE test pull is latest N');
+assert(fe93.patches.some((p) => (p.replace || '').includes('createdOnChannel')), 'FE posts Hosthub created dates');
+assert(srv67.patches.some((p) => (p.replace || '').includes('piSortAirbnbReservationsLatest')), 'server sorts latest before limit');
 assert(fe92.patches.some((p) => (p.replace || '').includes('no pull job with that id')), 'vanished job id is Pull stopped');
 assert(srv66.patches.some((p) => (p.replace || '').includes("status: 'cancelled'")), 'missing job GET is cancelled');
 
@@ -56,17 +68,35 @@ function extractBetween(source, startName, nextName) {
 const vm = require('vm');
 const extractSrc =
   extractBetween(worker, 'kindFromInvoiceBlob', 'airbnbInvoicePagePatterns') +
-  extractBetween(worker, 'airbnbInvoiceUrlsForHit', 'looksLikeAirbnbInvoiceHtml');
-const helpers = vm.runInNewContext(extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit })', {
-  URL: URL,
-  encodeURIComponent: encodeURIComponent,
-});
+  extractBetween(worker, 'airbnbInvoiceUrlsForHit', 'attachAirbnbInvoiceNetworkTap');
+const helpers = vm.runInNewContext(
+  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits })',
+  { URL: URL, encodeURIComponent: encodeURIComponent }
+);
 const html = '<script>{"vatInvoiceId":"INV99ABC","vatInvoice":{"id":"INV99ABC","url":"https://www.airbnb.com/reservation/vat_invoice/INV99ABC"}}</script>';
 const hits = helpers.extractAirbnbVatInvoiceHits(html, 'https://www.airbnb.com');
 assert(hits.some((h) => h.id === 'INV99ABC'), 'extracts vatInvoiceId from reservation JSON');
 assert(hits.some((h) => String(h.href || '').indexOf('/reservation/vat_invoice/INV99ABC') >= 0), 'extracts VAT invoice HTML URL');
 const urls = helpers.airbnbInvoiceUrlsForHit({ kind: 'invoice', id: 'INV99ABC', href: '' }, 'https://www.airbnb.com', []);
 assert(urls.some((u) => u.indexOf('/reservation/vat_invoice/INV99ABC') >= 0), 'builds Airbnb VAT invoice HTML URL from ID');
+const tokenHtml = '{"vatInvoiceToken":"TOK99XYZ","vatInvoiceUrl":"https://www.airbnb.com/reservation/vat_invoice/TOK99XYZ"}';
+const tokenHits = helpers.extractAirbnbVatInvoiceHits(tokenHtml, 'https://www.airbnb.com');
+assert(tokenHits.some((h) => h.id === 'TOK99XYZ'), 'extracts vatInvoiceToken');
+assert(tokenHits.some((h) => String(h.href || '').indexOf('/reservation/vat_invoice/TOK99XYZ') >= 0), 'extracts vatInvoiceUrl');
+assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/hosting/stay/HMHPBAREC3', 'Guest check-in reservation €120'));
+assert(helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/INV99ABC', 'VAT invoice'));
+assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/HMHPBAREC3', 'We can’t find that page'));
+assert.strictEqual(helpers.usefulAirbnbInvoiceHits([{ id: 'HMHPBAREC3' }, { id: 'INV99ABC' }], 'HMHPBAREC3').length, 1);
+
+const sortSrc = extractBetween(worker, 'airbnbCreatedMs', 'loadAirbnbReservations');
+const sortH = vm.runInNewContext(sortSrc + '\n({ airbnbCreatedMs, sortAirbnbReservationsLatest })');
+const latest = sortH.sortAirbnbReservationsLatest([
+  { code: 'OLD', createdOnChannel: 1000 },
+  { code: 'NEW', createdOnChannel: 5000 },
+  { code: 'MID', created: 3000 },
+]);
+assert.deepStrictEqual(latest.map((x) => x.code), ['NEW', 'MID', 'OLD']);
+assert(sortH.airbnbCreatedMs({ createdOnChannel: 1 }) < sortH.airbnbCreatedMs({ createdOnChannel: 2 }));
 
 const storeSrc = extractBetween(worker, 'platformStoreLabel', 'loadAirbnbReservations');
 const store = vm.runInNewContext(storeSrc + '\n({ piInvoiceStoreRel, aptStoreFolder, platformStoreLabel })');

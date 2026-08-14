@@ -26,8 +26,8 @@ Same idea as [VAT Invoicer](https://vatinvoicer.com/privacy/): while logged into
 
 1. Hosthub sync stores each booking’s channel **`reservation_id`** as `reservationId` (Airbnb confirmation code).
 2. Platform Invoices → **Expect** builds the month’s Airbnb invoice + credit-note lists from Hosthub dates.
-3. **Test pull (5 codes)** first, then **Pull Airbnb (Hosthub codes)** for the full month. **Stop pull** kills a running job (SIGTERM). Codes go to the worker as `PI_AIRBNB_RESERVATIONS_JSON` (`PI_AIRBNB_LIMIT` slices a test run).
-4. Worker opens `https://www.airbnb.com/hosting/reservations/details/{CODE}`, searches the page HTML/JSON for VAT invoice IDs / invoice-page URLs, opens the invoice HTML, and `page.pdf()`s it.
+3. **Test pull (5 codes)** first (latest 5 Hosthub `created` / `createdOnChannel` ids), then **Pull Airbnb (Hosthub codes)** for the full month. **Stop pull** kills a running job (SIGTERM). Codes go to the worker as `PI_AIRBNB_RESERVATIONS_JSON` (`PI_AIRBNB_LIMIT` slices a test run).
+4. Worker opens `https://www.airbnb.com/hosting/stay/{CODE}` (Airbnb's current host reservation page; older `/hosting/reservations/details/{CODE}` redirects here). It waits for GraphQL, clicks the **total price** then **VAT invoice** (Airbnb Help 438), searches HTML/JSON for VAT invoice IDs, opens the invoice HTML, and `page.pdf()`s it. The stay-page shell is never saved as a PDF.
 5. PDFs are **stored by platform / month / apartment**: `Airbnb/2026-07/Birdhouse/invoice-HMXXXX.pdf`. The vault `partner` field is the apartment name (credit notes stay under that apartment; kind is in the filename).
 
 Airbnb does not expose a labeled download link on the reservation details page — that is why looking only for `a[href]` with the word “invoice” saved 0 PDFs.
@@ -43,7 +43,7 @@ No manual pasting of codes. Booking.com remains available but is secondary while
 | `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD` | **admin.booking.com** Login name + password (not www.booking.com) |
 | `BOOKING_STORAGE_STATE_B64` | Optional fallback. Prefer **Connect Booking** in the app (session vault) |
 | `AIRBNB_STORAGE_STATE_B64` | Optional fallback. Prefer **Connect Airbnb** in the app |
-| `PI_AIRBNB_LIMIT` | Optional max reservation codes (Collect **Test pull (5 codes)** sets this) |
+| `PI_AIRBNB_LIMIT` | Optional max reservation codes (Collect **Test pull (5 codes)** takes the **latest** N by Hosthub created) |
 
 ## Worker
 

@@ -1,0 +1,63 @@
+{
+ "baseSha256": "e100e2c3cb56e7448488fe1274af7afe8dd38444ffb54bcde54503fa84f7b7ea",
+ "expectedSha256": "01d6d240412ac72fb4a877439603dc0b943a579f157e8df3ded1c0ce0cbab32a",
+ "builtAt": "2026-08-14 Test pull latest Hosthub ids; pass created",
+ "patches": [
+  {
+   "note": "Sort helpers for latest-N Hosthub codes",
+   "find": "function piAirbnbRowsFromBookings(month, bks) {",
+   "replace": "function piAirbnbCreatedMs(r) {\n  const raw = r && r.createdOnChannel != null && r.createdOnChannel !== '' ? r.createdOnChannel : (r && r.created);\n  if (raw == null || raw === '') return 0;\n  const n = Number(raw);\n  if (isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n;\n  const parsed = Date.parse(String(raw));\n  return isFinite(parsed) ? parsed : 0;\n}\nfunction piSortAirbnbReservationsLatest(list) {\n  return (list || []).slice().sort(function (a, b) { return piAirbnbCreatedMs(b) - piAirbnbCreatedMs(a); });\n}\nfunction piAirbnbRowsFromBookings(month, bks) {",
+   "count": 1
+  },
+  {
+   "note": "DB/Hosthub rows keep created timestamps",
+   "find": "      guestName: String((b && b.guestName) || '').trim(),\n      hosthubId: String((b && b.id) || '').trim()\n    };",
+   "replace": "      guestName: String((b && b.guestName) || '').trim(),\n      hosthubId: String((b && b.id) || '').trim(),\n      created: b && b.created != null ? b.created : null,\n      createdOnChannel: b && b.createdOnChannel != null ? b.createdOnChannel : (b && b.created_on_channel != null ? b.created_on_channel : null)\n    };",
+   "count": 1
+  },
+  {
+   "note": "Client-posted codes keep created timestamps",
+   "find": "        guestName: String(x.guestName || '').trim(),\n        hosthubId: String(x.hosthubId || '').trim()\n      };",
+   "replace": "        guestName: String(x.guestName || '').trim(),\n        hosthubId: String(x.hosthubId || '').trim(),\n        created: x.created != null ? x.created : null,\n        createdOnChannel: x.createdOnChannel != null ? x.createdOnChannel : null\n      };",
+   "count": 1
+  },
+  {
+   "note": "Limit takes latest Hosthub created, not list order",
+   "find": "  const limitN = parseInt(b.limit != null ? b.limit : process.env.PI_AIRBNB_LIMIT, 10);\n  if (limitN > 0) airbnbReservations = airbnbReservations.slice(0, limitN);",
+   "replace": "  const limitN = parseInt(b.limit != null ? b.limit : process.env.PI_AIRBNB_LIMIT, 10);\n  if (limitN > 0) {\n    airbnbReservations = piSortAirbnbReservationsLatest(airbnbReservations);\n    airbnbReservations = airbnbReservations.slice(0, limitN);\n  }",
+   "count": 1
+  },
+  {
+   "note": "Job hint says latest when limited",
+   "find": "  job.hint = (limitN > 0 ? 'Test pull: ' : '') + 'Pulling Airbnb VAT PDFs from ' + airbnbReservations.length + ' Hosthub code(s)…';",
+   "replace": "  job.hint = (limitN > 0 ? 'Test pull (latest): ' : '') + 'Pulling Airbnb VAT PDFs from ' + airbnbReservations.length + ' Hosthub code(s)…';",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piSortAirbnbReservationsLatest",
+   "note": "server sorts latest Hosthub ids"
+  },
+  {
+   "has": "airbnbReservations.slice(0, limitN)",
+   "note": "limit still slices"
+  },
+  {
+   "has": "Test pull (latest): ",
+   "note": "limited pull hint"
+  },
+  {
+   "has": "createdOnChannel: x.createdOnChannel != null ? x.createdOnChannel : null",
+   "note": "client codes keep dates"
+  },
+  {
+   "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+   "note": "still harvests live Connect"
+  },
+  {
+   "has": "app.post('/api/platform-invoices/pull-stop'",
+   "note": "stop kept"
+  }
+ ]
+}
