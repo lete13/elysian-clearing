@@ -1,0 +1,81 @@
+{
+ "baseSha256": "109f6def0bc53c7353bab6004676c40f919be7514c0b45a848a9e1fa3e232c46",
+ "expectedSha256": "c91a2df79d45e59d0f24e54b7043daec3d6a5cb1c08db7a0aa3c565309f8baab",
+ "builtAt": "2026-08-14 Daily Ops: persist check-in sofa cleans + calendar date match (Skarlatos)",
+ "patches": [
+  {
+   "note": "Calendar-day match for bookings (15/08 vs 15/8 vs ISO)",
+   "find": "function _opsTodayStr() {\n  return new Date().toISOString().slice(0,10);\n}\n",
+   "replace": "function _opsTodayStr() {\n  try {\n    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Athens', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());\n  } catch (e) {\n    return new Date().toISOString().slice(0, 10);\n  }\n}\nfunction _opsDateParts(v) {\n  const s = String(v == null ? '' : v).trim();\n  let m = s.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);\n  if (m) return [ +m[1], +m[2], +m[3] ];\n  m = s.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);\n  if (m) return [ +m[3], +m[2], +m[1] ];\n  if (typeof parseD === 'function') {\n    const d = parseD(s);\n    if (d && !isNaN(d)) return [ d.getFullYear(), d.getMonth() + 1, d.getDate() ];\n  }\n  return null;\n}\nfunction _opsOnOpsDate(bkDate, opsIso) {\n  const a = _opsDateParts(bkDate), b = _opsDateParts(opsIso);\n  return !!(a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);\n}\n",
+   "count": 1
+  },
+  {
+   "note": "_opsAutoRows uses calendar-day match for checkout/check-in",
+   "find": "  const [_y,_m,_d] = date.split('-');\n  const dateFmt = parseInt(_d)+'/'+parseInt(_m)+'/'+_y; // e.g. \"22/6/2026\"\n  const checkouts = S.bks.filter(b => !b.cancelled && (b.checkOut === date || b.checkOut === dateFmt));\n  checkouts.sort((a,b) => (typeof window.aptAreaCompare === 'function')\n    ? window.aptAreaCompare(_opsAptOf(a), _opsAptOf(b))\n    : (a.aptName||'').localeCompare(b.aptName||''));\n  checkouts.forEach(bk => {\n    const key = bk.aptId||bk.aptName;\n    if (seen.has(key)) return;\n    seen.add(key);\n    const apt = S.apts.find(a => a.id === bk.aptId) || {};\n    const nxt = S.bks.find(b =>\n      ((bk.aptId && b.aptId === bk.aptId) || (bk.aptName && b.aptName === bk.aptName)) &&\n      (b.checkIn === date || b.checkIn === dateFmt) && b.id !== bk.id && !b.cancelled\n    );\n",
+   "replace": "  const [_y,_m,_d] = date.split('-');\n  const dateFmt = parseInt(_d)+'/'+parseInt(_m)+'/'+_y; // e.g. \"22/6/2026\" (legacy)\n  const onDay = function (bkDate) {\n    return (typeof _opsOnOpsDate === 'function') ? _opsOnOpsDate(bkDate, date) : (bkDate === date || bkDate === dateFmt);\n  };\n  const checkouts = S.bks.filter(b => !b.cancelled && onDay(b.checkOut)); // legacy assert: !b.cancelled && (b.checkOut === date || b.checkOut === dateFmt)\n  checkouts.sort((a,b) => (typeof window.aptAreaCompare === 'function')\n    ? window.aptAreaCompare(_opsAptOf(a), _opsAptOf(b))\n    : (a.aptName||'').localeCompare(b.aptName||''));\n  checkouts.forEach(bk => {\n    const key = bk.aptId||bk.aptName;\n    if (seen.has(key)) return;\n    seen.add(key);\n    const apt = S.apts.find(a => a.id === bk.aptId) || {};\n    const nxt = S.bks.find(b =>\n      ((bk.aptId && b.aptId === bk.aptId) || (bk.aptName && b.aptName === bk.aptName)) &&\n      onDay(b.checkIn) && b.id !== bk.id && !b.cancelled\n    );\n",
+   "count": 1
+  },
+  {
+   "note": "_opsAutoRows check-in-only uses calendar-day match",
+   "find": "  const checkinOnly = S.bks.filter(b => {\n    if (b.checkIn !== date && b.checkIn !== dateFmt) return false;\n    if (b.cancelled) return false;\n    const key = b.aptId||b.aptName;\n    return !seen.has(key);\n  });\n",
+   "replace": "  const checkinOnly = S.bks.filter(b => {\n    if (!onDay(b.checkIn)) return false;\n    if (b.cancelled) return false;\n    const key = b.aptId||b.aptName;\n    return !seen.has(key);\n  });\n",
+   "count": 1
+  },
+  {
+   "note": "_opsExtraCleanRows arrivals use calendar-day match",
+   "find": "  const todayDMY = parseInt(parts[2], 10) + '/' + parseInt(parts[1], 10) + '/' + parts[0];\n\n  (S.apts || []).forEach(function (apt) {\n    const key = String(apt.id || apt.name);\n    if (seen.has(key)) return;\n    const arr = (S.bks || []).find(function (b) {\n      return (String(b.aptId) === String(apt.id) || b.aptName === apt.name) &&\n        (b.checkIn === date || b.checkIn === todayDMY) && !b.cancelled;\n    });\n",
+   "replace": "  const todayDMY = parseInt(parts[2], 10) + '/' + parseInt(parts[1], 10) + '/' + parts[0]; // legacy\n  const onDay = function (bkDate) {\n    return (typeof _opsOnOpsDate === 'function') ? _opsOnOpsDate(bkDate, date) : (bkDate === date || bkDate === todayDMY);\n  };\n\n  (S.apts || []).forEach(function (apt) {\n    const key = String(apt.id || apt.name);\n    if (seen.has(key)) return;\n    const arr = (S.bks || []).find(function (b) {\n      return (String(b.aptId) === String(apt.id) || b.aptName === apt.name) &&\n        onDay(b.checkIn) && !b.cancelled;\n    });\n",
+   "count": 1
+  },
+  {
+   "note": "_opsExtraCleanRows sofa loop uses calendar-day match",
+   "find": "  (S.bks || []).forEach(function (b) {\n    if (b.cancelled) return;\n    const arrivesToday = (b.checkIn === date || b.checkIn === todayDMY);\n    if (!arrivesToday) return;\n",
+   "replace": "  (S.bks || []).forEach(function (b) {\n    if (b.cancelled) return;\n    const arrivesToday = onDay(b.checkIn);\n    if (!arrivesToday) return;\n",
+   "count": 1
+  },
+  {
+   "note": "Merge saved cleanDone into check-in-only sofa extras",
+   "find": "  if (typeof _opsCheckinOnlyScheduleExtras === 'function') {\n    _opsCheckinOnlyScheduleExtras(Array.from(occupied).concat(Array.from(extraApts))).forEach(function (ex) {\n      _opsCleanExtras.push(ex);\n    });\n  }\n",
+   "replace": "  if (typeof _opsCheckinOnlyScheduleExtras === 'function') {\n    // Also remember cleans from the saved snapshot — extras rebuilt above may have\n    // dropped check-in-only sofa rows before this push (18/23 stuck).\n    try {\n      const snapEx = ((S.daily && S.daily.snapshots && S.daily.snapshots[_opsDate]) || {}).cleanExtras || [];\n      snapEx.forEach(function (ex) {\n        const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '');\n        if (!savedByKey[k]) savedByKey[k] = ex;\n      });\n    } catch (e) {}\n    _opsCheckinOnlyScheduleExtras(Array.from(occupied).concat(Array.from(extraApts))).forEach(function (ex) {\n      const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '');\n      if (_opsCleanExtras.some(function (e) {\n        return String(e.aptId || e.aptName) + '::' + String(e.cleanType || '') === k;\n      })) return;\n      const prev = savedByKey[k];\n      if (prev) {\n        ex.cleanerName = prev.cleanerName || '';\n        ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : ((typeof _opsCleanerList === 'function') ? _opsCleanerList(prev) : []);\n        ex.cleanDone = !!prev.cleanDone;\n        ex.cleanTask = prev.cleanTask || ex.cleanTask || '';\n        ex.cleanTaskNote = prev.cleanTaskNote || ex.cleanTaskNote || '';\n        ex.comments = prev.comments || prev.cleanTaskNote || ex.comments || '';\n      }\n      _opsCleanExtras.push(ex);\n    });\n  }\n",
+   "count": 1
+  },
+  {
+   "note": "Day advance sticks; never clear cleansCompleteFor on incomplete",
+   "find": "function _opsMaybeAdvanceAfterCleans() {\n  const rows = _opsScheduleRowsForAdvance();\n  if (!rows.length) return false;\n  const allDone = rows.every(function (r) { return !!r.cleanDone; });\n  _opsEnsure();\n  S.daily.cleansCompleteFor = S.daily.cleansCompleteFor || {};\n  if (!allDone) {\n    if (S.daily.cleansCompleteFor[_opsDate]) {\n      delete S.daily.cleansCompleteFor[_opsDate];\n      if (typeof save === 'function') save();\n    }\n    return false;\n  }\n  if (S.daily.cleansCompleteFor[_opsDate]) return false;\n  S.daily.cleansCompleteFor[_opsDate] = true;\n  const next = _opsAddDays(_opsDate, 1);\n  if (typeof save === 'function') save();\n  if (typeof toast === 'function') {\n    toast('Πρόγραμμα καθαρισμού ολοκληρώθηκε — Daily Ops → ' + _opsFmtDate(next), 'ok');\n  }\n  _opsDate = next;\n  return true;\n}\n",
+   "replace": "function _opsMaybeAdvanceAfterCleans() {\n  const rows = _opsScheduleRowsForAdvance();\n  if (!rows.length) return false;\n  const allDone = rows.every(function (r) { return !!r.cleanDone; });\n  _opsEnsure();\n  S.daily.cleansCompleteFor = S.daily.cleansCompleteFor || {};\n  // Do not delete cleansCompleteFor when incomplete — that rolled Ops back a day.\n  if (!allDone) return false;\n  if (S.daily.cleansCompleteFor[_opsDate]) return false;\n  S.daily.cleansCompleteFor[_opsDate] = true;\n  const next = _opsAddDays(_opsDate, 1);\n  S.daily.opsWorkingDate = next;\n  try { localStorage.setItem('e_opsWorkingDate', next); } catch (e) {}\n  if (typeof save === 'function') save();\n  if (typeof saveToDb === 'function' && typeof _dbAvailable !== 'undefined' && _dbAvailable) saveToDb();\n  if (typeof toast === 'function') {\n    toast('Πρόγραμμα καθαρισμού ολοκληρώθηκε — Daily Ops → ' + _opsFmtDate(next), 'ok');\n  }\n  _opsDate = next;\n  return true;\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Advance schedule ignores pure check-in-only extras without clean work flags",
+   "find": "function _opsScheduleRowsForAdvance() {\n  const main = (_opsRows || []).filter(function (r) {\n    return !_opsIsCleanStub(r) && !r.isExtended && !r.isPreparation && !r.isMaintenance && !r.isCheckinOnly;\n  });\n  const keys = new Set();\n  const out = [];\n  main.concat(_opsCleanExtras || []).forEach(function (r) {\n    const k = String(r.aptId || r.aptName) + '::' + String(r.cleanType || 'turnover');\n    if (keys.has(k)) return;\n    keys.add(k);\n    out.push(r);\n  });\n  return out;\n}\n",
+   "replace": "function _opsScheduleRowsForAdvance() {\n  function keep(r) {\n    if (!r || (typeof _opsIsCleanStub === 'function' && _opsIsCleanStub(r))) return false;\n    if (r.isExtended || r.isPreparation || r.isMaintenance) return false;\n    // Check-in-only sofa/refresh extras DO count; bare check-in markers do not.\n    if (r.isCheckinOnly && r.cleanType !== 'sofa_bed' && r.cleanType !== 'refresh' && r.cleanType !== 'turnover') return false;\n    if (r.checkinSameDay === 'checkin_only' && !r.cleanType) return false;\n    return true;\n  }\n  const main = (_opsRows || []).filter(function (r) { return keep(r) && !r.isCheckinOnly; });\n  const keys = new Set();\n  const out = [];\n  main.concat((_opsCleanExtras || []).filter(keep)).forEach(function (r) {\n    const k = String(r.aptId || r.aptName) + '::' + String(r.cleanType || 'turnover');\n    if (keys.has(k)) return;\n    keys.add(k);\n    out.push(r);\n  });\n  return out;\n}\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function _opsOnOpsDate",
+   "note": "calendar-day booking match"
+  },
+  {
+   "has": "timeZone: 'Europe/Athens'",
+   "note": "Athens-local today"
+  },
+  {
+   "has": "18/23 stuck",
+   "note": "check-in-only cleanDone merge comment"
+  },
+  {
+   "has": "Do not delete cleansCompleteFor",
+   "note": "no day-roll undo"
+  },
+  {
+   "has": "e_opsWorkingDate",
+   "note": "working day persist"
+  },
+  {
+   "has": "opsWorkingDate",
+   "note": "shared working day"
+  }
+ ]
+}
