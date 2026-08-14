@@ -277,6 +277,17 @@ for (const file of srvChain) {
 }
 new vm.Script(srv, { filename: 'server.effective.js' });
 checkDeclared(srv, 'srv/');
+const captchaContinuation = extractFn(srv, 'piAirbnbContinueAfterCaptcha');
+assert(!captchaContinuation.includes('piAirbnbPreferEmailDelivery'), 'captcha continuation never re-requests email delivery');
+assert(captchaContinuation.includes('const settleUntil = Date.now() + 15000;'), 'captcha continuation waits for the original request to settle');
+assert(captchaContinuation.indexOf('piAirbnbHasHumanCheck') < captchaContinuation.indexOf("locator('#otp-code-input')"), 'each click checks for a still-visible challenge first');
+const captchaClickRouteStart = srv.indexOf("app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/captcha/click'");
+const captchaClickRouteEnd = srv.indexOf("app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/otp'", captchaClickRouteStart);
+const captchaClickRoute = srv.slice(captchaClickRouteStart, captchaClickRouteEnd);
+assert(captchaClickRouteStart >= 0 && captchaClickRouteEnd > captchaClickRouteStart, 'captcha click route exists');
+assert(captchaClickRoute.includes('job._piCaptchaClickTail = thisClick;'), 'captcha clicks join one per-job queue');
+assert(captchaClickRoute.indexOf('await previousClick') < captchaClickRoute.indexOf('await job.page.mouse.click'), 'a queued click waits before touching the browser');
+assert(captchaClickRoute.indexOf('releaseClick();') > captchaClickRoute.indexOf('await piAirbnbContinueAfterCaptcha(job);'), 'the click lock covers continuation settling');
 assert(srv.includes("app.get('/api/viva/cashflow'"), 'cashflow read endpoint exists');
 assert(srv.includes("app.post('/api/viva/cashflow/refresh'"), 'cashflow refresh endpoint exists');
 assert(srv.includes('function cfCronTick'), 'cashflow 06:00 scheduler exists');
