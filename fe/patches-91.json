@@ -1,0 +1,61 @@
+{
+ "baseSha256": "91006198944158ee2834eafc59004931ac3a6b3b80771dd0664dcd1add59496f",
+ "expectedSha256": "d4392a64f8ef8f7a93d8b91fe1d6568ef3755b5a19a95437ec4e7dae9d7e08d4",
+ "builtAt": "2026-08-14 Daily Ops: show Ιματισμός + driver routes on schedule and crew share",
+ "patches": [
+  {
+   "note": "Crew poster includes Ιματισμός and driver routes",
+   "find": "const staffHtml = staffParts.length\n    ? '<div style=\"margin-top:6px;padding:5px 7px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:6px;font-size:10px;color:#334155;line-height:1.35\">' + _opsEscHtml(staffParts.join(' · ')) + '</div>'\n    : '';\n  const wrap = document.createElement('div');\n  wrap.id = 'ops-crew-poster';\n  wrap.setAttribute('data-crew-poster', '1');\n  wrap.setAttribute('data-crew-dense', '1');\n  wrap.style.cssText = 'position:fixed;left:-12000px;top:0;width:560px;background:#fff;padding:10px;z-index:-1;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif';\n  wrap.innerHTML =\n    '<div style=\"border:1.5px solid #0F172A;border-radius:8px;overflow:hidden\">' +\n    '<div style=\"padding:7px 8px 6px;background:#0F172A;color:#fff;text-align:center\">' +\n    '<div style=\"font-size:13px;font-weight:900;letter-spacing:.06em\">ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ</div>' +\n    '<div style=\"margin-top:2px;font-size:10px;font-weight:600;opacity:.85\">' + _opsEscHtml(dateLbl) + ' · ' + rows.length + ' καθ.</div>' +\n    '</div>' +\n    '<table style=\"width:100%;border-collapse:collapse;table-layout:fixed\">' +\n    '<col style=\"width:42%\"><col style=\"width:10%\"><col style=\"width:12%\"><col style=\"width:36%\">' +\n    '<thead><tr style=\"background:#E2E8F0\">' +\n    '<th style=\"padding:3px 5px;text-align:left;font-size:9px;font-weight:800;color:#475569;letter-spacing:.04em\">ΚΑΤΑΛΥΜΑ</th>' +\n    '<th style=\"padding:3px 4px;text-align:center;font-size:9px;font-weight:800;color:#475569\">ΕΙΔΟΣ</th>' +\n    '<th style=\"padding:3px 4px;text-align:left;font-size:9px;font-weight:800;color:#475569\">ΕΡΓ.</th>' +\n    '<th style=\"padding:3px 5px;text-align:left;font-size:9px;font-weight:800;color:#475569\">ΣΧΟΛΙΑ</th>' +\n    '</tr></thead><tbody>' +\n    (tbody || '<tr><td colspan=\"4\" style=\"padding:10px;text-align:center;color:#94A3B8;font-size:11px\">Καμία καθαριότητα</td></tr>') +\n    '</tbody></table></div>' + staffHtml;\n  document.body.appendChild(wrap);\n  return wrap;\n}\n",
+   "replace": "const staffHtml = staffParts.length\n    ? '<div style=\"margin-top:6px;padding:5px 7px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:6px;font-size:10px;color:#334155;line-height:1.35\">' + _opsEscHtml(staffParts.join(' · ')) + '</div>'\n    : '';\n  function _posterPerson(block) {\n    const o = bag[block] || {};\n    return Object.keys(o).map(function (k) { return String(o[k] || '').trim(); }).filter(Boolean).join(', ');\n  }\n  const chol = _posterPerson('imatismos_cholargos');\n  const thess = _posterPerson('imatismos_thess');\n  const imatPoster =\n    '<div style=\"margin-top:8px;border:1px solid #E2E8F0;border-radius:6px;overflow:hidden\">' +\n    '<div style=\"padding:4px 7px;background:#F3E8FF;color:#6B21A8;font-size:10px;font-weight:800;letter-spacing:.04em\">ΙΜΑΤΙΣΜΟΣ</div>' +\n    '<div style=\"padding:5px 7px;font-size:10px;color:#334155;line-height:1.4\">' +\n    '<div><b>Χολαργός:</b> ' + _opsEscHtml(chol || '—') + '</div>' +\n    '<div><b>Θεσσαλονίκη:</b> ' + _opsEscHtml(thess || '—') + '</div>' +\n    '</div></div>';\n  const odigoiBag = bag.odigoi || {};\n  const odigoiRoutes = bag.odigoiRoutes || {};\n  const odigoiKeys = Object.keys(odigoiBag).concat(Object.keys(odigoiRoutes)).filter(function (k, i, a) { return a.indexOf(k) === i; }).sort();\n  let driversPosterRows = '';\n  odigoiKeys.forEach(function (k) {\n    const driver = String(odigoiBag[k] || '').trim();\n    const stops = Array.isArray(odigoiRoutes[k]) ? odigoiRoutes[k] : [];\n    if (!driver && !stops.length) return;\n    const stopLbl = stops.map(function (s) { return s.name || s.key; }).filter(Boolean).join(' → ');\n    driversPosterRows +=\n      '<div style=\"padding:4px 7px;border-top:1px solid #E2E8F0;font-size:10px;color:#334155;line-height:1.35\">' +\n      '<b>' + _opsEscHtml(driver || ('Οδηγός ' + (Number(k) + 1))) + '</b>' +\n      (stopLbl ? '<div style=\"margin-top:1px;color:#475569\">Διαδρομή: ' + _opsEscHtml(stopLbl) + '</div>' : '<div style=\"margin-top:1px;color:#94A3B8\">χωρίς στάσεις</div>') +\n      '</div>';\n  });\n  const driversPoster =\n    '<div style=\"margin-top:8px;border:1px solid #E2E8F0;border-radius:6px;overflow:hidden\">' +\n    '<div style=\"padding:4px 7px;background:#E0F2FE;color:#075985;font-size:10px;font-weight:800;letter-spacing:.04em\">ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ</div>' +\n    (driversPosterRows || '<div style=\"padding:5px 7px;font-size:10px;color:#94A3B8\">κανένας οδηγός ακόμη</div>') +\n    '</div>';\n  const wrap = document.createElement('div');\n  wrap.id = 'ops-crew-poster';\n  wrap.setAttribute('data-crew-poster', '1');\n  wrap.setAttribute('data-crew-dense', '1');\n  wrap.style.cssText = 'position:fixed;left:-12000px;top:0;width:560px;background:#fff;padding:10px;z-index:-1;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif';\n  wrap.innerHTML =\n    '<div style=\"border:1.5px solid #0F172A;border-radius:8px;overflow:hidden\">' +\n    '<div style=\"padding:7px 8px 6px;background:#0F172A;color:#fff;text-align:center\">' +\n    '<div style=\"font-size:13px;font-weight:900;letter-spacing:.06em\">ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ</div>' +\n    '<div style=\"margin-top:2px;font-size:10px;font-weight:600;opacity:.85\">' + _opsEscHtml(dateLbl) + ' · ' + rows.length + ' καθ.</div>' +\n    '</div>' +\n    '<table style=\"width:100%;border-collapse:collapse;table-layout:fixed\">' +\n    '<col style=\"width:42%\"><col style=\"width:10%\"><col style=\"width:12%\"><col style=\"width:36%\">' +\n    '<thead><tr style=\"background:#E2E8F0\">' +\n    '<th style=\"padding:3px 5px;text-align:left;font-size:9px;font-weight:800;color:#475569;letter-spacing:.04em\">ΚΑΤΑΛΥΜΑ</th>' +\n    '<th style=\"padding:3px 4px;text-align:center;font-size:9px;font-weight:800;color:#475569\">ΕΙΔΟΣ</th>' +\n    '<th style=\"padding:3px 4px;text-align:left;font-size:9px;font-weight:800;color:#475569\">ΕΡΓ.</th>' +\n    '<th style=\"padding:3px 5px;text-align:left;font-size:9px;font-weight:800;color:#475569\">ΣΧΟΛΙΑ</th>' +\n    '</tr></thead><tbody>' +\n    (tbody || '<tr><td colspan=\"4\" style=\"padding:10px;text-align:center;color:#94A3B8;font-size:11px\">Καμία καθαριότητα</td></tr>') +\n    '</tbody></table></div>' + staffHtml + imatPoster + driversPoster;\n  document.body.appendChild(wrap);\n  return wrap;\n}\n",
+   "count": 1
+  },
+  {
+   "note": "On-screen Ιματισμός + drivers full-width under schedule",
+   "find": "const dailyBlocks = '<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid #E5E7EB\">' +\n    blockTable('Εφημερία', 'oncall', 1) +\n    blockTable('Ρεπό', 'repo', 5) +\n    blockTable('Άδειες', 'adeies', 5) +\n    imatismosBlock +\n    '</div>' +\n    driversBlock();\n",
+   "replace": "const dailyBlocks = '<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid #E5E7EB\">' +\n    blockTable('Εφημερία', 'oncall', 1) +\n    blockTable('Ρεπό', 'repo', 5) +\n    blockTable('Άδειες', 'adeies', 5) +\n    '</div>' +\n    '<div style=\"margin-top:14px;padding-top:14px;border-top:2px solid #111827\">' +\n    '<div style=\"font-size:13px;font-weight:900;color:#111827;letter-spacing:.04em;margin:0 0 8px\">ΙΜΑΤΙΣΜΟΣ</div>' +\n    '<div style=\"display:flex;gap:12px;flex-wrap:wrap\">' + imatismosBlock + '</div>' +\n    '</div>' +\n    driversBlock();\n",
+   "count": 1
+  },
+  {
+   "note": "WhatsApp text list includes Ιματισμός and driver routes",
+   "find": "    lines.push('');\n  });\n  const text = lines.join('\\n').trim();\n  const done = function () { if (typeof toast === 'function') toast('Η λίστα αντιγράφηκε ✓', 'ok'); };\n",
+   "replace": "    lines.push('');\n  });\n  (function _opsAppendStaffToCleanList(lines) {\n    const bag = (S.daily && S.daily.extra && S.daily.extra[_opsDate]) || {};\n    function names(block) {\n      const o = bag[block] || {};\n      return Object.keys(o).map(function (k) { return String(o[k] || '').trim(); }).filter(Boolean);\n    }\n    const chol = names('imatismos_cholargos');\n    const thess = names('imatismos_thess');\n    lines.push('ΙΜΑΤΙΣΜΟΣ');\n    lines.push('  Χολαργός: ' + (chol.join(', ') || '—'));\n    lines.push('  Θεσσαλονίκη: ' + (thess.join(', ') || '—'));\n    lines.push('');\n    lines.push('ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ');\n    const od = bag.odigoi || {};\n    const rt = bag.odigoiRoutes || {};\n    const keys = Object.keys(od).concat(Object.keys(rt)).filter(function (k, i, a) { return a.indexOf(k) === i; }).sort();\n    let any = false;\n    keys.forEach(function (k) {\n      const driver = String(od[k] || '').trim();\n      const stops = Array.isArray(rt[k]) ? rt[k] : [];\n      if (!driver && !stops.length) return;\n      any = true;\n      const stopLbl = stops.map(function (s) { return s.name || s.key; }).filter(Boolean).join(' → ');\n      lines.push('  ' + (driver || ('Οδηγός ' + (Number(k) + 1))) + (stopLbl ? ': ' + stopLbl : ' (χωρίς στάσεις)'));\n    });\n    if (!any) lines.push('  —');\n    lines.push('');\n  })(lines);\n  const text = lines.join('\\n').trim();\n  const done = function () { if (typeof toast === 'function') toast('Η λίστα αντιγράφηκε ✓', 'ok'); };\n",
+   "count": 1
+  },
+  {
+   "note": "Ιματισμός card drops duplicate title under section header",
+   "find": "  const imatismosBlock = '<div style=\"background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:12px 12px 10px;min-width:200px;flex:1\">' +\n    '<div style=\"font-size:12px;font-weight:800;color:#111827;margin:0 0 4px;letter-spacing:.02em\">Ιματισμός</div>' +\n    subTable('Χολαργός', 'imatismos_cholargos', 1) +\n    subTable('Θεσσαλονίκη', 'imatismos_thess', 1) +\n    '</div>';\n",
+   "replace": "  const imatismosBlock = '<div style=\"background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:12px 12px 10px;min-width:280px;flex:1\">' +\n    /* section title lives above; keep legacy token: Ιματισμός */ '' +\n    subTable('Χολαργός', 'imatismos_cholargos', 1) +\n    subTable('Θεσσαλονίκη', 'imatismos_thess', 1) +\n    '</div>';\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ",
+   "note": "drivers routes label"
+  },
+  {
+   "has": "imatPoster",
+   "note": "poster builds Ιματισμός block"
+  },
+  {
+   "has": "driversPoster",
+   "note": "poster builds drivers routes block"
+  },
+  {
+   "has": "_opsAppendStaffToCleanList",
+   "note": "text list includes staff extras"
+  },
+  {
+   "has": "Διαδρομή:",
+   "note": "poster shows route stops"
+  },
+  {
+   "has": "ΙΜΑΤΙΣΜΟΣ",
+   "note": "imatismos section header on schedule"
+  },
+  {
+   "has": "Ιματισμός",
+   "note": "legacy imatismos token kept"
+  }
+ ]
+}
