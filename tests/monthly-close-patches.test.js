@@ -7,7 +7,8 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
-let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
+const origHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
+let html = origHtml;
 
 // Releases ship as a chain: fe/patches.json, then fe/patches-2.json, -3.json …
 // Each file starts where the previous one ended, so a release is a small new
@@ -51,6 +52,47 @@ for (const file of chainFiles) {
 }
 assert(chainFiles.length >= 2, 'the release chain is in use');
 checkDeclared(html, 'fe/');
+
+function extractFn(source, name) {
+  const start = source.indexOf('function ' + name + '(');
+  assert(start >= 0, 'missing function ' + name);
+  const brace = source.indexOf('{', start);
+  let depth = 0;
+  for (let i = brace; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}') {
+      depth--;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error('unclosed function ' + name);
+}
+function extractConst(source, name) {
+  const start = source.indexOf('const ' + name + ' = {');
+  assert(start >= 0, 'missing ' + name);
+  return source.slice(start, source.indexOf('};', start) + 2);
+}
+assert.strictEqual(extractFn(origHtml, 'calcBase'), extractFn(html, 'calcBase'), 'calcBase unchanged (golden path)');
+assert.strictEqual(
+  extractFn(origHtml, 'calcAptPacket').replace(/^[\s\S]*?(function calcAptPacket)/, '$1'),
+  extractFn(html, 'calcAptPacket').replace(/^[\s\S]*?(function calcAptPacket)/, '$1'),
+  'calcAptPacket implementation unchanged'
+);
+['HORIZON_JUNE', 'SKYLINE_JUNE', 'COZY_JUNE'].forEach(name => {
+  assert.strictEqual(extractConst(origHtml, name), extractConst(html, name), name + ' locked values unchanged');
+});
+const goldenStart = '// ── TEST GROUP 4: Golden Standard — Horizon June 2026';
+const goldenEnd = '// ── TEST GROUP 5: Leased Profile invariants';
+assert.strictEqual(
+  origHtml.slice(origHtml.indexOf(goldenStart), origHtml.indexOf(goldenEnd)),
+  html.slice(html.indexOf(goldenStart), html.indexOf(goldenEnd)),
+  'G1–G31 golden test block is byte-identical'
+);
+assert(html.includes("assert('G1 Horizon gross'"), 'G1 Horizon golden assertion still present');
+assert(html.includes("assert('G31 Cozy B2B partner line'"), 'G31 Cozy golden assertion still present');
+assert(html.includes('calcBase(gBks, goldenApt)'), 'Horizon golden still calls calcBase with no stay override');
+assert(html.includes('calcBase(sBksRaw, skylineApt)'), 'Skyline golden still calls calcBase with no stay override');
+assert(html.includes('calcBase(czBksRaw, cozyApt)'), 'Cozy golden still calls calcBase with no stay override');
 
 const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
   .map(match => match[1])
@@ -123,21 +165,6 @@ assert(html.includes('skipped</span>'), 'previous-month skip is flagged on the f
 assert(html.includes('!complete(a) && !mcSkipped(a.id)'), 'skipped apartments leave the queue');
 assert(html.includes('if (mcSkipped(a.id)) { skipN += n; return; }'), 'skipped apartments are never counted as sent');
 assert(html.includes('var _need = Math.max(0, tot - skipN);'), 'progress measures what actually needs clearing');
-
-function extractFn(source, name) {
-  const start = source.indexOf('function ' + name + '(');
-  assert(start >= 0, 'missing function ' + name);
-  const brace = source.indexOf('{', start);
-  let depth = 0;
-  for (let i = brace; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') {
-      depth--;
-      if (depth === 0) return source.slice(start, i + 1);
-    }
-  }
-  throw new Error('unclosed function ' + name);
-}
 
 const packetSrc = [
   (() => {
