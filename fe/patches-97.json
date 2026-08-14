@@ -1,0 +1,87 @@
+{
+ "baseSha256": "edfb76dc0fb670a68e583ea2362dd254bfb4d04536fc0b67169752ee12cfab96",
+ "expectedSha256": "257074062e55a768b39e6bd693d2155437e870cdf814606ada51e936c4ed7a3c",
+ "builtAt": "2026-08-14 Daily Ops: real stuck cleans + keep unpriced bookings (not date-format)",
+ "patches": [
+  {
+   "note": "Apt/clean key helpers + carry cleanDone across type flips",
+   "find": "function _opsOnOpsDate(bkDate, opsIso) {\n  const a = _opsDateParts(bkDate), b = _opsDateParts(opsIso);\n  return !!(a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);\n}\n",
+   "replace": "function _opsOnOpsDate(bkDate, opsIso) {\n  const a = _opsDateParts(bkDate), b = _opsDateParts(opsIso);\n  return !!(a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);\n}\nfunction _opsAptKeyList(r) {\n  const out = [];\n  if (!r) return out;\n  if (r.aptId != null && String(r.aptId) !== '') out.push(String(r.aptId));\n  if (r.aptName != null && String(r.aptName) !== '') out.push(String(r.aptName));\n  return out;\n}\nfunction _opsCleanTypeOf(r) {\n  return String((r && r.cleanType) || 'turnover');\n}\nfunction _opsCleanStorageKey(r) {\n  return String((r && (r.aptId || r.aptName)) || '') + '::' + _opsCleanTypeOf(r);\n}\n// Snapshot / rebuild keys drift when aptId fills in later, or when rental-info\n// flips refresh ↔ sofa_bed — carry operator progress across those aliases.\nfunction _opsLookupSavedClean(savedByKey, row) {\n  if (!savedByKey || !row) return null;\n  const exact = _opsCleanStorageKey(row);\n  if (savedByKey[exact]) return savedByKey[exact];\n  const types = [_opsCleanTypeOf(row), 'turnover', 'refresh', 'sofa_bed'];\n  const seenT = {};\n  for (let ti = 0; ti < types.length; ti++) {\n    const t = types[ti];\n    if (seenT[t]) continue;\n    seenT[t] = true;\n    const keys = _opsAptKeyList(row);\n    for (let ki = 0; ki < keys.length; ki++) {\n      const k = keys[ki] + '::' + t;\n      if (savedByKey[k]) return savedByKey[k];\n    }\n  }\n  return null;\n}\nfunction _opsIndexSavedCleans(list) {\n  const savedByKey = {};\n  (list || []).forEach(function (ex) {\n    if (!ex) return;\n    savedByKey[_opsCleanStorageKey(ex)] = ex;\n    _opsAptKeyList(ex).forEach(function (k) {\n      savedByKey[k + '::' + _opsCleanTypeOf(ex)] = ex;\n    });\n  });\n  return savedByKey;\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Snapshot overlay indexes aptId AND aptName (cleanDone drift)",
+   "find": "  const snapRows = (snap.rows || []).filter(function (r) { return !_opsIsCleanStub(r); });\n  const snapByKey = {};\n  snapRows.forEach(function (r) { snapByKey[String(r.aptId || r.aptName)] = r; });\n  const OPS_OVERLAY = ['cleanerName','cleanerNames','cleanDone','cleanTask','cleanTaskNote','comments','alreadyCleaned','cleanedDate','lateCheckout','checkoutRequested','arrivalTime','parkBed','earlyCheckin','isPriority','priorityManual','checkinManual'];\n\n  const _merged = freshRows.map(function (f) {\n    const r = snapByKey[String(f.aptId || f.aptName)] || {};\n    const out = Object.assign({}, f);\n    if (snapByKey[String(f.aptId || f.aptName)]) {\n      OPS_OVERLAY.forEach(function (k) {\n        if (r[k] != null) out[k] = r[k];\n      });\n    }\n",
+   "replace": "  const snapRows = (snap.rows || []).filter(function (r) { return !_opsIsCleanStub(r); });\n  const snapByKey = {};\n  snapRows.forEach(function (r) {\n    const keys = (typeof _opsAptKeyList === 'function') ? _opsAptKeyList(r) : [String(r.aptId || r.aptName)];\n    keys.forEach(function (k) { snapByKey[k] = r; });\n  });\n  const OPS_OVERLAY = ['cleanerName','cleanerNames','cleanDone','cleanTask','cleanTaskNote','comments','alreadyCleaned','cleanedDate','lateCheckout','checkoutRequested','arrivalTime','parkBed','earlyCheckin','isPriority','priorityManual','checkinManual'];\n\n  const _merged = freshRows.map(function (f) {\n    const fKeys = (typeof _opsAptKeyList === 'function') ? _opsAptKeyList(f) : [String(f.aptId || f.aptName)];\n    let r = null;\n    for (let i = 0; i < fKeys.length; i++) { if (snapByKey[fKeys[i]]) { r = snapByKey[fKeys[i]]; break; } }\n    r = r || {};\n    const out = Object.assign({}, f);\n    if (fKeys.some(function (k) { return !!snapByKey[k]; })) {\n      OPS_OVERLAY.forEach(function (k) {\n        if (r[k] != null) out[k] = r[k];\n      });\n    }\n",
+   "count": 1
+  },
+  {
+   "note": "Default Ops date follows opsWorkingDate / local sticky day",
+   "find": "function _opsDefaultOpsDate() {\n  _opsEnsure();\n  const today = _opsTodayStr();\n  if (S.daily && S.daily.cleansCompleteFor && S.daily.cleansCompleteFor[today]) {\n    return _opsAddDays(today, 1);\n  }\n  return today;\n}\n",
+   "replace": "function _opsDefaultOpsDate() {\n  _opsEnsure();\n  const today = _opsTodayStr();\n  let sticky = '';\n  try { sticky = localStorage.getItem('e_opsWorkingDate') || ''; } catch (e) {}\n  if (!sticky && S.daily && S.daily.opsWorkingDate) sticky = String(S.daily.opsWorkingDate);\n  if (S.daily && S.daily.cleansCompleteFor && S.daily.cleansCompleteFor[today]) {\n    const next = _opsAddDays(today, 1);\n    if (sticky && sticky > next) return sticky;\n    return next;\n  }\n  // If the crew already advanced past today, stay there after refresh.\n  if (sticky && sticky > today) return sticky;\n  return today;\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Flush cleanDone to DB immediately (poll cannot wipe checks)",
+   "find": "function opsToggleCleanDoneKey(key, checked) {\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  r.cleanDone = !!checked;\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n  _opsMaybeAdvanceAfterCleans();\n  if (typeof renderOps === 'function') renderOps();\n}\n",
+   "replace": "function opsToggleCleanDoneKey(key, checked) {\n  const r = _opsFindCleanRow(key);\n  if (!r) return;\n  r.cleanDone = !!checked;\n  clearTimeout(_opsSaveTimer);\n  _opsSaveNow();\n  // Immediate DB write — poll cannot wipe checks (debounced save lost them).\n  if (typeof saveToDb === 'function' && typeof _dbAvailable !== 'undefined' && _dbAvailable) saveToDb();\n  _opsMaybeAdvanceAfterCleans();\n  if (typeof renderOps === 'function') renderOps();\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Rebuild extras with dual-key / type-flip cleanDone merge",
+   "find": "  const savedByKey = {};\n  _opsCleanExtras.forEach(function (ex) {\n    savedByKey[String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '')] = ex;\n  });\n  _opsCleanExtras = rawExtras.map(function (ex) {\n    const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '');\n    const prev = savedByKey[k];\n    if (prev) {\n      ex.cleanerName = prev.cleanerName || '';\n      ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : _opsCleanerList(prev);\n      ex.cleanDone = !!prev.cleanDone;\n      ex.cleanTask = prev.cleanTask || ex.cleanTask || '';\n      ex.cleanTaskNote = prev.cleanTaskNote || '';\n      ex.comments = prev.comments || prev.cleanTaskNote || '';\n    }\n",
+   "replace": "  const savedByKey = (typeof _opsIndexSavedCleans === 'function')\n    ? _opsIndexSavedCleans(_opsCleanExtras)\n    : (function () {\n      const m = {};\n      _opsCleanExtras.forEach(function (ex) {\n        m[String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || 'turnover')] = ex;\n      });\n      return m;\n    })();\n  _opsCleanExtras = rawExtras.map(function (ex) {\n    const prev = (typeof _opsLookupSavedClean === 'function')\n      ? _opsLookupSavedClean(savedByKey, ex)\n      : savedByKey[String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || 'turnover')];\n    if (prev) {\n      ex.cleanerName = prev.cleanerName || '';\n      ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : _opsCleanerList(prev);\n      ex.cleanDone = !!prev.cleanDone;\n      ex.cleanTask = prev.cleanTask || ex.cleanTask || '';\n      ex.cleanTaskNote = prev.cleanTaskNote || '';\n      ex.comments = prev.comments || prev.cleanTaskNote || '';\n    }\n",
+   "count": 1
+  },
+  {
+   "note": "Check-in-only extras merge via dual-key lookup",
+   "find": "  if (typeof _opsCheckinOnlyScheduleExtras === 'function') {\n    // Also remember cleans from the saved snapshot — extras rebuilt above may have\n    // dropped check-in-only sofa rows before this push (18/23 stuck).\n    try {\n      const snapEx = ((S.daily && S.daily.snapshots && S.daily.snapshots[_opsDate]) || {}).cleanExtras || [];\n      snapEx.forEach(function (ex) {\n        const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '');\n        if (!savedByKey[k]) savedByKey[k] = ex;\n      });\n    } catch (e) {}\n    _opsCheckinOnlyScheduleExtras(Array.from(occupied).concat(Array.from(extraApts))).forEach(function (ex) {\n      const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || '');\n      if (_opsCleanExtras.some(function (e) {\n        return String(e.aptId || e.aptName) + '::' + String(e.cleanType || '') === k;\n      })) return;\n      const prev = savedByKey[k];\n      if (prev) {\n        ex.cleanerName = prev.cleanerName || '';\n        ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : ((typeof _opsCleanerList === 'function') ? _opsCleanerList(prev) : []);\n        ex.cleanDone = !!prev.cleanDone;\n        ex.cleanTask = prev.cleanTask || ex.cleanTask || '';\n        ex.cleanTaskNote = prev.cleanTaskNote || ex.cleanTaskNote || '';\n        ex.comments = prev.comments || prev.cleanTaskNote || ex.comments || '';\n      }\n      _opsCleanExtras.push(ex);\n    });\n  }\n",
+   "replace": "  if (typeof _opsCheckinOnlyScheduleExtras === 'function') {\n    // Also remember cleans from the saved snapshot — extras rebuilt above may have\n    // dropped check-in-only sofa rows before this push (18/23 stuck).\n    try {\n      const snapEx = ((S.daily && S.daily.snapshots && S.daily.snapshots[_opsDate]) || {}).cleanExtras || [];\n      snapEx.forEach(function (ex) {\n        if (typeof _opsIndexSavedCleans === 'function') {\n          const more = _opsIndexSavedCleans([ex]);\n          Object.keys(more).forEach(function (k) { if (!savedByKey[k]) savedByKey[k] = more[k]; });\n        } else {\n          const k = String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || 'turnover');\n          if (!savedByKey[k]) savedByKey[k] = ex;\n        }\n      });\n    } catch (e) {}\n    _opsCheckinOnlyScheduleExtras(Array.from(occupied).concat(Array.from(extraApts))).forEach(function (ex) {\n      const k = (typeof _opsCleanStorageKey === 'function') ? _opsCleanStorageKey(ex) : (String(ex.aptId || ex.aptName) + '::' + String(ex.cleanType || 'turnover'));\n      if (_opsCleanExtras.some(function (e) {\n        const ek = (typeof _opsCleanStorageKey === 'function') ? _opsCleanStorageKey(e) : (String(e.aptId || e.aptName) + '::' + String(e.cleanType || 'turnover'));\n        return ek === k;\n      })) return;\n      const prev = (typeof _opsLookupSavedClean === 'function') ? _opsLookupSavedClean(savedByKey, ex) : savedByKey[k];\n      if (prev) {\n        ex.cleanerName = prev.cleanerName || '';\n        ex.cleanerNames = Array.isArray(prev.cleanerNames) ? prev.cleanerNames.slice() : ((typeof _opsCleanerList === 'function') ? _opsCleanerList(prev) : []);\n        ex.cleanDone = !!prev.cleanDone;\n        ex.cleanTask = prev.cleanTask || ex.cleanTask || '';\n        ex.cleanTaskNote = prev.cleanTaskNote || ex.cleanTaskNote || '';\n        ex.comments = prev.comments || prev.cleanTaskNote || ex.comments || '';\n      }\n      _opsCleanExtras.push(ex);\n    });\n  }\n",
+   "count": 1
+  },
+  {
+   "note": "Rental-info load re-renders Ops so sofa/refresh types + checks stay aligned",
+   "find": "    _opsRentalInfo = data || {};\n    _opsRentalInfoLoading = false;\n    _opsApplySofaCommentsAll();\n    const tbody = document.getElementById('ops-tbody');\n    if (tbody && _opsRows && _opsRows.length) {\n      tbody.innerHTML = _opsRows.map(function (row, idx) { return _opsBuildRow(row, idx); }).join('');\n      if (typeof _opsAutoSave === 'function') _opsAutoSave();\n    }\n",
+   "replace": "    _opsRentalInfo = data || {};\n    _opsRentalInfoLoading = false;\n    _opsApplySofaCommentsAll();\n    // Full re-render: cleaning extras may flip refresh↔sofa_bed once capacity loads.\n    if (typeof renderOps === 'function' && document.getElementById('tab-ops') && document.getElementById('tab-ops').classList.contains('active')) {\n      renderOps();\n    } else {\n      const tbody = document.getElementById('ops-tbody');\n      if (tbody && _opsRows && _opsRows.length) {\n        tbody.innerHTML = _opsRows.map(function (row, idx) { return _opsBuildRow(row, idx); }).join('');\n        if (typeof _opsAutoSave === 'function') _opsAutoSave();\n      }\n    }\n",
+   "count": 1
+  },
+  {
+   "note": "Client Hosthub sync keeps unpriced bookings (Skarlatos)",
+   "find": "      if (!b.aptName) continue;\n      if (b.gross === 0 && b.payout === 0 && b.bkv === 0) continue;\n",
+   "replace": "      if (!b.aptName) continue;\n      // Do NOT drop zero-fee bookings — new/unpriced reservations still need Daily Ops dates.\n      if (b.gross === 0 && b.payout === 0 && b.bkv === 0 && !b.checkIn && !b.checkOut) continue;\n",
+   "count": 1
+  },
+  {
+   "note": "HH import keeps unpriced bookings with dates",
+   "find": "    if (gross === 0 && payout === 0 && bkv === 0) continue;\n",
+   "replace": "    // Keep calendar rows even when fees are still 0 (new reservations).\n    if (gross === 0 && payout === 0 && bkv === 0 && !ciStr && !coStr) continue;\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function _opsLookupSavedClean",
+   "note": "type-flip cleanDone carry"
+  },
+  {
+   "has": "function _opsAptKeyList",
+   "note": "dual apt keys"
+  },
+  {
+   "has": "e_opsWorkingDate",
+   "note": "sticky working day read"
+  },
+  {
+   "has": "poll cannot wipe checks",
+   "note": "immediate saveToDb on toggle"
+  },
+  {
+   "has": "unpriced reservations still need Daily Ops",
+   "note": "keep zero-fee bookings"
+  },
+  {
+   "has": "flip refresh↔sofa_bed once capacity loads",
+   "note": "rental-info full re-render"
+  }
+ ]
+}
