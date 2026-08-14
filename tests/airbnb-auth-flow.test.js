@@ -117,6 +117,39 @@ function otpPage(options) {
   return { page, calls, getValue: () => value };
 }
 
+function resendPage(options) {
+  options = options || {};
+  const calls = [];
+  const page = {
+    _piEmailOtpResponses: 4,
+    _piEmailOtpOk: 2,
+    _piEmailOtpLast: 200,
+    locator: selector => {
+      if (selector === 'body') {
+        return { innerText: async () => options.cooldown ? 'Wait 1 minute before requesting a code' : 'Send a new code' };
+      }
+      assert(selector.includes('send a new code'));
+      return {
+        first: () => ({
+          count: async () => options.missing ? 0 : 1,
+          isVisible: async () => !options.hidden,
+          click: async () => {
+            calls.push('resend.click');
+            if (options.clickFails) throw new Error('covered');
+            if (!options.noResponse) {
+              page._piEmailOtpResponses++;
+              page._piEmailOtpLast = options.status == null ? 200 : options.status;
+              if (page._piEmailOtpLast === 200) page._piEmailOtpOk++;
+            }
+          },
+        }),
+      };
+    },
+    waitForTimeout: async ms => calls.push(['wait', ms]),
+  };
+  return { page, calls };
+}
+
 async function main() {
   const server = applyChain('srv', 'server.js');
   const frontend = applyChain('fe', 'index.html');
@@ -171,6 +204,21 @@ async function main() {
   assert(server.includes('Airbnb says that code is invalid or expired'), 'visible validation error gets an accurate hint');
   assert(server.includes("input[name=\"password\"]:visible, input[type=\"password\"]:visible"), 'post-OTP password must be visible');
 
+  const resendSource = extractFn(server, 'piAirbnbResendCode');
+  const resendContext = {};
+  vm.runInNewContext(resendSource + '\nthis.resend = piAirbnbResendCode;', resendContext);
+  const resendAccepted = resendPage({ status: 200 });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(await resendContext.resend(resendAccepted.page))),
+    { ok: true, cooldown: false, status: 200 }, 'resend requires Airbnb HTTP 200');
+  assert(resendAccepted.calls.includes('resend.click'));
+  const resendBlocked = resendPage({ status: 420 });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(await resendContext.resend(resendBlocked.page))),
+    { ok: false, cooldown: false, status: 420 }, 'Airbnb block cannot be reported as an emailed code');
+  const resendClickFailed = resendPage({ clickFails: true });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(await resendContext.resend(resendClickFailed.page))),
+    { ok: false, cooldown: false, status: 0 }, 'failed resend click cannot report success');
+  assert(!resendSource.includes("sendNew.click({ force: true"), 'resend no longer force-clicks and ignores failure');
+
   const verifySource = extractFn(server, 'piAirbnbCaptchaClickIsVerify');
   const verifyContext = {};
   vm.runInNewContext(verifySource + '\nthis.isVerify = piAirbnbCaptchaClickIsVerify;', verifyContext);
@@ -202,7 +250,7 @@ async function main() {
   assert(frontend.includes("j.captchaVerify === false"), 'frontend recognizes a fast tile response');
   assert(frontend.includes("if (!(captchaImg && r.job.status === 'awaiting_captcha'))"), 'polling preserves active CAPTCHA image');
 
-  console.log('airbnb auth flow OK: exact OTP typing, modal/global Continue, Enter fallback, validation hints, bounded wait, fast CAPTCHA tiles');
+  console.log('airbnb auth flow OK: exact OTP typing, active submit controls, confirmed resend response, bounded wait, fast CAPTCHA tiles');
 }
 
 main().catch(error => {

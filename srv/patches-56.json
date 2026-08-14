@@ -1,0 +1,49 @@
+{
+ "baseSha256": "7a35a52b37b8d31414451699ee7baacf201de989eaf442a28d071ddb1b86fae2",
+ "expectedSha256": "aab7c4ef896ef843c3d3fb7a1d6d3d91c5d46269fd1f57ff872903d76399deb9",
+ "builtAt": "2026-08-14 Confirm Airbnb resend response before claiming email",
+ "patches": [
+  {
+   "note": "Count settled email-OTP responses",
+   "find": "  page._piEmailOtpPosts = 0;\n  page._piEmailOtpOk = 0;\n  page._piEmailOtpLast = 0;\n",
+   "replace": "  page._piEmailOtpPosts = 0;\n  page._piEmailOtpResponses = 0;\n  page._piEmailOtpOk = 0;\n  page._piEmailOtpLast = 0;\n"
+  },
+  {
+   "note": "Record every email-OTP response status",
+   "find": "    if (/\\/api\\/v2\\/auth\\/challenge\\/email_otp/i.test(res.url())) {\n      page._piEmailOtpLast = res.status();\n      if (res.status() === 200) page._piEmailOtpOk = (page._piEmailOtpOk || 0) + 1;\n    }\n",
+   "replace": "    if (/\\/api\\/v2\\/auth\\/challenge\\/email_otp/i.test(res.url())) {\n      page._piEmailOtpResponses = (page._piEmailOtpResponses || 0) + 1;\n      page._piEmailOtpLast = res.status();\n      if (res.status() === 200) page._piEmailOtpOk = (page._piEmailOtpOk || 0) + 1;\n    }\n"
+  },
+  {
+   "note": "Resend succeeds only after Airbnb HTTP 200 confirmation",
+   "find": "async function piAirbnbResendCode(page) {\n  const body = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ');\n  if (/wait 1 minute before requesting a code/i.test(body)) {\n    return { ok: false, cooldown: true };\n  }\n  var sendNew = page.locator('button:has-text(\"send a new code\"), a:has-text(\"send a new code\")').first();\n  if (await sendNew.count()) {\n    await sendNew.click({ force: true, timeout: 4000 }).catch(function () {});\n    await page.waitForTimeout(1500);\n    const after = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ');\n    return { ok: true, cooldown: /wait 1 minute before requesting a code/i.test(after) };\n  }\n  return { ok: false, cooldown: false };\n}\n",
+   "replace": "async function piAirbnbResendCode(page) {\n  const body = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ');\n  if (/wait 1 minute before requesting a code/i.test(body)) {\n    return { ok: false, cooldown: true, status: page._piEmailOtpLast || 0 };\n  }\n  var sendNew = page.locator('button:has-text(\"send a new code\"), a:has-text(\"send a new code\")').first();\n  if (!(await sendNew.count()) || !(await sendNew.isVisible().catch(function () { return false; }))) {\n    return { ok: false, cooldown: false, status: 0 };\n  }\n  const beforeResponses = page._piEmailOtpResponses || 0;\n  const beforeOk = page._piEmailOtpOk || 0;\n  try {\n    await sendNew.click({ timeout: 4000 });\n  } catch (eClick) {\n    return { ok: false, cooldown: false, status: 0 };\n  }\n  const deadline = Date.now() + 6000;\n  while (Date.now() < deadline && (page._piEmailOtpResponses || 0) <= beforeResponses) {\n    await page.waitForTimeout(200);\n  }\n  const after = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ');\n  const responded = (page._piEmailOtpResponses || 0) > beforeResponses;\n  const accepted = responded && (page._piEmailOtpOk || 0) > beforeOk && page._piEmailOtpLast === 200;\n  return {\n    ok: accepted,\n    cooldown: /wait 1 minute before requesting a code/i.test(after),\n    status: responded ? (page._piEmailOtpLast || 0) : 0\n  };\n}\n"
+  },
+  {
+   "note": "Resend hint is honest when Airbnb does not confirm delivery",
+   "find": "    } else {\n      job.hint = 'Could not click Send a new code. Wait a full minute and try Resend once.';\n    }\n",
+   "replace": "    } else {\n      job.hint = result && result.status\n        ? ('Airbnb did not accept the resend request (status ' + result.status + '). Do not keep clicking Resend; wait and use the newest email already received.')\n        : 'Airbnb did not confirm a new email was sent. Do not keep clicking Resend; wait a full minute before trying once.';\n    }\n"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "page._piEmailOtpResponses",
+   "note": "response count"
+  },
+  {
+   "has": "const accepted = responded &&",
+   "note": "resend requires response"
+  },
+  {
+   "has": "page._piEmailOtpLast === 200",
+   "note": "resend requires HTTP 200"
+  },
+  {
+   "has": "Airbnb did not confirm a new email was sent",
+   "note": "honest failure hint"
+  },
+  {
+   "hasNot": "await sendNew.click({ force: true",
+   "note": "failed force click cannot claim success"
+  }
+ ]
+}
