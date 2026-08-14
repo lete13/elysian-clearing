@@ -23,8 +23,8 @@
    "note": "comment"
   },
   {
-   "has": "Paste the code, then Submit",
-   "note": "stable OTP instruction"
+   "has": "Soft-update while awaiting OTP",
+   "note": "soft update retained"
   }
  ]
 }

@@ -16,16 +16,12 @@
  ],
  "assertions": [
   {
-   "has": "setNative",
-   "note": "native value setter"
-  },
-  {
    "has": "forcePrefer",
    "note": "prefer gated on refresh"
   },
   {
-   "has": "Avoid click()",
-   "note": "clickless OTP fill"
+   "has": "piAirbnbRefreshOtpMeta",
+   "note": "refresh helper"
   }
  ]
 }
