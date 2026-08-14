@@ -1,0 +1,109 @@
+{
+ "baseSha256": "1ff39e3424c245cdf3dc1d90cdee63c9b1e2959def348d4fd5f6abd585ba0eb5",
+ "expectedSha256": "a941bfed2b6847d43bf0c334ee2ae62ad0a0606193e4f6536fe0006231149a14",
+ "builtAt": "2026-08-14 stale-client cannot drop emailed Monthly Close or wipe owner emails",
+ "patches": [
+  {
+   "note": "Config: re-clicking the active profile pill must not reset Business tax and other Advanced flags",
+   "find": "function applyProfile(aptId, profileKey) {\n  const apt = S.apts.find(a=>a.id===aptId); if(!apt) return;\n  const prof = PROPERTY_PROFILES[profileKey]; if(!prof) return;\n  apt.profile = profileKey;\n  Object.entries(prof.flags).forEach(function(entry){ apt[entry[0]] = entry[1]; });\n  save(); renderCfg();\n}",
+   "replace": "function applyProfile(aptId, profileKey) {\n  const apt = S.apts.find(a=>a.id===aptId); if(!apt) return;\n  const prof = PROPERTY_PROFILES[profileKey]; if(!prof) return;\n  // Re-clicking the already-active pill used to copy profile defaults again and\n  // silently turn Business tax off on private/b2b apartments (and wipe other\n  // Advanced deviations). Only apply flags when the profile actually changes.\n  if (apt.profile === profileKey) return;\n  apt.profile = profileKey;\n  Object.entries(prof.flags).forEach(function(entry){ apt[entry[0]] = entry[1]; });\n  save(); renderCfg();\n}"
+  },
+  {
+   "note": "Persistence: never POST localStorage to the shared DB before loadFromDb (stale clients wipe email stamps and config)",
+   "find": "  // If localStorage had real data, mark as initialized\n  if (S.bks?.length || S.exps?.length) _dataInitialized = true;",
+   "replace": "  // Display-only. A stale laptop that POSTs before loadFromDb last-write-wins\n  // the shared database (14 Aug 2026: Kostas's Daily Ops save dropped the\n  // Michalakopoulou email lock 6 minutes after Lefteris sent it)."
+  },
+  {
+   "note": "Persistence: an empty database still allows later saves",
+   "find": "    if (!data) return; // No data in DB yet",
+   "replace": "    if (!data) { _dataInitialized = true; return; } // No data in DB yet"
+  },
+  {
+   "note": "Persistence: poll skips reload while Configuration fields are being edited",
+   "find": "function _dbHasPendingLocalEdits() {\n  return !!_saveTimer || !!_dbSaveInFlight || (typeof _opsSaveTimer !== 'undefined' && !!_opsSaveTimer);\n}",
+   "replace": "function _cfgInputFocused() {\n  try {\n    const el = document.activeElement;\n    if (!el || !el.closest) return false;\n    return !!(el.closest('#cfg-grid') || (el.closest('#tab-cfg') && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')));\n  } catch (e) { return false; }\n}\nfunction _dbHasPendingLocalEdits() {\n  return !!_saveTimer || !!_dbSaveInFlight || (typeof _opsSaveTimer !== 'undefined' && !!_opsSaveTimer) || _cfgInputFocused();\n}"
+  },
+  {
+   "note": "Config: do not rebuild the form while an input is focused (poll/save used to wipe unsaved owner emails)",
+   "find": "function renderCfg(){\n  document.getElementById('hdr-n').textContent=S.apts.length;",
+   "replace": "function renderCfg(){\n  try {\n    const el = document.activeElement;\n    if (el && el.closest && el.closest('#cfg-grid') && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return;\n  } catch (e) {}\n  document.getElementById('hdr-n').textContent=S.apts.length;"
+  },
+  {
+   "note": "Config: saving an owner email or tax amount must not rebuild the card (loses sibling fields still being typed)",
+   "find": "function setApt(id,f,v){const a=S.apts.find(x=>x.id===id);if(a){a[f]=v;save();renderCfg();}}",
+   "replace": "function setApt(id,f,v){const a=S.apts.find(x=>x.id===id);if(a){a[f]=v;save();if(f==='ownerEmail'||f==='ownerEmail2'||f==='ownerEmail3'||f==='clearGroup'||f==='businessTaxAmt'||f==='ownerName'||f==='ownerSurname'||f==='ownerPhone')return;renderCfg();}}"
+  },
+  {
+   "note": "Config: owner email fields are text so pasted Name <addr> still saves (type=email blocked onchange)",
+   "find": "<input type=\"email\" value=\"${(a.ownerEmail||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"email@example.com\" onchange=\"setApt('${a.id}','ownerEmail',_emailClean(this.value))\">",
+   "replace": "<input type=\"text\" inputmode=\"email\" autocomplete=\"email\" value=\"${(a.ownerEmail||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"email@example.com\" onchange=\"setApt('${a.id}','ownerEmail',_emailClean(this.value))\">"
+  },
+  {
+   "note": "Config: owner email 2 is text so pasted addresses still save",
+   "find": "<input type=\"email\" value=\"${(a.ownerEmail2||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"second@email.com\" onchange=\"setApt('${a.id}','ownerEmail2',_emailClean(this.value))\">",
+   "replace": "<input type=\"text\" inputmode=\"email\" autocomplete=\"email\" value=\"${(a.ownerEmail2||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"second@email.com\" onchange=\"setApt('${a.id}','ownerEmail2',_emailClean(this.value))\">"
+  },
+  {
+   "note": "Config: owner email 3 is text so pasted addresses still save",
+   "find": "<input type=\"email\" value=\"${(a.ownerEmail3||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"third@email.com\" onchange=\"setApt('${a.id}','ownerEmail3',_emailClean(this.value))\">",
+   "replace": "<input type=\"text\" inputmode=\"email\" autocomplete=\"email\" value=\"${(a.ownerEmail3||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;')}\" placeholder=\"third@email.com\" onchange=\"setApt('${a.id}','ownerEmail3',_emailClean(this.value))\">"
+  },
+  {
+   "note": "Send: mirror the email stamp onto each apartment lock and the close record so a dropped grouped key cannot un-tick Monthly Close",
+   "find": "      if (key && S.rptLocks && S.rptLocks[key]) {\n        S.rptLocks[key].email = { at: Date.now(), to, by: localStorage.getItem('elysian_user_name') || '' };\n        save();\n      }",
+   "replace": "      if (key && S.rptLocks && S.rptLocks[key]) {\n        const _em = { at: Date.now(), to, by: localStorage.getItem('elysian_user_name') || '' };\n        S.rptLocks[key].email = _em;\n        const _datePart = key.split('::').slice(1).join('::');\n        ((st.d && st.d.packets) || []).forEach(function (p) {\n          const id = p && p.a && p.a.id; if (!id) return;\n          const ik = String(id) + '::' + _datePart;\n          S.rptLocks[ik] = Object.assign({}, S.rptLocks[ik] || {}, { email: _em });\n          try {\n            const _df = st.d.dates && st.d.dates.from;\n            const _mk = _df ? (_df.getFullYear() + '-' + String(_df.getMonth() + 1).padStart(2, '0')) : '';\n            if (_mk) {\n              if (!S.monthlyClose) S.monthlyClose = {};\n              if (!S.monthlyClose[_mk]) S.monthlyClose[_mk] = {};\n              if (!S.monthlyClose[_mk][id]) S.monthlyClose[_mk][id] = { done: {}, flag: false };\n              S.monthlyClose[_mk][id].emailed = _em;\n            }\n          } catch (e) {}\n        });\n        save();\n      }"
+  },
+  {
+   "note": "Monthly Close: Email stage also honours the close-record stamp (survives a dropped rptLocks key)",
+   "find": "    if (key === 'email') return !!(lk.email && r && r.remit && lk.email.at >= (r.remit.at_ms || 0));",
+   "replace": "    if (key === 'email') {\n      var em = (r && r.emailed) || (lk && lk.email);\n      return !!(em && r && r.remit && (em.at || 0) >= (r.remit.at_ms || 0));\n    }"
+  },
+  {
+   "note": "Monthly Close: confirmation writes remit onto every report member, not only the group card",
+   "find": "            at_ms: Date.now(), by: (localStorage.getItem('elysian_user_name') || '')\n          };\n        }\n        else { toast('Could not read the report figures - generate the report, then confirm again.', 'warn'); }",
+   "replace": "            at_ms: Date.now(), by: (localStorage.getItem('elysian_user_name') || '')\n          };\n          (rec.remit.memberIds || []).forEach(function (mid) {\n            if (!mid || String(mid) === String(c.id)) return;\n            var mr = mcRec(String(mid), true);\n            if (!mr.remit) mr.remit = rec.remit;\n          });\n        }\n        else { toast('Could not read the report figures - generate the report, then confirm again.', 'warn'); }"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "if (apt.profile === profileKey) return;",
+   "note": "re-clicking the active profile does not reset flags"
+  },
+  {
+   "has": "Kostas's Daily Ops save dropped the",
+   "note": "boot comment records the Michalakopoulou wipe"
+  },
+  {
+   "has": "function _cfgInputFocused()",
+   "note": "config focus blocks DB poll reload"
+  },
+  {
+   "has": "el.closest('#cfg-grid') && (el.tagName === 'INPUT'",
+   "note": "renderCfg skips while a config input is focused"
+  },
+  {
+   "has": "f==='ownerEmail'||f==='ownerEmail2'",
+   "note": "setApt does not rebuild the card after an email save"
+  },
+  {
+   "has": "inputmode=\"email\" autocomplete=\"email\"",
+   "note": "owner emails are text fields so pasted addresses save"
+  },
+  {
+   "has": "S.monthlyClose[_mk][id].emailed = _em;",
+   "note": "send stamps emailed on the close record"
+  },
+  {
+   "has": "var em = (r && r.emailed) || (lk && lk.email);",
+   "note": "Email stage honours the close-record stamp"
+  },
+  {
+   "has": "if (!mr.remit) mr.remit = rec.remit;",
+   "note": "confirm copies remit onto every report member"
+  },
+  {
+   "hasNot": "if (S.bks?.length || S.exps?.length) _dataInitialized = true;",
+   "note": "localStorage no longer marks the client safe to POST"
+  }
+ ]
+}

@@ -120,7 +120,7 @@ assert(html.includes('p.a.ownerEmail3'), 'owner email goes to every configured a
 assert(html.includes("rem:s.rem+m.rem"), 'Annual Tracker totals the cleared owner remittance');
 assert(html.includes('${m.rem?fmt(m.rem)'), 'Annual Tracker shows the cleared remittance per month');
 assert(html.includes('if(!Array.isArray(a.fixedCharges))a.fixedCharges=[];'), 'Add fixed charge works on pre-field apartments');
-assert(html.includes('lk.email.at >= (r.remit.at_ms || 0)'), 'Email stage ignores stamps older than this close\'s confirmation');
+assert(html.includes('(em.at || 0) >= (r.remit.at_ms || 0)'), 'Email stage ignores stamps older than this close\'s confirmation');
 assert(html.includes('mcSetComment'), 'close card has a comments box saved to the close record');
 assert(html.includes('Notes for this period:'), 'close comments ride into the owner email message');
 assert(html.includes('id="mc-searchbox"'), 'search bar renders in Focus view too');
@@ -311,5 +311,50 @@ const packets = [
 ];
 assert.strictEqual(packets.reduce((sum, packet) => sum + (packet.payout || 0), 0), 350);
 assert.strictEqual(packets.reduce((sum, packet) => sum + (packet.b2bRem || 0), 0), 385);
+
+// Stale-client merge: a Daily Ops save must not drop a just-sent email lock
+// or blank owner emails (Michalakopoulou 14 Aug 2026).
+const mergeStart = srv.indexOf('function mergeKeepMap(');
+const mergeEnd = srv.indexOf('function diffSummary(');
+assert(mergeStart >= 0 && mergeEnd > mergeStart, 'merge helpers sit above diffSummary');
+const mergeCtx = {};
+vm.runInNewContext(srv.slice(mergeStart, mergeEnd) + `
+this.mergeKeepMap = mergeKeepMap;
+this.mergeRptLock = mergeRptLock;
+this.mergeMonthlyClose = mergeMonthlyClose;
+this.mergeAptsProtect = mergeAptsProtect;
+`, mergeCtx);
+
+const keptLocks = mergeCtx.mergeKeepMap(
+  { 'a+b::2026-06-30::2026-07-30': { via: 'email', email: { at: 100, to: 'owner@x' } }, old: { via: 'pdf' } },
+  { old: { via: 'pdf' } },
+  mergeCtx.mergeRptLock
+);
+assert.strictEqual(!!keptLocks['a+b::2026-06-30::2026-07-30'].email, true, 'grouped email lock survives a 92→91 key drop');
+assert.strictEqual(keptLocks.old.via, 'pdf', 'locks the stale client still has are kept');
+
+const mergedLock = mergeCtx.mergeRptLock(
+  { via: 'email', email: { at: 200 }, oxygen: { invoiceId: '1' } },
+  { via: 'pdf', payout: 10 }
+);
+assert.strictEqual(mergedLock.email.at, 200, 'email stamp kept when incoming lock has none');
+assert.strictEqual(mergedLock.oxygen.invoiceId, '1', 'oxygen stamp kept when incoming lock has none');
+assert.strictEqual(mergedLock.payout, 10, 'incoming lock figures still apply');
+
+const keptClose = mergeCtx.mergeMonthlyClose(
+  { '2026-07': { blriczb: { remit: { payout: 1 }, emailed: { at: 9 } } } },
+  { '2026-07': { blriczb: { flag: true } } }
+);
+assert.strictEqual(keptClose['2026-07'].blriczb.remit.payout, 1, 'close remit survives a stale monthlyClose write');
+assert.strictEqual(keptClose['2026-07'].blriczb.emailed.at, 9, 'close emailed stamp survives a stale monthlyClose write');
+assert.strictEqual(keptClose['2026-07'].blriczb.flag, true, 'incoming close flags still apply');
+
+const keptApts = mergeCtx.mergeAptsProtect(
+  [{ id: 'h', name: 'Horizon', ownerEmail: 'a@b.c', clearGroup: 'Michalakopoulou', businessTax: true, businessTaxAmt: 50 }],
+  [{ id: 'h', name: 'Horizon', ownerEmail: '', clearGroup: '', businessTax: true, mgmtFee: 15 }]
+);
+assert.strictEqual(keptApts[0].ownerEmail, 'a@b.c', 'incoming empty ownerEmail does not wipe the saved address');
+assert.strictEqual(keptApts[0].clearGroup, 'Michalakopoulou', 'incoming empty clearGroup does not drop the clearing group');
+assert.strictEqual(keptApts[0].mgmtFee, 15, 'intentional field edits still win');
 
 console.log(`monthly-close patches OK: ${patchCount} patches in ${chainFiles.length} chain file(s), ${scripts.length} scripts, ${declared.length} declared checks, ${sha}; server: ${srvCount} patches in ${srvChain.length} chain file(s), ${srvSha}`);
