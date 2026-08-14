@@ -1,0 +1,91 @@
+{
+ "baseSha256": "a8921ee2fb1a2111950f23515db59a8b3e1ba952d7f173957a8cf9def11e8040",
+ "expectedSha256": "f69c95f74170d25b8951c8e58c0cd6b61027d98bfd6cc439f1c54303905a7057",
+ "builtAt": "2026-08-14 Test pull 5 codes; VAT invoice ID → HTML → PDF",
+ "patches": [
+  {
+   "note": "Collect copy: Test pull then invoice-ID flow",
+   "find": "        <b>Pull Airbnb</b> uses Hosthub reservation codes automatically (VAT Invoicer-style): open each confirmation → VAT invoice / credit note PDF.\n        Connect Airbnb once if OTP blocks login. Booking.com pull is left aside for now.",
+   "replace": "        <b>Test pull (5 codes)</b> first: reservation page → VAT invoice ID → invoice HTML → PDF (VAT Invoicer privacy flow).\n        Then <b>Pull Airbnb (Hosthub codes)</b> for the full month. Connect Airbnb once if OTP blocks login.",
+   "count": 1
+  },
+  {
+   "note": "Gold Test pull (5 codes); keep Pull Airbnb (Hosthub codes)",
+   "find": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>\n        <button class=\"btn sm\" onclick=\"piReload()\">Refresh vault</button>",
+   "replace": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ limit: 5 })\">Test pull (5 codes)</button>\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>\n        <button class=\"btn sm\" onclick=\"piReload()\">Refresh vault</button>",
+   "count": 1
+  },
+  {
+   "note": "piPull accepts limit",
+   "find": "  window.piPull = async function () {\n    var month = monthVal();\n    var btn = document.getElementById('pi-pull-btn');\n    if (btn) btn.disabled = true;\n    msg('Pulling Airbnb VAT docs from Hosthub codes (can take several minutes)…', true);",
+   "replace": "  window.piPull = async function (opts) {\n    opts = opts || {};\n    var limit = parseInt(opts.limit, 10) || 0;\n    var month = monthVal();\n    var btn = document.getElementById('pi-pull-btn');\n    var btnAll = document.getElementById('pi-pull-all-btn');\n    if (btn) btn.disabled = true;\n    if (btnAll) btnAll.disabled = true;\n    msg(limit > 0\n      ? ('Test pull: first ' + limit + ' Hosthub code(s)…')\n      : 'Pulling Airbnb VAT docs from Hosthub codes (can take several minutes)…', true);",
+   "count": 1
+  },
+  {
+   "note": "slice codes and pass limit on POST",
+   "find": "      var apts = (typeof S !== 'undefined' && Array.isArray(S.apts))\n        ? S.apts.map(function (a) { return { aptId: a.id || a.aptId || '', aptName: a.name || a.aptName || '' }; })\n        : [];\n      var res = await fetch('/api/platform-invoices/pull', {\n        method: 'POST', headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ month: month, channel: 'airbnb', apartments: apts, airbnbReservations: airbnbReservations })\n      });",
+   "replace": "      var apts = (typeof S !== 'undefined' && Array.isArray(S.apts))\n        ? S.apts.map(function (a) { return { aptId: a.id || a.aptId || '', aptName: a.name || a.aptName || '' }; })\n        : [];\n      if (limit > 0) airbnbReservations = airbnbReservations.slice(0, limit);\n      var res = await fetch('/api/platform-invoices/pull', {\n        method: 'POST', headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ month: month, channel: 'airbnb', apartments: apts, airbnbReservations: airbnbReservations, limit: limit || undefined })\n      });",
+   "count": 1
+  },
+  {
+   "note": "progress copy says test vs all",
+   "find": "        msg(r.job.hint || ('Pulling Airbnb in the background from ' + airbnbReservations.length + ' Hosthub code(s)…'), true);",
+   "replace": "        msg(r.job.hint || ((limit > 0 ? 'Test pull' : 'Pulling Airbnb') + ' in the background from ' + airbnbReservations.length + ' Hosthub code(s)…'), true);",
+   "count": 1
+  },
+  {
+   "note": "re-enable both pull buttons",
+   "find": "    } catch (e) { msg(e.message || String(e), false); }\n    finally { if (btn) btn.disabled = false; }\n  };",
+   "replace": "    } catch (e) { msg(e.message || String(e), false); }\n    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; }\n  };",
+   "count": 1
+  },
+  {
+   "note": "stop Collect auto-run of unlimited Pull",
+   "find": "        var needPull = (PI.status && PI.status.pullAvailable) && need.length;\n        if (needPull && !window._piAutoPullOnce) {\n          window._piAutoPullOnce = monthVal();\n          piPull();\n        }",
+   "replace": "        var needPull = (PI.status && PI.status.pullAvailable) && need.length;\n        if (needPull && !window._piAutoPullOnce) {\n          window._piAutoPullOnce = monthVal();\n          // Do not auto-run Pull — Test pull (5 codes) first.\n        }",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Test pull (5 codes)",
+   "note": "gold default is a 5-code test"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full-month button kept"
+  },
+  {
+   "has": "piPull({ limit: 5 })",
+   "note": "test posts limit 5"
+  },
+  {
+   "has": "channel: 'airbnb'",
+   "note": "Airbnb-only pull"
+  },
+  {
+   "has": "Airbnb pull saved 0 PDFs",
+   "note": "zero-PDF copy kept"
+  },
+  {
+   "has": "limit: limit || undefined",
+   "note": "server receives limit"
+  },
+  {
+   "has": "airbnbReservations.slice(0, limit)",
+   "note": "browser slices before POST"
+  },
+  {
+   "has": "Do not auto-run Pull",
+   "note": "Collect no longer auto-pulls 322 codes"
+  },
+  {
+   "has": "_piAutoPullOnce",
+   "note": "legacy auto-pull flag still present"
+  },
+  {
+   "has": "pi-pull-all-btn",
+   "note": "full pull button id"
+  }
+ ]
+}

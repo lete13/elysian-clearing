@@ -22,12 +22,14 @@ Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperti
 
 ## Airbnb = Hosthub reservation codes (VAT Invoicer workflow)
 
-Same idea as [VAT Invoicer](https://vatinvoicer.com/): while logged into Airbnb hosting, take **reservation confirmation codes** and open each reservation to capture the VAT invoice / credit note PDF.
+Same idea as [VAT Invoicer](https://vatinvoicer.com/privacy/): while logged into Airbnb hosting, take **reservation confirmation codes**, open each reservation, **find the VAT invoice ID on that page**, open Airbnb’s **VAT invoice HTML page**, and print it to PDF.
 
 1. Hosthub sync stores each booking’s channel **`reservation_id`** as `reservationId` (Airbnb confirmation code).
 2. Platform Invoices → **Expect** builds the month’s Airbnb invoice + credit-note lists from Hosthub dates.
-3. **Pull** sends those codes to the worker as `PI_AIRBNB_RESERVATIONS_JSON`.
-4. Worker opens `https://www.airbnb.com/hosting/reservations/details/{CODE}` for each code and saves PDFs.
+3. **Test pull (5 codes)** first, then **Pull Airbnb (Hosthub codes)** for the full month. Codes go to the worker as `PI_AIRBNB_RESERVATIONS_JSON` (`PI_AIRBNB_LIMIT` slices a test run).
+4. Worker opens `https://www.airbnb.com/hosting/reservations/details/{CODE}`, searches the page HTML/JSON for VAT invoice IDs / invoice-page URLs, opens the invoice HTML, and `page.pdf()`s it.
+
+Airbnb does not expose a labeled download link on the reservation details page — that is why looking only for `a[href]` with the word “invoice” saved 0 PDFs.
 
 No manual pasting of codes. Booking.com remains available but is secondary while Airbnb Hosthub pull is the focus.
 
@@ -40,14 +42,14 @@ No manual pasting of codes. Booking.com remains available but is secondary while
 | `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD` | **admin.booking.com** Login name + password (not www.booking.com) |
 | `BOOKING_STORAGE_STATE_B64` | Optional fallback. Prefer **Connect Booking** in the app (session vault) |
 | `AIRBNB_STORAGE_STATE_B64` | Optional fallback. Prefer **Connect Airbnb** in the app |
-| `PLAYWRIGHT_PROXY_SERVER` | Optional HTTP(S) proxy if datacenter IPs hit captcha often |
+| `PI_AIRBNB_LIMIT` | Optional max reservation codes (Collect **Test pull (5 codes)** sets this) |
 
 ## Worker
 
 `scripts/platform-invoice-pull.js` (Playwright + Chromium):
 
 1. Reuses Airbnb / Booking session vault (or password login).
-2. **Airbnb:** for each Hosthub confirmation code → reservation page → VAT invoice / credit note PDF.
+2. **Airbnb:** for each Hosthub confirmation code → reservation page → VAT invoice ID → invoice HTML → PDF.
 3. **Booking.com (optional):** admin.booking.com Finance → Invoices, one PDF per property.
 4. `POST /api/platform-invoices/pull` stores them in `platform_invoices` with `source=portal`.
 

@@ -19,7 +19,40 @@ assert(worker.includes('loadAirbnbReservations'), 'worker has Hosthub code loade
 assert(worker.includes('hosting/reservations/details/'), 'opens Airbnb reservation by code');
 assert(worker.includes("event: 'progress'"), 'worker emits per-code progress for the in-app Pull poll');
 assert(worker.includes('No Hosthub Airbnb reservation codes provided'), 'fails closed without codes');
+assert(worker.includes('function extractAirbnbVatInvoiceHits'), 'searches reservation HTML for VAT invoice IDs');
+assert(worker.includes('reservation/vat_invoice/'), 'opens Airbnb VAT invoice HTML page from the ID');
+assert(worker.includes('looksLikeAirbnbInvoiceHtml'), 'will not PDF the reservation details shell');
+assert(worker.includes('PI_AIRBNB_LIMIT'), 'Test pull can slice codes');
+assert(worker.includes('ids/urls found:'), '0-PDF error says what was searched');
 assert(!/hrefs\.length/.test(worker) || worker.indexOf('loadAirbnbReservations') < worker.indexOf('pullAirbnb'), 'Hosthub-driven path present');
+
+const fe88 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-88.json'), 'utf8'));
+const srv63 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-63.json'), 'utf8'));
+assert(fe88.patches.some((p) => (p.replace || '').includes('Test pull (5 codes)')), 'FE gold button is Test pull');
+assert(fe88.patches.some((p) => (p.replace || '').includes('Pull Airbnb (Hosthub codes)')), 'FE keeps full Pull label');
+assert(fe88.patches.some((p) => (p.replace || '').includes('Do not auto-run Pull')), 'FE stops unlimited auto-pull');
+assert(srv63.patches.some((p) => (p.replace || '').includes('PI_AIRBNB_LIMIT')), 'API passes limit to worker');
+
+function extractBetween(source, startName, nextName) {
+  const start = source.indexOf('function ' + startName + '(');
+  const end = source.indexOf('\nfunction ' + nextName + '(', start);
+  assert(start >= 0 && end > start, 'missing ' + startName + ' .. ' + nextName);
+  return source.slice(start, end);
+}
+const vm = require('vm');
+const extractSrc =
+  extractBetween(worker, 'kindFromInvoiceBlob', 'airbnbInvoicePagePatterns') +
+  extractBetween(worker, 'airbnbInvoiceUrlsForHit', 'looksLikeAirbnbInvoiceHtml');
+const helpers = vm.runInNewContext(extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit })', {
+  URL: URL,
+  encodeURIComponent: encodeURIComponent,
+});
+const html = '<script>{"vatInvoiceId":"INV99ABC","vatInvoice":{"id":"INV99ABC","url":"https://www.airbnb.com/reservation/vat_invoice/INV99ABC"}}</script>';
+const hits = helpers.extractAirbnbVatInvoiceHits(html, 'https://www.airbnb.com');
+assert(hits.some((h) => h.id === 'INV99ABC'), 'extracts vatInvoiceId from reservation JSON');
+assert(hits.some((h) => String(h.href || '').indexOf('/reservation/vat_invoice/INV99ABC') >= 0), 'extracts VAT invoice HTML URL');
+const urls = helpers.airbnbInvoiceUrlsForHit({ kind: 'invoice', id: 'INV99ABC', href: '' }, 'https://www.airbnb.com', []);
+assert(urls.some((u) => u.indexOf('/reservation/vat_invoice/INV99ABC') >= 0), 'builds Airbnb VAT invoice HTML URL from ID');
 
 assert(srv29.patches.some((p) => p.replace.includes("reservationId:ev.reservation_id||''")), 'sync maps reservation_id');
 assert(srv29.patches.some((p) => p.replace.includes('PI_AIRBNB_RESERVATIONS_JSON')), 'API passes codes to worker');

@@ -1,0 +1,47 @@
+{
+ "baseSha256": "0b8e2be7e709da4075b85668d8947095ae3ab530e3fdb93986296727e782cf34",
+ "expectedSha256": "b563b4962d6399ee97b0287e78cecbe18ff4ecae3955de97e8e7d1e418c9100b",
+ "builtAt": "2026-08-14 Pull honors limit / PI_AIRBNB_LIMIT for Test pull",
+ "patches": [
+  {
+   "note": "Slice Hosthub codes by limit before spawning worker",
+   "find": "  if (airbnbReservations.length) {\n    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));\n  }\n  job.airbnbCodes = airbnbReservations.length;",
+   "replace": "  const limitN = parseInt(b.limit != null ? b.limit : process.env.PI_AIRBNB_LIMIT, 10);\n  if (limitN > 0) airbnbReservations = airbnbReservations.slice(0, limitN);\n  if (airbnbReservations.length) {\n    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));\n    if (limitN > 0) env.PI_AIRBNB_LIMIT = String(limitN);\n  }\n  job.airbnbCodes = airbnbReservations.length;",
+   "count": 1
+  },
+  {
+   "note": "Store limit on pull job body",
+   "find": "    body: {\n      apartments: Array.isArray(b.apartments) ? b.apartments : [],\n      airbnbReservations: Array.isArray(b.airbnbReservations) ? b.airbnbReservations : [],\n      airbnbOtp: b.airbnbOtp || ''\n    },",
+   "replace": "    body: {\n      apartments: Array.isArray(b.apartments) ? b.apartments : [],\n      airbnbReservations: Array.isArray(b.airbnbReservations) ? b.airbnbReservations : [],\n      airbnbOtp: b.airbnbOtp || '',\n      limit: b.limit\n    },",
+   "count": 1
+  },
+  {
+   "note": "Hint says Test pull when limited",
+   "find": "  job.hint = 'Pulling Airbnb VAT PDFs from ' + airbnbReservations.length + ' Hosthub code(s)…';",
+   "replace": "  job.hint = (limitN > 0 ? 'Test pull: ' : '') + 'Pulling Airbnb VAT PDFs from ' + airbnbReservations.length + ' Hosthub code(s)…';",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "const limitN = parseInt(b.limit != null ? b.limit : process.env.PI_AIRBNB_LIMIT, 10);",
+   "note": "limit from body or env"
+  },
+  {
+   "has": "env.PI_AIRBNB_LIMIT = String(limitN);",
+   "note": "worker gets PI_AIRBNB_LIMIT"
+  },
+  {
+   "has": "limit: b.limit",
+   "note": "job stores limit"
+  },
+  {
+   "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+   "note": "still harvests live Connect"
+  },
+  {
+   "has": "event === 'progress'",
+   "note": "live progress from the worker"
+  }
+ ]
+}
