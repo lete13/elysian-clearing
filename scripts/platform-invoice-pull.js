@@ -71,6 +71,48 @@ function loadAirbnbLimit() {
   return n > 0 ? n : 0;
 }
 
+const pullStop = { requested: false, why: '', dumped: false };
+const pullLive = { files: null, errors: null };
+function requestPullStop(why) {
+  if (pullStop.requested) return;
+  pullStop.requested = true;
+  pullStop.why = String(why || 'stop');
+}
+function pullStopRequested() {
+  return pullStop.requested;
+}
+function emitStoppedResult() {
+  if (pullStop.dumped) return;
+  pullStop.dumped = true;
+  const files = pullLive.files || [];
+  const errors = (pullLive.errors || []).slice();
+  if (!errors.some((e) => e && e.error === 'Pull stopped')) {
+    errors.push({ channel: 'airbnb', error: 'Pull stopped' });
+  }
+  console.log(JSON.stringify({
+    ok: files.length > 0,
+    stopped: true,
+    month: MONTH,
+    files,
+    errors,
+    airbnbCodes: loadAirbnbReservations().length,
+  }));
+}
+process.on('SIGTERM', function () {
+  requestPullStop('SIGTERM');
+  setTimeout(function () {
+    emitStoppedResult();
+    process.exit(0);
+  }, 1200);
+});
+process.on('SIGINT', function () {
+  requestPullStop('SIGINT');
+  setTimeout(function () {
+    emitStoppedResult();
+    process.exit(0);
+  }, 1200);
+});
+
 function platformStoreLabel(channel) {
   const c = String(channel || '').toLowerCase();
   if (c === 'booking' || c === 'bdc') return 'Booking.com';
@@ -834,9 +876,13 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
     let idx = 0;
     const total = queue.length;
     for (const resv of queue) {
+      if (pullStopRequested()) break;
       idx += 1;
       console.log(JSON.stringify({ event: 'progress', done: idx, total: total, saved: files.length, code: resv.code }));
       pulled += await pullAirbnbDocsForCode(page, context, month, dir, files, errors, resv, apts);
+    }
+    if (pullStopRequested()) {
+      errors.push({ channel: 'airbnb', error: 'Pull stopped' });
     }
     if (!pulled) {
       errors.push({
@@ -1206,6 +1252,8 @@ async function main() {
   if (SESSION_DIR) ensureDir(SESSION_DIR);
   const files = [];
   const errors = [];
+  pullLive.files = files;
+  pullLive.errors = errors;
   const wantAirbnb = CHANNEL === 'all' || CHANNEL === 'airbnb';
   const wantBooking = CHANNEL === 'all' || CHANNEL === 'booking';
 
@@ -1257,8 +1305,10 @@ async function main() {
     }
   }
 
+  if (pullStop.dumped) process.exit(files.length ? 0 : 1);
   const result = {
     ok: files.length > 0,
+    stopped: pullStopRequested() || undefined,
     month: MONTH,
     out: OUT,
     files,
@@ -1266,6 +1316,7 @@ async function main() {
     sessionsSaved: sessions,
     airbnbCodes: loadAirbnbReservations().length,
   };
+  pullStop.dumped = true;
   console.log(JSON.stringify(result, null, 0));
   process.exit(files.length ? 0 : 1);
 }

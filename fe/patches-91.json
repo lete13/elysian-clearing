@@ -1,0 +1,49 @@
+{
+ "baseSha256": "91006198944158ee2834eafc59004931ac3a6b3b80771dd0664dcd1add59496f",
+ "expectedSha256": "4ba9226fbaa8d912535a3d84b84acdb21cf2c5f693096d69bd039d3163a0e1d8",
+ "builtAt": "2026-08-14 Stop Airbnb pull",
+ "patches": [
+  {
+   "note": "Collect Stop pull button next to Pull Airbnb",
+   "find": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ limit: 5 })\">Test pull (5 codes)</button>\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>\n        <button class=\"btn sm\" onclick=\"piReload()\">Refresh vault</button>",
+   "replace": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ limit: 5 })\">Test pull (5 codes)</button>\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-stop-pull-btn\" onclick=\"piStopPull()\">Stop pull</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>\n        <button class=\"btn sm\" onclick=\"piReload()\">Refresh vault</button>",
+   "count": 1
+  },
+  {
+   "note": "piStopPull posts pull-stop; watch treats cancelled/404 as stopped",
+   "find": "  window.piWatchPullJob = async function (id, codeCount) {\n    var deadline = Date.now() + 95 * 60 * 1000;\n    while (Date.now() < deadline) {\n      await new Promise(function (ok) { setTimeout(ok, 2000); });\n      var res = await fetch('/api/platform-invoices/pull/' + encodeURIComponent(id));\n      var raw = await res.text();\n      var r = piPullParseResponse(res, raw);\n      if (!res.ok) throw new Error((r && r.error) || 'pull status failed');\n      var job = (r && r.job) || r || {};\n      if (job.hint) msg(job.hint, job.status !== 'error');\n      if (job.status === 'done' || job.status === 'error') {",
+   "replace": "  window.piStopPull = async function () {\n    window._piPullStopped = true;\n    msg('Stopping Airbnb pull…', true);\n    try {\n      var res = await fetch('/api/platform-invoices/pull-stop', { method: 'POST' });\n      var r = await res.json();\n      if (r && r.stopped && r.stopped.length) msg(r.hint || 'Stopping Airbnb pull…', true);\n      else msg('No pull is running', true);\n    } catch (e) { msg(e.message || String(e), false); }\n  };\n  window.piWatchPullJob = async function (id, codeCount) {\n    window._piPullJobId = id;\n    window._piPullStopped = false;\n    var deadline = Date.now() + 95 * 60 * 1000;\n    while (Date.now() < deadline) {\n      await new Promise(function (ok) { setTimeout(ok, 2000); });\n      var res = await fetch('/api/platform-invoices/pull/' + encodeURIComponent(id));\n      var raw = await res.text();\n      var r = piPullParseResponse(res, raw);\n      if (!res.ok) {\n        if (res.status === 404 || window._piPullStopped) {\n          msg('Pull stopped', true);\n          await piHealth();\n          await piReload();\n          return;\n        }\n        throw new Error((r && r.error) || 'pull status failed');\n      }\n      var job = (r && r.job) || r || {};\n      if (job.hint) msg(job.hint, job.status !== 'error');\n      if (job.status === 'cancelled') {\n        msg(job.hint || 'Pull stopped', true);\n        await piHealth();\n        await piReload();\n        return;\n      }\n      if (job.status === 'done' || job.status === 'error') {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Stop pull",
+   "note": "stop button label"
+  },
+  {
+   "has": "piStopPull",
+   "note": "stop wired"
+  },
+  {
+   "has": "/api/platform-invoices/pull-stop",
+   "note": "stop endpoint"
+  },
+  {
+   "has": "job.status === 'cancelled'",
+   "note": "watch ends on cancel"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full pull kept"
+  },
+  {
+   "has": "Test pull (5 codes)",
+   "note": "test pull kept"
+  },
+  {
+   "has": "channel: 'airbnb'",
+   "note": "Airbnb-only pull"
+  }
+ ]
+}

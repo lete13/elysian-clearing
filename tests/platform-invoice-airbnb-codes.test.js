@@ -36,6 +36,12 @@ const srv64 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-64.json
 assert(fe90.patches.some((p) => (p.replace || '').includes('piStoreApt')), 'FE groups vault by apartment');
 assert(srv64.patches.some((p) => (p.replace || '').includes('ORDER BY channel, partner, filename, id')), 'API lists by platform then apartment');
 assert(srv64.patches.some((p) => (p.replace || '').includes('f.aptName || f.partner')), 'pull stores partner as apartment');
+assert(worker.includes('function requestPullStop'), 'worker can stop mid-queue');
+assert(worker.includes("process.on('SIGTERM'"), 'SIGTERM dumps PDFs already captured');
+const fe91 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-91.json'), 'utf8'));
+const srv65 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-65.json'), 'utf8'));
+assert(fe91.patches.some((p) => (p.replace || '').includes('piStopPull')), 'Collect has Stop pull');
+assert(srv65.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/pull-stop'")), 'API stops running pull jobs');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

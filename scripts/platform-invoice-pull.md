@@ -26,7 +26,7 @@ Same idea as [VAT Invoicer](https://vatinvoicer.com/privacy/): while logged into
 
 1. Hosthub sync stores each booking’s channel **`reservation_id`** as `reservationId` (Airbnb confirmation code).
 2. Platform Invoices → **Expect** builds the month’s Airbnb invoice + credit-note lists from Hosthub dates.
-3. **Test pull (5 codes)** first, then **Pull Airbnb (Hosthub codes)** for the full month. Codes go to the worker as `PI_AIRBNB_RESERVATIONS_JSON` (`PI_AIRBNB_LIMIT` slices a test run).
+3. **Test pull (5 codes)** first, then **Pull Airbnb (Hosthub codes)** for the full month. **Stop pull** kills a running job (SIGTERM). Codes go to the worker as `PI_AIRBNB_RESERVATIONS_JSON` (`PI_AIRBNB_LIMIT` slices a test run).
 4. Worker opens `https://www.airbnb.com/hosting/reservations/details/{CODE}`, searches the page HTML/JSON for VAT invoice IDs / invoice-page URLs, opens the invoice HTML, and `page.pdf()`s it.
 5. PDFs are **stored by platform / month / apartment**: `Airbnb/2026-07/Birdhouse/invoice-HMXXXX.pdf`. The vault `partner` field is the apartment name (credit notes stay under that apartment; kind is in the filename).
 
