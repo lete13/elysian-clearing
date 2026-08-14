@@ -1,0 +1,18 @@
+{
+ "baseSha256": "e4794911d7b7c32cf6988cc39af13c4edc5cb0534a72bdd1f0304fb605e8f0ba",
+ "expectedSha256": "58e971d3058c16760452011714f2d907f3c36ea1a5a396947820e8b2290797bf",
+ "builtAt": "2026-08-14 Connect waits for Get a code via email",
+ "patches": [
+  {
+   "note": "Show Airbnb page snippet on Connect failure",
+   "find": "    } else if (st === 'error') {\n      body = '<div style=\"font-weight:600;color:var(--tx-err,#b91c1c)\">Connect failed</div>' +\n        '<div style=\"font-size:12.5px;margin-top:4px\">' + (job.error || 'Unknown error') + '</div>' +\n        '<div style=\"margin-top:10px;display:flex;gap:8px;flex-wrap:wrap\">' +\n        '<button class=\"btn sm gold\" onclick=\"piConnectAirbnbInApp()\">Try again</button>' +\n        '<button class=\"btn sm\" onclick=\"piCancelAirbnbConnect()\">Cancel</button></div>';\n    }\n",
+   "replace": "    } else if (st === 'error') {\n      body = '<div style=\"font-weight:600;color:var(--tx-err,#b91c1c)\">Connect failed</div>' +\n        '<div style=\"font-size:12.5px;margin-top:4px\">' + (job.error || 'Unknown error') + '</div>' +\n        (job.pageSnippet ? ('<div style=\"font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.35\">Airbnb page: ' + String(job.pageSnippet).replace(/</g,'&lt;').slice(0,180) + '</div>') : '') +\n        '<div style=\"margin-top:10px;display:flex;gap:8px;flex-wrap:wrap\">' +\n        '<button class=\"btn sm gold\" onclick=\"piConnectAirbnbInApp()\">Try again</button>' +\n        '<button class=\"btn sm\" onclick=\"piCancelAirbnbConnect()\">Cancel</button></div>';\n    }\n"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Airbnb page: ' + String(job.pageSnippet)",
+   "note": "error snippet"
+  }
+ ]
+}
