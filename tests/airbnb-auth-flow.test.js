@@ -528,7 +528,27 @@ async function main() {
   assert(frontend.includes('piAirbnbBrowserSave'), 'Save session is wired');
   assert(frontend.includes('reuses this live browser'), 'copy says Pull reuses the live browser');
 
-  console.log('airbnb auth flow OK: interactive in-app browser, live session harvest for Pull, sanitized OTP diagnostics');
+  const parseSrc = extractFn(server, 'piPullParseWorkerStdout');
+  const parseCtx = {};
+  vm.runInNewContext(parseSrc + '\nthis.parse = piPullParseWorkerStdout;', parseCtx);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(parseCtx.parse(
+    '{"event":"progress","done":1,"total":322}\n{"ok":true,"files":[{"filename":"a.pdf"}],"errors":[]}\n'
+  ))), { ok: true, files: [{ filename: 'a.pdf' }], errors: [] }, 'final worker JSON wins over progress lines');
+  assert.strictEqual(parseCtx.parse('{"event":"progress","done":2}\nnot json\n'), null, 'progress-only stdout is not a result');
+  assert(server.includes("app.get('/api/platform-invoices/pull/:jobId'"), 'Pull status poll route exists');
+  assert(server.includes('async function piExecutePullJob'), 'Pull harvest+worker run after the HTTP response');
+  assert(server.includes('90 * 60 * 1000'), 'background worker is allowed enough time for a full Hosthub month');
+  const pullPost = server.slice(
+    server.indexOf("app.post('/api/platform-invoices/pull'"),
+    server.indexOf("app.get('/api/platform-invoices/pull/:jobId'")
+  );
+  assert(pullPost.includes('setImmediate'), 'POST returns a job id without waiting for Playwright');
+  assert(!pullPost.includes("child.on('close'"), 'the HTTP handler does not wait on the worker');
+  assert(frontend.includes('piWatchPullJob'), 'Collect polls background Pull');
+  assert(frontend.includes('upstream error'), 'proxy cutoff is explained instead of a JSON parse crash');
+  assert(frontend.includes("channel: 'airbnb'"), 'Pull still posts Airbnb Hosthub codes');
+
+  console.log('airbnb auth flow OK: interactive in-app browser, background Pull harvest, sanitized OTP diagnostics');
 }
 
 main().catch(error => {

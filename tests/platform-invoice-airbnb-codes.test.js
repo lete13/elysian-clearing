@@ -17,6 +17,7 @@ const fe50 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-50.json')
 assert(worker.includes('PI_AIRBNB_RESERVATIONS_JSON'), 'worker reads Hosthub codes env');
 assert(worker.includes('loadAirbnbReservations'), 'worker has Hosthub code loader');
 assert(worker.includes('hosting/reservations/details/'), 'opens Airbnb reservation by code');
+assert(worker.includes("event: 'progress'"), 'worker emits per-code progress for the in-app Pull poll');
 assert(worker.includes('No Hosthub Airbnb reservation codes provided'), 'fails closed without codes');
 assert(!/hrefs\.length/.test(worker) || worker.indexOf('loadAirbnbReservations') < worker.indexOf('pullAirbnb'), 'Hosthub-driven path present');
 
