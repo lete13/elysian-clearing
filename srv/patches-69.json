@@ -1,0 +1,27 @@
+{
+ "baseSha256": "5b1d1fd084ce071592bd25d977c1a1b66f5ea97cb804f184c2c039ed10275c7c",
+ "expectedSha256": "ae53cc43c3e096933679c58799c7a0070d116a7f37531ac8d89408c262b6785d",
+ "builtAt": "2026-08-14 FE bootstrap through patches-120",
+ "patches": [
+  {
+   "note": "FE bootstrap through patches-120",
+   "find": "for (let cn = 2; cn <= 100; cn++) { /* legacy note: cn <= 40 */ /* cn <= 80 */ /* cn <= 90 */",
+   "replace": "for (let cn = 2; cn <= 120; cn++) { /* legacy note: cn <= 40 */ /* cn <= 80 */ /* cn <= 90 */ /* cn <= 100 */",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "cn <= 120",
+   "note": "FE chain through 120"
+  },
+  {
+   "has": "/* cn <= 100 */",
+   "note": "prior limit kept as legacy comment"
+  },
+  {
+   "has": "app.post('/api/platform-invoices/pull-stop'",
+   "note": "stop pull kept"
+  }
+ ]
+}

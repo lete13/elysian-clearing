@@ -1,0 +1,55 @@
+{
+ "baseSha256": "7b05b19f208885ae8c912e9ef7c63c0e89afe35bb93da9a092cf0b592726b111",
+ "expectedSha256": "4b2e2eee7109b4646a70c2bcdd06f10f44cf6c50855fef1d95115fb2a24a3eb8",
+ "builtAt": "2026-08-14 Daily Ops polish: drop duplicate cleaning heading, tighten staff cards",
+ "patches": [
+  {
+   "note": "Drop duplicate zone-2 heading (sheet title already says ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ)",
+   "find": "    '<div class=\"opsx-zh\"><b>2 · Πρόγραμμα καθαρισμού</b></div>' +\n    '<div id=\"ops-crew-share-bar\"",
+   "replace": "    '<div id=\"ops-crew-share-bar\"",
+   "count": 1
+  },
+  {
+   "note": "Staff cards hug content (align-self) instead of stretching tall",
+   "find": "#tab-ops .opsx-blk{flex:1;min-width:200px;padding:11px 12px 9px;border:1px solid #E5E7EB;border-radius:12px;background:#FAFAFA}',\n    '#tab-ops .opsx-blk h4{margin:0 0 7px;font-size:9.5px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#475569}',\n    '#tab-ops .opsx-blk h4 span{font-weight:600;letter-spacing:.02em;text-transform:none;color:#94A3B8}',\n    '#tab-ops .opsx-line{display:flex;gap:6px;align-items:center;margin-bottom:4px}',",
+   "replace": "#tab-ops .opsx-blk{flex:1 1 200px;align-self:flex-start;min-width:200px;max-width:340px;padding:10px 11px 8px;border:1px solid #E5E7EB;border-radius:12px;background:#FAFAFA}',\n    '#tab-ops .opsx-blk h4{margin:0 0 6px;font-size:9.5px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#475569}',\n    '#tab-ops .opsx-blk h4 span{font-weight:600;letter-spacing:.02em;text-transform:none;color:#94A3B8}',\n    '#tab-ops .opsx-line{display:flex;gap:6px;align-items:center;margin:0 0 3px}',",
+   "count": 1
+  },
+  {
+   "note": "Staff flex rows top-align cards (no stretched empty space)",
+   "find": "'<div class=\"opsx-sect\"><h3>ΒΑΡΔΙΑ · ΡΕΠΟ · ΑΔΕΙΕΣ</h3>' +\n    '<div style=\"display:flex;gap:12px;flex-wrap:wrap\">' +\n    blockTable('Εφημερία', 'oncall', 1) +\n    blockTable('Ρεπό', 'repo', 5) +\n    blockTable('Άδειες', 'adeies', 5) +\n    '</div></div>' +\n    '<div class=\"opsx-sect\">' +\n    '<h3>ΙΜΑΤΙΣΜΟΣ</h3>' +\n    '<div style=\"display:flex;gap:12px;flex-wrap:wrap\">' + imatismosBlock + '</div>' +\n",
+   "replace": "'<div class=\"opsx-sect\"><h3>ΒΑΡΔΙΑ · ΡΕΠΟ · ΑΔΕΙΕΣ</h3>' +\n    '<div style=\"display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start\">' +\n    blockTable('Εφημερία', 'oncall', 1) +\n    blockTable('Ρεπό', 'repo', 5) +\n    blockTable('Άδειες', 'adeies', 5) +\n    '</div></div>' +\n    '<div class=\"opsx-sect\">' +\n    '<h3>ΙΜΑΤΙΣΜΟΣ</h3>' +\n    '<div style=\"display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start\">' + imatismosBlock + '</div>' +\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "hasNot": "2 · Πρόγραμμα καθαρισμού",
+   "note": "duplicate zone-2 label gone"
+  },
+  {
+   "has": "ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ",
+   "note": "sheet title remains"
+  },
+  {
+   "has": "align-self:flex-start",
+   "note": "staff cards hug height"
+  },
+  {
+   "has": "align-items:flex-start",
+   "note": "staff flex rows top-align"
+  },
+  {
+   "has": "Επανεκκίνηση ✓",
+   "note": "restart survives"
+  },
+  {
+   "has": "id=\"ops-clean-count\"",
+   "note": "progress counter survives"
+  },
+  {
+   "has": "opsx-bar",
+   "note": "command bar survives"
+  }
+ ]
+}
