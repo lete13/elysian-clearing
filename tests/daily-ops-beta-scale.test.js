@@ -200,4 +200,40 @@ assert(/ob-table-wrap\s*\{[^}]*overflow-y:\s*visible/.test(css), 'table height f
 assert(/\.ob-dispatch-row\.tone-hot td/.test(css), 'hot tone styles present');
 assert(/\.ob-dispatch-row\.tone-same td/.test(css), 'same-day tone styles present');
 
-console.log('daily-ops-beta-scale: ok (promoted #tab-ops + note colors + chips + fit-all + urgency)');
+// Arrival-only check-ins (no clean target) must stay visible under Open + Attention.
+const unityArrival = {
+  aptId: 'unity-1',
+  aptName: 'Athens Unity Apartment',
+  checkoutGuest: '',
+  isCheckinOnly: true,
+  checkinSameDay: 'checkin_only',
+  nextNights: 3,
+  nextGuest: 'Unity Guest',
+  people: 2,
+  arrivalTime: '15:00',
+  comments: '',
+  cleanType: undefined,
+  cleanerNames: [],
+  cleanerName: '',
+  cleanDone: false,
+};
+rows.push(unityArrival);
+apartments.push({ id: 'unity-1', name: 'Athens Unity Apartment', address: 'Unity St', area: 'Athens' });
+context._opsCleanTarget = (row) => (row && row.isCheckinOnly ? null : row);
+context._opsBetaState.filter = 'open';
+context._opsBetaState.pageSize = 0;
+context._opsBetaState.page = 1;
+context.renderOps();
+assert(panel.innerHTML.includes('Athens Unity Apartment'), 'Open filter keeps arrival-only Unity check-in');
+assert(panel.innerHTML.includes('Άφιξη'), 'arrival-only chip rendered under Open');
+assert(/Open \d+/.test(panel.innerHTML), 'Open filter badge still present');
+
+context._opsBetaState.filter = 'attention';
+context.renderOps();
+assert(panel.innerHTML.includes('Athens Unity Apartment'), 'Attention filter keeps arrival-only Unity check-in');
+
+context._opsBetaState.filter = 'all';
+context.renderOps();
+assert(panel.innerHTML.includes('Athens Unity Apartment'), 'All filter still shows arrival-only Unity check-in');
+
+console.log('daily-ops-beta-scale: ok (promoted #tab-ops + note colors + chips + fit-all + urgency + arrival filters)');
