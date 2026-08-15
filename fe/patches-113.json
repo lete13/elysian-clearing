@@ -1,0 +1,55 @@
+{
+ "baseSha256": "c09419094d71aa282d777a8ec83cd934b567c62f5dec176cfbbdc9506af7dd6d",
+ "expectedSha256": "48cf32b30148785e31a849d7822708eb3fde59a3af8f243cab07badc730069c3",
+ "builtAt": "2026-08-15 Move Bookings into the Tools menu",
+ "patches": [
+  {
+   "note": "Nav: remove Bookings from the main strip",
+   "find": "    <button class=\"nav-btn\" data-tab=\"bk\" onclick=\"showTab('bk',this)\" id=\"nav-bk\">Bookings</button>\n",
+   "replace": ""
+  },
+  {
+   "note": "Nav: Bookings under Tools",
+   "find": "      <button class=\"nav-dd-item\" id=\"nav-imports\" data-tab=\"imports\" onclick=\"navDdGo('imports')\">Imports</button>\n",
+   "replace": "      <button class=\"nav-dd-item\" id=\"nav-imports\" data-tab=\"imports\" onclick=\"navDdGo('imports')\">Imports</button>\n      <button class=\"nav-dd-item\" id=\"nav-bk\" data-tab=\"bk\" onclick=\"navDdGo('bk')\">Bookings</button>\n"
+  },
+  {
+   "note": "Nav: Bookings icon style for Tools item",
+   "find": "#hdr .nav-btn[data-tab=\"bk\"]::before{content:\"\\ea53\"}",
+   "replace": "#hdr .nav-dd-item[data-tab=\"bk\"]::before{content:\"\\ea53\"}"
+  },
+  {
+   "note": "Dashboard links: Bookings opens through Tools",
+   "find": "if (['hhapi', 'imports', 'co', 'pay'].includes(t)) { navDdGo(t); return; }",
+   "replace": "if (['hhapi', 'imports', 'bk', 'co', 'pay', 'cash', 'log'].includes(t)) { navDdGo(t); return; }"
+  },
+  {
+   "note": "Home hgo: Tools tabs (incl. Bookings) use navDdGo",
+   "find": "window.hgo=function(tab){ try{ var b=document.getElementById('nav-'+tab)||document.querySelector('.nav-btn[data-tab=\"'+tab+'\"]'); if(typeof showTab==='function') showTab(tab,b); }catch(e){} };",
+   "replace": "window.hgo=function(tab){ try{ if(['hhapi','imports','bk','co','pay','cash','log','platinv'].indexOf(tab)>=0 && typeof navDdGo==='function'){ navDdGo(tab); return; } var b=document.getElementById('nav-'+tab)||document.querySelector('.nav-btn[data-tab=\"'+tab+'\"]'); if(typeof showTab==='function') showTab(tab,b); }catch(e){} };"
+  },
+  {
+   "note": "Bookings badge: tolerate missing nav node",
+   "find": "function updBkBadge(){\n  const n=S.bks.length,nav=document.getElementById('nav-bk');\n  let b=nav.querySelector('.bk-cnt');",
+   "replace": "function updBkBadge(){\n  const n=S.bks.length,nav=document.getElementById('nav-bk');\n  if(!nav)return;\n  let b=nav.querySelector('.bk-cnt');"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "navDdGo('bk')\">Bookings</button>",
+   "note": "Bookings is a Tools item"
+  },
+  {
+   "hasNot": "showTab('bk',this)\" id=\"nav-bk\"",
+   "note": "Bookings not in main nav strip"
+  },
+  {
+   "has": "#hdr .nav-dd-item[data-tab=\"bk\"]::before",
+   "note": "sidebar icon for Tools Bookings"
+  },
+  {
+   "has": "'bk', 'co', 'pay'",
+   "note": "dashGo routes Bookings via Tools"
+  }
+ ]
+}
