@@ -22,8 +22,10 @@ const rows = Array.from({ length: 200 }, (_, index) => ({
   nextNights: 2 + (index % 6),
   people: 1 + (index % 5),
   arrivalTime: (14 + (index % 8)) + ':00',
-  comments: index % 11 === 0 ? 'Priority arrival' : '',
+  comments: index % 11 === 0 ? 'PRIORITY' : (index % 13 === 0 ? 'Prepare 1 sofa bed' : ''),
   isPriority: index % 11 === 0,
+  lateCheckout: index % 17 === 0,
+  earlyCheckin: index % 19 === 0,
   cleanType: 'turnover',
   cleanTask: 'katharismos',
   cleanerNames: index % 4 === 0 ? [] : [['Maria', 'Eleni', 'Katerina'][index % 3]],
@@ -66,6 +68,10 @@ const context = {
     ['katharismos', 'Cleaning'], ['prepare_sofa', 'Sofa'],
     ['episkeui', 'Repair'], ['extra', 'Extra'],
   ],
+  OPS_TAG_LATE: 'Late Checkout: 12:00',
+  OPS_TAG_PRIORITY: 'PRIORITY',
+  OPS_TAG_EARLY: 'Early check-in',
+  OPS_TAG_PARK: 'Παρκοκρεβάτο',
   OPS_KINDS: [
     { key: 'isMaintenance', manual: 'maintenanceManual' },
     { key: 'isPreparation', manual: 'preparationManual' },
@@ -169,7 +175,23 @@ assert(!panel.innerHTML.includes('BETA'), 'Beta badge removed after promote');
 assert(typeof context.renderOps === 'function', 'renderOps overwritten by promoted UI');
 assert.strictEqual(context.renderOps, context.renderOpsBeta, 'renderOps and renderOpsBeta are the same renderer');
 
+// Seed a row with all colored note tags and re-render.
+rows[0].comments = 'PRIORITY · Late Checkout: 12:00 · Prepare 1 sofa bed · Early check-in';
+rows[0].isPriority = true;
+rows[0].lateCheckout = true;
+rows[0].earlyCheckin = true;
+rows[0].cleanDone = false;
+context._opsBetaState.pageSize = 0;
+context.renderOps();
+assert(panel.innerHTML.includes('ob-nchip hot'), 'PRIORITY / Late notes render as red chips');
+assert(panel.innerHTML.includes('ob-nchip cool'), 'sofa / Early notes render as blue chips');
+assert(/ob-nchip hot[^>]*>PRIORITY</.test(panel.innerHTML), 'PRIORITY chip is hot/red');
+assert(/ob-nchip hot[^>]*>Late Checkout: 12:00</.test(panel.innerHTML), 'Late chip is hot/red');
+assert(/ob-nchip cool[^>]*>Prepare 1 sofa bed</.test(panel.innerHTML), 'sofa chip is cool/blue');
+assert(/ob-nchip cool[^>]*>Early check-in</.test(panel.innerHTML), 'Early chip is cool/blue');
+
 const css = fs.readFileSync(path.join(rootDir, 'fe', 'daily-ops-beta.css'), 'utf8');
+assert(/\.ob-nchip\.hot/.test(css) && /\.ob-nchip\.cool/.test(css), 'note chip color styles present');
 assert(!/#tab-opsbeta/.test(css), 'CSS retargeted off #tab-opsbeta');
 assert(/#tab-ops\s*\{/.test(css), 'CSS scoped to #tab-ops');
 assert(/\.ob-cchip/.test(css), 'cleaner chip styles present');
@@ -178,4 +200,4 @@ assert(/ob-table-wrap\s*\{[^}]*overflow-y:\s*visible/.test(css), 'table height f
 assert(/\.ob-dispatch-row\.tone-hot td/.test(css), 'hot tone styles present');
 assert(/\.ob-dispatch-row\.tone-same td/.test(css), 'same-day tone styles present');
 
-console.log('daily-ops-beta-scale: ok (promoted #tab-ops + chips + fit-all + urgency colors)');
+console.log('daily-ops-beta-scale: ok (promoted #tab-ops + note colors + chips + fit-all + urgency)');

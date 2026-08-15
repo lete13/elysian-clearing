@@ -272,6 +272,29 @@
       '</div>';
   }
 
+  function splitNotes(note) {
+    if (typeof _opsSplitComments === 'function') return _opsSplitComments(note);
+    return String(note || '').split(/\s*[·|;]\s*|\n+/).map(function (part) {
+      return String(part || '').trim();
+    }).filter(Boolean);
+  }
+
+  // Notes chips: PRIORITY + Late Checkout = red; sofa bed + Early (+ park) = blue.
+  function noteChipsHtml(note) {
+    var parts = splitNotes(note);
+    if (!parts.length) return '';
+    var late = (typeof OPS_TAG_LATE !== 'undefined') ? OPS_TAG_LATE : 'Late Checkout: 12:00';
+    var priority = (typeof OPS_TAG_PRIORITY !== 'undefined') ? OPS_TAG_PRIORITY : 'PRIORITY';
+    var early = (typeof OPS_TAG_EARLY !== 'undefined') ? OPS_TAG_EARLY : 'Early check-in';
+    var park = (typeof OPS_TAG_PARK !== 'undefined') ? OPS_TAG_PARK : 'Παρκοκρεβάτο';
+    return '<div class="ob-nchips">' + parts.map(function (part) {
+      var cls = 'ob-nchip';
+      if (part === priority || part === late || /^Late Checkout/i.test(part)) cls += ' hot';
+      else if (part === early || part === park || /sofa bed/i.test(part)) cls += ' cool';
+      return '<span class="' + cls + '">' + esc(part) + '</span>';
+    }).join('') + '</div>';
+  }
+
   function colorLegendHtml() {
     return '<div class="ob-tone-legend" title="Reservation color coding">' +
       '<span class="ob-tone-lg"><i class="tone-hot"></i>Priority / late / sofa</span>' +
@@ -314,9 +337,10 @@
     var etaControl = item.extra
       ? '<span class="ob-row-muted">—</span>'
       : '<input class="ob-input ob-row-eta" value="' + esc(row.arrivalTime || '') + '" data-ob-action="row-field" data-ob-index="' + item.index + '" data-ob-field="arrivalTime" placeholder="—">';
-    var noteControl = item.extra
+    var noteInput = item.extra
       ? '<input class="ob-input ob-row-note" value="' + esc(note) + '" data-ob-action="clean-field" data-ob-key="' + encoded(item.key) + '" data-ob-field="comments" placeholder="Notes…">'
       : '<input class="ob-input ob-row-note" value="' + esc(note) + '" data-ob-action="comment" data-ob-index="' + item.index + '"' + keyAttr + ' placeholder="Notes…">';
+    var noteControl = '<div class="ob-note-cell">' + noteChipsHtml(note) + noteInput + '</div>';
     var badges = (type ? '<span class="ob-row-type ' + type.cls + '">' + esc(type.label) + '</span>' : '') +
       (kind ? '<span class="ob-row-type ob-amber">' + esc(kind.label) + '</span>' : '') +
       (row.isOwner ? '<span class="ob-row-type ob-red">OWNER</span>' : '');
