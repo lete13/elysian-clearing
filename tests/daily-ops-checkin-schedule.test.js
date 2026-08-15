@@ -88,7 +88,13 @@ vm.createContext(sandbox);
 vm.runInContext(
   [
     extractFn(html, 'parseD'),
+    extractFn(html, 'normAptName'),
+    extractFn(html, 'findApt'),
+    extractFn(html, 'aptById'),
     extractFn(html, '_opsAptOf'),
+    extractFn(html, '_opsAptKeyList'),
+    extractFn(html, '_opsSameOpsApt'),
+    extractFn(html, '_opsMarkSeenApt'),
     extractFn(html, '_opsAptHouseRules'),
     extractFn(html, '_opsNightsOf'),
     extractFn(html, '_opsLongStayTag'),
@@ -236,5 +242,73 @@ const extras = sandbox._opsCheckinOnlyScheduleExtras([]);
 assert.strictEqual(extras.length, 1);
 assert.strictEqual(extras[0].cleanType, 'sofa_bed');
 assert.strictEqual(extras[0].nextNights, 7);
+
+// Unity-style: same-day checkout + check-in must pair even when Hosthub names/ids drift.
+sandbox.S = {
+  apts: [{ id: 'unity-1', name: 'Athens Unity Apartment', aliases: [] }],
+  bks: [
+    {
+      id: 'unity-out',
+      aptId: 'unity-1',
+      aptName: 'Athens Unity Apartment',
+      guestName: 'Departing Unity',
+      checkIn: '10/8/2026',
+      checkOut: '16/8/2026',
+      nights: 6,
+      cancelled: false,
+    },
+    {
+      id: 'unity-in',
+      aptId: '',
+      aptName: 'Athens Unity Apartment - City Center',
+      guestName: 'Arriving Unity',
+      guests: 3,
+      checkIn: '16/8/2026',
+      checkOut: '19/8/2026',
+      nights: 3,
+      cancelled: false,
+    },
+  ],
+  daily: { snapshots: {} },
+};
+const unity = sandbox._opsAutoRows('2026-08-16');
+assert.strictEqual(unity.length, 1, 'Unity checkout+check-in is one Daily Ops row');
+assert.strictEqual(unity[0].checkinSameDay, 'yes', 'Unity same-day check-in pairs onto the checkout');
+assert.strictEqual(unity[0].nextGuest, 'Arriving Unity');
+assert.strictEqual(unity[0].nextNights, 3);
+assert.ok(!unity[0].isCheckinOnly, 'Unity is not check-in-only when there is a checkout');
+assert.strictEqual(unity[0].aptId, 'unity-1');
+assert.strictEqual(unity[0].aptName, 'Athens Unity Apartment');
+
+sandbox.S.bks = [
+  {
+    id: 'unity-out-2',
+    aptId: 'listing-aaa',
+    aptName: 'Athens Unity Apartment',
+    guestName: 'Departing Unity',
+    checkIn: '10/8/2026',
+    checkOut: '16/8/2026',
+    nights: 6,
+    cancelled: false,
+  },
+  {
+    id: 'unity-in-2',
+    aptId: 'listing-bbb',
+    aptName: 'Athens Unity',
+    guestName: 'Arriving Unity',
+    guests: 2,
+    checkIn: '16/8/2026',
+    checkOut: '18/8/2026',
+    nights: 2,
+    cancelled: false,
+  },
+];
+const unityIds = sandbox._opsAutoRows('2026-08-16');
+assert.strictEqual(unityIds.length, 1, 'different listing ids still pair via findApt');
+assert.strictEqual(unityIds[0].checkinSameDay, 'yes');
+assert.strictEqual(unityIds[0].aptId, 'unity-1', 'row uses canonical apartment id');
+
+assert(html.includes('function _opsSameOpsApt'), 'canonical same-apt helper present');
+assert(html.includes('_opsSameOpsApt(bk, b)'), 'AutoRows pairs with canonical apt match');
 
 console.log('daily-ops-checkin-schedule: ok');
