@@ -83,6 +83,28 @@ function docsForStay(stayKind, n) {
   return 1 + 2 * (n || 0);
 }
 
+/** Invoices estimated for `month`. Hosthub created/cancelledAt stand in for VAT issue dates. */
+function docsInMonth(s, month) {
+  if (!s) return 0;
+  const channelYm = ymFromTs(s.createdOnChannel);
+  const hosthubYm = ymFromTs(s.created);
+  const origYm = channelYm || hosthubYm;
+  if (s.stayKind === 'cancel') {
+    const cancelYm = ymFromTs(s.cancelledAt);
+    let n = 0;
+    if (origYm === month) n += 1;
+    if (cancelYm === month) n += 1;
+    return n;
+  }
+  const nExt = s.extends || 0;
+  if (!nExt) return origYm === month || s.inCreated ? 1 : 0;
+  const extYm = hosthubYm || channelYm;
+  let docs = 0;
+  if (origYm === month) docs += 1;
+  if (extYm === month) docs += 2 * nExt;
+  return docs;
+}
+
 function classifyAirbnbStay(b, month) {
   if (!b) return null;
   const channelYm = ymFromTs(b.createdOnChannel);
@@ -168,11 +190,13 @@ function estimateAirbnbInvoices(month, bks) {
       const s = byCode[k];
       const n = countExtends(allByCode[k] || [], s);
       const stayKind = s.stayKind === 'cancel' ? 'cancel' : (n > 0 ? 'extend' : 'normal');
-      return Object.assign({}, s, {
+      const rec = Object.assign({}, s, {
         stayKind: stayKind,
         extends: n,
-        docs: docsForStay(stayKind, n),
+        docsStay: docsForStay(stayKind, n),
       });
+      rec.docs = docsInMonth(rec, month);
+      return rec;
     });
   const estimate = { normal: 0, cancel: 0, extend: 0, docs: 0, stays: stays.length, extendDocs: 0 };
   stays.forEach(function (s) {
@@ -190,5 +214,6 @@ module.exports = {
   estimateAirbnbInvoices,
   countExtends,
   docsForStay,
+  docsInMonth,
   EXTEND_MS,
 };

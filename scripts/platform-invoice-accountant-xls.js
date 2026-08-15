@@ -13,6 +13,51 @@ function xmlEscape(s) {
     .replace(/"/g, '&quot;');
 }
 
+function issueDateToMonth(dmy) {
+  const s = String(dmy || '').trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return m[3] + '-' + String(parseInt(m[2], 10)).padStart(2, '0');
+  m = s.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
+  if (m) return m[1] + '-' + m[2];
+  return '';
+}
+
+function monthFromFilename(filename) {
+  const m = String(filename || '')
+    .replace(/\\/g, '/')
+    .match(/\/(20\d{2}-\d{2})\//);
+  return m ? m[1] : '';
+}
+
+function rewriteFilenameMonth(filename, month) {
+  const m = String(month || '');
+  if (!/^\d{4}-\d{2}$/.test(m)) return String(filename || '').replace(/\\/g, '/');
+  const s = String(filename || '').replace(/\\/g, '/');
+  if (/^[^/]+\/\d{4}-\d{2}\//.test(s)) return s.replace(/^([^/]+)\/(\d{4}-\d{2})\//, '$1/' + m + '/');
+  return s;
+}
+
+function archiveMonthOf(f, fallback) {
+  const meta = parseMeta(f);
+  const fromIssue = issueDateToMonth((meta && meta.issueDate) || (f && f.issueDate) || '');
+  if (/^\d{4}-\d{2}$/.test(fromIssue)) return fromIssue;
+  if (f && /^\d{4}-\d{2}$/.test(String(f.month || ''))) return String(f.month);
+  const fromPath = monthFromFilename(f && f.filename);
+  if (fromPath) return fromPath;
+  return /^\d{4}-\d{2}$/.test(String(fallback || '')) ? String(fallback) : '';
+}
+
+function plannedRefile(row) {
+  if (!row) return null;
+  const ch = String(row.channel || '').toLowerCase();
+  if (ch === 'booking' || ch === 'bdc') return null;
+  const want = archiveMonthOf(row, row.month);
+  if (!/^\d{4}-\d{2}$/.test(want)) return null;
+  const filename = rewriteFilenameMonth(row.filename, want);
+  if (want === String(row.month || '') && filename === String(row.filename || '').replace(/\\/g, '/')) return null;
+  return { month: want, filename: filename };
+}
+
 function parseMeta(row) {
   if (!row) return {};
   if (row.meta && typeof row.meta === 'object' && !Buffer.isBuffer(row.meta)) return row.meta;
@@ -221,4 +266,9 @@ module.exports = {
   buildAccountantXls,
   fileMetaJson,
   codeFromFilename,
+  issueDateToMonth,
+  monthFromFilename,
+  rewriteFilenameMonth,
+  archiveMonthOf,
+  plannedRefile,
 };

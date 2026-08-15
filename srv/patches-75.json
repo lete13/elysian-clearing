@@ -1,0 +1,123 @@
+{
+ "baseSha256": "1edd13446e3e6f2b33289ba697d1efdf3cea21ec28d47a4bf09d9e8f8b7329af",
+ "expectedSha256": "150c8c30dabb732d24dbdca94b63fad0fc89202c7031d0eaf3302baea11077d7",
+ "builtAt": "2026-08-15 Refile Airbnb PDFs by VAT issue date",
+ "patches": [
+  {
+   "note": "Refile Airbnb PDFs when VAT issue date month disagrees",
+   "find": "const { buildAccountantXls, fileMetaJson, parseMeta } = require('./scripts/platform-invoice-accountant-xls');\nconst { estimateAirbnbInvoices } = require('./scripts/platform-invoice-expect');\nlet _platInvReady = false;",
+   "replace": "const { buildAccountantXls, fileMetaJson, parseMeta, archiveMonthOf, plannedRefile } = require('./scripts/platform-invoice-accountant-xls');\nconst { estimateAirbnbInvoices } = require('./scripts/platform-invoice-expect');\nasync function piRefileAirbnbByIssueDate() {\n  let rows = [];\n  if (pool) {\n    await ensurePlatInvTable();\n    const q = await pool.query(\"SELECT id, month, channel, filename, meta FROM platform_invoices WHERE channel='airbnb'\");\n    rows = q.rows || [];\n  } else {\n    rows = [..._memPlatInv.values()].filter(function (x) { return String(x.channel || '').toLowerCase() === 'airbnb'; });\n  }\n  let n = 0;\n  for (const r of rows) {\n    const plan = plannedRefile(r);\n    if (!plan) continue;\n    if (pool) {\n      await pool.query('UPDATE platform_invoices SET month=$1, filename=$2 WHERE id=$3', [plan.month, plan.filename, r.id]);\n    } else {\n      r.month = plan.month;\n      r.filename = plan.filename;\n      _memPlatInv.set(r.id, r);\n    }\n    n++;\n  }\n  return n;\n}\nlet _platInvReady = false;",
+   "count": 1
+  },
+  {
+   "note": "Live ingest archives by invoice issue date",
+   "find": "  const buf = fsI.readFileSync(f.path);\n  if (!buf.length) return null;\n  const month = job.month;\n  const by = job.by || 'portal-pull';",
+   "replace": "  const buf = fsI.readFileSync(f.path);\n  if (!buf.length) return null;\n  const month = archiveMonthOf(f, job.month);\n  const by = job.by || 'portal-pull';",
+   "count": 1
+  },
+  {
+   "note": "Job-complete ingest archives by invoice issue date",
+   "find": "        const row = {\n          month, channel: f.channel, scope: f.scope || 'leased', partner,\n          filename: f.filename, mime: 'application/pdf', size: buf.length, source: 'portal',\n          uploaded_by: by, data: dataB64, meta: fileMetaJson(f)\n        };",
+   "replace": "        const fileMonth = archiveMonthOf(f, month);\n        const row = {\n          month: fileMonth, channel: f.channel, scope: f.scope || 'leased', partner,\n          filename: f.filename, mime: 'application/pdf', size: buf.length, source: 'portal',\n          uploaded_by: by, data: dataB64, meta: fileMetaJson(f)\n        };",
+   "count": 1
+  },
+  {
+   "note": "Dedup vault files by path, not collect month",
+   "find": "SELECT id FROM platform_invoices WHERE month=$1 AND channel=$2 AND filename=$3 AND size=$4 LIMIT 1",
+   "replace": "SELECT id FROM platform_invoices WHERE channel=$1 AND filename=$2 AND size=$3 LIMIT 1",
+   "count": 2
+  },
+  {
+   "note": "Dedup bind drops collect month",
+   "find": "[month, f.channel, f.filename, buf.length]",
+   "replace": "[f.channel, f.filename, buf.length]",
+   "count": 2
+  },
+  {
+   "note": "Memory dedup ignores collect month",
+   "find": "if (v.month === month && v.channel === f.channel && v.filename === f.filename && v.size === buf.length)",
+   "replace": "if (v.channel === f.channel && v.filename === f.filename && v.size === buf.length)",
+   "count": 1
+  },
+  {
+   "note": "HAVE set includes Airbnb PDFs already archived in other months",
+   "find": "      const haveRows = await pool.query('SELECT filename FROM platform_invoices WHERE month=$1 AND (channel=$2 OR channel=$3)', [month, 'airbnb', channel]);\n      haveNames = (haveRows.rows || []).map(function (r) { return r.filename; });\n    } else {\n      haveNames = [..._memPlatInv.values()].filter(function (x) { return x.month === month; }).map(function (x) { return x.filename; });",
+   "replace": "      const haveRows = await pool.query('SELECT filename FROM platform_invoices WHERE channel=$1 OR channel=$2 ORDER BY id DESC LIMIT 2000', ['airbnb', channel]);\n      haveNames = (haveRows.rows || []).map(function (r) { return r.filename; });\n    } else {\n      haveNames = [..._memPlatInv.values()].filter(function (x) { return String(x.channel || '') === 'airbnb' || x.channel === channel; }).map(function (x) { return x.filename; });",
+   "count": 1
+  },
+  {
+   "note": "Disk walk keeps issue-month from the store path",
+   "find": "        partner: aptName, aptName: aptName, bytes: st.size",
+   "replace": "        partner: aptName, aptName: aptName, bytes: st.size,\n        month: (parts.length >= 4 && /^\\d{4}-\\d{2}$/.test(parts[1]) ? parts[1] : '')",
+   "count": 1
+  },
+  {
+   "note": "List rechecks archive month from VAT issue date",
+   "find": "app.get('/api/platform-invoices', async (req, res) => {\n  const month = String(req.query.month || '');\n  if (!/^\\d{4}-\\d{2}$/.test(month)) return res.status(400).json({ error: 'month=YYYY-MM required' });\n  if (pool) {",
+   "replace": "app.get('/api/platform-invoices', async (req, res) => {\n  const month = String(req.query.month || '');\n  if (!/^\\d{4}-\\d{2}$/.test(month)) return res.status(400).json({ error: 'month=YYYY-MM required' });\n  try { await piRefileAirbnbByIssueDate(); } catch (eRefile) {}\n  if (pool) {",
+   "count": 1
+  },
+  {
+   "note": "Excel download refiles before building the sheet",
+   "find": "    if (pool) {\n      await ensurePlatInvTable();\n      const q = await pool.query('SELECT * FROM platform_invoices WHERE month=$1 ORDER BY id', [month]);\n      rows = q.rows;\n    } else {\n      rows = [..._memPlatInv.values()].filter(function (x) { return x.month === month; });\n    }\n    const bks = await piLoadDbBookings();",
+   "replace": "    if (pool) {\n      await ensurePlatInvTable();\n      try { await piRefileAirbnbByIssueDate(); } catch (eRefile) {}\n      const q = await pool.query('SELECT * FROM platform_invoices WHERE month=$1 ORDER BY id', [month]);\n      rows = q.rows;\n    } else {\n      try { await piRefileAirbnbByIssueDate(); } catch (eRefile) {}\n      rows = [..._memPlatInv.values()].filter(function (x) { return x.month === month; });\n    }\n    const bks = await piLoadDbBookings();",
+   "count": 1
+  },
+  {
+   "note": "Ship refiles before packing the month",
+   "find": "    const partner = String(b.partner || '');\n    let rows = [];\n    if (pool) {\n      await ensurePlatInvTable();",
+   "replace": "    const partner = String(b.partner || '');\n    let rows = [];\n    if (pool) {\n      await ensurePlatInvTable();\n      try { await piRefileAirbnbByIssueDate(); } catch (eRefile) {}",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "kind: 'both'",
+   "note": "pull kind both"
+  },
+  {
+   "has": "hosthubYm === month",
+   "note": "Hosthub created month also opens stay"
+  },
+  {
+   "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+   "note": "harvest kept"
+  },
+  {
+   "has": "app.post('/api/platform-invoices/pull-stop'",
+   "note": "stop kept"
+  },
+  {
+   "has": "job.hint = 'Pull stopped'",
+   "note": "user Stop still uses Pull stopped"
+  },
+  {
+   "has": "piRefileAirbnbByIssueDate",
+   "note": "refile by issue date"
+  },
+  {
+   "has": "archiveMonthOf(f, job.month)",
+   "note": "live ingest uses issue month"
+  },
+  {
+   "has": "archiveMonthOf(f, month)",
+   "note": "job-complete ingest uses issue month"
+  },
+  {
+   "has": "SELECT id FROM platform_invoices WHERE channel=$1 AND filename=$2 AND size=$3 LIMIT 1",
+   "note": "dedup ignores collect month"
+  },
+  {
+   "has": "accountant-xls",
+   "note": "Excel download route"
+  },
+  {
+   "has": "estimateAirbnbInvoices",
+   "note": "Expect estimate helper"
+  },
+  {
+   "has": "fileMetaJson",
+   "note": "ingest writes meta"
+  }
+ ]
+}

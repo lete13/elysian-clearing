@@ -27,12 +27,13 @@
  *
  * Booking.com: https://admin.booking.com/ — one invoice per property/apartment.
  * Dating: Booking invoice month M covers bookings from M−1;
- *         Airbnb VAT = created; credit note = cancelledAt.
+ *         Airbnb VAT file month = invoice issue date on the VAT HTML (extensions reissue).
  */
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
+const { issueDateToMonth } = require('./platform-invoice-accountant-xls');
 
 function arg(name, def) {
   const p = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -1132,9 +1133,10 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     if (airbnbDocAlreadyHave(alreadyHave, kind, code, vatId)) return 'have';
     const storeKey = airbnbHaveKey(kind, code, vatId);
     if (savedKeys.has(storeKey)) return 'have';
+    const archiveMonth = issueDateToMonth(fields.issueDate) || month;
     const rel = piInvoiceStoreRel({
       channel: 'airbnb',
-      month: month,
+      month: archiveMonth,
       aptName: aptName,
       kind: kind,
       code: vatId ? code + '-' + vatId : code,
@@ -1164,6 +1166,7 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       listingName: aptName,
       checkIn: resv.checkIn || '',
       checkOut: resv.checkOut || '',
+      month: archiveMonth,
       filename: rel.replace(/\\/g, '/'),
       path: cap.saved.path,
       bytes: cap.saved.bytes,
@@ -1185,6 +1188,7 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       listingName: aptName,
       checkIn: resv.checkIn || '',
       checkOut: resv.checkOut || '',
+      month: archiveMonth,
       filename: rel.replace(/\\/g, '/'),
       path: cap.saved.path,
       bytes: cap.saved.bytes,

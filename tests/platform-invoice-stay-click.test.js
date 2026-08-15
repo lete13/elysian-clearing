@@ -44,10 +44,11 @@ document.getElementById('total').addEventListener('click', function () {
 function invoiceHtml(id) {
   const credit = /CN/i.test(String(id || ''));
   const num = credit ? 'AIUC-104771625-GR-1552747-CN-1' : 'AIUC-104771625-GR-1552747';
+  const date = credit ? '4/8/2026' : '4/7/2026';
   return `<!doctype html><html><body>
 <h1>${credit ? 'Credit note' : 'VAT invoice'}</h1>
 <p>Invoice number ${num}</p>
-<p>4/7/2026</p>
+<p>${date}</p>
 <p>Total €8.00</p>
 <p>Airbnb service fee</p>
 </body></html>`;
@@ -139,20 +140,23 @@ function runPull(origin, outDir, reservations, limit) {
     assert(clickRun.parsed, 'worker printed a result JSON\n' + clickRun.stdout + clickRun.stderr);
     assert(clickRun.parsed.ok, 'click path saved a PDF: ' + JSON.stringify(clickRun.parsed));
     const clickPdf = path.join(outDir, 'click', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMTEST01-INV99ABC.pdf');
-    const clickCredit = path.join(outDir, 'click', 'Airbnb', '2026-07', 'Birdhouse', 'credit_note-HMTEST01-CN88XYZ.pdf');
+    const clickCredit = path.join(outDir, 'click', 'Airbnb', '2026-08', 'Birdhouse', 'credit_note-HMTEST01-CN88XYZ.pdf');
     const clickDir = path.join(outDir, 'click', 'Airbnb', '2026-07', 'Birdhouse');
     const clickSaved = fs.existsSync(clickDir) ? fs.readdirSync(clickDir).join(', ') : '(missing dir)';
     assert(fs.existsSync(clickPdf), 'stored stay-click debit PDF at ' + clickPdf + ' (have: ' + clickSaved + ')');
-    assert(fs.existsSync(clickCredit), 'stored stay-click credit PDF at ' + clickCredit + ' (have: ' + clickSaved + ')');
+    assert(fs.existsSync(clickCredit), 'credit note archives in its issue month 2026-08: ' + clickCredit);
     assert(fs.statSync(clickPdf).size > 100, 'PDF has bytes');
     const clickFiles = (clickRun.parsed.files || []);
     const debitMeta = clickFiles.find((f) => f.kind === 'invoice') || {};
     const creditMeta = clickFiles.find((f) => f.kind === 'credit_note') || {};
     assert.strictEqual(debitMeta.invoiceNumber, 'AIUC-104771625-GR-1552747', 'debit invoice number from VAT HTML');
     assert.strictEqual(debitMeta.issueDate, '4/7/2026', 'debit issue date from VAT HTML');
+    assert.strictEqual(debitMeta.month, '2026-07', 'debit archives in issue-date month');
     assert.strictEqual(debitMeta.total, 8, 'debit total euros');
     assert.strictEqual(debitMeta.sign, '', 'debit Πρόσημο empty');
     assert.strictEqual(creditMeta.invoiceNumber, 'AIUC-104771625-GR-1552747-CN-1', 'credit invoice number');
+    assert.strictEqual(creditMeta.issueDate, '4/8/2026', 'credit issue date from VAT HTML');
+    assert.strictEqual(creditMeta.month, '2026-08', 'extend/credit archives in later issue-date month');
     assert.strictEqual(creditMeta.sign, '-', 'credit Πρόσημο is minus');
     assert.strictEqual(creditMeta.total, 8, 'credit amount is absolute');
 

@@ -98,7 +98,18 @@ assert(fe110.patches.some((p) => (p.replace || '').includes('piCountAirbnbExtend
 assert(fe110.patches.some((p) => (p.replace || '').includes('checkIn: x.checkIn')), 'FE posts check-in with pull');
 assert(srv74.patches.some((p) => (p.replace || '').includes('buildAccountantXls(rows, bks)')), 'Excel download joins Hosthub');
 assert(srv74.patches.some((p) => (p.replace || '').includes('buildAccountantXls(rows, xlsBks)')), 'Excel ship joins Hosthub');
-assert(worker.includes('parseAirbnbVatFields'), 'worker parses Airbnb VAT number/date/amount');
+const fe111 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-111.json'), 'utf8'));
+const srv75 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-75.json'), 'utf8'));
+assert.strictEqual(fe111.baseSha256, fe110.expectedSha256, 'FE 111 continues FE 110');
+assert.strictEqual(srv75.baseSha256, srv74.expectedSha256, 'SRV 75 continues SRV 74');
+assert(fe111.patches.some((p) => (p.replace || '').includes('piDocsInMonth')), 'FE splits Expect docs by issue month');
+assert(fe111.patches.some((p) => (p.replace || '').includes('VAT issue date')), 'FE copy says archive by VAT issue date');
+assert(fe111.patches.some((p) => (p.replace || '').includes('PDFs by apartment — click Open to view')), 'vault Open heading kept as substring');
+assert(srv75.patches.some((p) => (p.replace || '').includes('piRefileAirbnbByIssueDate')), 'server refiles by issue date');
+assert(srv75.patches.some((p) => (p.replace || '').includes('archiveMonthOf(f, job.month)')), 'live ingest uses issue month');
+assert(srv75.patches.some((p) => (p.replace || '').includes('SELECT id FROM platform_invoices WHERE channel=$1 AND filename=$2 AND size=$3 LIMIT 1')), 'dedup ignores collect month');
+assert(worker.includes('issueDateToMonth'), 'worker maps VAT issue date to archive month');
+assert(worker.includes('archiveMonth'), 'worker stores PDFs under the invoice issue month');
 assert(worker.includes('invoiceNumber: fields.invoiceNumber'), 'saved event carries invoice number');
 
 function extractBetween(source, startName, nextName) {
@@ -263,14 +274,18 @@ assert.strictEqual(exp.credit[0].code, 'HMCANCEL1');
 const { estimateAirbnbInvoices } = require(path.join(root, 'scripts', 'platform-invoice-expect'));
 const est = estimateAirbnbInvoices('2024-08', sample);
 assert.strictEqual(est.estimate.normal, 1, 'ordinary stay = 1 invoice');
-assert.strictEqual(est.estimate.cancel, 1, 'cancelled stay = 2 invoices');
-assert.strictEqual(est.estimate.extend, 1, 'Hosthub created >36h after channel = extend ×3');
-assert.strictEqual(est.estimate.docs, 1 + 2 + 3, 'docs = normal1 + cancel2 + extend3');
+assert.strictEqual(est.estimate.cancel, 1, 'cancelled stay listed in cancel month');
+assert.strictEqual(est.estimate.extend, 1, 'Hosthub created >36h after channel = extend');
+assert.strictEqual(est.estimate.docs, 1 + 1 + 2, 'this-month docs: normal1 + cancel-credit1 + extend-reissue2');
 assert.strictEqual(est.stays.find((s) => s.code === 'HMABCDEF').docs, 1);
-assert.strictEqual(est.stays.find((s) => s.code === 'HMCANCEL1').docs, 2);
-assert.strictEqual(est.stays.find((s) => s.code === 'HMEXTEND1').docs, 3);
+assert.strictEqual(est.stays.find((s) => s.code === 'HMCANCEL1').docs, 1, 'cancel credit in cancel month');
+assert.strictEqual(est.stays.find((s) => s.code === 'HMEXTEND1').docs, 2, 'extend reissue (credit+new debit) in Hosthub created month');
+assert.strictEqual(est.stays.find((s) => s.code === 'HMEXTEND1').docsStay, 3, 'stay still has 3 PDFs to pull');
 assert.strictEqual(est.stays.find((s) => s.code === 'HMEXTEND1').extends, 1);
 assert.strictEqual(est.stays.find((s) => s.code === 'HMCANCEL1').stayKind, 'cancel');
+const estJul = estimateAirbnbInvoices('2024-07', sample);
+assert.strictEqual(estJul.stays.find((s) => s.code === 'HMEXTEND1').docs, 1, 'original debit stays in createdOnChannel month');
+assert.strictEqual(estJul.stays.find((s) => s.code === 'HMCANCEL1').docs, 1, 'cancel debit in createdOnChannel month');
 
 const multi = [
   { platform: 'Airbnb', reservationId: 'HMMULTI2', id: 'e1', createdOnChannel: 1722470400, created: 1722470400, checkIn: '1/8/2024', checkOut: '5/8/2024', aptName: 'Birdhouse' },
@@ -306,13 +321,14 @@ const lifetime = [
 ];
 const estLife = estimateAirbnbInvoices('2024-08', lifetime);
 assert.strictEqual(estLife.stays[0].extends, 1, 'out-of-month extra Hosthub id still counts');
-assert.strictEqual(estLife.stays[0].docs, 3);
+assert.strictEqual(estLife.stays[0].docs, 2, 'August gets extend reissue, not the July debit');
+assert.strictEqual(estLife.stays[0].docsStay, 3);
 
 const cancelExt = [
   { platform: 'Airbnb', reservationId: 'HMCANX1', id: 'a', createdOnChannel: 1719792000, created: 1719792000, cancelled: true, cancelledAt: 1722470400 },
   { platform: 'Airbnb', reservationId: 'HMCANX1', id: 'b', createdOnChannel: 1719792000, created: 1722470400, cancelled: true, cancelledAt: 1722470400 },
 ];
-assert.strictEqual(estimateAirbnbInvoices('2024-08', cancelExt).stays[0].docs, 2, 'cancel stays at 2 even with extra ids');
+assert.strictEqual(estimateAirbnbInvoices('2024-08', cancelExt).stays[0].docs, 1, 'cancel credit this month; debit stays in createdOnChannel month');
 assert.strictEqual(estimateAirbnbInvoices('2024-08', cancelExt).stays[0].stayKind, 'cancel');
 
 const debitHtml = 'Invoice number AIUC-104771625-GR-1552747 issued 4/7/2026 Total €8.00';
@@ -327,7 +343,47 @@ assert.strictEqual(creditF.invoiceNumber, 'AIUC-104771625-GR-1552747-CN-1');
 assert.strictEqual(creditF.sign, '-');
 assert.strictEqual(creditF.total, 8);
 
-const { buildAccountantXls, accountantRow } = require(path.join(root, 'scripts', 'platform-invoice-accountant-xls'));
+const { buildAccountantXls, accountantRow, issueDateToMonth, plannedRefile, rewriteFilenameMonth, archiveMonthOf } = require(path.join(root, 'scripts', 'platform-invoice-accountant-xls'));
+assert.strictEqual(issueDateToMonth('4/7/2026'), '2026-07');
+assert.strictEqual(issueDateToMonth('4/8/2026'), '2026-08');
+assert.strictEqual(archiveMonthOf({ issueDate: '4/8/2026', month: '2026-07' }, '2026-07'), '2026-08');
+assert.strictEqual(archiveMonthOf({ meta: { issueDate: '4/7/2026' }, month: '2026-07' }, '2026-07'), '2026-07');
+assert.strictEqual(
+  archiveMonthOf({ filename: 'Airbnb/2026-08/Birdhouse/invoice-X.pdf', month: '2026-07' }, '2026-07'),
+  '2026-07',
+  'without an issue date, keep the stored month (do not guess from path alone)'
+);
+const extendVault = [
+  { id: 1, channel: 'airbnb', month: '2026-07', filename: 'Airbnb/2026-07/Birdhouse/invoice-HMEXT-INV1.pdf', meta: { issueDate: '4/7/2026' } },
+  { id: 2, channel: 'airbnb', month: '2026-07', filename: 'Airbnb/2026-07/Birdhouse/credit_note-HMEXT-CN1.pdf', meta: { issueDate: '4/8/2026' } },
+  { id: 3, channel: 'airbnb', month: '2026-07', filename: 'Airbnb/2026-07/Birdhouse/invoice-HMEXT-INV2.pdf', meta: { issueDate: '4/8/2026' } },
+].map(function (r) { return Object.assign({}, r, plannedRefile(r) || {}); });
+assert.strictEqual(extendVault.filter((r) => r.month === '2026-07').length, 1, 'original debit stays in July');
+assert.strictEqual(extendVault.filter((r) => r.month === '2026-08').length, 2, 'credit + new debit refile to August');
+assert.strictEqual(extendVault[1].filename, 'Airbnb/2026-08/Birdhouse/credit_note-HMEXT-CN1.pdf');
+assert.strictEqual(extendVault[2].filename, 'Airbnb/2026-08/Birdhouse/invoice-HMEXT-INV2.pdf');
+assert.strictEqual(
+  rewriteFilenameMonth('Airbnb/2026-07/Birdhouse/credit_note-HMTEST1-CN.pdf', '2026-08'),
+  'Airbnb/2026-08/Birdhouse/credit_note-HMTEST1-CN.pdf'
+);
+const refile = plannedRefile({
+  channel: 'airbnb',
+  month: '2026-07',
+  filename: 'Airbnb/2026-07/Birdhouse/invoice-HMTEST1-INV.pdf',
+  meta: { issueDate: '4/8/2026', invoiceNumber: 'AIUC-AAA' },
+});
+assert.strictEqual(refile.month, '2026-08');
+assert.strictEqual(refile.filename, 'Airbnb/2026-08/Birdhouse/invoice-HMTEST1-INV.pdf');
+assert.strictEqual(
+  plannedRefile({
+    channel: 'booking',
+    month: '2026-07',
+    filename: 'Booking.com/2026-07/Horizon/invoice-apt.pdf',
+    meta: { issueDate: '4/8/2026' },
+  }),
+  null,
+  'Booking.com keeps the collect month'
+);
 const debitRow = accountantRow({
   channel: 'airbnb',
   filename: 'Airbnb/2026-07/Birdhouse/invoice-HMTEST-AIUC.pdf',

@@ -13,11 +13,10 @@ The app **pulls** them automatically from the host portals (Platform Invoices), 
 | Channel | Document | Issue / file month |
 |---|---|---|
 | Booking.com | Invoice | **Month after** the bookings (June stays → July invoice). **One invoice per apartment**, not per booking. |
-| Airbnb | VAT invoice / debit note | Hosthub **`created` / `createdOnChannel`** (which stay to open). Airbnb may issue **several** debit notes on one confirmation code (book, then extend). |
-| Airbnb | Credit note | Hosthub **`cancelledAt`**, and also when Airbnb credits the previous debit on **extend**. Pull saves every credit note on that stay. |
+| Airbnb | VAT invoice / debit note / credit note | **Invoice issue date** on the VAT HTML. Hosthub `created` / `createdOnChannel` / `cancelledAt` still decide **which stay to open**. An extend reissues: original debit stays in its issue month; the credit of that debit and the new debit archive in the later issue month. |
 
-Confirm in month A and cancel in month B → keep **both** documents.
-Extend in month B → original debit + credit of that debit + new debit. Each further extend adds another credit + new debit (**1 + 2n**).
+Confirm in month A and cancel in month B → keep **both** documents (each in its issue-date month).
+Extend in month B → original debit (issue date A) + credit of that debit + new debit (issue dates B). Each further extend adds another credit + new debit (**1 + 2n** across months). Pull still saves every VAT document on the stay; each PDF is archived under `Airbnb/{issue-month}/`.
 
 **Expect** estimates how many invoices Pull should save:
 
@@ -42,7 +41,7 @@ Same idea as [VAT Invoicer](https://vatinvoicer.com/privacy/): while logged into
 2. Platform Invoices → **Expect** lists stays to open **and** estimates invoices to pull (normal ×1, cancelled ×2, extended ×3 for the first extend, then +2 per extra extend).
 3. **Test pull (HM9DCDMEXT · HMWRNAWHBA)** re-opens the two stays that previously missed, then **Pull Airbnb (Hosthub codes)** for the full month. **Stop pull** kills a running job (SIGTERM). Codes go to the worker as `PI_AIRBNB_RESERVATIONS_JSON` (`PI_AIRBNB_LIMIT` slices a latest-N test run).
 4. Worker opens `https://www.airbnb.com/hosting/stay/{CODE}`. A hosting 200 that says the reservation is missing is **not** treated as opened — it then tries `/hosting/reservations/details/{CODE}` and reservations search (the path a human uses). It waits for GraphQL, clicks the **total price** then **every VAT invoice / credit note** on that stay, searches HTML/JSON for VAT invoice IDs, opens each invoice HTML, and `page.pdf()`s it. The stay-page shell is never saved as a PDF.
-5. PDFs are **stored by platform / month / apartment**: `Airbnb/2026-07/Birdhouse/invoice-HMXXXX-VATID.pdf` (one file per Airbnb VAT document; a stay can have several). The vault `partner` field is the apartment name (credit notes stay under that apartment; kind is in the filename).
+5. PDFs are **stored by platform / invoice-issue-month / apartment**: `Airbnb/2026-07/Birdhouse/invoice-HMXXXX-VATID.pdf`. A stay opened in July can still drop an August-dated extend debit into `Airbnb/2026-08/…`. Already-pulled rows are rechecked against the VAT issue date on Collect/Review/Ship.
 
 Airbnb does not expose a labeled download link on the reservation details page — that is why looking only for `a[href]` with the word “invoice” saved 0 PDFs.
 
@@ -64,7 +63,7 @@ No manual pasting of codes. Booking.com remains available but is secondary while
 `scripts/platform-invoice-pull.js` (Playwright + Chromium):
 
 1. Reuses Airbnb / Booking session vault (or password login).
-2. **Airbnb:** for each Hosthub confirmation code → reservation page → **every** VAT invoice / credit note HTML → PDF stored as `Airbnb/{month}/{apartment}/{kind}-{code}-{vatId}.pdf`.
+2. **Airbnb:** for each Hosthub confirmation code → reservation page → **every** VAT invoice / credit note HTML → PDF stored as `Airbnb/{issue-month}/{apartment}/{kind}-{code}-{vatId}.pdf`.
 3. **Booking.com (optional):** admin.booking.com Finance → Invoices, one PDF per property.
 4. `POST /api/platform-invoices/pull` stores them in `platform_invoices` with `source=portal`.
 
