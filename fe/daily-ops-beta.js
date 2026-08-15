@@ -228,8 +228,8 @@
     // Icons (not letters) so the activity is readable at a glance.
     var defs = [
       ['late', '⏰', 'Late checkout', row.lateCheckout, 'hot'],
-      ['priority', '🔥', 'Priority', row.isPriority, 'hot'],
-      ['park', '🛏️', 'Παρκοκρεβάτο', row.parkBed, 'cool'],
+      ['priority', '❗', 'Priority', row.isPriority, 'hot'],
+      ['park', '👶', 'Παρκοκρεβάτο', row.parkBed, 'cool'],
       ['early', '🌅', 'Early check-in', row.earlyCheckin, 'cool'],
     ];
     return '<div class="ob-row-flags">' + defs.map(function (f) {

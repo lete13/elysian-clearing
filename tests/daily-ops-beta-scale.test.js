@@ -147,8 +147,8 @@ assert(!panel.innerHTML.includes('Crew workload'), 'crew workload side panel rem
 assert(!panel.innerHTML.includes('Reservation details'), 'reservation details side panel removed');
 assert(panel.innerHTML.includes('>Notes<'), 'notes stay on the main table');
 assert(panel.innerHTML.includes('⏰'), 'late checkout uses a clock icon');
-assert(panel.innerHTML.includes('🔥'), 'priority uses a flame icon');
-assert(panel.innerHTML.includes('🛏️'), 'park bed uses a bed icon');
+assert(panel.innerHTML.includes('❗'), 'priority uses an exclamation icon');
+assert(panel.innerHTML.includes('👶'), 'park bed uses a baby icon');
 assert(panel.innerHTML.includes('🌅'), 'early check-in uses a sunrise icon');
 assert(!/>L</.test(panel.innerHTML) && !/>P</.test(panel.innerHTML), 'letter flag labels are gone');
 
