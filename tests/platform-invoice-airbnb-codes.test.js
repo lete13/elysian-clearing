@@ -121,9 +121,9 @@ function extractBetween(source, startName, nextName) {
 const vm = require('vm');
 const extractSrc =
   extractBetween(worker, 'kindFromInvoiceBlob', 'airbnbInvoicePagePatterns') +
-  extractBetween(worker, 'airbnbInvoiceUrlsForHit', 'attachAirbnbInvoiceNetworkTap');
+  extractBetween(worker, 'airbnbBareInvoicePath', 'attachAirbnbInvoiceNetworkTap');
 const helpers = vm.runInNewContext(
-  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits, vatIdFromAirbnbUrl, airbnbReservationPageIsOpen, parseAirbnbVatFields })',
+  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, airbnbBareInvoicePath, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits, vatIdFromAirbnbUrl, airbnbReservationPageIsOpen, parseAirbnbVatFields })',
   { URL: URL, encodeURIComponent: encodeURIComponent }
 );
 const html = '<script>{"vatInvoiceId":"INV99ABC","vatInvoice":{"id":"INV99ABC","url":"https://www.airbnb.com/reservation/vat_invoice/INV99ABC"}}</script>';
@@ -172,6 +172,22 @@ assert.strictEqual(
 );
 assert.strictEqual(helpers.usefulAirbnbInvoiceHits([{ id: 'HMHPBAREC3' }, { id: 'INV99ABC' }], 'HMHPBAREC3').length, 1);
 assert.strictEqual(helpers.vatIdFromAirbnbUrl('https://www.airbnb.com/reservation/vat_invoice/INV99ABC'), 'INV99ABC');
+assert.strictEqual(helpers.vatIdFromAirbnbUrl('https://www.airbnb.com/invoice/23k6jHjbbk9'), '23k6jHjbbk9');
+assert.strictEqual(helpers.vatIdFromAirbnbUrl('/invoice/23a2NdTYpDo'), '23a2NdTYpDo');
+assert(helpers.airbnbBareInvoicePath('https://www.airbnb.com/invoice/23k6jHjbbk9'), 'stay-page /invoice/token 404s');
+assert(!helpers.airbnbBareInvoicePath('https://www.airbnb.com/reservation/vat_invoice/23k6jHjbbk9'));
+const shortHtml = '<a href="/invoice/23k6jHjbbk9">VAT invoice</a>';
+const shortHits = helpers.extractAirbnbVatInvoiceHits(shortHtml, 'https://www.airbnb.com');
+assert(shortHits.some((h) => h.id === '23k6jHjbbk9'), 'extracts stay-page /invoice/token as VAT id');
+const shortUrls = helpers.airbnbInvoiceUrlsForHit(
+  { kind: 'invoice', href: 'https://www.airbnb.com/invoice/23k6jHjbbk9', id: '' },
+  'https://www.airbnb.com',
+  []
+);
+assert(shortUrls.some((u) => u.indexOf('/reservation/vat_invoice/23k6jHjbbk9') >= 0), 'rewrites /invoice/token to vat_invoice HTML');
+assert(!shortUrls.some((u) => /airbnb\.com\/invoice\//.test(u)), 'does not open the stay-page /invoice/ 404 path');
+assert.strictEqual(helpers.usefulAirbnbInvoiceHits([{ href: 'https://www.airbnb.com/invoice/23k6jHjbbk9' }], 'HM9DCDMEXT').length, 1);
+assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/404', "We can't find that page"));
 
 const sortSrc = extractBetween(worker, 'airbnbCreatedMs', 'loadAirbnbReservations');
 const sortH = vm.runInNewContext(sortSrc + '\n({ airbnbCreatedMs, sortAirbnbReservationsLatest })');

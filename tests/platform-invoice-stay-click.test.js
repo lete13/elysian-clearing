@@ -29,11 +29,11 @@ function stayHtml(code) {
 <script>
 document.getElementById('total').addEventListener('click', function () {
   var a = document.createElement('a');
-  a.href = '/reservation/vat_invoice/INV99ABC';
+  a.href = '/invoice/INV99ABC';
   a.textContent = 'VAT invoice';
   document.body.appendChild(a);
   var c = document.createElement('a');
-  c.href = '/reservation/vat_invoice/CN88XYZ';
+  c.href = '/invoice/CN88XYZ';
   c.textContent = 'Credit note';
   document.body.appendChild(c);
 });
@@ -71,7 +71,17 @@ function startServer() {
         res.end(stayHtml(details[1].toUpperCase()));
         return;
       }
-      if (/^\/reservation\/vat_invoice\//i.test(u)) {
+      if (/^\/invoice\//i.test(u)) {
+        res.writeHead(302, { location: '/404' });
+        res.end();
+        return;
+      }
+      if (u === '/404') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end('<!doctype html><html><body><h1>404</h1><p>We can\'t find that page</p></body></html>');
+        return;
+      }
+      if (/^\/reservation\/vat_invoice\//i.test(u) || /^\/reservation\/invoice\//i.test(u)) {
         const id = u.split('/').pop() || '';
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(invoiceHtml(id));
