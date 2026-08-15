@@ -1,0 +1,113 @@
+{
+ "baseSha256": "e292a1892cb3d20a0ef4e4a4a675bd8a06ba4520421072f5c473c0b0a30d07af",
+ "expectedSha256": "d57dccb3a7a11e968654322780525d907b769f65bcf5102185792b0bb443037b",
+ "builtAt": "2026-08-15 Expect vs vault gaps + Pull incomplete",
+ "patches": [
+  {
+   "note": "Collect: Pull incomplete button next to full pull",
+   "find": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })\">Test pull (HM9DCDMEXT · HMWRNAWHBA)</button><!-- Test pull (5 codes) piPull({ limit: 5 }) -->\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n",
+   "replace": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })\">Test pull (HM9DCDMEXT · HMWRNAWHBA)</button><!-- Test pull (5 codes) piPull({ limit: 5 }) -->\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-pull-incomplete-btn\" onclick=\"piPullIncomplete()\">Pull incomplete</button>\n",
+   "count": 1
+  },
+  {
+   "note": "Ignore tiny PDFs; client Expect-vs-vault gaps",
+   "find": "  function piVaultPdfCount(items, code) {\n    var c = String(code || '').toUpperCase();\n    if (!c) return 0;\n    return (items || []).filter(function (f) {\n      if (String(f.channel || '').toLowerCase() !== 'airbnb') return false;\n      return String(f.filename || f.name || '').toUpperCase().indexOf(c) >= 0;\n    }).length;\n  }\n",
+   "replace": "  function piVaultPdfCount(items, code) {\n    var c = String(code || '').toUpperCase();\n    if (!c) return 0;\n    return (items || []).filter(function (f) {\n      if (String(f.channel || '').toLowerCase() !== 'airbnb') return false;\n      if (f.size != null && Number(f.size) < 2048) return false;\n      return String(f.filename || f.name || '').toUpperCase().indexOf(c) >= 0;\n    }).length;\n  }\n  function piClientGaps(stays, items) {\n    var incomplete = [];\n    var missingDocs = 0;\n    var complete = 0;\n    (stays || []).forEach(function (s) {\n      if (!s || !s.code) return;\n      var have = piVaultPdfCount(items, s.code);\n      var need = s.docs || 1;\n      if (have >= need) { complete += 1; return; }\n      var missing = Math.max(0, need - have);\n      missingDocs += missing;\n      incomplete.push({ code: s.code, kind: s.stayKind || 'normal', need: need, have: have, missing: missing, listing: s.aptName || '' });\n    });\n    incomplete.sort(function (a, b) { return b.missing - a.missing || String(a.code).localeCompare(String(b.code)); });\n    return { complete: complete, incomplete: incomplete, missingDocs: missingDocs };\n  }\n",
+   "count": 1
+  },
+  {
+   "note": "Checklist sorts incomplete first and uses all-vault PDF counts",
+   "find": "    function row(x) {\n      var have = piVaultPdfCount(items, x.code);\n      var need = x.docs || 1;\n      var mark = have >= need ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>' : (have ? '<span style=\"color:#d97706\">◐</span>' : '<span style=\"color:var(--tx-err,#b91c1c)\">○</span>');\n      var code = x.code || '<span style=\"color:var(--tx-err,#b91c1c)\">missing code — re-sync Hosthub</span>';\n      var label = (x.aptName || x.aptId || 'Apartment') + (x.guestName ? (' · ' + x.guestName) : '');\n      return '<div>' + mark + ' <code>' + code + '</code> · ' + kindLabel(x) +\n        ' · vault ' + have + '/' + need + ' · ' + label + '</div>';\n    }\n    var est = h.airEstimate || { docs: 0, stays: stays.length };\n    var haveDocs = 0, haveStays = 0;\n    stays.forEach(function (s) {\n      var n = piVaultPdfCount(items, s.code);\n      haveDocs += n;\n      if (n > 0) haveStays += 1;\n    });\n",
+   "replace": "    var countItems = (PI.vaultItems && PI.vaultItems.length) ? PI.vaultItems : (items || []);\n    function row(x) {\n      var have = piVaultPdfCount(countItems, x.code);\n      var need = x.docs || 1;\n      var mark = have >= need ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>' : (have ? '<span style=\"color:#d97706\">◐</span>' : '<span style=\"color:var(--tx-err,#b91c1c)\">○</span>');\n      var code = x.code || '<span style=\"color:var(--tx-err,#b91c1c)\">missing code — re-sync Hosthub</span>';\n      var label = (x.aptName || x.aptId || 'Apartment') + (x.guestName ? (' · ' + x.guestName) : '');\n      return '<div>' + mark + ' <code>' + code + '</code> · ' + kindLabel(x) +\n        ' · vault ' + have + '/' + need + ' · ' + label + '</div>';\n    }\n    var est = h.airEstimate || { docs: 0, stays: stays.length };\n    var gaps = h.airGaps || piClientGaps(stays, countItems);\n    var haveDocs = Math.max(0, (est.docs || 0) - (gaps.missingDocs || 0));\n    var haveStays = gaps.complete != null ? gaps.complete : 0;\n    var missMap = {};\n    (gaps.incomplete || []).forEach(function (g) {\n      if (g && g.code) missMap[String(g.code).toUpperCase()] = g.missing;\n    });\n    var stayRows = (stays || []).slice().sort(function (a, b) {\n      var ca = String(a.code || '').toUpperCase();\n      var cb = String(b.code || '').toUpperCase();\n      var ma = missMap[ca] != null ? missMap[ca] : Math.max(0, (a.docs || 1) - piVaultPdfCount(countItems, a.code));\n      var mb = missMap[cb] != null ? missMap[cb] : Math.max(0, (b.docs || 1) - piVaultPdfCount(countItems, b.code));\n      return mb - ma || ca.localeCompare(cb);\n    });\n",
+   "count": 1
+  },
+  {
+   "note": "Checklist lists incomplete stays first",
+   "find": "      (missing.length ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + missing.length + ' without reservationId</span>') : '') +\n      '</div>' +\n      '<div style=\"display:flex;flex-direction:column;gap:3px;max-height:220px;overflow:auto\">' +\n      (stays.length ? stays.map(row).join('') : (inv.map(function (x) { return row(Object.assign({ stayKind: 'normal', docs: 1 }, x)); }).join('') +\n",
+   "replace": "      (missing.length ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + missing.length + ' without reservationId</span>') : '') +\n      (gaps.incomplete && gaps.incomplete.length ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + gaps.incomplete.length + ' incomplete</span>') : '') +\n      '</div>' +\n      '<div style=\"display:flex;flex-direction:column;gap:3px;max-height:220px;overflow:auto\">' +\n      (stayRows.length ? stayRows.map(row).join('') : (inv.map(function (x) { return row(Object.assign({ stayKind: 'normal', docs: 1 }, x)); }).join('') +\n",
+   "count": 1
+  },
+  {
+   "note": "Expect summary shows vault vs estimated invoices",
+   "find": "  function piEstimateSummaryHtml(est) {\n    est = est || { normal: 0, cancel: 0, extend: 0, docs: 0, stays: 0, extendDocs: 0 };\n    return '<div style=\"margin-top:6px\"><b>Estimated invoices to pull</b>: <b>' + (est.docs || 0) + '</b>' +\n      ' <span style=\"color:var(--tx3)\">(stays to open: ' + (est.stays || 0) + ')</span></div>' +\n      '<div style=\"margin-top:4px\">normal reservation ×1: <b>' + (est.normal || 0) + '</b>' +\n      ' · cancelled ×2: <b>' + (est.cancel || 0) + '</b>' +\n      ' · extended: <b>' + (est.extend || 0) + '</b> stays · <b>' + (est.extendDocs || 0) + '</b> invoices</div>';\n  }\n",
+   "replace": "  function piEstimateSummaryHtml(est, gaps) {\n    est = est || { normal: 0, cancel: 0, extend: 0, docs: 0, stays: 0, extendDocs: 0 };\n    gaps = gaps || {};\n    var html = '<div style=\"margin-top:6px\"><b>Estimated invoices to pull</b>: <b>' + (est.docs || 0) + '</b>' +\n      ' <span style=\"color:var(--tx3)\">(stays to open: ' + (est.stays || 0) + ')</span></div>' +\n      '<div style=\"margin-top:4px\">normal reservation ×1: <b>' + (est.normal || 0) + '</b>' +\n      ' · cancelled ×2: <b>' + (est.cancel || 0) + '</b>' +\n      ' · extended: <b>' + (est.extend || 0) + '</b> stays · <b>' + (est.extendDocs || 0) + '</b> invoices</div>';\n    if (gaps.missingDocs != null) {\n      html += '<div style=\"margin-top:4px\">Vault vs Expect: <b>' + Math.max(0, (est.docs || 0) - (gaps.missingDocs || 0)) + '</b>/' + (est.docs || 0) +\n        ' invoices' + (gaps.missingDocs ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + gaps.missingDocs + ' missing</span>') : ' · complete') +\n        (gaps.complete != null ? (' · complete stays ' + gaps.complete + '/' + (est.stays || 0)) : '') + '</div>';\n    }\n    return html;\n  }\n",
+   "count": 1
+  },
+  {
+   "note": "Expect health stores local gaps before Hosthub backfill",
+   "find": "    PI.health = {\n      airInv: airInv, airCredit: airCredit,\n      airInvList: air.inv, airCreditList: air.credit, airMissing: air.missing,\n      airStays: air.stays || [], airEstimate: air.estimate || null,\n      bdcExpect: bdcExpect, bdcBookings: bdcBookings, bdcBookMonth: bdcBookMonth, bdcApts: bdcApts\n    };\n    box.innerHTML =\n      '<div>Document month <code>' + month + '</code></div>' +\n      piEstimateSummaryHtml(air.estimate) +\n",
+   "replace": "    var countItemsH = (PI.vaultItems && PI.vaultItems.length) ? PI.vaultItems : (PI.items || []);\n    var localGaps = piClientGaps(air.stays || [], countItemsH);\n    PI.health = {\n      airInv: airInv, airCredit: airCredit,\n      airInvList: air.inv, airCreditList: air.credit, airMissing: air.missing,\n      airStays: air.stays || [], airEstimate: air.estimate || null, airGaps: localGaps,\n      bdcExpect: bdcExpect, bdcBookings: bdcBookings, bdcBookMonth: bdcBookMonth, bdcApts: bdcApts\n    };\n    box.innerHTML =\n      '<div>Document month <code>' + month + '</code></div>' +\n      piEstimateSummaryHtml(air.estimate, localGaps) +\n",
+   "count": 1
+  },
+  {
+   "note": "airbnb-codes response stores server gaps on Expect",
+   "find": "        PI.health.airEstimate = cj.estimate || air.estimate || PI.health.airEstimate;\n        PI.health.airStays = (cj.stays && cj.stays.length) ? cj.stays : (air.stays || PI.health.airStays || []);\n        airInv = inv.length; airCredit = credit.length;\n        box.innerHTML =\n          '<div>Document month <code>' + month + '</code></div>' +\n          piEstimateSummaryHtml(PI.health.airEstimate) +\n",
+   "replace": "        PI.health.airEstimate = cj.estimate || air.estimate || PI.health.airEstimate;\n        PI.health.airStays = (cj.stays && cj.stays.length) ? cj.stays : (air.stays || PI.health.airStays || []);\n        PI.health.airGaps = cj.gaps || PI.health.airGaps || null;\n        airInv = inv.length; airCredit = credit.length;\n        box.innerHTML =\n          '<div>Document month <code>' + month + '</code></div>' +\n          piEstimateSummaryHtml(PI.health.airEstimate, PI.health.airGaps) +\n",
+   "count": 1
+  },
+  {
+   "note": "piPull disables Pull incomplete; copy for incomplete queue",
+   "find": "    var btn = document.getElementById('pi-pull-btn');\n    var btnAll = document.getElementById('pi-pull-all-btn');\n    if (btn) btn.disabled = true;\n    if (btnAll) btnAll.disabled = true;\n    msg(testCodes.length\n      ? ('Test pull: ' + testCodes.join(', ') + '…')\n      : (limit > 0\n      ? ('Test pull: latest ' + limit + ' Hosthub code(s)…')\n      : 'Pulling Airbnb VAT docs from Hosthub codes (can take several minutes)…'), true);\n",
+   "replace": "    var btn = document.getElementById('pi-pull-btn');\n    var btnAll = document.getElementById('pi-pull-all-btn');\n    var btnInc = document.getElementById('pi-pull-incomplete-btn');\n    if (btn) btn.disabled = true;\n    if (btnAll) btnAll.disabled = true;\n    if (btnInc) btnInc.disabled = true;\n    msg(testCodes.length\n      ? ((opts.incomplete ? 'Pull incomplete: ' : 'Test pull: ') + testCodes.join(', ') + '…')\n      : (limit > 0\n      ? ('Test pull: latest ' + limit + ' Hosthub code(s)…')\n      : 'Pulling Airbnb VAT docs from Hosthub codes (can take several minutes)…'), true);\n",
+   "count": 1
+  },
+  {
+   "note": "Re-enable Pull incomplete when the job finishes",
+   "find": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; }",
+   "replace": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; if (btnInc) btnInc.disabled = false; }",
+   "count": 1
+  },
+  {
+   "note": "Pull incomplete posts only short Expect codes",
+   "find": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; if (btnInc) btnInc.disabled = false; }\n  };\n  window.piSend = async function (scope) {",
+   "replace": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; if (btnInc) btnInc.disabled = false; }\n  };\n  window.piPullIncomplete = function () {\n    var h = PI.health || {};\n    var items = (PI.vaultItems && PI.vaultItems.length) ? PI.vaultItems : (PI.items || []);\n    var codes = [];\n    if (h.airGaps && h.airGaps.incomplete && h.airGaps.incomplete.length) {\n      codes = h.airGaps.incomplete.map(function (g) { return String(g.code || '').toUpperCase(); }).filter(Boolean);\n    } else {\n      (h.airStays || []).forEach(function (s) {\n        if (s && s.code && piVaultPdfCount(items, s.code) < (s.docs || 1)) codes.push(String(s.code).toUpperCase());\n      });\n    }\n    if (!codes.length) {\n      msg('No incomplete Airbnb stays for this month — vault matches Expect.', false);\n      return;\n    }\n    return piPull({ codes: codes, incomplete: true });\n  };\n  window.piSend = async function (scope) {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piPullIncomplete",
+   "note": "Pull incomplete helper"
+  },
+  {
+   "has": "id=\"pi-pull-incomplete-btn\"",
+   "note": "Pull incomplete button"
+  },
+  {
+   "has": "Vault vs Expect",
+   "note": "Expect shows vault vs estimate"
+  },
+  {
+   "has": "airGaps",
+   "note": "stores Expect gaps"
+  },
+  {
+   "has": "Number(f.size) < 2048",
+   "note": "tiny PDFs ignored in vault count"
+  },
+  {
+   "has": "stayRows.map(row)",
+   "note": "incomplete stays first"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full pull kept"
+  },
+  {
+   "has": "piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })",
+   "note": "test pull kept"
+  },
+  {
+   "has": "kind: 'both'",
+   "note": "pull every VAT doc"
+  },
+  {
+   "has": "id=\"pi-view-vault\"",
+   "note": "vault view kept"
+  },
+  {
+   "has": "Estimated invoices to pull",
+   "note": "Expect estimate kept"
+  }
+ ]
+}

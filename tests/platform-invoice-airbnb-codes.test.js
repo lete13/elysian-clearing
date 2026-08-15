@@ -129,6 +129,21 @@ assert(fe115.patches.some((p) => (p.replace || '').includes('function renderVaul
 assert(fe115.patches.some((p) => (p.replace || '').includes('apartment → platform → year → month')), 'FE folder copy');
 assert(srv77.patches.some((p) => (p.replace || '').includes("month === 'all'")), 'API lists whole vault');
 assert(srv77.patches.some((p) => (p.replace || '').includes('ORDER BY partner, channel, month')), 'API orders apartment then platform then month');
+const fe116 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-116.json'), 'utf8'));
+const srv78 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-78.json'), 'utf8'));
+assert.strictEqual(fe116.baseSha256, fe115.expectedSha256, 'FE 116 continues FE 115');
+assert.strictEqual(srv78.baseSha256, srv77.expectedSha256, 'SRV 78 continues SRV 77');
+assert(fe116.patches.some((p) => (p.replace || '').includes('piPullIncomplete')), 'FE Pull incomplete');
+assert(fe116.patches.some((p) => (p.replace || '').includes('Vault vs Expect')), 'FE vault vs Expect');
+assert(fe116.patches.some((p) => (p.replace || '').includes('Number(f.size) < 2048')), 'FE ignores tiny PDFs');
+assert(srv78.patches.some((p) => (p.replace || '').includes('expectGaps')), 'server Expect gaps');
+assert(srv78.patches.some((p) => (p.replace || '').includes('gaps: gaps')), 'airbnb-codes returns gaps');
+assert(srv78.patches.some((p) => (p.replace || '').includes('/^HM[A-Z0-9]{6,18}$/.test(airCode)')), 'keeps cancelled Airbnb HM codes');
+assert(srv78.patches.some((p) => (p.replace || '').includes('TINY_PDF_BYTES')), 'server tiny PDF skip');
+assert(worker.includes('function isTinyPdf'), 'worker rejects tiny PDFs');
+assert(worker.includes('TINY_PDF_BYTES = 2048'), 'worker tiny threshold is 2KB');
+assert(worker.includes('(Number(b.missing) || 0) - (Number(a.missing) || 0)'), 'worker pulls incomplete stays first');
+assert(srv78.patches.some((p) => (p.replace || '').includes("kind: 'both'")), 'pull kind both kept');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');
@@ -314,7 +329,7 @@ assert(exp.inv.some((x) => x.code === 'HMEXTEND1'), 'Hosthub created in month op
 assert.strictEqual(exp.credit.length, 1);
 assert.strictEqual(exp.credit[0].code, 'HMCANCEL1');
 
-const { estimateAirbnbInvoices } = require(path.join(root, 'scripts', 'platform-invoice-expect'));
+const { estimateAirbnbInvoices, expectGaps, TINY_PDF_BYTES, filenameAirbnbCode } = require(path.join(root, 'scripts', 'platform-invoice-expect'));
 const est = estimateAirbnbInvoices('2024-08', sample);
 assert.strictEqual(est.estimate.normal, 1, 'ordinary stay = 1 invoice');
 assert.strictEqual(est.estimate.cancel, 1, 'cancelled stay listed in cancel month');
@@ -373,6 +388,46 @@ const cancelExt = [
 ];
 assert.strictEqual(estimateAirbnbInvoices('2024-08', cancelExt).stays[0].docs, 1, 'cancel credit this month; debit stays in createdOnChannel month');
 assert.strictEqual(estimateAirbnbInvoices('2024-08', cancelExt).stays[0].stayKind, 'cancel');
+
+assert.strictEqual(TINY_PDF_BYTES, 2048);
+assert.strictEqual(filenameAirbnbCode('Airbnb/2026-07/Le Plaza/invoice-HM2N2TXW4H.pdf'), 'HM2N2TXW4H');
+assert.strictEqual(filenameAirbnbCode('Airbnb/2026-07/X/credit_note-HM3TW2MMBX-CN1.pdf'), 'HM3TW2MMBX');
+
+const gapStays = estimateAirbnbInvoices('2024-08', sample).stays;
+const tinyIgnored = expectGaps(gapStays, [
+  { filename: 'Airbnb/2024-08/X/invoice-HMABCDEF.pdf', size: 9000 },
+  { filename: 'Airbnb/2024-08/X/invoice-HMCANCEL1.pdf', size: 9000 },
+  { filename: 'Airbnb/2024-08/X/invoice-HMEXTEND1.pdf', size: 661 },
+]);
+assert.strictEqual(tinyIgnored.complete, 2, 'tiny extend PDF is not a saved invoice');
+assert.strictEqual(tinyIgnored.incomplete.length, 1);
+assert.strictEqual(tinyIgnored.incomplete[0].code, 'HMEXTEND1');
+assert.strictEqual(tinyIgnored.incomplete[0].need, 2, 'August extend needs the reissue pair');
+assert.strictEqual(tinyIgnored.incomplete[0].have, 0);
+assert.strictEqual(tinyIgnored.missingDocs, 2);
+
+const shortCancel = expectGaps(
+  [{ code: 'HM3TW2MMBX', stayKind: 'cancel', docs: 2, docsStay: 2, aptName: 'Olive' }],
+  [{ filename: 'Airbnb/2026-07/Olive/invoice-HM3TW2MMBX.pdf', size: 12000 }]
+);
+assert.strictEqual(shortCancel.complete, 0);
+assert.strictEqual(shortCancel.incomplete[0].have, 1);
+assert.strictEqual(shortCancel.incomplete[0].missing, 1);
+
+const zeroExtend = expectGaps(
+  [{ code: 'HM4WZ4A8W9', stayKind: 'extend', docs: 2, docsStay: 3, extends: 1, aptName: 'Peaceful' }],
+  []
+);
+assert.strictEqual(zeroExtend.incomplete[0].have, 0);
+assert.strictEqual(zeroExtend.incomplete[0].need, 2);
+assert.strictEqual(zeroExtend.missingDocs, 2);
+
+const emptyPdf = expectGaps(
+  [{ code: 'HM2N2TXW4H', stayKind: 'normal', docs: 1, docsStay: 1 }],
+  [{ filename: 'Airbnb/2026-07/Le Plaza/invoice-HM2N2TXW4H.pdf', size: 661 }]
+);
+assert.strictEqual(emptyPdf.complete, 0, '661-byte blank print does not complete the stay');
+assert.strictEqual(emptyPdf.missingDocs, 1);
 
 const debitHtml = 'Invoice number AIUC-104771625-GR-1552747 issued 4/7/2026 Total €8.00';
 const debit = helpers.parseAirbnbVatFields(debitHtml, 'invoice', '');

@@ -403,6 +403,10 @@ async function saveDownload(download, dir, filename) {
   const dest = path.join(dir, filename);
   await download.saveAs(dest);
   const st = fs.statSync(dest);
+  if (!st.size || st.size < TINY_PDF_BYTES) {
+    try { fs.unlinkSync(dest); } catch (eUn) {}
+    return null;
+  }
   return { path: dest, filename, bytes: st.size };
 }
 
@@ -460,7 +464,13 @@ async function ensureAirbnbLoggedIn(page, context, dir, errors) {
   return true;
 }
 
-async function savePdfBuffer(dir, filename, buf) {
+const TINY_PDF_BYTES = 2048;
+function isTinyPdf(buf) {
+  return !buf || !buf.length || buf.length < TINY_PDF_BYTES;
+}
+
+function savePdfBuffer(dir, filename, buf) {
+  if (isTinyPdf(buf)) return null;
   ensureDir(dir);
   const dest = path.join(dir, filename);
   fs.writeFileSync(dest, buf);
@@ -935,7 +945,7 @@ async function captureAirbnbDocPdf(page, dir, filename) {
     return saveDownload(download, dir, suggested.endsWith('.pdf') ? suggested : filename);
   }
   const pdf = await page.pdf({ format: 'A4', printBackground: true }).catch(() => null);
-  if (!pdf || !pdf.length) return null;
+  if (isTinyPdf(pdf)) return null;
   return savePdfBuffer(dir, filename, pdf);
 }
 
@@ -1394,6 +1404,7 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     if (airbnbDocAlreadyHave(alreadyHave, kind, code, vatId)) return 'have';
     const storeKey = airbnbHaveKey(kind, code, vatId);
     if (savedKeys.has(storeKey)) return 'have';
+    if (isTinyPdf(buf)) return false;
     const archiveMonth = month;
     const rel = piInvoiceStoreRel({
       channel: 'airbnb',
@@ -1406,6 +1417,7 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     const absPath = path.join(storeRoot, rel);
     ensureDir(path.dirname(absPath));
     const saved = savePdfBuffer(path.dirname(absPath), path.basename(rel), buf);
+    if (!saved) return false;
     savedKeys.add(storeKey);
     alreadyHave.add(storeKey);
     savedCount++;
@@ -1750,8 +1762,16 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
     }
 
     const limit = loadAirbnbLimit();
-    let queue = sortAirbnbReservationsLatest([...byCode.values()]);
-    if (limit > 0) queue = queue.slice(0, limit);
+    let queue = [...byCode.values()];
+    if (limit > 0) {
+      queue = sortAirbnbReservationsLatest(queue).slice(0, limit);
+    } else {
+      queue.sort(function (a, b) {
+        const miss = (Number(b.missing) || 0) - (Number(a.missing) || 0);
+        if (miss) return miss;
+        return airbnbCreatedMs(b) - airbnbCreatedMs(a);
+      });
+    }
 
     let pulled = 0;
     let idx = 0;

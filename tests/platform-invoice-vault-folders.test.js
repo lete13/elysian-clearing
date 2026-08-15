@@ -36,6 +36,9 @@ assert(html.includes('PDFs by apartment — click Open to view'), 'collect vault
 assert(html.includes('Guided monthly run'), 'retrieve still has guided run copy');
 assert(html.includes('Pull Airbnb (Hosthub codes)'), 'full pull kept');
 assert(html.includes("piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })"), 'test pull kept');
+assert(html.includes('piPullIncomplete'), 'Pull incomplete helper');
+assert(html.includes('Vault vs Expect'), 'Expect vs vault copy');
+assert(html.includes('id="pi-pull-incomplete-btn"'), 'Pull incomplete button');
 
 const start = html.indexOf('function piStoreApt(it)');
 const end = html.indexOf('window.piGo = function', start);
