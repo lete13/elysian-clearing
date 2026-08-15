@@ -375,6 +375,13 @@ const creditF = helpers.parseAirbnbVatFields(creditHtml, 'credit_note', '');
 assert.strictEqual(creditF.invoiceNumber, 'AIUC-104771625-GR-1552747-CN-1');
 assert.strictEqual(creditF.sign, '-');
 assert.strictEqual(creditF.total, 8);
+const liveInv =
+  'Invoice from: Airbnb Ireland UC Invoice number: AIUC-105901827-GR-1574404 Invoice issue date: 2026-07-13 ' +
+  'VAT Country VAT Rate Base Fee Amount VAT Amount Total Fee Including VAT GR 0.0% Service Fee €19.53 EUR €0.00 EUR €19.53 EUR Subtotal €19.53 EUR Reverse charge applies Invoice';
+const liveParsed = helpers.parseAirbnbVatFields(liveInv, 'invoice', '');
+assert.strictEqual(liveParsed.invoiceNumber, 'AIUC-105901827-GR-1574404');
+assert.strictEqual(liveParsed.issueDate, '13/7/2026');
+assert.strictEqual(liveParsed.total, 19.53, 'does not take VAT rate 0.0% as the invoice total');
 
 const { buildAccountantXls, accountantRow, issueDateToMonth, plannedRefile, rewriteFilenameMonth, archiveMonthOf } = require(path.join(root, 'scripts', 'platform-invoice-accountant-xls'));
 assert.strictEqual(issueDateToMonth('4/7/2026'), '2026-07');

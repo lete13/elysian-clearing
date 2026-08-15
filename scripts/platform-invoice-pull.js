@@ -708,13 +708,19 @@ function parseAirbnbVatFields(bodyText, kind, vatId) {
     if (ymd) issueDate = parseInt(ymd[3], 10) + '/' + parseInt(ymd[2], 10) + '/' + ymd[1];
   }
   let total = null;
-  const totalLine = t.match(
-    /(?:invoice\s*total|grand\s*total|amount\s*due|total\s*amount|σύνολο|total)\D{0,24}(?:€|EUR)?\s*([0-9]+(?:[.,][0-9]{1,2})?)/i
+  const labeled = t.match(
+    /(?:subtotal|invoice\s*total|grand\s*total|amount\s*due|total\s*amount|total fee including vat|σύνολο|(?:^|[\s:])total)\D{0,40}€\s*([0-9]+(?:[.,][0-9]{1,2})?)/i
   );
-  if (totalLine) total = parseAirbnbVatAmount(totalLine[1]);
-  if (total == null) {
-    const euro = t.match(/€\s*([0-9]+(?:[.,][0-9]{1,2})?)/);
-    if (euro) total = parseAirbnbVatAmount(euro[1]);
+  if (labeled) total = parseAirbnbVatAmount(labeled[1]);
+  if (total == null || total === 0) {
+    const euros = [];
+    const euroRe = /€\s*([0-9]+(?:[.,][0-9]{1,2})?)/g;
+    let em;
+    while ((em = euroRe.exec(t))) {
+      const n = parseAirbnbVatAmount(em[1]);
+      if (n != null && n !== 0) euros.push(n);
+    }
+    if (euros.length) total = euros[euros.length - 1];
   }
   const isCredit =
     String(kind || '') === 'credit_note' ||
