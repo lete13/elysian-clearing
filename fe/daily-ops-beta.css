@@ -267,6 +267,10 @@
 }
 
 #tab-opsbeta .ob-card.ob-done { border-left-color: var(--ob-green); background: var(--ob-green-soft); }
+#tab-opsbeta .ob-card.ob-done .ob-card-name strong {
+  color: #9CA3AF;
+  text-decoration: line-through;
+}
 #tab-opsbeta .ob-card.ob-no-clean { border-left-color: #a3aab4; opacity: .82; }
 #tab-opsbeta .ob-card.ob-owner { box-shadow: inset 0 0 0 2px #cf3d3d; }
 

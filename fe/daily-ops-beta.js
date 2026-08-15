@@ -257,8 +257,7 @@
         '<div class="ob-box"><span class="ob-label">Άτομα</span><div class="ob-box-value">' + esc(row.people || '—') + '</div></div>' +
         '<div class="ob-box"><span class="ob-label">Ώρα</span><div class="ob-box-value">—</div></div></div>'
       : '<div class="ob-guest">' +
-        '<div class="ob-box"><span class="ob-label">Checkout</span><div class="ob-box-value">' + (row.isCheckinOnly ? '—' : esc(dateLabel(_opsDate))) + '</div>' +
-          (!row.isCheckinOnly ? '<label style="display:block;margin-top:4px;font-size:9px"><input type="checkbox" data-ob-action="row-check" data-ob-index="' + item.index + '" data-ob-field="checkoutRequested"' + (row.checkoutRequested ? ' checked' : '') + '> ζητήθηκε</label>' : '') + '</div>' +
+        '<div class="ob-box"><span class="ob-label">Checkout</span><div class="ob-box-value">' + (row.isCheckinOnly ? '—' : esc(dateLabel(_opsDate))) + '</div></div>' +
         '<div class="ob-box"><span class="ob-label">Check-in ίδιας</span><div class="ob-box-value">' + checkinHtml(row, item.index) + '</div></div>' +
         '<div class="ob-box"><span class="ob-label">Άτομα</span><input class="ob-input" type="number" min="0" max="20" value="' + esc(row.people || '') + '" data-ob-action="row-field" data-ob-index="' + item.index + '" data-ob-field="people" placeholder="—"></div>' +
         '<div class="ob-box"><span class="ob-label">Άφιξη</span><input class="ob-input" value="' + esc(row.arrivalTime || '') + '" data-ob-action="row-field" data-ob-index="' + item.index + '" data-ob-field="arrivalTime" placeholder="—"></div>' +

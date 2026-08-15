@@ -110,4 +110,23 @@ sandbox.localStorage = {
 vm.runInContext("function _opsTodayStr(){ return '2026-08-14'; }", sandbox);
 assert.strictEqual(sandbox._opsDefaultOpsDate(), '2026-08-15', 'opens on sticky working day after 14 completes');
 
+// Combined board: clean ✓ strikes the name and sinks the row; CO ✓ is gone (Early).
+assert(
+  html.includes("(_kind || _cDone) ? ' ox-off'"),
+  'cleanDone strikes apartment name on combined board'
+);
+assert(html.includes('isDone(a) ? 1 : 0'), 'cleaned rows sort to bottom');
+assert(!html.includes('CO ✓'), 'CO ✓ column removed from Daily Ops board');
+assert(!html.includes('Checkout ζητήθηκε'), 'CO checkbox removed from Daily Ops board');
+
+const betaCss = fs.readFileSync(path.join(root, 'fe/daily-ops-beta.css'), 'utf8');
+const betaJs = fs.readFileSync(path.join(root, 'fe/daily-ops-beta.js'), 'utf8');
+assert(
+  /ob-card\.ob-done \.ob-card-name strong[\s\S]*text-decoration:\s*line-through/.test(betaCss),
+  'Beta strikes cleaned apartment names'
+);
+assert(!/ζητήθηκε/.test(betaJs), 'Beta drops checkout-requested checkbox (Early replaces it)');
+assert(/data-ob-action="clean"/.test(betaJs), 'Beta keeps clean ✓ control');
+assert(/item\.target\.cleanDone\) return 3/.test(betaJs), 'Beta sinks done cards in status sort');
+
 console.log('daily-ops-clean-persist: ok');
