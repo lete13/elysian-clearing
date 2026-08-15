@@ -9,7 +9,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const root = path.join(__dirname, '..');
-const PORT = parseInt(process.env.PI_VAULT_TEST_PORT || '18767', 10);
+const PORT = parseInt(process.env.PI_VAULT_TEST_PORT || '18777', 10);
 const pdf = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
 
 function req(method, urlPath, body, headers) {
@@ -98,6 +98,37 @@ async function waitHealth() {
     (listed.items || []).some((x) => String(x.partner) === 'Birdhouse' && String(x.id) === String(saved.id)),
     'list includes apartment Birdhouse'
   );
+
+  const postAug = await req(
+    'POST',
+    '/api/platform-invoices',
+    JSON.stringify({
+      month: '2026-08',
+      channel: 'booking',
+      scope: 'leased',
+      partner: 'Coloneum',
+      name: 'Booking.com/2026-08/Coloneum/invoice-bdc.pdf',
+      mime: 'application/pdf',
+      size: pdf.length,
+      source: 'portal',
+      dataB64: pdf.toString('base64'),
+    }),
+    { 'Content-Type': 'application/json' }
+  );
+  assert.strictEqual(postAug.status, 200, 'POST August PDF: ' + postAug.body.toString().slice(0, 240));
+  const savedAug = JSON.parse(postAug.body.toString());
+
+  const all = await req('GET', '/api/platform-invoices');
+  assert.strictEqual(all.status, 200, 'GET all vault: ' + all.body.toString().slice(0, 240));
+  const allListed = JSON.parse(all.body.toString());
+  assert.strictEqual(allListed.month, 'all', 'no-month list is the whole vault');
+  assert(
+    (allListed.items || []).some((x) => String(x.id) === String(saved.id)) &&
+      (allListed.items || []).some((x) => String(x.id) === String(savedAug.id)),
+    'all-vault list includes both apartment folders / months'
+  );
+  const bad = await req('GET', '/api/platform-invoices?month=nope');
+  assert.strictEqual(bad.status, 400, 'invalid month still rejected');
 
   const file = await req('GET', '/api/platform-invoices/' + saved.id + '/file');
   assert.strictEqual(file.status, 200, 'GET file: ' + file.body.toString().slice(0, 240));

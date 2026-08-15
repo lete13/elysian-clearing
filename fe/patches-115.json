@@ -1,0 +1,137 @@
+{
+ "baseSha256": "f1ef8544270844b0c9f3b3f2dcd4e0faccedf8b1d42422207dfda3307b287e3d",
+ "expectedSha256": "e292a1892cb3d20a0ef4e4a4a675bd8a06ba4520421072f5c473c0b0a30d07af",
+ "builtAt": "2026-08-15 Platform Invoices vault is apartment/platform/year/month folders",
+ "patches": [
+  {
+   "note": "Widen Platform Invoices tab for the vault folder tree",
+   "find": "max-width:980px;margin:0 auto;padding:8px 4px 48px",
+   "replace": "max-width:1100px;margin:0 auto;padding:8px 4px 48px",
+   "count": 1
+  },
+  {
+   "note": "Vault is the main Platform Invoices view; Retrieve is a submenu",
+   "find": "        <div style=\"font-weight:700;font-size:20px\">Platform invoices</div>\n        <div style=\"font-size:12.5px;color:var(--tx3);margin-top:4px;max-width:620px;line-height:1.45\">\n          Guided monthly run: Hosthub expect → <b>automated portal pull</b> → review → email accountants.\n          <b>Booking.com = one invoice per apartment</b>. Connect portals once; no monthly PDF upload. Do this <b>as soon as possible</b>.\n        </div>\n      </div>\n      <div style=\"display:flex;gap:8px;align-items:center\">\n        <label style=\"font-size:12px;color:var(--tx3)\">Document month\n          <input id=\"pi-month\" type=\"month\" style=\"margin-left:6px\" onchange=\"piOnMonthChange()\"/>\n        </label>\n      </div>\n    </div>\n\n    <div id=\"pi-steps\" style=\"display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px\"></div>\n    <div id=\"pi-status\" style=\"font-size:12px;color:var(--tx3);margin-bottom:10px\"></div>\n    <div id=\"pi-msg\" style=\"font-size:12.5px;margin-bottom:12px;min-height:1.2em\"></div>\n\n    <div id=\"pi-panel-1\" class=\"pi-panel\" style=\"border:1px solid var(--bdr);border-radius:12px;padding:16px 18px;background:var(--bg2)\">",
+   "replace": "        <div style=\"font-weight:700;font-size:20px\">Platform invoices</div>\n        <div style=\"font-size:12.5px;color:var(--tx3);margin-top:4px;max-width:720px;line-height:1.45\">\n          Vault of Airbnb / Booking.com host PDFs, filed as <b>apartment → platform → year → month</b>.\n          Use <b>Retrieve</b> to pull new documents. Ενδοκοινοτικά only (not Oxygen).\n        </div>\n      </div>\n    </div>\n\n    <div id=\"pi-submenu\" style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px\">\n      <button type=\"button\" id=\"pi-menu-vault\" class=\"btn sm gold\" onclick=\"piSetMenu('vault')\">Vault</button>\n      <button type=\"button\" id=\"pi-menu-retrieve\" class=\"btn sm\" onclick=\"piSetMenu('retrieve')\">Retrieve</button>\n    </div>\n    <div id=\"pi-status\" style=\"font-size:12px;color:var(--tx3);margin-bottom:10px\"></div>\n    <div id=\"pi-msg\" style=\"font-size:12.5px;margin-bottom:12px;min-height:1.2em\"></div>\n\n    <div id=\"pi-view-vault\">\n      <style>\n        #pi-vault-tree .pi-fold{margin:2px 0}\n        #pi-vault-tree .pi-sum{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;font-size:13px}\n        #pi-vault-tree .pi-sum::-webkit-details-marker{display:none}\n        #pi-vault-tree .pi-sum::before{content:'▸';color:var(--tx3);width:12px}\n        #pi-vault-tree details[open] > .pi-sum::before{content:'▾'}\n        #pi-vault-tree .pi-sum:hover{background:var(--bg2)}\n        #pi-vault-tree .pi-apt > .pi-sum{font-weight:700;background:var(--bg2)}\n        #pi-vault-tree .pi-n{margin-left:auto;color:var(--tx3);font-weight:600;font-size:11.5px}\n        #pi-vault-tree .pi-fold-body{padding:2px 0 6px 22px}\n        #pi-vault-tree .pi-empty{color:var(--tx3);font-size:12px;padding:4px 8px}\n        #pi-vault-tree .pi-file{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 8px;border-bottom:1px solid var(--bdr);font-size:12.5px}\n        #pi-vault-tree .pi-file-meta{color:var(--tx3);font-size:11.5px;flex:1}\n        #pi-vault-tree .pi-file-actions{display:flex;gap:6px}\n        #pi-vault-tree .pi-credit{color:var(--tx3);font-size:11px}\n      </style>\n      <div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px\">\n        <input id=\"pi-vault-q\" placeholder=\"Search apartment…\" oninput=\"piVaultFilter(this.value)\" style=\"flex:1;min-width:180px;font-size:13px;padding:7px 10px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg)\"/>\n        <label style=\"font-size:12px;color:var(--tx3);display:flex;align-items:center;gap:6px\"><input type=\"checkbox\" id=\"pi-vault-hide-empty\" onchange=\"piVaultHideEmpty(this.checked)\"/> Hide empty</label>\n        <button class=\"btn sm\" onclick=\"piReload()\">Refresh</button>\n        <span id=\"pi-vault-meta\" style=\"font-size:12px;color:var(--tx3)\"></span>\n      </div>\n      <div id=\"pi-vault-tree\" style=\"border:1px solid var(--bdr);border-radius:12px;padding:8px 10px;background:var(--bg);min-height:220px\"></div>\n    </div>\n\n    <div id=\"pi-view-retrieve\" style=\"display:none\">\n      <div style=\"font-size:12.5px;color:var(--tx3);margin-bottom:10px\">Guided monthly run: Hosthub expect → <b>automated portal pull</b> → review → email accountants. <b>Booking.com = one invoice per apartment</b>. Connect portals once. Do this <b>as soon as possible</b>.</div>\n      <div style=\"display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px\">\n        <label style=\"font-size:12px;color:var(--tx3)\">Document month\n          <input id=\"pi-month\" type=\"month\" style=\"margin-left:6px\" onchange=\"piOnMonthChange()\"/>\n        </label>\n      </div>\n      <div id=\"pi-steps\" style=\"display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px\"></div>\n\n    <div id=\"pi-panel-1\" class=\"pi-panel\" style=\"border:1px solid var(--bdr);border-radius:12px;padding:16px 18px;background:var(--bg2)\">",
+   "count": 1
+  },
+  {
+   "note": "Close the Retrieve submenu wrapper after Ship",
+   "find": "onclick=\"piGo(4)\">← Back</button></div>\n    </div>\n  </div>\n</div>\n\n<!-- IMPORTS TAB -->",
+   "replace": "onclick=\"piGo(4)\">← Back</button></div>\n    </div>\n    </div>\n  </div>\n</div>\n\n<!-- IMPORTS TAB -->",
+   "count": 1
+  },
+  {
+   "note": "PI state includes vault menu + all-folder items",
+   "find": "  var PI = { step: 1, health: null, items: [], status: null };",
+   "replace": "  var PI = { step: 1, menu: 'vault', health: null, items: [], vaultItems: [], vaultQ: '', vaultHideEmpty: false, status: null };",
+   "count": 1
+  },
+  {
+   "note": "Apartment folder also reads listing name / store path",
+   "find": "  function piStoreApt(it) {\n    var p = String((it && it.partner) || '').trim();\n    if (!p || /^credit_note\\b/i.test(p)) return 'Untagged';\n    return p;\n  }",
+   "replace": "  function piStoreApt(it) {\n    var p = String((it && it.partner) || '').trim();\n    if (p && !/^credit_note\\b/i.test(p)) return p;\n    var listing = String((it && it.listingName) || '').trim();\n    if (listing) return listing;\n    var parts = String((it && it.filename) || '').replace(/\\\\/g, '/').split('/');\n    if (parts.length >= 3) {\n      var folder = parts[parts.length - 2];\n      if (folder && !/^\\d{4}-\\d{2}$/.test(folder) && !/^Airbnb$|^Booking/i.test(folder)) return folder;\n    }\n    return 'Untagged';\n  }",
+   "count": 1
+  },
+  {
+   "note": "Vault folder tree: apartment → platform → year → month",
+   "find": "  function piStorePlat(it) {\n    return String((it && it.channel) || '').toLowerCase() === 'booking' ? 'Booking.com' : 'Airbnb';\n  }",
+   "replace": "  function piStorePlat(it) {\n    return String((it && it.channel) || '').toLowerCase() === 'booking' ? 'Booking.com' : 'Airbnb';\n  }\n  function piEsc(s) {\n    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n  }\n  function piStoreYm(it) {\n    var m = String((it && it.month) || '');\n    if (/^\\d{4}-\\d{2}$/.test(m)) return m;\n    var fromName = String((it && it.filename) || '').replace(/\\\\/g, '/').match(/\\/(20\\d{2}-\\d{2})\\//);\n    if (fromName) return fromName[1];\n    var issue = String((it && it.issueDate) || '').trim();\n    var dmy = issue.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);\n    if (dmy) return dmy[3] + '-' + String(parseInt(dmy[2], 10)).padStart(2, '0');\n    var iso = issue.match(/^(20\\d{2})-(\\d{2})/);\n    if (iso) return iso[1] + '-' + iso[2];\n    return 'unknown';\n  }\n  function piMonthLabel(ym) {\n    var p = String(ym || '').split('-');\n    var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];\n    var mi = parseInt(p[1], 10);\n    if (!mi || !p[0]) return ym || 'Unknown';\n    return (months[mi - 1] || p[1]) + ' ' + p[0];\n  }\n  function piAllAptNames(items) {\n    var names = {};\n    (items || []).forEach(function (it) { names[piStoreApt(it)] = true; });\n    try {\n      (S.apts || []).forEach(function (a) {\n        var n = String((a && a.name) || '').trim();\n        if (n) names[n] = true;\n      });\n    } catch (eApts) {}\n    return Object.keys(names).sort(function (a, b) { return a.localeCompare(b, 'el', { numeric: true }); });\n  }\n  function piVaultFileRow(it) {\n    var id = String(it.id).replace(/'/g, '');\n    var leaf = String(it.filename || '').split('/').pop();\n    var credit = /credit/i.test(it.filename || it.partner || '') || it.sign === '-';\n    var bits = [];\n    if (it.issueDate) bits.push(it.issueDate);\n    if (it.invoiceNumber) bits.push(it.invoiceNumber);\n    if (it.total != null && it.total !== '') bits.push('€' + it.total);\n    return '<div class=\"pi-file\">' +\n      '<a href=\"/api/platform-invoices/' + id + '/file\" target=\"_blank\" rel=\"noopener\">' +\n      '<i class=\"ti ti-file-type-pdf\"></i> ' + piEsc(leaf || 'invoice.pdf') + '</a>' +\n      (credit ? ' <span class=\"pi-credit\">credit</span>' : '') +\n      '<span class=\"pi-file-meta\">' + piEsc(bits.join(' · ')) + '</span>' +\n      '<span class=\"pi-file-actions\">' +\n      '<a class=\"btn sm\" href=\"/api/platform-invoices/' + id + '/file\" target=\"_blank\" rel=\"noopener\">Open</a>' +\n      '<button class=\"btn sm\" onclick=\"piDelete(\\'' + id + '\\')\">Delete</button></span></div>';\n  }\n  function renderVaultTree() {\n    var el = document.getElementById('pi-vault-tree');\n    if (!el) return;\n    var items = PI.vaultItems || PI.items || [];\n    var q = String(PI.vaultQ || '').trim().toLowerCase();\n    var hideEmpty = !!PI.vaultHideEmpty;\n    var byApt = {};\n    items.forEach(function (it) {\n      var apt = piStoreApt(it);\n      (byApt[apt] = byApt[apt] || []).push(it);\n    });\n    var names = piAllAptNames(items);\n    if (q) names = names.filter(function (n) { return n.toLowerCase().indexOf(q) >= 0; });\n    var shown = names.filter(function (n) { return !hideEmpty || ((byApt[n] || []).length > 0); });\n    var meta = document.getElementById('pi-vault-meta');\n    if (meta) meta.textContent = items.length + ' PDF(s) · ' + shown.length + ' apartment folder(s)';\n    if (!shown.length) {\n      el.innerHTML = '<div style=\"color:var(--tx3);padding:16px\">No invoices in the vault yet. Open <b>Retrieve</b> to pull Airbnb / Booking.com documents.</div>';\n      return;\n    }\n    el.innerHTML = shown.map(function (apt) {\n      var files = byApt[apt] || [];\n      var plats = { 'Airbnb': [], 'Booking.com': [] };\n      files.forEach(function (it) { plats[piStorePlat(it)].push(it); });\n      var platHtml = ['Airbnb', 'Booking.com'].map(function (plat) {\n        var pfiles = plats[plat] || [];\n        var years = {};\n        pfiles.forEach(function (it) {\n          var ym = piStoreYm(it);\n          var y = ym.slice(0, 4) || 'unknown';\n          if (!years[y]) years[y] = {};\n          (years[y][ym] = years[y][ym] || []).push(it);\n        });\n        var yKeys = Object.keys(years).sort().reverse();\n        var yearHtml = yKeys.map(function (y) {\n          var months = years[y];\n          var mKeys = Object.keys(months).sort().reverse();\n          var yCount = 0;\n          var monthHtml = mKeys.map(function (ym) {\n            yCount += months[ym].length;\n            return '<details open class=\"pi-fold\">' +\n              '<summary class=\"pi-sum\"><i class=\"ti ti-folder\"></i> ' + piEsc(piMonthLabel(ym)) +\n              ' <span class=\"pi-n\">' + months[ym].length + '</span></summary>' +\n              '<div class=\"pi-fold-body\">' + months[ym].map(piVaultFileRow).join('') + '</div></details>';\n          }).join('');\n          return '<details open class=\"pi-fold\">' +\n            '<summary class=\"pi-sum\"><i class=\"ti ti-folder\"></i> ' + piEsc(y) +\n            ' <span class=\"pi-n\">' + yCount + '</span></summary>' +\n            '<div class=\"pi-fold-body\">' + monthHtml + '</div></details>';\n        }).join('') || '<div class=\"pi-empty\">No files</div>';\n        return '<details' + (pfiles.length ? ' open' : '') + ' class=\"pi-fold\">' +\n          '<summary class=\"pi-sum\"><i class=\"ti ti-building-store\"></i> ' + piEsc(plat) +\n          ' <span class=\"pi-n\">' + pfiles.length + '</span></summary>' +\n          '<div class=\"pi-fold-body\">' + yearHtml + '</div></details>';\n      }).join('');\n      return '<details' + (files.length ? ' open' : '') + ' class=\"pi-fold pi-apt\">' +\n        '<summary class=\"pi-sum\"><i class=\"ti ti-home\"></i> ' + piEsc(apt) +\n        ' <span class=\"pi-n\">' + files.length + '</span></summary>' +\n        '<div class=\"pi-fold-body\">' + platHtml + '</div></details>';\n    }).join('');\n  }\n  window.renderVaultTree = renderVaultTree;\n  window.piVaultFilter = function (v) { PI.vaultQ = v; renderVaultTree(); };\n  window.piVaultHideEmpty = function (on) { PI.vaultHideEmpty = !!on; renderVaultTree(); };\n  window.piSetMenu = function (which) {\n    PI.menu = which === 'retrieve' ? 'retrieve' : 'vault';\n    try { localStorage.setItem('pi_menu', PI.menu); } catch (eMenu) {}\n    var v = document.getElementById('pi-view-vault');\n    var r = document.getElementById('pi-view-retrieve');\n    if (v) v.style.display = PI.menu === 'vault' ? 'block' : 'none';\n    if (r) r.style.display = PI.menu === 'retrieve' ? 'block' : 'none';\n    var bV = document.getElementById('pi-menu-vault');\n    var bR = document.getElementById('pi-menu-retrieve');\n    if (bV) bV.className = 'btn sm' + (PI.menu === 'vault' ? ' gold' : '');\n    if (bR) bR.className = 'btn sm' + (PI.menu === 'retrieve' ? ' gold' : '');\n    if (PI.menu === 'vault') renderVaultTree();\n    if (PI.menu === 'retrieve') renderSteps();\n  };\n",
+   "count": 1
+  },
+  {
+   "note": "Retrieve steps open the Retrieve submenu",
+   "find": "  window.piGo = function (step) {\n    PI.step = Math.max(1, Math.min(5, step | 0));",
+   "replace": "  window.piGo = function (step) {\n    try { piSetMenu('retrieve'); } catch (eGo) {}\n    PI.step = Math.max(1, Math.min(5, step | 0));",
+   "count": 1
+  },
+  {
+   "note": "Reload fills the all-apartment vault plus the month retrieve lists",
+   "find": "      var j = await fetch('/api/platform-invoices?month=' + encodeURIComponent(month)).then(function (r) { return r.json(); });\n      if (!j || !j.ok) throw new Error((j && j.error) || 'list failed');\n      PI.items = j.items || [];",
+   "replace": "      var allJ = await fetch('/api/platform-invoices').then(function (r) { return r.json(); }).catch(function () { return null; });\n      var j = await fetch('/api/platform-invoices?month=' + encodeURIComponent(month)).then(function (r) { return r.json(); });\n      if (!j || !j.ok) throw new Error((j && j.error) || 'list failed');\n      PI.items = j.items || [];\n      PI.vaultItems = (allJ && allJ.ok && allJ.items) ? allJ.items : PI.items;\n      try { renderVaultTree(); } catch (eTree) {}",
+   "count": 1
+  },
+  {
+   "note": "Boot opens the Vault (or last submenu)",
+   "find": "    renderSteps();\n    piReload();\n  }",
+   "replace": "    renderSteps();\n    try { PI.menu = localStorage.getItem('pi_menu') || 'vault'; } catch (eBoot) { PI.menu = 'vault'; }\n    try { piSetMenu(PI.menu); } catch (eMenuBoot) {}\n    piReload();\n  }",
+   "count": 1
+  },
+  {
+   "note": "Successful pull switches to the Vault folders",
+   "find": "        ' — open them under PDFs by apartment below', true);\n      var vault = document.getElementById('pi-vault-heading') || document.getElementById('pi-leased-list');",
+   "replace": "        ' — open them under PDFs by apartment below', true);\n      try { piSetMenu('vault'); } catch (eMenuPull) {}\n      var vault = document.getElementById('pi-vault-tree') || document.getElementById('pi-vault-heading') || document.getElementById('pi-leased-list');",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "id=\"pi-view-vault\"",
+   "note": "vault is the main view"
+  },
+  {
+   "has": "piSetMenu('retrieve')",
+   "note": "Retrieve submenu"
+  },
+  {
+   "has": "apartment → platform → year → month",
+   "note": "folder copy"
+  },
+  {
+   "has": "function renderVaultTree",
+   "note": "folder tree renderer"
+  },
+  {
+   "has": "function piStoreYm",
+   "note": "year/month from invoice"
+  },
+  {
+   "has": "plats[piStorePlat(it)]",
+   "note": "platform subfolders"
+  },
+  {
+   "has": "ti-folder",
+   "note": "folder icons"
+  },
+  {
+   "has": "id=\"pi-vault-tree\"",
+   "note": "vault tree mount"
+  },
+  {
+   "has": "PDFs by apartment — click Open to view",
+   "note": "collect vault heading kept"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full pull kept"
+  },
+  {
+   "has": "piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })",
+   "note": "test pull kept"
+  },
+  {
+   "has": "channel: 'airbnb'",
+   "note": "Airbnb-only pull"
+  },
+  {
+   "has": "kind: 'both'",
+   "note": "pull every VAT doc"
+  },
+  {
+   "has": "id=\"pi-month\"",
+   "note": "month picker still in Retrieve"
+  },
+  {
+   "has": "as soon as possible",
+   "note": "ASAP copy kept"
+  },
+  {
+   "has": "one invoice per apartment",
+   "note": "BDC copy kept"
+  },
+  {
+   "has": "Guided monthly run",
+   "note": "Retrieve still has guided run"
+  }
+ ]
+}

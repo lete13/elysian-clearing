@@ -119,6 +119,16 @@ assert(srv75.patches.some((p) => (p.replace || '').includes('SELECT id FROM plat
 assert(worker.includes('issueDateToMonth'), 'worker maps VAT issue date to archive month');
 assert(worker.includes('archiveMonth'), 'worker stores PDFs under the invoice issue month');
 assert(worker.includes('invoiceNumber: fields.invoiceNumber'), 'saved event carries invoice number');
+const fe115 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-115.json'), 'utf8'));
+const srv77 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-77.json'), 'utf8'));
+assert.strictEqual(fe115.baseSha256, JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-114.json'), 'utf8')).expectedSha256, 'FE 115 continues FE 114');
+assert.strictEqual(srv77.baseSha256, JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-76.json'), 'utf8')).expectedSha256, 'SRV 77 continues SRV 76');
+assert(fe115.patches.some((p) => (p.replace || '').includes('id="pi-view-vault"')), 'FE vault is the main view');
+assert(fe115.patches.some((p) => (p.replace || '').includes("piSetMenu('retrieve')")), 'FE Retrieve submenu');
+assert(fe115.patches.some((p) => (p.replace || '').includes('function renderVaultTree')), 'FE folder tree');
+assert(fe115.patches.some((p) => (p.replace || '').includes('apartment → platform → year → month')), 'FE folder copy');
+assert(srv77.patches.some((p) => (p.replace || '').includes("month === 'all'")), 'API lists whole vault');
+assert(srv77.patches.some((p) => (p.replace || '').includes('ORDER BY partner, channel, month')), 'API orders apartment then platform then month');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

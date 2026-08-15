@@ -1,0 +1,31 @@
+{
+ "baseSha256": "f897af09b4f9529d5f691ed8239baa71e65675481d6c3c873339a02453b1d4ad",
+ "expectedSha256": "641ad5bf73c52e5a1883095943a846af4152faa7b1092a3e591082a05294a589",
+ "builtAt": "2026-08-15 List every platform-invoice vault file (all apartments / months)",
+ "patches": [
+  {
+   "note": "GET /api/platform-invoices with no month lists the whole vault",
+   "find": "app.get('/api/platform-invoices', async (req, res) => {\n  const month = String(req.query.month || '');\n  if (!/^\\d{4}-\\d{2}$/.test(month)) return res.status(400).json({ error: 'month=YYYY-MM required' });\n  try { await piRefileAirbnbByIssueDate(); } catch (eRefile) {}\n  if (pool) {\n    try {\n      await ensurePlatInvTable();\n      const r = await pool.query(\n        `SELECT id, month, channel, scope, partner, filename, mime, size, source, uploaded_by, created_at, meta\n         FROM platform_invoices WHERE month=$1 ORDER BY channel, partner, filename, id`, [month]);\n      return res.json({ ok: true, month, items: r.rows.map(platInvMeta) });\n    } catch (e) { return res.status(500).json({ error: e.message }); }\n  }\n  const items = [..._memPlatInv.values()].filter(x => x.month === month).map(platInvMeta);\n  res.json({ ok: true, month, items, db: false });\n});",
+   "replace": "app.get('/api/platform-invoices', async (req, res) => {\n  const month = String(req.query.month || '');\n  const all = !month || month === 'all';\n  if (!all && !/^\\d{4}-\\d{2}$/.test(month)) return res.status(400).json({ error: 'month=YYYY-MM required' });\n  try { await piRefileAirbnbByIssueDate(); } catch (eRefile) {}\n  if (pool) {\n    try {\n      await ensurePlatInvTable();\n      const r = all\n        ? await pool.query(\n            `SELECT id, month, channel, scope, partner, filename, mime, size, source, uploaded_by, created_at, meta\n             FROM platform_invoices ORDER BY partner, channel, month, filename, id`)\n        : await pool.query(\n            `SELECT id, month, channel, scope, partner, filename, mime, size, source, uploaded_by, created_at, meta\n             FROM platform_invoices WHERE month=$1 ORDER BY channel, partner, filename, id`, [month]);\n      return res.json({ ok: true, month: all ? 'all' : month, items: r.rows.map(platInvMeta) });\n    } catch (e) { return res.status(500).json({ error: e.message }); }\n  }\n  const items = [..._memPlatInv.values()].filter(x => all || x.month === month).map(platInvMeta);\n  res.json({ ok: true, month: all ? 'all' : month, items, db: false });\n});",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "month === 'all'",
+   "note": "all-vault list"
+  },
+  {
+   "has": "ORDER BY partner, channel, month, filename, id",
+   "note": "folders: apartment then platform then month"
+  },
+  {
+   "has": "month=YYYY-MM required",
+   "note": "invalid month still rejected"
+  },
+  {
+   "has": "app.get('/api/platform-invoices/:id/file'",
+   "note": "Open PDF route kept"
+  }
+ ]
+}
