@@ -12,7 +12,16 @@
     sort: 'status',
     search: '',
     saveTimer: null,
+    searchTimer: null,
+    selected: {},
+    selectionDate: '',
+    focusId: '',
+    page: 1,
+    pageSize: 50,
   };
+  if (!state.selected) state.selected = {};
+  if (!state.pageSize) state.pageSize = 50;
+  if (!state.page) state.page = 1;
 
   function esc(value) {
     return String(value == null ? '' : value)
@@ -172,6 +181,24 @@
     return out;
   }
 
+  function itemId(item) {
+    var row = (item && item.row) || {};
+    var base = item && item.key ? item.key : String(row.aptId || row.aptName || item.index || 'row');
+    return (item && item.extra ? 'extra:' : 'row:') + base;
+  }
+
+  function selectedItems(items) {
+    return items.filter(function (item) { return !!state.selected[itemId(item)]; });
+  }
+
+  function resetSelectionForDate() {
+    if (state.selectionDate === _opsDate) return;
+    state.selectionDate = _opsDate;
+    state.selected = {};
+    state.focusId = '';
+    state.page = 1;
+  }
+
   function checkinHtml(row, index) {
     if (row.isCheckinOnly || row.checkinSameDay === 'checkin_only') {
       return '<span class="ob-chip ob-blue">Άφιξη' + (row.nextNights ? ' · ' + esc(row.nextNights) + ' νύχτες' : '') + '</span>';
@@ -260,6 +287,142 @@
       ((lines.addr || area) ? '<div class="ob-address">' + esc(lines.addr || '') + (area ? ' · ' + esc(area) : '') + '</div>' : '') + '</div>' +
       (target && cleaners(target).length ? '<span class="ob-chip ' + (done ? 'ob-green' : 'ob-amber') + '">' + esc(cleaners(target)[0]) + (cleaners(target).length > 1 ? ' +' + (cleaners(target).length - 1) : '') + '</span>' : '') + '</div>' +
       flags + guest + cleaning + '<label class="ob-card-notes"><span class="ob-label">Σχόλια</span>' + commentControl + '</label>' + kinds + '</article>';
+  }
+
+  function cleanerRoster() {
+    var out = [];
+    (Array.isArray(S.cleaners) ? S.cleaners : []).forEach(function (entry) {
+      var name = typeof entry === 'string' ? entry : (entry && entry.name);
+      if (!name || out.indexOf(name) >= 0) return;
+      if (typeof _opsIsCleanerRole === 'function' && !_opsIsCleanerRole(name)) return;
+      out.push(name);
+    });
+    return out.sort(function (a, b) { return String(a).localeCompare(String(b), 'el', { sensitivity: 'base' }); });
+  }
+
+  function compactFlags(row, index, extra) {
+    if (extra) return '<span class="ob-row-muted">—</span>';
+    var defs = [
+      ['late', 'L', 'Late checkout', row.lateCheckout, 'hot'],
+      ['priority', 'P', 'Priority', row.isPriority, 'hot'],
+      ['park', 'B', 'Baby bed', row.parkBed, 'cool'],
+      ['early', 'E', 'Early check-in', row.earlyCheckin, 'cool'],
+    ];
+    return '<div class="ob-row-flags">' + defs.map(function (f) {
+      return '<button class="ob-mini-flag ' + f[4] + (f[3] ? ' on' : '') + '" data-ob-action="flag" data-ob-index="' + index + '" data-ob-flag="' + f[0] + '" title="' + f[2] + '">' + f[1] + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function dispatchRowHtml(item, displayNumber) {
+    var row = item.row || {};
+    var target = item.target;
+    var id = itemId(item);
+    var selected = !!state.selected[id];
+    var done = !!(target && target.cleanDone);
+    var lines = (typeof _opsAptLines === 'function') ? _opsAptLines(row) : { name: row.aptName || '', addr: '' };
+    var area = (typeof window.aptAreaLabel === 'function' && typeof _opsAptOf === 'function') ? window.aptAreaLabel(_opsAptOf(row)) : '';
+    var type = target ? cleanType(target) : null;
+    var kind = kindOf(row);
+    var names = cleaners(target).join(', ');
+    var note = String(row.comments || row.cleanTaskNote || '');
+    var statusClass = done ? 'done' : (!target ? 'excluded' : (!names ? 'unassigned' : 'open'));
+    var statusText = done ? 'DONE' : (!target ? 'NO CLEAN' : (!names ? 'UNASSIGNED' : 'OPEN'));
+    var checkin = item.extra
+      ? '<span class="ob-row-muted">—</span>'
+      : checkinHtml(row, item.index);
+    var cleanControl = target
+      ? '<input class="ob-clean-check ob-row-clean" type="checkbox" data-ob-action="clean" data-ob-key="' + encoded(item.key) + '"' + (done ? ' checked' : '') + ' title="Καθαρίστηκε">'
+      : '<span class="ob-row-muted">—</span>';
+    var cleanerControl = target
+      ? '<input class="ob-input ob-row-cleaner" list="ops-beta-cleaners" value="' + esc(names) + '" data-ob-action="cleaners" data-ob-key="' + encoded(item.key) + '" placeholder="Unassigned">'
+      : '<span class="ob-row-muted">—</span>';
+    var taskControl = target
+      ? '<select class="ob-select ob-row-task" data-ob-action="clean-field" data-ob-key="' + encoded(item.key) + '" data-ob-field="cleanTask">' + taskOptions(target.cleanTask) + '</select>'
+      : '<span class="ob-row-muted">—</span>';
+    var badges = (type ? '<span class="ob-row-type ' + type.cls + '">' + esc(type.label) + '</span>' : '') +
+      (kind ? '<span class="ob-row-type ob-amber">' + esc(kind.label) + '</span>' : '') +
+      (row.isOwner ? '<span class="ob-row-type ob-red">OWNER</span>' : '');
+    return '<tr class="ob-dispatch-row ' + statusClass + (selected ? ' selected' : '') + '" data-ob-action="inspect" data-ob-id="' + encoded(id) + '">' +
+      '<td class="ob-center"><input type="checkbox" data-ob-action="select" data-ob-id="' + encoded(id) + '"' + (selected ? ' checked' : '') + (target ? '' : ' disabled') + ' aria-label="Select ' + esc(lines.name || row.aptName) + '"></td>' +
+      '<td class="ob-center">' + cleanControl + '</td>' +
+      '<td class="ob-property-cell"><div class="ob-property-line"><b>' + displayNumber + ' · ' + esc(lines.name || row.aptName || 'Apartment') + '</b>' + badges + '</div><small>' + esc([area, lines.addr].filter(Boolean).join(' · ')) + '</small></td>' +
+      '<td><div class="ob-stay-line"><span>' + (row.isCheckinOnly ? 'Arrival only' : 'CO') + '</span>' + checkin + '</div><small>' + esc(row.nextNights ? row.nextNights + ' nights' : '') + '</small></td>' +
+      '<td class="ob-center"><b>' + esc(row.people || '—') + '</b></td>' +
+      '<td class="ob-center"><b>' + esc(row.arrivalTime || '—') + '</b></td>' +
+      '<td>' + compactFlags(row, item.index, item.extra) + '</td>' +
+      '<td>' + cleanerControl + '</td>' +
+      '<td>' + taskControl + '</td>' +
+      '<td><button class="ob-note-preview" data-ob-action="inspect" data-ob-id="' + encoded(id) + '" title="Open reservation details">' + esc(note || 'Add details…') + '</button></td>' +
+      '<td><span class="ob-row-status ' + statusClass + '">' + statusText + '</span></td>' +
+      '<td class="ob-center"><button class="ob-open-detail" data-ob-action="inspect" data-ob-id="' + encoded(id) + '" title="Open details">›</button></td>' +
+      '</tr>';
+  }
+
+  function bulkBarHtml(filtered, allItems) {
+    var selected = selectedItems(allItems);
+    var count = selected.length;
+    var actionable = filtered.filter(function (item) { return !!item.target; });
+    var allFilteredSelected = !!actionable.length && actionable.every(function (item) { return !!state.selected[itemId(item)]; });
+    var roster = cleanerRoster();
+    var options = '<option value="">Assign cleaner…</option>' + roster.map(function (name) {
+      return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
+    }).join('');
+    var taskList = '<option value="">Set task…</option>' + taskOptions('__none__').replace(/ selected/g, '');
+    return '<div class="ob-bulk' + (count ? ' active' : '') + '">' +
+      '<b>' + count + ' selected</b>' +
+      '<button class="ob-btn" data-ob-action="select-all-results"' + (!actionable.length || allFilteredSelected ? ' disabled' : '') + '>Select all ' + actionable.length + ' actionable</button>' +
+      '<select class="ob-select" data-ob-action="bulk-cleaner"' + (count ? '' : ' disabled') + '>' + options + '</select>' +
+      '<select class="ob-select" data-ob-action="bulk-task"' + (count ? '' : ' disabled') + '>' + taskList + '</select>' +
+      '<button class="ob-btn ob-success" data-ob-action="bulk-done"' + (count ? '' : ' disabled') + '>✓ Mark clean</button>' +
+      '<button class="ob-btn" data-ob-action="bulk-open"' + (count ? '' : ' disabled') + '>Reopen</button>' +
+      '<span class="ob-spacer"></span>' +
+      '<button class="ob-btn" data-ob-action="clear-selection"' + (count ? '' : ' disabled') + '>Clear</button>' +
+      '</div>';
+  }
+
+  function crewLoadHtml(items) {
+    var by = {};
+    var unassigned = { total: 0, open: 0, done: 0 };
+    items.forEach(function (item) {
+      if (!item.target) return;
+      var names = cleaners(item.target);
+      var done = !!item.target.cleanDone;
+      if (!names.length) {
+        unassigned.total++; done ? unassigned.done++ : unassigned.open++;
+        return;
+      }
+      names.forEach(function (name) {
+        if (!by[name]) by[name] = { total: 0, open: 0, done: 0 };
+        by[name].total++; done ? by[name].done++ : by[name].open++;
+      });
+    });
+    var selectedCount = selectedItems(items).length;
+    var names = Object.keys(by).sort(function (a, b) {
+      var diff = by[b].open - by[a].open;
+      return diff || a.localeCompare(b, 'el', { sensitivity: 'base' });
+    });
+    var rows = names.map(function (name) {
+      var load = by[name];
+      return '<button class="ob-crew-load" data-ob-action="crew-assign" data-ob-name="' + encoded(name) + '"' + (selectedCount ? '' : ' disabled') + ' title="Assign selected rows to ' + esc(name) + '">' +
+        '<span><b>' + esc(name) + '</b><small>' + load.done + ' done · ' + load.total + ' total</small></span><strong>' + load.open + '</strong></button>';
+    }).join('');
+    return '<aside class="ob-crew-panel"><div class="ob-panel-head"><div><b>Crew workload</b><small>Click a cleaner to assign selected rows</small></div><span class="ob-chip ob-red">' + unassigned.open + ' unassigned</span></div>' +
+      (rows || '<div class="ob-empty-mini">No cleaner assignments yet</div>') + '</aside>';
+  }
+
+  function pagerHtml(page, pageCount, total) {
+    return '<div class="ob-pager"><span>' + total + ' matching rows</span><span class="ob-spacer"></span>' +
+      '<button class="ob-btn ob-square" data-ob-action="page" data-ob-page="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + '>←</button>' +
+      '<b>Page ' + page + ' / ' + pageCount + '</b>' +
+      '<button class="ob-btn ob-square" data-ob-action="page" data-ob-page="' + (page + 1) + '"' + (page >= pageCount ? ' disabled' : '') + '>→</button>' +
+      '<select class="ob-select" data-ob-action="page-size"><option value="25"' + (state.pageSize === 25 ? ' selected' : '') + '>25 rows</option><option value="50"' + (state.pageSize === 50 ? ' selected' : '') + '>50 rows</option><option value="100"' + (state.pageSize === 100 ? ' selected' : '') + '>100 rows</option></select></div>';
+  }
+
+  function inspectorHtml(item, displayNumber) {
+    if (!item) {
+      return '<aside class="ob-inspector"><div class="ob-panel-head"><div><b>Reservation details</b><small>One apartment at a time</small></div></div><div class="ob-inspector-empty"><b>Select a row</b><span>Review or edit arrival details, flags, notes and cleaner information here.</span></div></aside>';
+    }
+    return '<aside class="ob-inspector"><div class="ob-panel-head"><div><b>Reservation details</b><small>Edits use the shared Daily Ops record</small></div><button class="ob-open-detail" data-ob-action="close-inspector">×</button></div>' + cardHtml(item, displayNumber) + '</aside>';
   }
 
   function cleanerDatalist() {
@@ -374,13 +537,13 @@
     }
     _opsEnsure();
     var extra = S.daily.extra[_opsDate] || {};
-    return '<div class="ob-section"><h3>Staff blocks · same saved data as Daily Ops</h3><div class="ob-staff-grid">' +
+    return '<div class="ob-staff-grid">' +
       staffCard('ΕΦΗΜΕΡΙΑ', 'oncall', 1, extra, false) +
       staffCard('ΡΕΠΟ', 'repo', 5, extra, false) +
       staffCard('ΑΔΕΙΕΣ', 'adeies', 5, extra, true) +
       '<div class="ob-staff-card"><h4>ΙΜΑΤΙΣΜΟΣ</h4><div class="ob-label">Χολαργός</div><div class="ob-staff-row">' + personSelect('imatismos_cholargos', 0, String(((extra.imatismos_cholargos || {})[0]) || '')) + '</div>' +
       '<div class="ob-label" style="margin-top:8px">Θεσσαλονίκη</div><div class="ob-staff-row">' + personSelect('imatismos_thess', 0, String(((extra.imatismos_thess || {})[0]) || '')) + '</div></div>' +
-      driversHtml(extra) + '</div></div>' + driverDatalist();
+      driversHtml(extra) + '</div>' + driverDatalist();
   }
 
   function setStaff(block, index, value) {
@@ -476,7 +639,16 @@
     if (typeof _opsApplySameDayPriorityAll === 'function') _opsApplySameDayPriorityAll();
     var cleanDay = (typeof _opsPrepareCleanDay === 'function') ? _opsPrepareCleanDay() : { done: 0, total: 0, extras: [] };
     var allItems = mainAndExtras();
+    resetSelectionForDate();
     var visibleItems = filteredItems(allItems);
+    var pageCount = Math.max(1, Math.ceil(visibleItems.length / state.pageSize));
+    if (state.page > pageCount) state.page = pageCount;
+    if (state.page < 1) state.page = 1;
+    var pageStart = (state.page - 1) * state.pageSize;
+    var pageItems = visibleItems.slice(pageStart, pageStart + state.pageSize);
+    var pageActionable = pageItems.filter(function (item) { return !!item.target; });
+    var pageAllSelected = !!pageActionable.length && pageActionable.every(function (item) { return !!state.selected[itemId(item)]; });
+    var focusItem = allItems.find(function (item) { return itemId(item) === state.focusId; }) || null;
     var summary = statusSummary(allItems);
     var tasks = activeTasks();
     var isToday = _opsDate === today();
@@ -509,19 +681,27 @@
         '<input type="file" id="ops-beta-schedule-file" accept="image/*" data-ob-action="schedule-file" hidden>' +
       '</div>' +
       '<div class="ob-page">' + cleanerDatalist() +
-        '<div class="ob-tasks">' + tasksHtml(tasks) + '</div>' +
+        '<details class="ob-collapsible ob-task-drawer"><summary>Tasks <b>' + tasks.filter(function (t) { return !t.completed; }).length + ' open</b></summary><div class="ob-tasks">' + tasksHtml(tasks) + '</div></details>' +
         '<div class="ob-toolbar">' + filters +
           '<span class="ob-spacer"></span>' +
           '<input class="ob-input ob-search" value="' + esc(state.search) + '" data-ob-action="search" placeholder="Search apartment, cleaner or comment…">' +
           '<select class="ob-select" data-ob-action="sort"><option value="status"' + (state.sort === 'status' ? ' selected' : '') + '>Sort: status</option><option value="cleaner"' + (state.sort === 'cleaner' ? ' selected' : '') + '>Sort: cleaner / route</option><option value="default"' + (state.sort === 'default' ? ' selected' : '') + '>Sort: default</option></select>' +
           '<button class="ob-btn ob-danger" data-ob-action="restart" title="Clears only the cleaning checkmarks for this day">Restart ✓</button>' +
         '</div>' +
+        bulkBarHtml(visibleItems, allItems) +
         '<div id="ops-beta-board-capture">' +
-          '<div class="ob-board-head"><div><h2>ΠΡΟΓΡΑΜΜΑ ΗΜΕΡΑΣ · CHECKOUT &amp; ΚΑΘΑΡΙΣΜΟΙ</h2><small>' + esc(dateLabel(_opsDate)) + ' · operator-friendly apartment cards</small></div><span class="ob-spacer"></span><b>' + cleanDay.done + ' / ' + cleanDay.total + ' clean</b><div class="ob-progress"><span style="width:' + pct + '%"></span></div></div>' +
-          '<div class="ob-grid">' + (visibleItems.length ? visibleItems.map(function (item, index) { return cardHtml(item, index + 1); }).join('') : '<div class="ob-empty">No rows match this view.</div>') + '</div>' +
+          '<div class="ob-board-head"><div><h2>DISPATCH CONSOLE · CHECKOUT &amp; CLEANING</h2><small>' + esc(dateLabel(_opsDate)) + ' · showing ' + pageItems.length + ' of ' + visibleItems.length + ' matching rows</small></div><span class="ob-spacer"></span><b>' + cleanDay.done + ' / ' + cleanDay.total + ' clean</b><div class="ob-progress"><span style="width:' + pct + '%"></span></div></div>' +
+          '<div class="ob-dispatch-layout"><div class="ob-dispatch-main">' +
+            '<div class="ob-table-wrap"><table class="ob-dispatch-table"><thead><tr>' +
+              '<th class="ob-center"><input type="checkbox" data-ob-action="select-page"' + (pageAllSelected ? ' checked' : '') + ' title="Select this page"></th>' +
+              '<th class="ob-center">✓</th><th>Property</th><th>Stay / check-in</th><th class="ob-center">Pax</th><th class="ob-center">ETA</th><th>Flags</th><th>Cleaner</th><th>Task</th><th>Reservation details</th><th>Status</th><th></th>' +
+            '</tr></thead><tbody>' +
+              (pageItems.length ? pageItems.map(function (item, index) { return dispatchRowHtml(item, pageStart + index + 1); }).join('') : '<tr><td colspan="12"><div class="ob-empty">No rows match this view.</div></td></tr>') +
+            '</tbody></table></div>' + pagerHtml(state.page, pageCount, visibleItems.length) +
+          '</div><div class="ob-dispatch-side">' + crewLoadHtml(allItems) + inspectorHtml(focusItem, focusItem ? allItems.indexOf(focusItem) + 1 : 0) + '</div></div>' +
         '</div>' +
-        '<div class="ob-lower">' + staffHtml() +
-          '<div class="ob-section"><h3>Daily notes</h3><textarea class="ob-notes" data-ob-action="notes" placeholder="General notes for the day…">' + esc(_opsNotes) + '</textarea><div class="ob-save-state" id="ops-beta-save-state">Saved fields are shared with Daily Ops</div></div>' +
+        '<div class="ob-aux-grid"><details class="ob-collapsible"><summary>Staff, leave, linen &amp; driver routes</summary><div class="ob-section"><h3>Same saved data as Daily Ops</h3>' + staffHtml() + '</div></details>' +
+          '<details class="ob-collapsible"><summary>Daily notes</summary><div class="ob-section"><textarea class="ob-notes" data-ob-action="notes" placeholder="General notes for the day…">' + esc(_opsNotes) + '</textarea><div class="ob-save-state" id="ops-beta-save-state">Saved fields are shared with Daily Ops</div></div></details>' +
         '</div>' +
       '</div></div>';
     bind(root);
@@ -626,6 +806,53 @@
     row.cleanerNames = list;
     row.cleanerName = list[0] || '';
     queueSave();
+  }
+
+  function selectItems(items, checked) {
+    items.forEach(function (item) {
+      var id = itemId(item);
+      if (checked && item.target) state.selected[id] = true;
+      else delete state.selected[id];
+    });
+  }
+
+  function currentFilteredItems() {
+    return filteredItems(mainAndExtras());
+  }
+
+  function currentPageItems() {
+    var filtered = currentFilteredItems();
+    var start = (state.page - 1) * state.pageSize;
+    return filtered.slice(start, start + state.pageSize);
+  }
+
+  function applySelected(callback, after) {
+    var items = selectedItems(mainAndExtras());
+    if (!items.length) return false;
+    items.forEach(function (item) { if (item.target) callback(item.target, item); });
+    persist(true);
+    if (typeof after === 'function') after();
+    rerender();
+    return true;
+  }
+
+  function bulkCleaner(name) {
+    if (!name) return;
+    applySelected(function (target) {
+      target.cleanerNames = [name];
+      target.cleanerName = name;
+    });
+  }
+
+  function bulkTask(task) {
+    if (!task) return;
+    applySelected(function (target) { target.cleanTask = task; });
+  }
+
+  function bulkDone(done) {
+    applySelected(function (target) { target.cleanDone = !!done; }, function () {
+      if (done && typeof _opsMaybeAdvanceAfterCleans === 'function') _opsMaybeAdvanceAfterCleans();
+    });
   }
 
   function removeRow(index) {
@@ -739,7 +966,23 @@
       } else if (action === 'today') {
         persist(false); _opsDate = today(); rerender();
       } else if (action === 'filter') {
-        state.filter = button.dataset.obFilter || 'all'; rerender();
+        state.filter = button.dataset.obFilter || 'all'; state.page = 1; rerender();
+      } else if (action === 'inspect') {
+        state.focusId = decoded(button.dataset.obId); rerender();
+      } else if (action === 'close-inspector') {
+        state.focusId = ''; rerender();
+      } else if (action === 'page') {
+        state.page = Math.max(1, Number(button.dataset.obPage || 1)); rerender();
+      } else if (action === 'select-all-results') {
+        selectItems(currentFilteredItems(), true); rerender();
+      } else if (action === 'clear-selection') {
+        state.selected = {}; rerender();
+      } else if (action === 'bulk-done') {
+        bulkDone(true);
+      } else if (action === 'bulk-open') {
+        bulkDone(false);
+      } else if (action === 'crew-assign') {
+        bulkCleaner(decoded(button.dataset.obName));
       } else if (action === 'flag') {
         toggleFlag(Number(button.dataset.obIndex), button.dataset.obFlag);
       } else if (action === 'checkin') {
@@ -774,7 +1017,20 @@
       if (action === 'date') {
         persist(false); _opsDate = input.value || today(); rerender();
       } else if (action === 'sort') {
-        state.sort = input.value || 'status'; rerender();
+        state.sort = input.value || 'status'; state.page = 1; rerender();
+      } else if (action === 'page-size') {
+        state.pageSize = Number(input.value || 50); state.page = 1; rerender();
+      } else if (action === 'select') {
+        var selectId = decoded(input.dataset.obId);
+        if (input.checked) { state.selected[selectId] = true; state.focusId = selectId; }
+        else delete state.selected[selectId];
+        rerender();
+      } else if (action === 'select-page') {
+        selectItems(currentPageItems(), !!input.checked); rerender();
+      } else if (action === 'bulk-cleaner') {
+        bulkCleaner(input.value);
+      } else if (action === 'bulk-task') {
+        bulkTask(input.value);
       } else if (action === 'clean') {
         var clean = findClean(decoded(input.dataset.obKey));
         if (clean) {
@@ -792,6 +1048,7 @@
         updateComment(Number(input.dataset.obIndex), decoded(input.dataset.obKey), input.value);
       } else if (action === 'clean-field') {
         updateCleanField(decoded(input.dataset.obKey), input.dataset.obField, input.value);
+        if (input.tagName === 'SELECT') rerender();
       } else if (action === 'cleaners') {
         updateCleaners(decoded(input.dataset.obKey), input.value); rerender();
       } else if (action === 'task-toggle') {
@@ -814,10 +1071,13 @@
       var action = input.dataset.obAction;
       if (action === 'search') {
         state.search = input.value || '';
-        var q = state.search.toLowerCase().trim();
-        root.querySelectorAll('.ob-card[data-ob-search]').forEach(function (card) {
-          card.style.display = !q || String(card.dataset.obSearch || '').indexOf(q) >= 0 ? '' : 'none';
-        });
+        state.page = 1;
+        clearTimeout(state.searchTimer);
+        state.searchTimer = setTimeout(function () {
+          render();
+          var search = root.querySelector('[data-ob-action="search"]');
+          if (search) { search.focus(); search.setSelectionRange(search.value.length, search.value.length); }
+        }, 140);
       } else if (action === 'row-field') {
         updateRowField(Number(input.dataset.obIndex), input.dataset.obField, input.value);
       } else if (action === 'comment') {
