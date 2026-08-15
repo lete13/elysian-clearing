@@ -74,6 +74,57 @@ function loadAirbnbLimit() {
 
 const pullStop = { requested: false, why: '', dumped: false };
 const pullLive = { files: null, errors: null };
+function emitJson(obj) {
+  try {
+    fs.writeSync(1, JSON.stringify(obj) + '\n');
+  } catch (e) {
+    try {
+      console.log(JSON.stringify(obj));
+    } catch (e2) {}
+  }
+}
+function airbnbHaveKey(kind, code) {
+  const k = String(kind || 'invoice').toLowerCase() === 'credit_note' ? 'credit_note' : 'invoice';
+  return k + ':' + String(code || '').toUpperCase();
+}
+function loadAirbnbHaveSet() {
+  let arr = [];
+  try {
+    arr = JSON.parse(process.env.PI_AIRBNB_HAVE_JSON || '[]');
+  } catch (e) {
+    arr = [];
+  }
+  const set = new Set();
+  (arr || []).forEach(function (x) {
+    if (x && typeof x === 'object' && x.code) {
+      set.add(airbnbHaveKey(x.kind, x.code));
+      return;
+    }
+    const s = String(x || '');
+    const m = s.toUpperCase().match(/(INVOICE|CREDIT_NOTE)-([A-Z0-9]{6,20})/);
+    if (m) {
+      set.add(airbnbHaveKey(m[1] === 'CREDIT_NOTE' ? 'credit_note' : 'invoice', m[2]));
+      return;
+    }
+    const code = s.trim().toUpperCase();
+    if (/^[A-Z0-9]{6,20}$/.test(code)) {
+      set.add(airbnbHaveKey('invoice', code));
+      set.add(airbnbHaveKey('credit_note', code));
+    }
+  });
+  return set;
+}
+function airbnbResvAlreadyHave(resv, have) {
+  if (!have || !have.size) return false;
+  const code = String((resv && resv.code) || '').toUpperCase();
+  if (!code) return false;
+  const kind = String((resv && resv.kind) || 'invoice').toLowerCase();
+  if (kind === 'both') {
+    return have.has(airbnbHaveKey('invoice', code)) && have.has(airbnbHaveKey('credit_note', code));
+  }
+  if (kind === 'credit_note') return have.has(airbnbHaveKey('credit_note', code));
+  return have.has(airbnbHaveKey('invoice', code));
+}
 function requestPullStop(why) {
   if (pullStop.requested) return;
   pullStop.requested = true;
@@ -87,17 +138,18 @@ function emitStoppedResult() {
   pullStop.dumped = true;
   const files = pullLive.files || [];
   const errors = (pullLive.errors || []).slice();
-  if (!errors.some((e) => e && e.error === 'Pull stopped')) {
-    errors.push({ channel: 'airbnb', error: 'Pull stopped' });
+  if (!errors.some((e) => e && (e.error === 'Pull stopped' || String(e.error || '').indexOf('interrupted') >= 0))) {
+    errors.push({ channel: 'airbnb', error: pullStop.why ? ('Pull interrupted (' + pullStop.why + ')') : 'Pull stopped' });
   }
-  console.log(JSON.stringify({
+  emitJson({
     ok: files.length > 0,
     stopped: true,
+    incomplete: true,
     month: MONTH,
     files,
     errors,
     airbnbCodes: loadAirbnbReservations().length,
-  }));
+  });
 }
 process.on('SIGTERM', function () {
   requestPullStop('SIGTERM');
@@ -112,6 +164,22 @@ process.on('SIGINT', function () {
     emitStoppedResult();
     process.exit(0);
   }, 1200);
+});
+process.on('uncaughtException', function (e) {
+  requestPullStop((e && e.message) || 'uncaughtException');
+  try {
+    (pullLive.errors || []).push({ channel: 'airbnb', error: (e && e.message) || String(e) });
+  } catch (e2) {}
+  emitStoppedResult();
+  process.exit(1);
+});
+process.on('unhandledRejection', function (e) {
+  requestPullStop((e && e.message) || 'unhandledRejection');
+  try {
+    (pullLive.errors || []).push({ channel: 'airbnb', error: (e && e.message) || String(e) });
+  } catch (e2) {}
+  emitStoppedResult();
+  process.exit(1);
 });
 
 function platformStoreLabel(channel) {
@@ -915,6 +983,17 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       source: 'portal',
       how,
     });
+    emitJson({
+      event: 'saved',
+      channel: 'airbnb',
+      kind,
+      partner: aptName || aptId || code,
+      aptName: aptName,
+      filename: rel.replace(/\\/g, '/'),
+      path: cap.saved.path,
+      bytes: cap.saved.bytes,
+      code,
+    });
     return true;
   }
 
@@ -1082,10 +1161,22 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
     let pulled = 0;
     let idx = 0;
     const total = queue.length;
+    const alreadyHave = loadAirbnbHaveSet();
     for (const resv of queue) {
       if (pullStopRequested()) break;
       idx += 1;
-      console.log(JSON.stringify({ event: 'progress', done: idx, total: total, saved: files.length, code: resv.code }));
+      if (airbnbResvAlreadyHave(resv, alreadyHave)) {
+        emitJson({
+          event: 'progress',
+          done: idx,
+          total: total,
+          saved: files.length,
+          code: resv.code,
+          skipped: true,
+        });
+        continue;
+      }
+      emitJson({ event: 'progress', done: idx, total: total, saved: files.length, code: resv.code });
       pulled += await pullAirbnbDocsForCode(page, context, month, dir, files, errors, resv, apts);
     }
     if (pullStopRequested()) {
@@ -1303,6 +1394,16 @@ async function downloadBookingInvoicesForProperty(page, month, dir, files, error
       bytes: saved.bytes,
       source: 'portal',
     });
+    emitJson({
+      event: 'saved',
+      channel: 'booking',
+      kind: 'invoice',
+      partner: aptName,
+      aptName,
+      filename: rel.replace(/\\/g, '/'),
+      path: saved.path,
+      bytes: saved.bytes,
+    });
     got++;
     // Booking = one invoice per apartment — stop after first PDF for this property
     break;
@@ -1496,11 +1597,11 @@ async function main() {
 
   if ((wantAirbnb && air && air.error && !wantBooking) || (wantBooking && book && book.error && !wantAirbnb)) {
     const fail = air && air.error ? air : book;
-    console.log(JSON.stringify(fail));
+    emitJson(fail);
     process.exit(1);
   }
   if (wantAirbnb && wantBooking && air && air.error && book && book.error && !files.length) {
-    console.log(JSON.stringify({ ok: false, error: air.error || book.error, hint: air.hint || book.hint, errors }));
+    emitJson({ ok: false, error: air.error || book.error, hint: air.hint || book.hint, errors });
     process.exit(1);
   }
 
@@ -1516,6 +1617,7 @@ async function main() {
   const result = {
     ok: files.length > 0,
     stopped: pullStopRequested() || undefined,
+    incomplete: pullStopRequested() || undefined,
     month: MONTH,
     out: OUT,
     files,
@@ -1524,11 +1626,15 @@ async function main() {
     airbnbCodes: loadAirbnbReservations().length,
   };
   pullStop.dumped = true;
-  console.log(JSON.stringify(result, null, 0));
+  emitJson(result);
   process.exit(files.length ? 0 : 1);
 }
 
 main().catch((e) => {
-  console.log(JSON.stringify({ ok: false, error: e.message }));
+  try {
+    (pullLive.errors || []).push({ channel: 'airbnb', error: (e && e.message) || String(e) });
+  } catch (e2) {}
+  requestPullStop((e && e.message) || 'main');
+  emitStoppedResult();
   process.exit(1);
 });

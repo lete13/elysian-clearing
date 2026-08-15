@@ -1,0 +1,79 @@
+{
+ "baseSha256": "ae53cc43c3e096933679c58799c7a0070d116a7f37531ac8d89408c262b6785d",
+ "expectedSha256": "3f5559b39b3fcae5cb6576e73733c38f76f26271da77f76dc937f54393391b64",
+ "builtAt": "2026-08-15 Keep Airbnb PDFs if pull dies mid-queue",
+ "patches": [
+  {
+   "note": "Parse skips progress/saved; ingest each PDF as captured; walk outDir",
+   "find": "function piPullParseWorkerStdout(stdout) {\n  const lines = String(stdout || '').trim().split('\\n').filter(Boolean);\n  for (let i = lines.length - 1; i >= 0; i--) {\n    try {\n      const j = JSON.parse(lines[i]);\n      if (!j || j.event === 'progress') continue;\n      return j;\n    } catch (e) {}\n  }\n  return null;\n}\nfunction piPullConsumeStdoutLine(job, line) {\n  try {\n    const j = JSON.parse(line);\n    if (j && j.event === 'progress') {\n      job.progress = { done: j.done || 0, total: j.total || 0, saved: j.saved || 0, code: j.code || '' };\n      job.hint = 'Pulling Airbnb ' + (j.done || 0) + '/' + (j.total || 0) +\n        (j.code ? (' · ' + j.code) : '') +\n        (j.saved ? (' · ' + j.saved + ' PDF(s) so far') : '') + '…';\n      job.updatedAt = Date.now();\n    }\n  } catch (e) {}\n}\n",
+   "replace": "function piPullParseWorkerStdout(stdout) {\n  const lines = String(stdout || '').trim().split('\\n').filter(Boolean);\n  for (let i = lines.length - 1; i >= 0; i--) {\n    try {\n      const j = JSON.parse(lines[i]);\n      if (!j || j.event === 'progress' || j.event === 'saved') continue;\n      return j;\n    } catch (e) {}\n  }\n  return null;\n}\nfunction piPullWalkPdfs(outDir) {\n  const fsW = require('fs');\n  const pathW = require('path');\n  const out = [];\n  function walk(dir, rel) {\n    let ents;\n    try { ents = fsW.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }\n    ents.forEach(function (ent) {\n      const name = ent.name;\n      if (!name || name === '.' || name === '..') return;\n      const nextRel = rel ? rel + '/' + name : name;\n      const abs = pathW.join(dir, name);\n      if (ent.isDirectory()) return walk(abs, nextRel);\n      if (!/\\.pdf$/i.test(name) || name.charAt(0) === '_') return;\n      let st;\n      try { st = fsW.statSync(abs); } catch (e2) { return; }\n      if (!st.size) return;\n      const parts = nextRel.replace(/\\\\/g, '/').split('/');\n      const channel = /^booking/i.test(parts[0] || '') ? 'booking' : 'airbnb';\n      const aptName = parts.length >= 4 ? parts[2] : '';\n      const leaf = parts[parts.length - 1] || name;\n      out.push({\n        path: abs, filename: nextRel.replace(/\\\\/g, '/'), channel: channel,\n        kind: /credit/i.test(leaf) ? 'credit_note' : 'invoice', scope: 'leased',\n        partner: aptName, aptName: aptName, bytes: st.size\n      });\n    });\n  }\n  if (outDir) walk(outDir, '');\n  return out;\n}\nasync function piPullIngestFile(job, f) {\n  if (!job || !f || !f.path) return null;\n  const fsI = require('fs');\n  if (!fsI.existsSync(f.path)) return null;\n  const buf = fsI.readFileSync(f.path);\n  if (!buf.length) return null;\n  const month = job.month;\n  const by = job.by || 'portal-pull';\n  let partner = String((f.aptName || f.partner || '')).slice(0, 120);\n  if (/^credit_note\\b/i.test(partner)) partner = String(f.aptName || '').slice(0, 120);\n  job.saved = job.saved || [];\n  if (job.saved.some(function (s) { return s && s.filename === f.filename; })) {\n    return job.saved.find(function (s) { return s && s.filename === f.filename; });\n  }\n  if (pool) {\n    await ensurePlatInvTable();\n    const dup = await pool.query(\n      `SELECT id FROM platform_invoices WHERE month=$1 AND channel=$2 AND filename=$3 AND size=$4 LIMIT 1`,\n      [month, f.channel, f.filename, buf.length]\n    );\n    if (dup.rows.length) {\n      const row = { id: dup.rows[0].id, filename: f.filename, channel: f.channel, kind: f.kind, partner, deduped: true };\n      job.saved.push(row);\n      return row;\n    }\n  } else {\n    for (const v of _memPlatInv.values()) {\n      if (v.month === month && v.channel === f.channel && v.filename === f.filename && v.size === buf.length) {\n        const row = { id: v.id, filename: f.filename, channel: f.channel, kind: f.kind, partner, deduped: true };\n        job.saved.push(row);\n        return row;\n      }\n    }\n  }\n  const dataB64 = buf.toString('base64');\n  const row = {\n    month, channel: f.channel, scope: f.scope || 'leased', partner,\n    filename: f.filename, mime: 'application/pdf', size: buf.length, source: 'portal',\n    uploaded_by: by, data: dataB64\n  };\n  if (pool) {\n    const r = await pool.query(\n      `INSERT INTO platform_invoices (month, channel, scope, partner, filename, mime, size, source, uploaded_by, data)\n       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,\n      [row.month, row.channel, row.scope, row.partner, row.filename, row.mime, row.size, row.source, row.uploaded_by, row.data]);\n    const saved = { id: r.rows[0].id, filename: row.filename, channel: row.channel, kind: f.kind, partner };\n    job.saved.push(saved);\n    return saved;\n  }\n  const id = 'p' + (_memPlatInvSeq++);\n  _memPlatInv.set(id, Object.assign({}, row, { id: id, created_at: new Date().toISOString() }));\n  const saved = { id: id, filename: row.filename, channel: row.channel, kind: f.kind, partner, db: false };\n  job.saved.push(saved);\n  return saved;\n}\nfunction piPullQueueFile(job, f) {\n  job._ingestChain = (job._ingestChain || Promise.resolve()).then(function () {\n    return piPullIngestFile(job, f);\n  }).catch(function (e) { console.error('[platform-invoices] ingest', e && e.message); });\n}\nfunction piPullConsumeStdoutLine(job, line) {\n  try {\n    const j = JSON.parse(line);\n    if (j && j.event === 'progress') {\n      job.progress = { done: j.done || 0, total: j.total || 0, saved: j.saved || 0, code: j.code || '', skipped: !!j.skipped };\n      job.hint = 'Pulling Airbnb ' + (j.done || 0) + '/' + (j.total || 0) +\n        (j.code ? (' · ' + j.code) : '') +\n        (j.skipped ? ' · already in vault' : '') +\n        (j.saved ? (' · ' + j.saved + ' PDF(s) so far') : '') + '…';\n      job.updatedAt = Date.now();\n    } else if (j && j.event === 'saved' && j.path) {\n      job.updatedAt = Date.now();\n      piPullQueueFile(job, j);\n    }\n  } catch (e) {}\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Remember pull outDir so a killed worker can still salvage PDFs",
+   "find": "  fsMod.mkdirSync(outDir, { recursive: true });\n  fsMod.mkdirSync(sessionDir, { recursive: true });",
+   "replace": "  job.outDir = outDir;\n  fsMod.mkdirSync(outDir, { recursive: true });\n  fsMod.mkdirSync(sessionDir, { recursive: true });",
+   "count": 1
+  },
+  {
+   "note": "Pass already-vaulted filenames so a retry skips captured codes",
+   "find": "  if (airbnbReservations.length) {\n    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));\n    if (limitN > 0) env.PI_AIRBNB_LIMIT = String(limitN);\n  }",
+   "replace": "  if (airbnbReservations.length) {\n    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));\n    if (limitN > 0) env.PI_AIRBNB_LIMIT = String(limitN);\n  }\n  try {\n    let haveNames = [];\n    if (pool) {\n      await ensurePlatInvTable();\n      const haveRows = await pool.query('SELECT filename FROM platform_invoices WHERE month=$1 AND (channel=$2 OR channel=$3)', [month, 'airbnb', channel]);\n      haveNames = (haveRows.rows || []).map(function (r) { return r.filename; });\n    } else {\n      haveNames = [..._memPlatInv.values()].filter(function (x) { return x.month === month; }).map(function (x) { return x.filename; });\n    }\n    if (haveNames.length) env.PI_AIRBNB_HAVE_JSON = JSON.stringify(haveNames.slice(0, 2000));\n  } catch (eHave) { console.error('[platform-invoices] have-codes', eHave.message); }",
+   "count": 1
+  },
+  {
+   "note": "4h pull budget: SIGTERM dump then SIGKILL, not a 90-minute hard kill",
+   "find": "  const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) {} }, 90 * 60 * 1000);",
+    "replace": "  const timer = setTimeout(function () {\n    try { child.kill('SIGTERM'); } catch (e) {}\n    setTimeout(function () { try { child.kill('SIGKILL'); } catch (e2) {} }, 20000);\n  }, 4 * 60 * 60 * 1000); /* was 90 * 60 * 1000 — too short for a full Hosthub month */",
+   "count": 1
+  },
+  {
+   "note": "Do not treat progress JSON as Pull failed; salvage PDFs from outDir",
+   "find": "      let result = piPullParseWorkerStdout(stdout);\n      if (!result) {\n        try { result = JSON.parse(stdout.trim().split('\\n').filter(Boolean).pop() || '{}'); }\n        catch (e) { result = null; }\n      }\n      if (!result) {\n        if (job.cancelled) {\n          job.status = 'cancelled';\n          job.error = null;\n          job.hint = 'Pull stopped';\n          job.updatedAt = Date.now();\n          return;\n        }\n        job.status = 'error';\n        job.error = 'Worker returned non-JSON';\n        job.hint = (stderr || stdout).slice(0, 240);\n        job.updatedAt = Date.now();\n        return;\n      }",
+   "replace": "      if (job._ingestChain) await job._ingestChain.catch(function () {});\n      let result = piPullParseWorkerStdout(stdout);\n      if (result && (result.event === 'progress' || result.event === 'saved')) result = null;\n      const diskFiles = piPullWalkPdfs(job.outDir || outDir);\n      if (!result || !Array.isArray(result.files)) {\n        if (job.cancelled && !diskFiles.length && !(job.saved && job.saved.length)) {\n          job.status = 'cancelled';\n          job.error = null;\n          job.hint = 'Pull stopped';\n          job.updatedAt = Date.now();\n          return;\n        }\n        result = {\n          ok: diskFiles.length > 0 || !!(job.saved && job.saved.length),\n          files: diskFiles,\n          errors: (result && result.errors) || [{ channel: 'airbnb', error: 'Pull worker stopped before the final file list' }],\n          airbnbCodes: airbnbReservations.length,\n          incomplete: true\n        };\n      }\n",
+   "count": 1
+  },
+  {
+   "note": "Merge salvaged PDFs with already-ingested saved events",
+   "find": "      const saved = [];\n      if (pool) await ensurePlatInvTable();\n      for (const f of result.files) {",
+   "replace": "      const saved = Array.isArray(job.saved) ? job.saved.slice() : [];\n      const haveFn = {};\n      saved.forEach(function (s) { if (s && s.filename) haveFn[s.filename] = true; });\n      if (pool) await ensurePlatInvTable();\n      for (const f of result.files) {\n        if (haveFn[f.filename]) continue;",
+   "count": 1
+  },
+  {
+   "note": "Interrupted pull keeps saved PDFs and tells Collect to retry the rest",
+   "find": "      job.status = job.cancelled ? 'cancelled' : 'done';\n      job.error = null;\n      job.hint = job.cancelled\n        ? ('Pull stopped' + (saved.length ? (' · kept ' + saved.length + ' PDF(s)') : ''))\n        : (saved.length\n        ? ('Pulled ' + saved.length + ' Airbnb PDF(s) from ' + job.airbnbCodes + ' Hosthub code(s).')\n        : ('Airbnb pull saved 0 PDFs from ' + job.airbnbCodes + ' Hosthub code(s).'));",
+   "replace": "      const prog = job.progress || {};\n      const mid = !!(prog.total && prog.done < prog.total);\n      const died = (code == null || (code !== 0 && !job.cancelled));\n      job.saved = saved;\n      // job.status = job.cancelled ? 'cancelled' : 'done'\n      if (job.cancelled) {\n        job.status = 'cancelled';\n        job.error = null;\n        job.hint = 'Pull stopped' + (saved.length ? (' · kept ' + saved.length + ' PDF(s)') : '');\n      } else if (result.incomplete || ((died || mid) && (saved.length || mid))) {\n        job.status = 'error';\n        job.error = 'Pull interrupted';\n        job.hint = 'Stopped at ' + (prog.done || '?') + '/' + (prog.total || job.airbnbCodes) +\n          (prog.code ? (' · ' + prog.code) : '') +\n          ' — kept ' + saved.length + ' PDF(s) under PDFs by apartment. Pull again to continue; already saved codes are skipped.';\n      } else {\n        job.status = 'done';\n        job.error = null;\n        job.hint = saved.length\n          ? ('Pulled ' + saved.length + ' Airbnb PDF(s) from ' + job.airbnbCodes + ' Hosthub code(s).')\n          : ('Airbnb pull saved 0 PDFs from ' + job.airbnbCodes + ' Hosthub code(s).');\n      }",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "j.event === 'progress' || j.event === 'saved'",
+   "note": "progress is not a worker result"
+  },
+  {
+   "has": "function piPullWalkPdfs",
+   "note": "salvage PDFs from outDir"
+  },
+  {
+   "has": "PI_AIRBNB_HAVE_JSON",
+   "note": "retry skips vaulted codes"
+  },
+  {
+   "has": "4 * 60 * 60 * 1000",
+   "note": "4 hour budget"
+  },
+  {
+   "has": "Pull interrupted",
+   "note": "mid-queue copy"
+  },
+  {
+   "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+   "note": "still harvests live Connect"
+  },
+  {
+   "has": "app.post('/api/platform-invoices/pull-stop'",
+   "note": "stop kept"
+  }
+ ]
+}

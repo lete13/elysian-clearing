@@ -1,0 +1,43 @@
+{
+ "baseSha256": "4c42b63c8f1cfabc51d79157895e6d4a79ae2381c6142b07e9f984920b3bfc30",
+ "expectedSha256": "452cb8ab8cc2515acce457e757434cacbadd074f75f8c004c24025f6ee0cee6e",
+ "builtAt": "2026-08-15 Interrupted Airbnb pull keeps PDFs and can resume",
+ "patches": [
+  {
+   "note": "Interrupted pull: keep PDFs, do not show progress as Pull failed",
+   "find": "    if (job.status === 'error') {\n      msg((job.error || 'pull failed') + (job.hint ? (' — ' + job.hint) : '') + (errTxt ? (' · ' + errTxt) : ''), false);\n      return;\n    }",
+   "replace": "    if (job.status === 'error') {\n      var nKept = (job.saved || []).length;\n      var mid = job.progress || {};\n      if (nKept > 0) {\n        msg((job.hint && /kept /.test(job.hint) ? job.hint : ('Pull interrupted at ' + (mid.done || '?') + '/' + (mid.total || codes) +\n          (mid.code ? (' · ' + mid.code) : '') +\n          ' — kept ' + nKept + ' PDF(s) under PDFs by apartment. Pull again to continue; already saved codes are skipped.')),\n          true);\n        var vaultKeep = document.getElementById('pi-vault-heading') || document.getElementById('pi-leased-list');\n        if (vaultKeep) try { vaultKeep.scrollIntoView({ block: 'start' }); } catch (eScroll) {}\n        return;\n      }\n      var midBit = (mid.done && mid.total) ? (' (stopped at ' + mid.done + '/' + mid.total + (mid.code ? (' · ' + mid.code) : '') + ')') : '';\n      var hintBit = job.hint && String(job.hint).indexOf('Pulling Airbnb') < 0 ? (' — ' + job.hint) : '';\n      msg((job.error && job.error !== 'Pull failed' ? job.error : 'Pull interrupted') + hintBit + midBit + (errTxt ? (' · ' + errTxt) : ''), false);\n      return;\n    }",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "already saved codes are skipped",
+   "note": "resume copy"
+  },
+  {
+   "has": "Pull interrupted",
+   "note": "not Pull failed + progress"
+  },
+  {
+   "has": "PDFs by apartment — click Open to view",
+   "note": "vault heading kept"
+  },
+  {
+   "has": "Test pull (5 codes)",
+   "note": "test pull kept"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full pull kept"
+  },
+  {
+   "has": "Airbnb pull saved 0 PDFs",
+   "note": "zero-PDF copy kept"
+  },
+  {
+   "has": "channel: 'airbnb'",
+   "note": "Airbnb-only pull"
+  }
+ ]
+}

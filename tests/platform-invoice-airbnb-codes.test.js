@@ -61,6 +61,14 @@ const srv68 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-68.json
 assert(fe98.patches.some((p) => (p.replace || '').includes('PDFs by apartment')), 'Collect vault heading is PDFs by apartment');
 assert(fe98.patches.some((p) => (p.replace || '').includes("/api/platform-invoices/' + id + '/file")), 'vault rows Open the PDF');
 assert(srv68.patches.some((p) => (p.replace || '').includes("app.get('/api/platform-invoices/:id/file'")), 'API serves PDF bytes');
+const fe103 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-103.json'), 'utf8'));
+const srv70 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-70.json'), 'utf8'));
+assert(fe103.patches.some((p) => (p.replace || '').includes('already saved codes are skipped')), 'FE resume copy');
+assert(srv70.patches.some((p) => (p.replace || '').includes('PI_AIRBNB_HAVE_JSON')), 'retry skips vaulted codes');
+assert(srv70.patches.some((p) => (p.replace || '').includes('4 * 60 * 60 * 1000')), '4h pull budget');
+assert(srv70.patches.some((p) => (p.replace || '').includes("j.event === 'progress' || j.event === 'saved'")), 'progress is not a result');
+assert(worker.includes('function loadAirbnbHaveSet'), 'worker skips vaulted codes');
+assert(worker.includes("event: 'saved'"), 'worker emits saved as each PDF lands');
 assert(fe92.patches.some((p) => (p.replace || '').includes('no pull job with that id')), 'vanished job id is Pull stopped');
 assert(srv66.patches.some((p) => (p.replace || '').includes("status: 'cancelled'")), 'missing job GET is cancelled');
 
