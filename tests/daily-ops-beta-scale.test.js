@@ -124,8 +124,8 @@ const event = (action, extra = {}) => ({
   preventDefault() {},
 });
 
-assert.strictEqual(renderedRows(), 50, 'only one 50-row page is rendered');
-assert(panel.innerHTML.includes('Page 1 / 4'), '200 rows produce four pages');
+assert.strictEqual(renderedRows(), 50, 'paged mode still renders one 50-row page');
+assert(panel.innerHTML.includes('Page 1 / 4'), '200 rows produce four pages when page size is 50');
 assert(panel.innerHTML.includes('showing 50 of 200'), 'visible and total counts are explicit');
 
 listeners.change(event('select-page', { checked: true }));
@@ -143,6 +143,12 @@ assert.strictEqual(Object.keys(context._opsBetaState.selected).length, 200, 'sel
 listeners.change(event('bulk-cleaner', { value: 'Eleni', tagName: 'SELECT' }));
 assert(rows.every((row) => row.cleanerName === 'Eleni'), 'bulk bar assigns all selected rows from the main table');
 
+listeners.change(event('page-size', { value: '0', tagName: 'SELECT' }));
+assert.strictEqual(renderedRows(), 200, 'Fit all rows shows every matching row');
+assert(panel.innerHTML.includes('Showing all'), 'pager reports showing all rows');
+assert(panel.innerHTML.includes('showing 200 of 200'), 'board head matches full day length');
+assert(panel.innerHTML.includes('Fit all rows'), 'fit-all option is available');
+
 assert(!panel.innerHTML.includes('Crew workload'), 'crew workload side panel removed');
 assert(!panel.innerHTML.includes('Reservation details'), 'reservation details side panel removed');
 assert(panel.innerHTML.includes('>Notes<'), 'notes stay on the main table');
@@ -152,4 +158,8 @@ assert(panel.innerHTML.includes('👶'), 'park bed uses a baby icon');
 assert(panel.innerHTML.includes('☀️'), 'early check-in uses a sun icon');
 assert(!/>L</.test(panel.innerHTML) && !/>P</.test(panel.innerHTML), 'letter flag labels are gone');
 
-console.log('daily-ops-beta-scale: ok (200 rows, 4 pages, bulk assignment, table-only)');
+const css = fs.readFileSync(path.join(rootDir, 'fe', 'daily-ops-beta.css'), 'utf8');
+assert(!/ob-table-wrap\s*\{[^}]*max-height/.test(css), 'table wrap has no fixed max-height');
+assert(/ob-table-wrap\s*\{[^}]*overflow-y:\s*visible/.test(css), 'table height follows row count');
+
+console.log('daily-ops-beta-scale: ok (paging + fit-all height)');

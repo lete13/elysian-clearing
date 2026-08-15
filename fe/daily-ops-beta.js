@@ -17,11 +17,17 @@
     selectionDate: '',
     focusId: '',
     page: 1,
-    pageSize: 50,
+    pageSize: 0, // 0 = show every matching row (table height follows the day)
   };
   if (!state.selected) state.selected = {};
-  if (!state.pageSize) state.pageSize = 50;
+  if (state.pageSize == null) state.pageSize = 0;
   if (!state.page) state.page = 1;
+
+  function pageSizeFor(total) {
+    var size = Number(state.pageSize);
+    if (!isFinite(size) || size <= 0) return Math.max(1, total || 1);
+    return size;
+  }
 
   function esc(value) {
     return String(value == null ? '' : value)
@@ -313,12 +319,18 @@
       '</div>';
   }
 
-  function pagerHtml(page, pageCount, total) {
-    return '<div class="ob-pager"><span>' + total + ' matching rows</span><span class="ob-spacer"></span>' +
-      '<button class="ob-btn ob-square" data-ob-action="page" data-ob-page="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + '>←</button>' +
-      '<b>Page ' + page + ' / ' + pageCount + '</b>' +
-      '<button class="ob-btn ob-square" data-ob-action="page" data-ob-page="' + (page + 1) + '"' + (page >= pageCount ? ' disabled' : '') + '>→</button>' +
-      '<select class="ob-select" data-ob-action="page-size"><option value="25"' + (state.pageSize === 25 ? ' selected' : '') + '>25 rows</option><option value="50"' + (state.pageSize === 50 ? ' selected' : '') + '>50 rows</option><option value="100"' + (state.pageSize === 100 ? ' selected' : '') + '>100 rows</option></select></div>';
+  function pagerHtml(page, pageCount, total, size) {
+    var all = !Number(state.pageSize);
+    return '<div class="ob-pager"><span>' + total + ' matching rows' + (all ? '' : (' · page size ' + size)) + '</span><span class="ob-spacer"></span>' +
+      '<button class="ob-btn ob-square" data-ob-action="page" data-ob-page="' + (page - 1) + '"' + (page <= 1 || all ? ' disabled' : '') + '>←</button>' +
+      '<b>' + (all ? 'Showing all' : ('Page ' + page + ' / ' + pageCount)) + '</b>' +
+      '<button class="ob-btn ob-square" data-ob-action="page" data-ob-page="' + (page + 1) + '"' + (page >= pageCount || all ? ' disabled' : '') + '>→</button>' +
+      '<select class="ob-select" data-ob-action="page-size" title="Rows shown in the table">' +
+      '<option value="0"' + (all ? ' selected' : '') + '>Fit all rows</option>' +
+      '<option value="25"' + (state.pageSize === 25 ? ' selected' : '') + '>25 rows</option>' +
+      '<option value="50"' + (state.pageSize === 50 ? ' selected' : '') + '>50 rows</option>' +
+      '<option value="100"' + (state.pageSize === 100 ? ' selected' : '') + '>100 rows</option>' +
+      '</select></div>';
   }
 
   function cleanerDatalist() {
@@ -537,11 +549,12 @@
     var allItems = mainAndExtras();
     resetSelectionForDate();
     var visibleItems = filteredItems(allItems);
-    var pageCount = Math.max(1, Math.ceil(visibleItems.length / state.pageSize));
+    var size = pageSizeFor(visibleItems.length);
+    var pageCount = Math.max(1, Math.ceil((visibleItems.length || 1) / size));
     if (state.page > pageCount) state.page = pageCount;
     if (state.page < 1) state.page = 1;
-    var pageStart = (state.page - 1) * state.pageSize;
-    var pageItems = visibleItems.slice(pageStart, pageStart + state.pageSize);
+    var pageStart = (state.page - 1) * size;
+    var pageItems = visibleItems.slice(pageStart, pageStart + size);
     var pageActionable = pageItems.filter(function (item) { return !!item.target; });
     var pageAllSelected = !!pageActionable.length && pageActionable.every(function (item) { return !!state.selected[itemId(item)]; });
     var summary = statusSummary(allItems);
@@ -592,7 +605,7 @@
               '<th class="ob-center">✓</th><th>Property</th><th>Stay / check-in</th><th class="ob-center">Pax</th><th class="ob-center">ETA</th><th>Flags</th><th>Cleaner</th><th>Task</th><th>Notes</th><th>Status</th>' +
             '</tr></thead><tbody>' +
               (pageItems.length ? pageItems.map(function (item, index) { return dispatchRowHtml(item, pageStart + index + 1); }).join('') : '<tr><td colspan="11"><div class="ob-empty">No rows match this view.</div></td></tr>') +
-            '</tbody></table></div>' + pagerHtml(state.page, pageCount, visibleItems.length) +
+            '</tbody></table></div>' + pagerHtml(state.page, pageCount, visibleItems.length, size) +
           '</div></div>' +
         '</div>' +
         '<div class="ob-aux-grid"><details class="ob-collapsible"><summary>Staff, leave, linen &amp; driver routes</summary><div class="ob-section"><h3>Same saved data as Daily Ops</h3>' + staffHtml() + '</div></details>' +
@@ -717,8 +730,9 @@
 
   function currentPageItems() {
     var filtered = currentFilteredItems();
-    var start = (state.page - 1) * state.pageSize;
-    return filtered.slice(start, start + state.pageSize);
+    var size = pageSizeFor(filtered.length);
+    var start = (state.page - 1) * size;
+    return filtered.slice(start, start + size);
   }
 
   function applySelected(callback, after) {
@@ -908,7 +922,10 @@
       } else if (action === 'sort') {
         state.sort = input.value || 'status'; state.page = 1; rerender();
       } else if (action === 'page-size') {
-        state.pageSize = Number(input.value || 50); state.page = 1; rerender();
+        state.pageSize = Number(input.value);
+        if (!isFinite(state.pageSize) || state.pageSize < 0) state.pageSize = 0;
+        state.page = 1;
+        rerender();
       } else if (action === 'select') {
         var selectId = decoded(input.dataset.obId);
         if (input.checked) state.selected[selectId] = true;

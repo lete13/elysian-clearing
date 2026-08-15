@@ -514,8 +514,8 @@
 #tab-opsbeta .ob-dispatch-main { min-width: 0; }
 
 #tab-opsbeta .ob-table-wrap {
-  max-height: min(72vh, 780px);
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--ob-line);
   border-radius: 9px;
   background: var(--ob-panel);
