@@ -1,0 +1,83 @@
+{
+ "baseSha256": "4c42b63c8f1cfabc51d79157895e6d4a79ae2381c6142b07e9f984920b3bfc30",
+ "expectedSha256": "acfbb105d4e0963372b6bcdaee48aa71acb0607c41206d26cd367a1765edb87d",
+ "builtAt": "2026-08-15 Daily Ops: Ρεπό 2-col, centered board, color legend",
+ "patches": [
+  {
+   "note": "Ρεπό staff card: two-column grid so long lists stay short",
+   "find": "  function blockTable(title, block, baseN) {\n    const n = rowCount(block, baseN);\n    let r = '';\n    if (block === 'adeies') {\n      for (let k = 0; k < n; k++) r += adeiaRow(k);\n    } else {\n      for (let k = 0; k < n; k++) {\n        r += '<div class=\"opsx-line\">' +\n          '<span class=\"ox-i\">' + (k + 1) + '</span>' +\n          '<div style=\"flex:1\">' + personSelect(block, k) + '</div></div>';\n      }\n    }\n    return '<div class=\"opsx-blk\">' +\n      '<h4>' + title +\n      (block === 'adeies' ? ' <span>(διάρκεια)</span>' : '') +\n      '</h4>' + r +\n      '<button class=\"opsx-add\" onclick=\"opsAddDailyRow(\\'' + block + '\\')\">+ γραμμή</button>' +\n      '</div>';\n  }",
+   "replace": "  function blockTable(title, block, baseN) {\n    const n = rowCount(block, baseN);\n    let r = '';\n    if (block === 'adeies') {\n      for (let k = 0; k < n; k++) r += adeiaRow(k);\n    } else {\n      for (let k = 0; k < n; k++) {\n        r += '<div class=\"opsx-line\">' +\n          '<span class=\"ox-i\">' + (k + 1) + '</span>' +\n          '<div style=\"flex:1\">' + personSelect(block, k) + '</div></div>';\n      }\n    }\n    // Ρεπό can be long — pack names into two columns so the card stays short.\n    const twoCol = (block === 'repo');\n    return '<div class=\"opsx-blk' + (twoCol ? ' ox-repo' : '') + '\">' +\n      '<h4>' + title +\n      (block === 'adeies' ? ' <span>(διάρκεια)</span>' : '') +\n      '</h4>' +\n      (twoCol ? '<div class=\"opsx-lines\">' + r + '</div>' : r) +\n      '<button class=\"opsx-add\" onclick=\"opsAddDailyRow(\\'' + block + '\\')\">+ γραμμή</button>' +\n      '</div>';\n  }",
+   "count": 1
+  },
+  {
+   "note": "Board legend + center all combined-table headers",
+   "find": "    '<div class=\"ox-rt\">' +\n    '<span class=\"opsx-kpi\"><b>' + lineCount + '</b> γραμμές</span>' +\n    '<span class=\"opsx-kpi\"><b id=\"ops-clean-count\">' + doneCount + '<i>/' + total + '</i></b> καθαρά</span>' +\n    '<span class=\"opsx-track' + (total && doneCount >= total ? ' ox-full' : '') + '\" style=\"display:inline-block;flex:0 0 120px;min-width:120px;vertical-align:middle\"><span style=\"width:' + donePct + '%\"></span></span>' +\n    '</div></div>' +\n    '<table class=\"opsx-main opsx-comb\">' +\n    '<thead><tr>' +\n    '<th class=\"ox-c\" style=\"width:38px\" title=\"Καθαρίστηκε\">🧹✓</th>' +\n    '<th style=\"width:26px\">#</th>' +\n    '<th class=\"ox-l\" style=\"min-width:180px\">Κατάλυμα</th>' +\n    '<th style=\"width:228px\" title=\"Late / Pri · Παρκ · Early\">Flags</th>' +\n    '<th style=\"min-width:92px\">Check out</th>' +\n    '<th class=\"ox-c\" style=\"width:40px\" title=\"Ο πελάτης ζήτησε checkout\">CO ✓</th>' +\n    '<th style=\"min-width:128px\">Check in ίδιας</th>' +\n    '<th style=\"width:48px\">👥</th>' +\n    '<th style=\"width:80px\">⏰</th>' +\n    '<th class=\"ox-l\" style=\"width:186px;color:#F1DFB0\" title=\"Καθαρίστρια — ανάθεση συνεργείου\">ΚΑΘΑΡΙΣΤΡΙΑ</th>' +\n    '<th style=\"width:120px\">Εργασία</th>' +\n    '<th class=\"ox-l\" style=\"min-width:160px\">Σχόλια</th>' +\n    '<th style=\"width:120px\"></th>' +\n    '</tr></thead>' +",
+   "replace": "    '<div class=\"ox-rt\">' +\n    '<span class=\"opsx-kpi\"><b>' + lineCount + '</b> γραμμές</span>' +\n    '<span class=\"opsx-kpi\"><b id=\"ops-clean-count\">' + doneCount + '<i>/' + total + '</i></b> καθαρά</span>' +\n    '<span class=\"opsx-track' + (total && doneCount >= total ? ' ox-full' : '') + '\" style=\"display:inline-block;flex:0 0 120px;min-width:120px;vertical-align:middle\"><span style=\"width:' + donePct + '%\"></span></span>' +\n    '</div></div>' +\n    '<div class=\"opsx-legend\" title=\"Χρωματική κωδικοποίηση πίνακα\">' +\n    '<span class=\"ox-lg-ttl\">Υπόμνημα</span>' +\n    '<span class=\"ox-lg\"><i style=\"background:#F0FDF4;border-color:#86EFAC\"></i>Καθαρό ✓</span>' +\n    '<span class=\"ox-lg\"><i style=\"background:#F0FFF4;border-color:#86EFAC\"></i>Same-day check-in</span>' +\n    '<span class=\"ox-lg\"><i style=\"background:#FFF3CD;border-color:#FCD34D\"></i>Check-in άγνωστο</span>' +\n    '<span class=\"ox-lg\"><i style=\"background:#EFF6FF;border-color:#93C5FD\"></i>Μόνο άφιξη</span>' +\n    '<span class=\"ox-lg\"><i style=\"background:#FEF3C7;border-color:#F59E0B\"></i>Maintenance</span>' +\n    '<span class=\"ox-lg\"><i style=\"background:#FDF2F8;border-color:#F9A8D4\"></i>Preparation</span>' +\n    '<span class=\"ox-lg\"><i style=\"background:#F3F4F6;border-color:#9CA3AF\"></i>Extended</span>' +\n    '<span class=\"ox-lg\"><i style=\"background:#FFF7DB;border:2px solid #DC2626;box-sizing:border-box\"></i>Owner</span>' +\n    '<span class=\"ox-lg\"><b style=\"background:#DC2626;color:#fff\">Pri</b> Priority / Sofa</span>' +\n    '<span class=\"ox-lg\"><b style=\"background:#1D4ED8;color:#fff\">Παρκ</b> Παρκ / Early</span>' +\n    '<span class=\"ox-lg\"><b style=\"background:#D1FAE5;color:#065F46\">Ναι</b> Check-in ίδιας</span>' +\n    '<span class=\"ox-lg\"><b style=\"background:#FEE2E2;color:#991B1B\">Όχι</b> Χωρίς check-in</span>' +\n    '<span class=\"ox-lg\"><b style=\"background:#FDE68A;color:#92400E\">…</b> Δεν ξέρουμε</span>' +\n    '<span class=\"ox-lg\"><i style=\"background:#FFFBEB;border-color:#F59E0B\"></i>Καθαρίστρια ορισμένη</span>' +\n    '</div>' +\n    '<table class=\"opsx-main opsx-comb\">' +\n    '<thead><tr>' +\n    '<th class=\"ox-c\" style=\"width:38px\" title=\"Καθαρίστηκε\">🧹✓</th>' +\n    '<th style=\"width:26px\">#</th>' +\n    '<th style=\"min-width:180px\">Κατάλυμα</th>' +\n    '<th style=\"width:228px\" title=\"Late / Pri · Παρκ · Early\">Flags</th>' +\n    '<th style=\"min-width:92px\">Check out</th>' +\n    '<th class=\"ox-c\" style=\"width:40px\" title=\"Ο πελάτης ζήτησε checkout\">CO ✓</th>' +\n    '<th style=\"min-width:128px\">Check in ίδιας</th>' +\n    '<th style=\"width:48px\">👥</th>' +\n    '<th style=\"width:80px\">⏰</th>' +\n    '<th style=\"width:186px;color:#F1DFB0\" title=\"Καθαρίστρια — ανάθεση συνεργείου\">ΚΑΘΑΡΙΣΤΡΙΑ</th>' +\n    '<th style=\"width:120px\">Εργασία</th>' +\n    '<th style=\"min-width:160px\">Σχόλια</th>' +\n    '<th style=\"width:120px\"></th>' +\n    '</tr></thead>' +",
+   "count": 1
+  },
+  {
+   "note": "Restart button tooltip spells out what it clears vs keeps",
+   "find": "'<button class=\"ox-warn\" onclick=\"opsRestartCleaningSchedule()\" title=\"Μηδενίζει τα ✓ της ημέρας και ξεκινά το πρόγραμμα από την αρχή\">Επανεκκίνηση ✓</button>' +",
+   "replace": "'<button class=\"ox-warn\" onclick=\"opsRestartCleaningSchedule()\" title=\"Επανεκκίνηση: μηδενίζει μόνο τα ✓ καθαρισμού της ημέρας. Κρατά καθαρίστριες, σχόλια, flags και Ρεπό/Άδειες.\">Επανεκκίνηση ✓</button>' +",
+   "count": 1
+  },
+  {
+   "note": "CSS: Ρεπό two-column card",
+   "find": "    '#tab-ops .opsx-blk{flex:1 1 200px;align-self:flex-start;min-width:200px;max-width:340px;padding:10px 11px 8px;border:1px solid #E5E7EB;border-radius:12px;background:#FAFAFA}',\n    '#tab-ops .opsx-blk h4{margin:0 0 6px;font-size:9.5px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#475569}',\n    '#tab-ops .opsx-blk h4 span{font-weight:600;letter-spacing:.02em;text-transform:none;color:#94A3B8}',\n    '#tab-ops .opsx-line{display:flex;gap:6px;align-items:center;margin:0 0 3px}',",
+   "replace": "    '#tab-ops .opsx-blk{flex:1 1 200px;align-self:flex-start;min-width:200px;max-width:340px;padding:10px 11px 8px;border:1px solid #E5E7EB;border-radius:12px;background:#FAFAFA}',\n    '#tab-ops .opsx-blk.ox-repo{flex:1 1 420px;max-width:560px;min-width:300px}',\n    '#tab-ops .opsx-blk.ox-repo .opsx-lines{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;align-items:start}',\n    '#tab-ops .opsx-blk.ox-repo .opsx-line{margin:0}',\n    '#tab-ops .opsx-blk h4{margin:0 0 6px;font-size:9.5px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#475569}',\n    '#tab-ops .opsx-blk h4 span{font-weight:600;letter-spacing:.02em;text-transform:none;color:#94A3B8}',\n    '#tab-ops .opsx-line{display:flex;gap:6px;align-items:center;margin:0 0 3px}',",
+   "count": 1
+  },
+  {
+   "note": "CSS: center combined board cells + color legend styles",
+   "find": "    '#tab-ops .opsx-comb{font-size:11.5px}',\n    '#tab-ops .opsx-comb thead th{padding:8px 6px;font-size:8.5px;letter-spacing:.08em}',\n    '#tab-ops .opsx-comb tbody td{padding:4px 6px;height:46px}',\n    '#tab-ops .opsx-comb td.ox-cd{width:38px;padding:4px 2px}',\n    '#tab-ops .opsx-comb td.ox-n{width:26px;padding:4px 1px}',\n    '#tab-ops .opsx-comb td.ox-apt{min-width:180px;padding:5px 8px}',\n    '#tab-ops .opsx-comb td.ox-tgc{width:228px;padding:4px 4px}',\n    '#tab-ops .opsx-comb td.ox-tsk{width:120px;padding:4px 5px}',\n    '#tab-ops .opsx-comb td.ox-act{width:120px}',\n    '#tab-ops .opsx-comb .opsx-tg{height:26px;margin:0;padding:0 6px;font-size:9.5px;line-height:24px}',\n    '#tab-ops .opsx-comb .opsx-sel{padding:5px 6px;font-size:11px}',\n    '#tab-ops .opsx-comb .opsx-pill{min-height:26px;padding:3px 8px;font-size:11px;line-height:18px}',\n    '#tab-ops .opsx-comb .opsx-cin{min-height:28px;padding:5px 7px;font-size:11.5px}',\n    '#tab-ops .opsx-comb .opsx-aptn{font-size:12.5px}',",
+   "replace": "    '#tab-ops .opsx-comb{font-size:11.5px}',\n    '#tab-ops .opsx-comb thead th{padding:8px 6px;font-size:8.5px;letter-spacing:.08em;text-align:center}',\n    '#tab-ops .opsx-comb thead th.ox-l{text-align:center}',\n    '#tab-ops .opsx-comb tbody td{padding:4px 6px;height:46px;text-align:center}',\n    '#tab-ops .opsx-comb td.ox-cd{width:38px;padding:4px 2px}',\n    '#tab-ops .opsx-comb td.ox-n{width:26px;padding:4px 1px}',\n    '#tab-ops .opsx-comb td.ox-apt{min-width:180px;padding:5px 8px;text-align:center}',\n    '#tab-ops .opsx-comb td.ox-tgc{width:228px;padding:4px 4px}',\n    '#tab-ops .opsx-comb td.ox-tsk{width:120px;padding:4px 5px}',\n    '#tab-ops .opsx-comb td.ox-act{width:120px}',\n    '#tab-ops .opsx-comb .opsx-aptl{text-align:center}',\n    '#tab-ops .opsx-comb .opsx-sub{text-align:center;margin-left:auto;margin-right:auto}',\n    '#tab-ops .opsx-comb .opsx-tg{height:26px;margin:0;padding:0 6px;font-size:9.5px;line-height:24px}',\n    '#tab-ops .opsx-comb .opsx-sel{padding:5px 6px;font-size:11px;text-align:center}',\n    '#tab-ops .opsx-comb .opsx-pill{min-height:26px;padding:3px 8px;font-size:11px;line-height:18px}',\n    '#tab-ops .opsx-comb .opsx-cin{min-height:28px;padding:5px 7px;font-size:11.5px;text-align:center}',\n    '#tab-ops .opsx-comb .opsx-aptn{font-size:12.5px}',\n    '#tab-ops .opsx-comb .opsx-ctxt{text-align:center}',\n    // Color legend under the board title — row/badge meanings for ops.\n    '#tab-ops .opsx-legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 10px;padding:8px 10px;border:1px solid #E5E7EB;border-radius:10px;background:#F8FAFC}',\n    '#tab-ops .opsx-legend .ox-lg-ttl{font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#64748B;margin-right:4px}',\n    '#tab-ops .opsx-legend .ox-lg{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:#475569;white-space:nowrap}',\n    '#tab-ops .opsx-legend .ox-lg i{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid #CBD5E1;vertical-align:middle;flex:none}',\n    '#tab-ops .opsx-legend .ox-lg b{display:inline-block;height:16px;padding:0 6px;border-radius:4px;font-size:9px;font-weight:800;line-height:16px;letter-spacing:.02em}',",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "ox-repo",
+   "note": "Ρεπό two-column card class"
+  },
+  {
+   "has": "grid-template-columns:1fr 1fr",
+   "note": "Ρεπό CSS grid"
+  },
+  {
+   "has": "opsx-legend",
+   "note": "color legend on board"
+  },
+  {
+   "has": "Υπόμνημα",
+   "note": "legend title"
+  },
+  {
+   "has": "Same-day check-in",
+   "note": "legend covers row colors"
+  },
+  {
+   "has": "text-align:center",
+   "note": "combined headers/cells centered"
+  },
+  {
+   "has": "Κρατά καθαρίστριες, σχόλια",
+   "note": "restart tooltip clarifies keep vs wipe"
+  },
+  {
+   "has": "Επανεκκίνηση ✓",
+   "note": "restart button kept"
+  },
+  {
+   "has": "blockTable('Ρεπό', 'repo', 5)",
+   "note": "Ρεπό block still present"
+  },
+  {
+   "has": "ops-shot-ops",
+   "note": "ops capture root kept"
+  },
+  {
+   "has": "ΚΑΘΑΡΙΣΤΡΙΑ",
+   "note": "cleaner column kept"
+  }
+ ]
+}
