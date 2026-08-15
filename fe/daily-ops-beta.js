@@ -212,82 +212,6 @@
     return '<button class="ob-chip ob-checkin ' + cfg.cls + '" data-ob-action="checkin" data-ob-index="' + index + '">' + esc(cfg.text) + '</button>';
   }
 
-  function cardHtml(item, displayNumber) {
-    var row = item.row || {};
-    var target = item.target;
-    var done = !!(target && target.cleanDone);
-    var kind = kindOf(row);
-    var type = target ? cleanType(target) : null;
-    var names = cleaners(target).join(', ');
-    var lines = (typeof _opsAptLines === 'function') ? _opsAptLines(row) : { name: row.aptName || '', addr: '' };
-    var area = (typeof window.aptAreaLabel === 'function' && typeof _opsAptOf === 'function') ? window.aptAreaLabel(_opsAptOf(row)) : '';
-    var comment = item.extra ? String(row.comments || row.cleanTaskNote || '') : String(row.comments || '');
-    var notes = String(row.comments || row.cleanTaskNote || '');
-    var sofa = /Prepare 2 sofa beds/i.test(notes) ? '2 SOFAS' : (/Prepare 1 sofa bed/i.test(notes) ? '1 SOFA' : '');
-    var cardClass = 'ob-card' + (done ? ' ob-done' : '') + (!target ? ' ob-no-clean' : '') + (row.isOwner ? ' ob-owner' : '');
-    var searchText = [lines.name, lines.addr, area, names, comment].join(' ').toLowerCase();
-    var mainAttrs = item.extra ? '' : ' data-ob-index="' + item.index + '"';
-    var keyAttr = target ? ' data-ob-key="' + encoded(item.key) + '"' : '';
-    var badges = '';
-    if (kind) badges += '<span class="ob-chip ob-amber">' + esc(kind.label) + '</span>';
-    if (row.isOwner) badges += '<span class="ob-chip ob-red">OWNER</span>';
-    if (type) badges += '<span class="ob-chip ' + type.cls + '">' + esc(type.label) + '</span>';
-    if (sofa) badges += '<span class="ob-chip ob-red">' + sofa + '</span>';
-    if (item.extra) badges += '<span class="ob-chip ob-blue">ΜΟΝΟ ΚΑΘΑΡΙΣΜΟΣ</span>';
-
-    var cleanControl = target
-      ? '<input class="ob-clean-check" type="checkbox" data-ob-action="clean" data-ob-key="' + encoded(item.key) + '"' + (done ? ' checked' : '') + ' title="Καθαρίστηκε">'
-      : '<span class="ob-chip">χωρίς clean</span>';
-
-    var flags = '';
-    if (!item.extra) {
-      flags = '<div class="ob-badges">' + badges +
-        '<button class="ob-flag ob-hot' + (row.lateCheckout ? ' on' : '') + '" data-ob-action="flag" data-ob-index="' + item.index + '" data-ob-flag="late">Late CO</button>' +
-        '<button class="ob-flag ob-hot' + (row.isPriority ? ' on' : '') + '" data-ob-action="flag" data-ob-index="' + item.index + '" data-ob-flag="priority">Pri</button>' +
-        '<button class="ob-flag ob-cool' + (row.parkBed ? ' on' : '') + '" data-ob-action="flag" data-ob-index="' + item.index + '" data-ob-flag="park">Παρκ</button>' +
-        '<button class="ob-flag ob-cool' + (row.earlyCheckin ? ' on' : '') + '" data-ob-action="flag" data-ob-index="' + item.index + '" data-ob-flag="early">Early</button>' +
-        '</div>';
-    } else {
-      flags = '<div class="ob-badges">' + badges + '</div>';
-    }
-
-    var guest = item.extra
-      ? '<div class="ob-guest"><div class="ob-box"><span class="ob-label">Checkout</span><div class="ob-box-value">—</div></div>' +
-        '<div class="ob-box"><span class="ob-label">Check-in</span><div class="ob-box-value">' + (row.nextNights ? esc(row.nextNights) + ' νύχτες' : '—') + '</div></div>' +
-        '<div class="ob-box"><span class="ob-label">Άτομα</span><div class="ob-box-value">' + esc(row.people || '—') + '</div></div>' +
-        '<div class="ob-box"><span class="ob-label">Ώρα</span><div class="ob-box-value">—</div></div></div>'
-      : '<div class="ob-guest">' +
-        '<div class="ob-box"><span class="ob-label">Checkout</span><div class="ob-box-value">' + (row.isCheckinOnly ? '—' : esc(dateLabel(_opsDate))) + '</div></div>' +
-        '<div class="ob-box"><span class="ob-label">Check-in ίδιας</span><div class="ob-box-value">' + checkinHtml(row, item.index) + '</div></div>' +
-        '<div class="ob-box"><span class="ob-label">Άτομα</span><input class="ob-input" type="number" min="0" max="20" value="' + esc(row.people || '') + '" data-ob-action="row-field" data-ob-index="' + item.index + '" data-ob-field="people" placeholder="—"></div>' +
-        '<div class="ob-box"><span class="ob-label">Άφιξη</span><input class="ob-input" value="' + esc(row.arrivalTime || '') + '" data-ob-action="row-field" data-ob-index="' + item.index + '" data-ob-field="arrivalTime" placeholder="—"></div>' +
-        '</div>';
-
-    var cleaning = target
-      ? '<div class="ob-cleaning">' +
-        '<label><span class="ob-label">Καθαρίστρια / συνεργείο</span><input class="ob-input" list="ops-beta-cleaners" value="' + esc(names) + '" data-ob-action="cleaners" data-ob-key="' + encoded(item.key) + '" placeholder="ονόματα χωρισμένα με κόμμα"></label>' +
-        '<label><span class="ob-label">Εργασία</span><select class="ob-select" data-ob-action="clean-field" data-ob-key="' + encoded(item.key) + '" data-ob-field="cleanTask">' + taskOptions(target.cleanTask) + '</select></label>' +
-        '</div>'
-      : '';
-
-    var commentControl = item.extra
-      ? '<input class="ob-input" value="' + esc(comment) + '" data-ob-action="clean-field" data-ob-key="' + encoded(item.key) + '" data-ob-field="comments" placeholder="σχόλια καθαρισμού…">'
-      : '<input class="ob-input" value="' + esc(comment) + '" data-ob-action="comment" data-ob-index="' + item.index + '"' + keyAttr + ' placeholder="σχόλια ημέρας / καθαρισμού…">';
-
-    var kinds = item.extra ? '' : '<div class="ob-card-actions">' +
-      ['isMaintenance', 'isPreparation', 'isExtended'].map(function (key) {
-        var label = key === 'isMaintenance' ? 'Mnt' : (key === 'isPreparation' ? 'Prep' : 'Ext');
-        return '<button class="ob-kind' + (row[key] ? ' on' : '') + '" data-ob-action="kind" data-ob-index="' + item.index + '" data-ob-kind="' + key + '">' + label + '</button>';
-      }).join('') +
-      '<button class="ob-kind ob-remove" data-ob-action="remove-row" data-ob-index="' + item.index + '">Remove</button></div>';
-
-    return '<article class="' + cardClass + '" data-ob-search="' + esc(searchText) + '"' + mainAttrs + keyAttr + '>' +
-      '<div class="ob-card-top">' + cleanControl + '<div class="ob-card-name"><strong>' + displayNumber + ' · ' + esc(lines.name || row.aptName || 'Apartment') + '</strong>' +
-      ((lines.addr || area) ? '<div class="ob-address">' + esc(lines.addr || '') + (area ? ' · ' + esc(area) : '') + '</div>' : '') + '</div>' +
-      (target && cleaners(target).length ? '<span class="ob-chip ' + (done ? 'ob-green' : 'ob-amber') + '">' + esc(cleaners(target)[0]) + (cleaners(target).length > 1 ? ' +' + (cleaners(target).length - 1) : '') + '</span>' : '') + '</div>' +
-      flags + guest + cleaning + '<label class="ob-card-notes"><span class="ob-label">Σχόλια</span>' + commentControl + '</label>' + kinds + '</article>';
-  }
-
   function cleanerRoster() {
     var out = [];
     (Array.isArray(S.cleaners) ? S.cleaners : []).forEach(function (entry) {
@@ -301,14 +225,15 @@
 
   function compactFlags(row, index, extra) {
     if (extra) return '<span class="ob-row-muted">—</span>';
+    // Icons (not letters) so the activity is readable at a glance.
     var defs = [
-      ['late', 'L', 'Late checkout', row.lateCheckout, 'hot'],
-      ['priority', 'P', 'Priority', row.isPriority, 'hot'],
-      ['park', 'B', 'Baby bed', row.parkBed, 'cool'],
-      ['early', 'E', 'Early check-in', row.earlyCheckin, 'cool'],
+      ['late', '⏰', 'Late checkout', row.lateCheckout, 'hot'],
+      ['priority', '🔥', 'Priority', row.isPriority, 'hot'],
+      ['park', '🛏️', 'Παρκοκρεβάτο', row.parkBed, 'cool'],
+      ['early', '🌅', 'Early check-in', row.earlyCheckin, 'cool'],
     ];
     return '<div class="ob-row-flags">' + defs.map(function (f) {
-      return '<button class="ob-mini-flag ' + f[4] + (f[3] ? ' on' : '') + '" data-ob-action="flag" data-ob-index="' + index + '" data-ob-flag="' + f[0] + '" title="' + f[2] + '">' + f[1] + '</button>';
+      return '<button type="button" class="ob-mini-flag ' + f[4] + (f[3] ? ' on' : '') + '" data-ob-action="flag" data-ob-index="' + index + '" data-ob-flag="' + f[0] + '" title="' + f[2] + '" aria-label="' + f[2] + '">' + f[1] + '</button>';
     }).join('') + '</div>';
   }
 
@@ -324,6 +249,7 @@
     var kind = kindOf(row);
     var names = cleaners(target).join(', ');
     var note = String(row.comments || row.cleanTaskNote || '');
+    var keyAttr = target ? ' data-ob-key="' + encoded(item.key) + '"' : '';
     var statusClass = done ? 'done' : (!target ? 'excluded' : (!names ? 'unassigned' : 'open'));
     var statusText = done ? 'DONE' : (!target ? 'NO CLEAN' : (!names ? 'UNASSIGNED' : 'OPEN'));
     var checkin = item.extra
@@ -338,22 +264,30 @@
     var taskControl = target
       ? '<select class="ob-select ob-row-task" data-ob-action="clean-field" data-ob-key="' + encoded(item.key) + '" data-ob-field="cleanTask">' + taskOptions(target.cleanTask) + '</select>'
       : '<span class="ob-row-muted">—</span>';
+    var paxControl = item.extra
+      ? '<span class="ob-row-muted">' + esc(row.people || '—') + '</span>'
+      : '<input class="ob-input ob-row-pax" type="number" min="0" max="20" value="' + esc(row.people || '') + '" data-ob-action="row-field" data-ob-index="' + item.index + '" data-ob-field="people" placeholder="—">';
+    var etaControl = item.extra
+      ? '<span class="ob-row-muted">—</span>'
+      : '<input class="ob-input ob-row-eta" value="' + esc(row.arrivalTime || '') + '" data-ob-action="row-field" data-ob-index="' + item.index + '" data-ob-field="arrivalTime" placeholder="—">';
+    var noteControl = item.extra
+      ? '<input class="ob-input ob-row-note" value="' + esc(note) + '" data-ob-action="clean-field" data-ob-key="' + encoded(item.key) + '" data-ob-field="comments" placeholder="Notes…">'
+      : '<input class="ob-input ob-row-note" value="' + esc(note) + '" data-ob-action="comment" data-ob-index="' + item.index + '"' + keyAttr + ' placeholder="Notes…">';
     var badges = (type ? '<span class="ob-row-type ' + type.cls + '">' + esc(type.label) + '</span>' : '') +
       (kind ? '<span class="ob-row-type ob-amber">' + esc(kind.label) + '</span>' : '') +
       (row.isOwner ? '<span class="ob-row-type ob-red">OWNER</span>' : '');
-    return '<tr class="ob-dispatch-row ' + statusClass + (selected ? ' selected' : '') + '" data-ob-action="inspect" data-ob-id="' + encoded(id) + '">' +
+    return '<tr class="ob-dispatch-row ' + statusClass + (selected ? ' selected' : '') + '" data-ob-id="' + encoded(id) + '">' +
       '<td class="ob-center"><input type="checkbox" data-ob-action="select" data-ob-id="' + encoded(id) + '"' + (selected ? ' checked' : '') + (target ? '' : ' disabled') + ' aria-label="Select ' + esc(lines.name || row.aptName) + '"></td>' +
       '<td class="ob-center">' + cleanControl + '</td>' +
       '<td class="ob-property-cell"><div class="ob-property-line"><b>' + displayNumber + ' · ' + esc(lines.name || row.aptName || 'Apartment') + '</b>' + badges + '</div><small>' + esc([area, lines.addr].filter(Boolean).join(' · ')) + '</small></td>' +
       '<td><div class="ob-stay-line"><span>' + (row.isCheckinOnly ? 'Arrival only' : 'CO') + '</span>' + checkin + '</div><small>' + esc(row.nextNights ? row.nextNights + ' nights' : '') + '</small></td>' +
-      '<td class="ob-center"><b>' + esc(row.people || '—') + '</b></td>' +
-      '<td class="ob-center"><b>' + esc(row.arrivalTime || '—') + '</b></td>' +
+      '<td class="ob-center">' + paxControl + '</td>' +
+      '<td class="ob-center">' + etaControl + '</td>' +
       '<td>' + compactFlags(row, item.index, item.extra) + '</td>' +
       '<td>' + cleanerControl + '</td>' +
       '<td>' + taskControl + '</td>' +
-      '<td><button class="ob-note-preview" data-ob-action="inspect" data-ob-id="' + encoded(id) + '" title="Open reservation details">' + esc(note || 'Add details…') + '</button></td>' +
+      '<td>' + noteControl + '</td>' +
       '<td><span class="ob-row-status ' + statusClass + '">' + statusText + '</span></td>' +
-      '<td class="ob-center"><button class="ob-open-detail" data-ob-action="inspect" data-ob-id="' + encoded(id) + '" title="Open details">›</button></td>' +
       '</tr>';
   }
 
@@ -379,49 +313,12 @@
       '</div>';
   }
 
-  function crewLoadHtml(items) {
-    var by = {};
-    var unassigned = { total: 0, open: 0, done: 0 };
-    items.forEach(function (item) {
-      if (!item.target) return;
-      var names = cleaners(item.target);
-      var done = !!item.target.cleanDone;
-      if (!names.length) {
-        unassigned.total++; done ? unassigned.done++ : unassigned.open++;
-        return;
-      }
-      names.forEach(function (name) {
-        if (!by[name]) by[name] = { total: 0, open: 0, done: 0 };
-        by[name].total++; done ? by[name].done++ : by[name].open++;
-      });
-    });
-    var selectedCount = selectedItems(items).length;
-    var names = Object.keys(by).sort(function (a, b) {
-      var diff = by[b].open - by[a].open;
-      return diff || a.localeCompare(b, 'el', { sensitivity: 'base' });
-    });
-    var rows = names.map(function (name) {
-      var load = by[name];
-      return '<button class="ob-crew-load" data-ob-action="crew-assign" data-ob-name="' + encoded(name) + '"' + (selectedCount ? '' : ' disabled') + ' title="Assign selected rows to ' + esc(name) + '">' +
-        '<span><b>' + esc(name) + '</b><small>' + load.done + ' done · ' + load.total + ' total</small></span><strong>' + load.open + '</strong></button>';
-    }).join('');
-    return '<aside class="ob-crew-panel"><div class="ob-panel-head"><div><b>Crew workload</b><small>Click a cleaner to assign selected rows</small></div><span class="ob-chip ob-red">' + unassigned.open + ' unassigned</span></div>' +
-      (rows || '<div class="ob-empty-mini">No cleaner assignments yet</div>') + '</aside>';
-  }
-
   function pagerHtml(page, pageCount, total) {
     return '<div class="ob-pager"><span>' + total + ' matching rows</span><span class="ob-spacer"></span>' +
       '<button class="ob-btn ob-square" data-ob-action="page" data-ob-page="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + '>←</button>' +
       '<b>Page ' + page + ' / ' + pageCount + '</b>' +
       '<button class="ob-btn ob-square" data-ob-action="page" data-ob-page="' + (page + 1) + '"' + (page >= pageCount ? ' disabled' : '') + '>→</button>' +
       '<select class="ob-select" data-ob-action="page-size"><option value="25"' + (state.pageSize === 25 ? ' selected' : '') + '>25 rows</option><option value="50"' + (state.pageSize === 50 ? ' selected' : '') + '>50 rows</option><option value="100"' + (state.pageSize === 100 ? ' selected' : '') + '>100 rows</option></select></div>';
-  }
-
-  function inspectorHtml(item, displayNumber) {
-    if (!item) {
-      return '<aside class="ob-inspector"><div class="ob-panel-head"><div><b>Reservation details</b><small>One apartment at a time</small></div></div><div class="ob-inspector-empty"><b>Select a row</b><span>Review or edit arrival details, flags, notes and cleaner information here.</span></div></aside>';
-    }
-    return '<aside class="ob-inspector"><div class="ob-panel-head"><div><b>Reservation details</b><small>Edits use the shared Daily Ops record</small></div><button class="ob-open-detail" data-ob-action="close-inspector">×</button></div>' + cardHtml(item, displayNumber) + '</aside>';
   }
 
   function cleanerDatalist() {
@@ -647,7 +544,6 @@
     var pageItems = visibleItems.slice(pageStart, pageStart + state.pageSize);
     var pageActionable = pageItems.filter(function (item) { return !!item.target; });
     var pageAllSelected = !!pageActionable.length && pageActionable.every(function (item) { return !!state.selected[itemId(item)]; });
-    var focusItem = allItems.find(function (item) { return itemId(item) === state.focusId; }) || null;
     var summary = statusSummary(allItems);
     var tasks = activeTasks();
     var isToday = _opsDate === today();
@@ -693,11 +589,11 @@
           '<div class="ob-dispatch-layout"><div class="ob-dispatch-main">' +
             '<div class="ob-table-wrap"><table class="ob-dispatch-table"><thead><tr>' +
               '<th class="ob-center"><input type="checkbox" data-ob-action="select-page"' + (pageAllSelected ? ' checked' : '') + ' title="Select this page"></th>' +
-              '<th class="ob-center">✓</th><th>Property</th><th>Stay / check-in</th><th class="ob-center">Pax</th><th class="ob-center">ETA</th><th>Flags</th><th>Cleaner</th><th>Task</th><th>Reservation details</th><th>Status</th><th></th>' +
+              '<th class="ob-center">✓</th><th>Property</th><th>Stay / check-in</th><th class="ob-center">Pax</th><th class="ob-center">ETA</th><th>Flags</th><th>Cleaner</th><th>Task</th><th>Notes</th><th>Status</th>' +
             '</tr></thead><tbody>' +
-              (pageItems.length ? pageItems.map(function (item, index) { return dispatchRowHtml(item, pageStart + index + 1); }).join('') : '<tr><td colspan="12"><div class="ob-empty">No rows match this view.</div></td></tr>') +
+              (pageItems.length ? pageItems.map(function (item, index) { return dispatchRowHtml(item, pageStart + index + 1); }).join('') : '<tr><td colspan="11"><div class="ob-empty">No rows match this view.</div></td></tr>') +
             '</tbody></table></div>' + pagerHtml(state.page, pageCount, visibleItems.length) +
-          '</div><div class="ob-dispatch-side">' + crewLoadHtml(allItems) + inspectorHtml(focusItem, focusItem ? allItems.indexOf(focusItem) + 1 : 0) + '</div></div>' +
+          '</div></div>' +
         '</div>' +
         '<div class="ob-aux-grid"><details class="ob-collapsible"><summary>Staff, leave, linen &amp; driver routes</summary><div class="ob-section"><h3>Same saved data as Daily Ops</h3>' + staffHtml() + '</div></details>' +
           '<details class="ob-collapsible"><summary>Daily notes</summary><div class="ob-section"><textarea class="ob-notes" data-ob-action="notes" placeholder="General notes for the day…">' + esc(_opsNotes) + '</textarea><div class="ob-save-state" id="ops-beta-save-state">Saved fields are shared with Daily Ops</div></div></details>' +
@@ -966,10 +862,6 @@
         persist(false); _opsDate = today(); rerender();
       } else if (action === 'filter') {
         state.filter = button.dataset.obFilter || 'all'; state.page = 1; rerender();
-      } else if (action === 'inspect') {
-        state.focusId = decoded(button.dataset.obId); rerender();
-      } else if (action === 'close-inspector') {
-        state.focusId = ''; rerender();
       } else if (action === 'page') {
         state.page = Math.max(1, Number(button.dataset.obPage || 1)); rerender();
       } else if (action === 'select-all-results') {
@@ -980,8 +872,6 @@
         bulkDone(true);
       } else if (action === 'bulk-open') {
         bulkDone(false);
-      } else if (action === 'crew-assign') {
-        bulkCleaner(decoded(button.dataset.obName));
       } else if (action === 'flag') {
         toggleFlag(Number(button.dataset.obIndex), button.dataset.obFlag);
       } else if (action === 'checkin') {
@@ -1021,7 +911,7 @@
         state.pageSize = Number(input.value || 50); state.page = 1; rerender();
       } else if (action === 'select') {
         var selectId = decoded(input.dataset.obId);
-        if (input.checked) { state.selected[selectId] = true; state.focusId = selectId; }
+        if (input.checked) state.selected[selectId] = true;
         else delete state.selected[selectId];
         rerender();
       } else if (action === 'select-page') {

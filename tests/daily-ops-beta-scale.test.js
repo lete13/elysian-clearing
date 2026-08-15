@@ -140,14 +140,16 @@ assert(panel.innerHTML.includes('Page 2 / 4'), 'paging advances without expandin
 listeners.click(event('select-all-results'));
 assert.strictEqual(Object.keys(context._opsBetaState.selected).length, 200, 'select-all covers every filtered result');
 
-listeners.click(event('crew-assign', {
-  dataset: { obAction: 'crew-assign', obName: encodeURIComponent('Eleni') },
-}));
-assert(rows.every((row) => row.cleanerName === 'Eleni'), 'crew workload action assigns all selected rows');
+listeners.change(event('bulk-cleaner', { value: 'Eleni', tagName: 'SELECT' }));
+assert(rows.every((row) => row.cleanerName === 'Eleni'), 'bulk bar assigns all selected rows from the main table');
 
-listeners.click(event('inspect', {
-  dataset: { obAction: 'inspect', obId: encodeURIComponent('row:a101::turnover') },
-}));
-assert(panel.innerHTML.includes('Apartment 101'), 'a single reservation opens in the inspector');
+assert(!panel.innerHTML.includes('Crew workload'), 'crew workload side panel removed');
+assert(!panel.innerHTML.includes('Reservation details'), 'reservation details side panel removed');
+assert(panel.innerHTML.includes('>Notes<'), 'notes stay on the main table');
+assert(panel.innerHTML.includes('⏰'), 'late checkout uses a clock icon');
+assert(panel.innerHTML.includes('🔥'), 'priority uses a flame icon');
+assert(panel.innerHTML.includes('🛏️'), 'park bed uses a bed icon');
+assert(panel.innerHTML.includes('🌅'), 'early check-in uses a sunrise icon');
+assert(!/>L</.test(panel.innerHTML) && !/>P</.test(panel.innerHTML), 'letter flag labels are gone');
 
-console.log('daily-ops-beta-scale: ok (200 rows, 4 pages, bulk assignment, inspector)');
+console.log('daily-ops-beta-scale: ok (200 rows, 4 pages, bulk assignment, table-only)');
