@@ -1,0 +1,49 @@
+{
+  "baseSha256": "c9f37e221ac4883dd50019e268c6406e93df2cbe7af464368151f4f56a57b7ad",
+  "expectedSha256": "212f70f3acd2e4457f8aafefff6710cbd977138e5505ebbd124bb59f0aeb433f",
+  "builtAt": "2026-08-15 Daily Ops Beta: isolated apartment-card workspace",
+  "patches": [
+    {
+      "note": "Add Daily Ops (Beta) beside the unchanged Daily Ops nav entry",
+      "find": "    <button class=\"nav-btn\" data-tab=\"ops\" onclick=\"showTab('ops',this)\" id=\"nav-ops\">Daily Ops</button>\n    <button class=\"nav-btn\" data-tab=\"emp\" onclick=\"showTab('emp',this)\" id=\"nav-emp\">Personnel</button>",
+      "replace": "    <button class=\"nav-btn\" data-tab=\"ops\" onclick=\"showTab('ops',this)\" id=\"nav-ops\">Daily Ops</button>\n    <button class=\"nav-btn\" data-tab=\"ops\" onclick=\"showTab('opsbeta',this)\" id=\"nav-opsbeta\">Daily Ops (Beta)</button>\n    <button class=\"nav-btn\" data-tab=\"emp\" onclick=\"showTab('emp',this)\" id=\"nav-emp\">Personnel</button>"
+    },
+    {
+      "note": "Add an empty isolated Beta tab without changing #tab-ops",
+      "find": "<!-- DAILY OPS TAB -->\n<div id=\"tab-ops\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n\n<!-- PERSONNEL TAB -->",
+      "replace": "<!-- DAILY OPS TAB -->\n<div id=\"tab-ops\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n\n<!-- DAILY OPS BETA TAB — isolated renderer, shared data -->\n<div id=\"tab-opsbeta\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n\n<!-- PERSONNEL TAB -->"
+    },
+    {
+      "note": "Load the isolated Beta stylesheet",
+      "find": "<!-- html2canvas + jsPDF load on first export, not at login -->\n</head>\n<body>",
+      "replace": "<!-- html2canvas + jsPDF load on first export, not at login -->\n  <link rel=\"stylesheet\" href=\"/fe/daily-ops-beta.css\">\n</head>\n<body>"
+    },
+    {
+      "note": "Load the isolated Beta renderer after the existing application",
+      "find": "</script>\n</body>\n</html>",
+      "replace": "</script>\n  <script src=\"/fe/daily-ops-beta.js\"></script>\n</body>\n</html>"
+    }
+  ],
+  "assertions": [
+    {
+      "has": "id=\"nav-opsbeta\">Daily Ops (Beta)",
+      "note": "Beta has its own navigation entry"
+    },
+    {
+      "has": "id=\"tab-opsbeta\"",
+      "note": "Beta has its own tab panel"
+    },
+    {
+      "has": "/fe/daily-ops-beta.css",
+      "note": "Beta CSS is loaded separately"
+    },
+    {
+      "has": "/fe/daily-ops-beta.js",
+      "note": "Beta JS is loaded separately"
+    },
+    {
+      "has": "id=\"tab-ops\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>",
+      "note": "Original Daily Ops tab remains intact"
+    }
+  ]
+}
