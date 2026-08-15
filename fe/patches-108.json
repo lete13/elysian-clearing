@@ -1,0 +1,69 @@
+{
+ "baseSha256": "212f70f3acd2e4457f8aafefff6710cbd977138e5505ebbd124bb59f0aeb433f",
+ "expectedSha256": "09d9649c47bb728999b04ad4d77a416e45d6bc3ad9ec1d86b90d075a7f89db59",
+ "builtAt": "2026-08-15 Pull every Airbnb VAT debit and credit on a stay",
+ "patches": [
+  {
+   "note": "Expect copy: stays to open, not a PDF count",
+   "find": "Pull opens each Airbnb confirmation code from Hosthub (like VAT Invoicer). If codes are missing locally, Pull/Expect backfill them from Hosthub automatically.",
+   "replace": "Expect is which stays to open. Pull saves every VAT invoice and credit note on that stay (cancel = debit+credit; extend = debit + credit of that debit + new debit). Hosthub cannot predict the PDF count.",
+   "count": 1
+  },
+  {
+   "note": "After Hosthub backfill, same stay-vs-PDF copy",
+   "find": "Codes from <code>' + (cj.source || 'server') + '</code>. Pull uses these automatically.",
+   "replace": "Codes from <code>' + (cj.source || 'server') + '</code>. Expect = stays to open; Pull saves every related Airbnb VAT document.",
+   "count": 1
+  },
+  {
+   "note": "Collect summary: unique stays vs PDF count",
+   "find": "    el.innerHTML =\n      '<div>Vault vs expect — Airbnb invoices <b>' + a + '</b>/' + (h.airInv || 0) +\n      ' · credit notes <b>' + c + '</b>/' + (h.airCredit || 0) +\n      ' · Booking.com apartments <b>' + bHave + '</b>/' + bNeed +\n      ' <span style=\"color:var(--tx3)\">(one invoice per apartment)</span></div>';",
+   "replace": "    var expectCodes = {};\n    (h.airInvList || []).concat(h.airCreditList || []).forEach(function (x) {\n      if (x && x.code) expectCodes[String(x.code).toUpperCase()] = true;\n    });\n    var vaultCodes = {};\n    items.forEach(function (f) {\n      if (String(f.channel || '').toLowerCase() !== 'airbnb') return;\n      var m = String(f.filename || f.name || '').toUpperCase().match(/(INVOICE|CREDIT_NOTE)-([A-Z0-9]{6,20})/);\n      if (m) vaultCodes[m[2]] = true;\n    });\n    el.innerHTML =\n      '<div>Vault vs expect — Airbnb stays with PDFs <b>' + Object.keys(vaultCodes).length + '</b>/' + Object.keys(expectCodes).length +\n      ' · VAT PDFs <b>' + a + '</b> · credit notes <b>' + c + '</b>' +\n      ' <span style=\"color:var(--tx3)\">(one stay can have several Airbnb documents)</span>' +\n      ' · Booking.com apartments <b>' + bHave + '</b>/' + bNeed +\n      ' <span style=\"color:var(--tx3)\">(one invoice per apartment)</span></div>';",
+   "count": 1
+  },
+  {
+   "note": "Pull always asks the worker for every VAT doc on the stay",
+   "find": "            kind: x.kind || 'invoice',",
+   "replace": "            kind: 'both',",
+   "count": 1
+  },
+  {
+   "note": "Checklist: stays covered; multiple PDFs per stay is expected",
+   "find": "      '<div style=\"font-weight:600;margin-bottom:6px\">Airbnb (Hosthub codes): invoices <b>' + haveInv + '</b>/' + inv.length +\n      ' · credit notes <b>' + haveCr + '</b>/' + credit.length +",
+   "replace": "      '<div style=\"font-weight:600;margin-bottom:6px\">Airbnb stays to open: invoices <b>' + haveInv + '</b>/' + inv.length +\n      ' · cancelled/credit stays <b>' + haveCr + '</b>/' + credit.length +",
+   "count": 1
+  },
+  {
+   "note": "Open a stay if Hosthub created OR Airbnb confirmation is in the month (extensions)",
+   "find": "      var createdYm = piYmFromTs(b.createdOnChannel != null ? b.createdOnChannel : b.created);\n      var cancelYm = piYmFromTs(b.cancelledAt);",
+   "replace": "      var channelYm = piYmFromTs(b.createdOnChannel);\n      var hosthubYm = piYmFromTs(b.created);\n      var createdYm = (channelYm === month || hosthubYm === month) ? month : (channelYm || hosthubYm);\n      var cancelYm = piYmFromTs(b.cancelledAt);",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Expect is which stays to open",
+   "note": "Expect is not a PDF count"
+  },
+  {
+   "has": "one stay can have several Airbnb documents",
+   "note": "vault vs expect copy"
+  },
+  {
+   "has": "kind: 'both'",
+   "note": "pull every VAT doc on the stay"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full pull kept"
+  },
+  {
+   "has": "channel: 'airbnb'",
+   "note": "Airbnb-only pull"
+  },
+  {
+   "has": "already saved codes are skipped",
+   "note": "resume copy kept"
+  }
+ ]
+}

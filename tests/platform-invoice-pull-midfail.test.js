@@ -50,8 +50,10 @@ assert.strictEqual(parseWorkerResult(stdout), null, 'progress-only stdout is not
 assert(srv70.patches.some((p) => (p.replace || '').includes("j.event === 'progress' || j.event === 'saved'")));
 assert(srv70.patches.some((p) => (p.replace || '').includes('piPullWalkPdfs')));
 assert(fe104.patches.some((p) => (p.replace || '').includes('Pull interrupted')));
-assert(fe106.patches.some((p) => (p.replace || '').includes('Server restarted during pull')));
-assert(srv71.patches.some((p) => (p.replace || '').includes('Server restarted during pull')));
+const fe108 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-108.json'), 'utf8'));
+const srv72 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-72.json'), 'utf8'));
+assert(fe108.patches.some((p) => (p.replace || '').includes('one stay can have several Airbnb documents')));
+assert(srv72.patches.some((p) => (p.replace || '').includes("kind: 'both'")));
 assert(!/Pull failed — Pulling Airbnb/.test((fe104.patches[0] || {}).replace || ''));
 
 function extractBetween(source, startName, nextName) {
@@ -64,18 +66,22 @@ const helperSrc =
   extractBetween(worker, 'airbnbHaveKey', 'loadAirbnbHaveSet') +
   extractBetween(worker, 'loadAirbnbHaveSet', 'airbnbResvAlreadyHave') +
   extractBetween(worker, 'airbnbResvAlreadyHave', 'requestPullStop');
-const helpers = vm.runInNewContext(helperSrc + '\n({ airbnbHaveKey, loadAirbnbHaveSet, airbnbResvAlreadyHave })', {
+const helpers = vm.runInNewContext(helperSrc + '\n({ airbnbHaveKey, loadAirbnbHaveSet, airbnbDocAlreadyHave, airbnbResvAlreadyHave })', {
   process: { env: { PI_AIRBNB_HAVE_JSON: JSON.stringify([
     'Airbnb/2026-07/Birdhouse/invoice-HMALREADY.pdf',
     'Airbnb/2026-07/Loft/credit_note-HMCREDIT1.pdf',
+    'Airbnb/2026-07/Birdhouse/invoice-HMKEEP01-INV99ABC.pdf',
   ]) } },
 });
 assert.strictEqual(helpers.airbnbHaveKey('invoice', 'hm3tw2mmbx'), 'invoice:HM3TW2MMBX');
 const have = helpers.loadAirbnbHaveSet();
-assert(helpers.airbnbResvAlreadyHave({ code: 'HMALREADY', kind: 'invoice' }, have));
-assert(!helpers.airbnbResvAlreadyHave({ code: 'HM3TW2MMBX', kind: 'invoice' }, have));
-assert(helpers.airbnbResvAlreadyHave({ code: 'HMCREDIT1', kind: 'credit_note' }, have));
-assert(!helpers.airbnbResvAlreadyHave({ code: 'HMCREDIT1', kind: 'invoice' }, have));
+assert(!helpers.airbnbResvAlreadyHave({ code: 'HMALREADY', kind: 'invoice' }, have), 'one saved PDF does not skip the stay');
+assert(helpers.airbnbDocAlreadyHave(have, 'invoice', 'HMALREADY', ''));
+assert(helpers.airbnbDocAlreadyHave(have, 'invoice', 'HMKEEP01', 'INV99ABC'));
+assert(!helpers.airbnbDocAlreadyHave(have, 'invoice', 'HMKEEP01', 'CN88XYZ'));
+assert(!helpers.airbnbDocAlreadyHave(have, 'invoice', 'HM3TW2MMBX', ''));
+assert(helpers.airbnbDocAlreadyHave(have, 'credit_note', 'HMCREDIT1', ''));
+assert(!helpers.airbnbDocAlreadyHave(have, 'invoice', 'HMCREDIT1', ''));
 
 function walkPdfs(outDir) {
   const out = [];

@@ -13,10 +13,11 @@ The app **pulls** them automatically from the host portals (Platform Invoices), 
 | Channel | Document | Issue / file month |
 |---|---|---|
 | Booking.com | Invoice | **Month after** the bookings (June stays → July invoice). **One invoice per apartment**, not per booking. |
-| Airbnb | VAT invoice | Hosthub **`created` / `createdOnChannel`** (confirmation) |
-| Airbnb | Credit note | Hosthub **`cancelledAt`** (must download on cancel) |
+| Airbnb | VAT invoice / debit note | Hosthub **`created` / `createdOnChannel`** (which stay to open). Airbnb may issue **several** debit notes on one confirmation code (book, then extend). |
+| Airbnb | Credit note | Hosthub **`cancelledAt`**, and also when Airbnb credits the previous debit on **extend**. Pull saves every credit note on that stay. |
 
 Confirm in month A and cancel in month B → keep **both** documents.
+Extend in month B → original debit + credit of that debit + new debit; Expect is still **one stay to open**, not three expected PDFs.
 
 Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperties.eu`.
 
@@ -25,10 +26,10 @@ Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperti
 Same idea as [VAT Invoicer](https://vatinvoicer.com/privacy/): while logged into Airbnb hosting, take **reservation confirmation codes**, open each reservation, **find the VAT invoice ID on that page**, open Airbnb’s **VAT invoice HTML page**, and print it to PDF.
 
 1. Hosthub sync stores each booking’s channel **`reservation_id`** as `reservationId` (Airbnb confirmation code).
-2. Platform Invoices → **Expect** builds the month’s Airbnb invoice + credit-note lists from Hosthub dates.
+2. Platform Invoices → **Expect** lists **stays to open** this month (not a PDF count). Cancel/extend stays still count as one code.
 3. **Test pull (5 codes)** first (latest 5 Hosthub `created` / `createdOnChannel` ids), then **Pull Airbnb (Hosthub codes)** for the full month. **Stop pull** kills a running job (SIGTERM). Codes go to the worker as `PI_AIRBNB_RESERVATIONS_JSON` (`PI_AIRBNB_LIMIT` slices a test run).
-4. Worker opens `https://www.airbnb.com/hosting/stay/{CODE}` (Airbnb's current host reservation page; older `/hosting/reservations/details/{CODE}` redirects here). It waits for GraphQL, clicks the **total price** then **VAT invoice** (Airbnb Help 438), searches HTML/JSON for VAT invoice IDs, opens the invoice HTML, and `page.pdf()`s it. The stay-page shell is never saved as a PDF.
-5. PDFs are **stored by platform / month / apartment**: `Airbnb/2026-07/Birdhouse/invoice-HMXXXX.pdf`. The vault `partner` field is the apartment name (credit notes stay under that apartment; kind is in the filename).
+4. Worker opens `https://www.airbnb.com/hosting/stay/{CODE}` (Airbnb's current host reservation page; older `/hosting/reservations/details/{CODE}` redirects here). It waits for GraphQL, clicks the **total price** then **every VAT invoice / credit note** on that stay, searches HTML/JSON for VAT invoice IDs, opens each invoice HTML, and `page.pdf()`s it. The stay-page shell is never saved as a PDF.
+5. PDFs are **stored by platform / month / apartment**: `Airbnb/2026-07/Birdhouse/invoice-HMXXXX-VATID.pdf` (one file per Airbnb VAT document; a stay can have several). The vault `partner` field is the apartment name (credit notes stay under that apartment; kind is in the filename).
 
 Airbnb does not expose a labeled download link on the reservation details page — that is why looking only for `a[href]` with the word “invoice” saved 0 PDFs.
 
@@ -50,7 +51,7 @@ No manual pasting of codes. Booking.com remains available but is secondary while
 `scripts/platform-invoice-pull.js` (Playwright + Chromium):
 
 1. Reuses Airbnb / Booking session vault (or password login).
-2. **Airbnb:** for each Hosthub confirmation code → reservation page → VAT invoice ID → invoice HTML → PDF stored as `Airbnb/{month}/{apartment}/{kind}-{code}.pdf`.
+2. **Airbnb:** for each Hosthub confirmation code → reservation page → **every** VAT invoice / credit note HTML → PDF stored as `Airbnb/{month}/{apartment}/{kind}-{code}-{vatId}.pdf`.
 3. **Booking.com (optional):** admin.booking.com Finance → Invoices, one PDF per property.
 4. `POST /api/platform-invoices/pull` stores them in `platform_invoices` with `source=portal`.
 

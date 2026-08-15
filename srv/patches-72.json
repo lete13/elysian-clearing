@@ -1,0 +1,41 @@
+{
+ "baseSha256": "99009e20f1470e375cc0adcafb37b1a67954b446d8ba1071e23e40118822abe2",
+ "expectedSha256": "eec78b71def031f7ef040eb5235fbb46eeabc9926046fb53d59922f29a74ab4f",
+ "builtAt": "2026-08-15 Pull every Airbnb VAT debit and credit on a stay",
+ "patches": [
+  {
+   "note": "Open stay if Hosthub created OR Airbnb confirmation is in the month",
+   "find": "    const createdYm = piYmFromUnix(b.createdOnChannel != null ? b.createdOnChannel : b.created);\n    const cancelYm = piYmFromUnix(b.cancelledAt);",
+   "replace": "    const channelYm = piYmFromUnix(b.createdOnChannel);\n    const hosthubYm = piYmFromUnix(b.created);\n    const createdYm = (channelYm === month || hosthubYm === month) ? month : (channelYm || hosthubYm);\n    const cancelYm = piYmFromUnix(b.cancelledAt);",
+   "count": 1
+  },
+  {
+   "note": "Worker always receives kind both so cancel/extend sets are fully pulled",
+   "find": "  if (airbnbReservations.length) {\n    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));",
+   "replace": "  if (airbnbReservations.length) {\n    airbnbReservations = airbnbReservations.map(function (x) {\n      return Object.assign({}, x, { kind: 'both' });\n    });\n    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "kind: 'both'",
+   "note": "pull kind both"
+  },
+  {
+   "has": "hosthubYm === month",
+   "note": "Hosthub created month also opens the stay"
+  },
+  {
+   "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+   "note": "harvest kept"
+  },
+  {
+   "has": "app.post('/api/platform-invoices/pull-stop'",
+   "note": "stop kept"
+  },
+  {
+   "has": "job.hint = 'Pull stopped'",
+   "note": "user Stop still uses Pull stopped"
+  }
+ ]
+}

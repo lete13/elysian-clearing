@@ -22,6 +22,11 @@ assert(worker.includes('No Hosthub Airbnb reservation codes provided'), 'fails c
 assert(worker.includes('function extractAirbnbVatInvoiceHits'), 'searches reservation HTML for VAT invoice IDs');
 assert(worker.includes('reservation/vat_invoice/'), 'opens Airbnb VAT invoice HTML page from the ID');
 assert(worker.includes('looksLikeAirbnbInvoiceHtml'), 'will not PDF the reservation details shell');
+assert(worker.includes('listAirbnbVatDocHrefs'), 'collects every VAT invoice/credit note href on the stay');
+assert(worker.includes('vatIdFromAirbnbUrl'), 'names PDFs with the Airbnb VAT document id');
+assert(worker.includes("kind: 'both'"), 'pull treats each stay as all related invoices');
+assert(worker.includes('mergeListedHrefs'), 'keeps collecting VAT hrefs after each debit/credit open');
+assert(worker.includes('clicking a VAT/credit control here navigates away'), 'does not click the first VAT link before listing siblings');
 assert(worker.includes('PI_AIRBNB_LIMIT'), 'Test pull can slice codes');
 assert(worker.includes('ids/urls found:'), '0-PDF error says what was searched');
 assert(!/hrefs\.length/.test(worker) || worker.indexOf('loadAirbnbReservations') < worker.indexOf('pullAirbnb'), 'Hosthub-driven path present');
@@ -73,8 +78,12 @@ assert(fe92.patches.some((p) => (p.replace || '').includes('no pull job with tha
 assert(srv66.patches.some((p) => (p.replace || '').includes("status: 'cancelled'")), 'missing job GET is cancelled');
 const fe106 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-106.json'), 'utf8'));
 const srv71 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-71.json'), 'utf8'));
-assert(fe106.patches.some((p) => (p.replace || '').includes('Server restarted during pull')), 'gone job is a restart');
-assert(srv71.patches.some((p) => (p.replace || '').includes('Server restarted during pull')), 'API gone job is a restart');
+const fe108 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-108.json'), 'utf8'));
+const srv72 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-72.json'), 'utf8'));
+assert(fe108.patches.some((p) => (p.replace || '').includes('Expect is which stays to open')), 'FE Expect is stays not PDF count');
+assert(fe108.patches.some((p) => (p.replace || '').includes("kind: 'both'")), 'FE pull kind both');
+assert(srv72.patches.some((p) => (p.replace || '').includes("kind: 'both'")), 'server pull kind both');
+assert(srv72.patches.some((p) => (p.replace || '').includes('hosthubYm === month')), 'Hosthub created month opens stay');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');
@@ -87,13 +96,17 @@ const extractSrc =
   extractBetween(worker, 'kindFromInvoiceBlob', 'airbnbInvoicePagePatterns') +
   extractBetween(worker, 'airbnbInvoiceUrlsForHit', 'attachAirbnbInvoiceNetworkTap');
 const helpers = vm.runInNewContext(
-  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits })',
+  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits, vatIdFromAirbnbUrl })',
   { URL: URL, encodeURIComponent: encodeURIComponent }
 );
 const html = '<script>{"vatInvoiceId":"INV99ABC","vatInvoice":{"id":"INV99ABC","url":"https://www.airbnb.com/reservation/vat_invoice/INV99ABC"}}</script>';
 const hits = helpers.extractAirbnbVatInvoiceHits(html, 'https://www.airbnb.com');
 assert(hits.some((h) => h.id === 'INV99ABC'), 'extracts vatInvoiceId from reservation JSON');
 assert(hits.some((h) => String(h.href || '').indexOf('/reservation/vat_invoice/INV99ABC') >= 0), 'extracts VAT invoice HTML URL');
+const manyHtml = '{"vatInvoices":[{"id":"INV99ABC","url":"https://www.airbnb.com/reservation/vat_invoice/INV99ABC"},{"id":"CN88XYZ","url":"https://www.airbnb.com/reservation/vat_invoice/CN88XYZ"}]}';
+const many = helpers.extractAirbnbVatInvoiceHits(manyHtml, 'https://www.airbnb.com');
+assert(many.some((h) => h.id === 'INV99ABC'), 'extracts first vatInvoices[] id');
+assert(many.some((h) => h.id === 'CN88XYZ'), 'extracts second vatInvoices[] id on the same stay');
 const urls = helpers.airbnbInvoiceUrlsForHit({ kind: 'invoice', id: 'INV99ABC', href: '' }, 'https://www.airbnb.com', []);
 assert(urls.some((u) => u.indexOf('/reservation/vat_invoice/INV99ABC') >= 0), 'builds Airbnb VAT invoice HTML URL from ID');
 const tokenHtml = '{"vatInvoiceToken":"TOK99XYZ","vatInvoiceUrl":"https://www.airbnb.com/reservation/vat_invoice/TOK99XYZ"}';
@@ -104,6 +117,7 @@ assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/hosting/stay/
 assert(helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/INV99ABC', 'VAT invoice'));
 assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/HMHPBAREC3', 'We can’t find that page'));
 assert.strictEqual(helpers.usefulAirbnbInvoiceHits([{ id: 'HMHPBAREC3' }, { id: 'INV99ABC' }], 'HMHPBAREC3').length, 1);
+assert.strictEqual(helpers.vatIdFromAirbnbUrl('https://www.airbnb.com/reservation/vat_invoice/INV99ABC'), 'INV99ABC');
 
 const sortSrc = extractBetween(worker, 'airbnbCreatedMs', 'loadAirbnbReservations');
 const sortH = vm.runInNewContext(sortSrc + '\n({ airbnbCreatedMs, sortAirbnbReservationsLatest })');
@@ -118,8 +132,8 @@ assert(sortH.airbnbCreatedMs({ createdOnChannel: 1 }) < sortH.airbnbCreatedMs({ 
 const storeSrc = extractBetween(worker, 'platformStoreLabel', 'loadAirbnbReservations');
 const store = vm.runInNewContext(storeSrc + '\n({ piInvoiceStoreRel, aptStoreFolder, platformStoreLabel })');
 assert.strictEqual(
-  store.piInvoiceStoreRel({ channel: 'airbnb', month: '2026-07', aptName: 'Birdhouse', kind: 'invoice', code: 'HMHPBAREC3' }),
-  'Airbnb/2026-07/Birdhouse/invoice-HMHPBAREC3.pdf'
+  store.piInvoiceStoreRel({ channel: 'airbnb', month: '2026-07', aptName: 'Birdhouse', kind: 'invoice', code: 'HMHPBAREC3-INV99ABC' }),
+  'Airbnb/2026-07/Birdhouse/invoice-HMHPBAREC3-INV99ABC.pdf'
 );
 assert.strictEqual(
   store.piInvoiceStoreRel({ channel: 'airbnb', month: '2026-07', aptName: 'Skyline Loft', kind: 'credit_note', code: 'HMCANCEL1' }),
@@ -178,7 +192,9 @@ function airExpect(month, bks) {
   const inv = [], credit = [];
   bks.forEach((b) => {
     if (String(b.platform || '').toLowerCase().indexOf('air') < 0) return;
-    const createdYm = ymFromTs(b.createdOnChannel != null ? b.createdOnChannel : b.created);
+    const channelYm = ymFromTs(b.createdOnChannel);
+    const hosthubYm = ymFromTs(b.created);
+    const createdYm = (channelYm === month || hosthubYm === month) ? month : (channelYm || hosthubYm);
     const cancelYm = ymFromTs(b.cancelledAt);
     const code = String(b.reservationId || '').trim().toUpperCase();
     if (createdYm === month && code) inv.push({ code, kind: 'invoice' });
@@ -192,10 +208,12 @@ const sample = [
   { platform: 'Airbnb', reservationId: 'HMCANCEL1', createdOnChannel: 1719792000, cancelled: true, cancelledAt: 1722470400 },
   { platform: 'Booking.com', reservationId: '1234567890', createdOnChannel: 1722470400 },
   { platform: 'Airbnb', reservationId: '', createdOnChannel: 1722470400 },
+  { platform: 'Airbnb', reservationId: 'HMEXTEND1', createdOnChannel: 1719792000, created: 1722470400 },
 ];
 const exp = airExpect('2024-08', sample);
-assert.strictEqual(exp.inv.length, 1);
-assert.strictEqual(exp.inv[0].code, 'HMABCDEF');
+assert.strictEqual(exp.inv.length, 2);
+assert(exp.inv.some((x) => x.code === 'HMABCDEF'));
+assert(exp.inv.some((x) => x.code === 'HMEXTEND1'), 'Hosthub created in month opens an extension stay');
 assert.strictEqual(exp.credit.length, 1);
 assert.strictEqual(exp.credit[0].code, 'HMCANCEL1');
 

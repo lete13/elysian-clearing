@@ -24,15 +24,20 @@ document.getElementById('total').addEventListener('click', function () {
   a.href = '/reservation/vat_invoice/INV99ABC';
   a.textContent = 'VAT invoice';
   document.body.appendChild(a);
+  var c = document.createElement('a');
+  c.href = '/reservation/vat_invoice/CN88XYZ';
+  c.textContent = 'Credit note';
+  document.body.appendChild(c);
 });
 </script>
 </body></html>`;
 }
 
-function invoiceHtml() {
+function invoiceHtml(id) {
+  const credit = /CN/i.test(String(id || ''));
   return `<!doctype html><html><body>
-<h1>VAT invoice</h1>
-<p>Invoice number INV99ABC</p>
+<h1>${credit ? 'Credit note' : 'VAT invoice'}</h1>
+<p>${credit ? 'Credit note' : 'Invoice number'} ${id}</p>
 <p>Airbnb service fee</p>
 </body></html>`;
 }
@@ -48,8 +53,9 @@ function startServer() {
         return;
       }
       if (/^\/reservation\/vat_invoice\//i.test(u)) {
+        const id = u.split('/').pop() || '';
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(invoiceHtml());
+        res.end(invoiceHtml(id));
         return;
       }
       res.writeHead(404, { 'content-type': 'text/plain' });
@@ -114,8 +120,12 @@ function runPull(origin, outDir, reservations, limit) {
     ]);
     assert(clickRun.parsed, 'worker printed a result JSON\n' + clickRun.stdout + clickRun.stderr);
     assert(clickRun.parsed.ok, 'click path saved a PDF: ' + JSON.stringify(clickRun.parsed));
-    const clickPdf = path.join(outDir, 'click', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMTEST01.pdf');
-    assert(fs.existsSync(clickPdf), 'stored stay-click PDF at ' + clickPdf);
+    const clickPdf = path.join(outDir, 'click', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMTEST01-INV99ABC.pdf');
+    const clickCredit = path.join(outDir, 'click', 'Airbnb', '2026-07', 'Birdhouse', 'credit_note-HMTEST01-CN88XYZ.pdf');
+    const clickDir = path.join(outDir, 'click', 'Airbnb', '2026-07', 'Birdhouse');
+    const clickSaved = fs.existsSync(clickDir) ? fs.readdirSync(clickDir).join(', ') : '(missing dir)';
+    assert(fs.existsSync(clickPdf), 'stored stay-click debit PDF at ' + clickPdf + ' (have: ' + clickSaved + ')');
+    assert(fs.existsSync(clickCredit), 'stored stay-click credit PDF at ' + clickCredit + ' (have: ' + clickSaved + ')');
     assert(fs.statSync(clickPdf).size > 100, 'PDF has bytes');
 
     const latestRun = await runPull(
@@ -130,8 +140,8 @@ function runPull(origin, outDir, reservations, limit) {
     );
     assert(latestRun.parsed, 'latest-N worker printed JSON\n' + latestRun.stdout + latestRun.stderr);
     assert(latestRun.parsed.ok, 'latest-N saved a PDF: ' + JSON.stringify(latestRun.parsed));
-    const newPdf = path.join(outDir, 'latest', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMNEW001.pdf');
-    const oldPdf = path.join(outDir, 'latest', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMOLD001.pdf');
+    const newPdf = path.join(outDir, 'latest', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMNEW001-INV99ABC.pdf');
+    const oldPdf = path.join(outDir, 'latest', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMOLD001-INV99ABC.pdf');
     assert(fs.existsSync(newPdf), 'limit 1 kept the newest Hosthub id');
     assert(!fs.existsSync(oldPdf), 'limit 1 did not keep the oldest Hosthub id');
     console.log('platform-invoice-stay-click.test.js: ok');
