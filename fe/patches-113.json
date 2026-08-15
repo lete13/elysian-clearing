@@ -1,0 +1,36 @@
+{
+ "baseSha256": "c09419094d71aa282d777a8ec83cd934b567c62f5dec176cfbbdc9506af7dd6d",
+ "expectedSha256": "44766b57436c7e53e578edfb8d1610515b2fd9942f556f1cf3bee832ecdee85b",
+ "builtAt": "2026-08-15 Property Info visible + Platform Invoices icon",
+ "patches": [
+  {
+   "note": "Nav: Platform Invoices Tabler icon (file-invoice)",
+   "find": "#hdr .nav-btn[data-tab=\"pinfo\"]::before{content:\"\\eb34\"}\n",
+   "replace": "#hdr .nav-btn[data-tab=\"pinfo\"]::before{content:\"\\eb34\"}\n    #hdr .nav-btn[data-tab=\"platinv\"]::before{content:\"\\eb67\"}\n"
+  },
+  {
+   "note": "Workspace: always show Property Info when account allows it",
+   "find": "      // Platform Invoices: show whenever the account is allowed (e.g. John), even in operator workspace\n      const show = (t === 'home' || (name === 'accountant' && t === 'perf') || inProf || t === 'platinv') && (typeof accTab !== 'function' || accTab(t));",
+   "replace": "      // Platform Invoices + Property Info: show whenever the account is allowed, even if the\n      // active workspace profile's tabs[] list omitted them (server TABS still grant access).\n      const show = (t === 'home' || (name === 'accountant' && t === 'perf') || inProf || t === 'pinfo' || t === 'platinv') && (typeof accTab !== 'function' || accTab(t));"
+  },
+  {
+   "note": "Nav: Property Info after Daily Ops (was last / easy to miss)",
+   "find": "    <button class=\"nav-btn\" data-tab=\"ops\" onclick=\"showTab('ops',this)\" id=\"nav-ops\">Daily Ops</button>\n    <button class=\"nav-btn\" data-tab=\"emp\" onclick=\"showTab('emp',this)\" id=\"nav-emp\">Personnel</button>\n    <button class=\"nav-btn\" data-tab=\"perf\" onclick=\"showTab('perf',this)\" id=\"nav-perf\">Performance</button>\n    <button class=\"nav-btn\" data-tab=\"pinfo\" onclick=\"showTab('pinfo',this)\" id=\"nav-pinfo\">Property Info</button>\n",
+   "replace": "    <button class=\"nav-btn\" data-tab=\"ops\" onclick=\"showTab('ops',this)\" id=\"nav-ops\">Daily Ops</button>\n    <button class=\"nav-btn\" data-tab=\"pinfo\" onclick=\"showTab('pinfo',this)\" id=\"nav-pinfo\">Property Info</button>\n    <button class=\"nav-btn\" data-tab=\"emp\" onclick=\"showTab('emp',this)\" id=\"nav-emp\">Personnel</button>\n    <button class=\"nav-btn\" data-tab=\"perf\" onclick=\"showTab('perf',this)\" id=\"nav-perf\">Performance</button>\n"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "nav-btn[data-tab=\"platinv\"]::before{content:\"\\eb67\"}",
+   "note": "Platform Invoices Tabler file-invoice icon"
+  },
+  {
+   "has": "t === 'pinfo' || t === 'platinv'",
+   "note": "Property Info shown when account allows"
+  },
+  {
+   "has": "id=\"nav-ops\">Daily Ops</button>\n    <button class=\"nav-btn\" data-tab=\"pinfo\"",
+   "note": "Property Info after Daily Ops"
+  }
+ ]
+}
