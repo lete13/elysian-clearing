@@ -84,6 +84,15 @@ assert(fe108.patches.some((p) => (p.replace || '').includes('Expect is which sta
 assert(fe108.patches.some((p) => (p.replace || '').includes("kind: 'both'")), 'FE pull kind both');
 assert(srv72.patches.some((p) => (p.replace || '').includes("kind: 'both'")), 'server pull kind both');
 assert(srv72.patches.some((p) => (p.replace || '').includes('hosthubYm === month')), 'Hosthub created month opens stay');
+const fe109 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-109.json'), 'utf8'));
+const srv73 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-73.json'), 'utf8'));
+assert(fe109.patches.some((p) => (p.replace || '').includes("piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })")), 'FE test pull is the two missed stays');
+assert(fe109.patches.some((p) => (p.replace || '').includes('Estimated invoices to pull')), 'FE Expect estimates invoices');
+assert(fe109.patches.some((p) => (p.replace || '').includes('piDownloadAccountantXls')), 'FE downloads accountant Excel');
+assert(srv73.patches.some((p) => (p.replace || '').includes('buildAccountantXls')), 'server attaches accountant Excel');
+assert(srv73.patches.some((p) => (p.replace || '').includes('estimateAirbnbInvoices')), 'server Expect estimate');
+assert(worker.includes('parseAirbnbVatFields'), 'worker parses Airbnb VAT number/date/amount');
+assert(worker.includes('invoiceNumber: fields.invoiceNumber'), 'saved event carries invoice number');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');
@@ -96,7 +105,7 @@ const extractSrc =
   extractBetween(worker, 'kindFromInvoiceBlob', 'airbnbInvoicePagePatterns') +
   extractBetween(worker, 'airbnbInvoiceUrlsForHit', 'attachAirbnbInvoiceNetworkTap');
 const helpers = vm.runInNewContext(
-  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits, vatIdFromAirbnbUrl, airbnbReservationPageIsOpen })',
+  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits, vatIdFromAirbnbUrl, airbnbReservationPageIsOpen, parseAirbnbVatFields })',
   { URL: URL, encodeURIComponent: encodeURIComponent }
 );
 const html = '<script>{"vatInvoiceId":"INV99ABC","vatInvoice":{"id":"INV99ABC","url":"https://www.airbnb.com/reservation/vat_invoice/INV99ABC"}}</script>';
@@ -243,6 +252,62 @@ assert(exp.inv.some((x) => x.code === 'HMABCDEF'));
 assert(exp.inv.some((x) => x.code === 'HMEXTEND1'), 'Hosthub created in month opens an extension stay');
 assert.strictEqual(exp.credit.length, 1);
 assert.strictEqual(exp.credit[0].code, 'HMCANCEL1');
+
+const { estimateAirbnbInvoices } = require(path.join(root, 'scripts', 'platform-invoice-expect'));
+const est = estimateAirbnbInvoices('2024-08', sample);
+assert.strictEqual(est.estimate.normal, 1, 'ordinary stay = 1 invoice');
+assert.strictEqual(est.estimate.cancel, 1, 'cancelled stay = 2 invoices');
+assert.strictEqual(est.estimate.extend, 1, 'Hosthub created >36h after channel = extend ×3');
+assert.strictEqual(est.estimate.docs, 1 + 2 + 3, 'docs = normal1 + cancel2 + extend3');
+assert.strictEqual(est.stays.find((s) => s.code === 'HMABCDEF').docs, 1);
+assert.strictEqual(est.stays.find((s) => s.code === 'HMCANCEL1').docs, 2);
+assert.strictEqual(est.stays.find((s) => s.code === 'HMEXTEND1').docs, 3);
+assert.strictEqual(est.stays.find((s) => s.code === 'HMCANCEL1').stayKind, 'cancel');
+
+const debitHtml = 'Invoice number AIUC-104771625-GR-1552747 issued 4/7/2026 Total €8.00';
+const debit = helpers.parseAirbnbVatFields(debitHtml, 'invoice', '');
+assert.strictEqual(debit.invoiceNumber, 'AIUC-104771625-GR-1552747');
+assert.strictEqual(debit.issueDate, '4/7/2026');
+assert.strictEqual(debit.total, 8);
+assert.strictEqual(debit.sign, '');
+const creditHtml = 'Credit note AIUC-104771625-GR-1552747-CN-1 4/7/2026 Total €8.00';
+const creditF = helpers.parseAirbnbVatFields(creditHtml, 'credit_note', '');
+assert.strictEqual(creditF.invoiceNumber, 'AIUC-104771625-GR-1552747-CN-1');
+assert.strictEqual(creditF.sign, '-');
+assert.strictEqual(creditF.total, 8);
+
+const { buildAccountantXls, accountantRow } = require(path.join(root, 'scripts', 'platform-invoice-accountant-xls'));
+const debitRow = accountantRow({
+  channel: 'airbnb',
+  filename: 'Airbnb/2026-07/Birdhouse/invoice-HMTEST-AIUC.pdf',
+  meta: { invoiceNumber: 'AIUC-104771625-GR-1552747', issueDate: '4/7/2026', total: 8, sign: '' },
+});
+assert.strictEqual(debitRow.sign, '');
+assert.strictEqual(debitRow.total, 8);
+const creditRow = accountantRow({
+  channel: 'airbnb',
+  filename: 'Airbnb/2026-07/Birdhouse/credit_note-HMTEST-CN.pdf',
+  kind: 'credit_note',
+  meta: { invoiceNumber: 'AIUC-104771625-GR-1552747-CN-1', issueDate: '4/7/2026', total: 8, sign: '-' },
+});
+assert.strictEqual(creditRow.sign, '-');
+const xls = buildAccountantXls([
+  { channel: 'airbnb', meta: { invoiceNumber: 'AIUC-AAA', issueDate: '4/7/2026', total: 8, sign: '' } },
+  { channel: 'airbnb', kind: 'credit_note', meta: { invoiceNumber: 'AIUC-AAA-CN-1', issueDate: '4/7/2026', total: 8, sign: '-' } },
+  { channel: 'booking', meta: { invoiceNumber: 'BDC-1', issueDate: '1/7/2026', total: 99, sign: '' } },
+]).toString('utf8');
+assert(xls.includes('Ημερομηνία'), 'Excel has issue-date header');
+assert(xls.includes('Αιτιολογία'), 'Excel has invoice-number header');
+assert(xls.includes('Κατάστημα'), 'Excel has empty store column header');
+assert(xls.includes('Αρ. συναλλαγής'), 'Excel has empty txn column header');
+assert(xls.includes('Πρόσημο ποσού'), 'Excel has sign header');
+assert(xls.includes('AIUC-AAA'), 'Excel has debit invoice number');
+assert(xls.includes('AIUC-AAA-CN-1'), 'Excel has credit invoice number');
+assert(!xls.includes('BDC-1'), 'Excel skips Booking.com');
+assert(!xls.includes('ΥΠ10'), 'txn column is empty, not ΥΠ10');
+const rowsXml = xls.split('<Row>').slice(2); // skip workbook noise / header
+assert(rowsXml.some((r) => r.includes('AIUC-AAA-CN-1') && r.includes('>-</Data>')), 'credit Πρόσημο is minus');
+assert(rowsXml.some((r) => r.includes('>AIUC-AAA<') && !r.includes('AIUC-AAA-CN') && !/Πρόσημο[\s\S]*>-</.test(r)), 'debit Πρόσημο empty');
 
 // Code regex used by worker
 const re = /^[A-Z0-9]{6,20}$/;

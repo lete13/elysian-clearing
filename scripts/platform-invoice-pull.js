@@ -610,6 +610,49 @@ function looksLikeAirbnbInvoiceHtml(url, bodyText) {
   return false;
 }
 
+function parseAirbnbVatAmount(raw) {
+  const s = String(raw || '').replace(/\s+/g, '').replace(',', '.');
+  const n = parseFloat(s);
+  if (!isFinite(n)) return null;
+  return Math.round(n * 100) / 100;
+}
+
+function parseAirbnbVatFields(bodyText, kind, vatId) {
+  const t = String(bodyText || '').replace(/\s+/g, ' ');
+  let invoiceNumber = '';
+  const aiuc = t.match(/AIUC-[A-Z0-9]+(?:-[A-Z0-9]+)*/i);
+  if (aiuc) invoiceNumber = aiuc[0].toUpperCase().replace(/[,.;]+$/, '');
+  if (!invoiceNumber && vatId && /AIUC/i.test(String(vatId))) invoiceNumber = String(vatId).toUpperCase();
+  if (!invoiceNumber) invoiceNumber = String(vatId || '').trim();
+  let issueDate = '';
+  const dmy = t.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/);
+  if (dmy) issueDate = parseInt(dmy[1], 10) + '/' + parseInt(dmy[2], 10) + '/' + dmy[3];
+  else {
+    const ymd = t.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+    if (ymd) issueDate = parseInt(ymd[3], 10) + '/' + parseInt(ymd[2], 10) + '/' + ymd[1];
+  }
+  let total = null;
+  const totalLine = t.match(
+    /(?:invoice\s*total|grand\s*total|amount\s*due|total\s*amount|σύνολο|total)\D{0,24}(?:€|EUR)?\s*([0-9]+(?:[.,][0-9]{1,2})?)/i
+  );
+  if (totalLine) total = parseAirbnbVatAmount(totalLine[1]);
+  if (total == null) {
+    const euro = t.match(/€\s*([0-9]+(?:[.,][0-9]{1,2})?)/);
+    if (euro) total = parseAirbnbVatAmount(euro[1]);
+  }
+  const isCredit =
+    String(kind || '') === 'credit_note' ||
+    /credit\s*note|πιστωτικ|-CN-/i.test(t + ' ' + invoiceNumber);
+  const sign = isCredit || (total != null && total < 0) ? '-' : '';
+  const abs = total == null ? '' : Math.abs(total);
+  return {
+    invoiceNumber: invoiceNumber,
+    issueDate: issueDate,
+    total: abs,
+    sign: sign,
+  };
+}
+
 /** True only for a real stay/details page — not a hosting 200 that says the reservation is missing. */
 function airbnbReservationPageIsOpen(url, bodyText, code) {
   const u = String(url || '');
@@ -1081,7 +1124,8 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     lastLanded = urlNow;
     lastLookedLikeInvoice = looksLikeAirbnbInvoiceHtml(urlNow, body);
     if (!lastLookedLikeInvoice) return false;
-    let vatId = String(idHint || vatIdFromAirbnbUrl(urlNow) || '').replace(/[^\w.-]+/g, '').slice(0, 24);
+    const fields = parseAirbnbVatFields(body, kind, vatIdFromAirbnbUrl(urlNow) || idHint);
+    let vatId = String(idHint || vatIdFromAirbnbUrl(urlNow) || fields.invoiceNumber || '').replace(/[^\w.-]+/g, '').slice(0, 40);
     if (vatId && vatId.toUpperCase() === String(code).toUpperCase()) vatId = '';
     if (airbnbDocAlreadyHave(alreadyHave, kind, code, vatId)) return 'have';
     const storeKey = airbnbHaveKey(kind, code, vatId);
@@ -1111,6 +1155,10 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       aptName: aptName,
       reservationId: code,
       vatId: vatId || '',
+      invoiceNumber: fields.invoiceNumber || '',
+      issueDate: fields.issueDate || '',
+      total: fields.total,
+      sign: fields.sign || '',
       filename: rel.replace(/\\/g, '/'),
       path: cap.saved.path,
       bytes: cap.saved.bytes,
@@ -1123,11 +1171,16 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       kind,
       partner: aptName || aptId || code,
       aptName: aptName,
+      reservationId: code,
+      vatId: vatId || '',
+      invoiceNumber: fields.invoiceNumber || '',
+      issueDate: fields.issueDate || '',
+      total: fields.total,
+      sign: fields.sign || '',
       filename: rel.replace(/\\/g, '/'),
       path: cap.saved.path,
       bytes: cap.saved.bytes,
       code,
-      vatId: vatId || '',
     });
     return true;
   }

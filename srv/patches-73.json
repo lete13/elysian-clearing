@@ -1,0 +1,115 @@
+{
+ "baseSha256": "eec78b71def031f7ef040eb5235fbb46eeabc9926046fb53d59922f29a74ab4f",
+ "expectedSha256": "94474f5ddf4732bad6a76ce53ac1224adec9822ddbbf86448137c0660f79f407",
+ "builtAt": "2026-08-15 Expect invoice estimate + accountant Excel on ship",
+ "patches": [
+  {
+   "note": "Require accountant Excel + Expect estimate helpers",
+   "find": "const PLATFORM_INV_ACCOUNTANT = process.env.PLATFORM_INVOICE_ACCOUNTANT_EMAIL || 'info@e-newgeneration.gr, info@elysianproperties.eu';\nlet _platInvReady = false;",
+   "replace": "const PLATFORM_INV_ACCOUNTANT = process.env.PLATFORM_INVOICE_ACCOUNTANT_EMAIL || 'info@e-newgeneration.gr, info@elysianproperties.eu';\nconst { buildAccountantXls, fileMetaJson, parseMeta } = require('./scripts/platform-invoice-accountant-xls');\nconst { estimateAirbnbInvoices } = require('./scripts/platform-invoice-expect');\nlet _platInvReady = false;",
+   "count": 1
+  },
+  {
+   "note": "platform_invoices.meta holds Airbnb invoice number/date/amount",
+   "find": "  await pool.query(`CREATE TABLE IF NOT EXISTS platform_invoices (\n    id SERIAL PRIMARY KEY,\n    month TEXT NOT NULL,\n    channel TEXT NOT NULL,\n    scope TEXT NOT NULL,\n    partner TEXT DEFAULT '',\n    filename TEXT,\n    mime TEXT,\n    size INT,\n    source TEXT DEFAULT 'upload',\n    uploaded_by TEXT,\n    data TEXT,\n    created_at TIMESTAMPTZ DEFAULT NOW()\n  )`);\n  _platInvReady = true;\n}",
+   "replace": "  await pool.query(`CREATE TABLE IF NOT EXISTS platform_invoices (\n    id SERIAL PRIMARY KEY,\n    month TEXT NOT NULL,\n    channel TEXT NOT NULL,\n    scope TEXT NOT NULL,\n    partner TEXT DEFAULT '',\n    filename TEXT,\n    mime TEXT,\n    size INT,\n    source TEXT DEFAULT 'upload',\n    uploaded_by TEXT,\n    data TEXT,\n    created_at TIMESTAMPTZ DEFAULT NOW()\n  )`);\n  await pool.query('ALTER TABLE platform_invoices ADD COLUMN IF NOT EXISTS meta TEXT');\n  _platInvReady = true;\n}",
+   "count": 1
+  },
+  {
+   "note": "List API exposes parsed invoice meta for Collect/Excel",
+   "find": "function platInvMeta(r) {\n  return {\n    id: r.id, month: r.month, channel: r.channel, scope: r.scope, partner: r.partner || '',\n    filename: r.filename, mime: r.mime, size: r.size, source: r.source, uploadedBy: r.uploaded_by,\n    createdAt: r.created_at || r.createdAt\n  };\n}",
+   "replace": "function platInvMeta(r) {\n  const meta = parseMeta(r);\n  return {\n    id: r.id, month: r.month, channel: r.channel, scope: r.scope, partner: r.partner || '',\n    filename: r.filename, mime: r.mime, size: r.size, source: r.source, uploadedBy: r.uploaded_by,\n    createdAt: r.created_at || r.createdAt,\n    invoiceNumber: meta.invoiceNumber || '',\n    issueDate: meta.issueDate || '',\n    total: meta.total,\n    sign: meta.sign || '',\n    reservationId: meta.reservationId || ''\n  };\n}",
+   "count": 1
+  },
+  {
+   "note": "List query reads meta",
+   "find": "        `SELECT id, month, channel, scope, partner, filename, mime, size, source, uploaded_by, created_at\n         FROM platform_invoices WHERE month=$1 ORDER BY channel, partner, filename, id`, [month]);",
+   "replace": "        `SELECT id, month, channel, scope, partner, filename, mime, size, source, uploaded_by, created_at, meta\n         FROM platform_invoices WHERE month=$1 ORDER BY channel, partner, filename, id`, [month]);",
+   "count": 1
+  },
+  {
+   "note": "Download accountant Excel for the month",
+   "find": "app.get('/api/platform-invoices/:id/file', async (req, res) => {",
+   "replace": "app.get('/api/platform-invoices/accountant-xls', async (req, res) => {\n  const month = String(req.query.month || '');\n  if (!/^\\d{4}-\\d{2}$/.test(month)) return res.status(400).json({ error: 'month=YYYY-MM required' });\n  try {\n    let rows = [];\n    if (pool) {\n      await ensurePlatInvTable();\n      const q = await pool.query('SELECT * FROM platform_invoices WHERE month=$1 ORDER BY id', [month]);\n      rows = q.rows;\n    } else {\n      rows = [..._memPlatInv.values()].filter(function (x) { return x.month === month; });\n    }\n    const buf = buildAccountantXls(rows);\n    const name = 'Airbnb-VAT-' + month + '.xls';\n    res.setHeader('Content-Type', 'application/vnd.ms-excel');\n    res.setHeader('Content-Disposition', 'attachment; filename=\"' + name + '\"');\n    return res.end(buf);\n  } catch (e) {\n    return res.status(500).json({ error: e.message });\n  }\n});\napp.get('/api/platform-invoices/:id/file', async (req, res) => {",
+   "count": 1
+  },
+  {
+   "note": "Ship attaches accountant Excel to leased and B2B packs",
+   "find": "    let bytes = 0;\n    const mailAtts = [];\n    for (const r of rows) {\n      const buf = Buffer.from(r.data, 'base64'); bytes += buf.length;\n      mailAtts.push({ filename: r.filename || (r.channel + '.pdf'), content: buf, contentType: r.mime || 'application/pdf' });\n    }",
+   "replace": "    let bytes = 0;\n    const mailAtts = [];\n    const xlsBuf = buildAccountantXls(rows);\n    mailAtts.push({ filename: 'Airbnb-VAT-' + month + '.xls', content: xlsBuf, contentType: 'application/vnd.ms-excel' });\n    bytes += xlsBuf.length;\n    for (const r of rows) {\n      const buf = Buffer.from(r.data, 'base64'); bytes += buf.length;\n      mailAtts.push({ filename: r.filename || (r.channel + '.pdf'), content: buf, contentType: r.mime || 'application/pdf' });\n    }",
+   "count": 1
+  },
+  {
+   "note": "Live ingest stores invoice number/date/amount in meta",
+   "find": "  const dataB64 = buf.toString('base64');\n  const row = {\n    month, channel: f.channel, scope: f.scope || 'leased', partner,\n    filename: f.filename, mime: 'application/pdf', size: buf.length, source: 'portal',\n    uploaded_by: by, data: dataB64\n  };\n  if (pool) {\n    const r = await pool.query(\n      `INSERT INTO platform_invoices (month, channel, scope, partner, filename, mime, size, source, uploaded_by, data)\n       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,\n      [row.month, row.channel, row.scope, row.partner, row.filename, row.mime, row.size, row.source, row.uploaded_by, row.data]);\n    const saved = { id: r.rows[0].id, filename: row.filename, channel: row.channel, kind: f.kind, partner };",
+   "replace": "  const dataB64 = buf.toString('base64');\n  const row = {\n    month, channel: f.channel, scope: f.scope || 'leased', partner,\n    filename: f.filename, mime: 'application/pdf', size: buf.length, source: 'portal',\n    uploaded_by: by, data: dataB64, meta: fileMetaJson(f)\n  };\n  if (pool) {\n    const r = await pool.query(\n      `INSERT INTO platform_invoices (month, channel, scope, partner, filename, mime, size, source, uploaded_by, data, meta)\n       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,\n      [row.month, row.channel, row.scope, row.partner, row.filename, row.mime, row.size, row.source, row.uploaded_by, row.data, row.meta]);\n    const saved = { id: r.rows[0].id, filename: row.filename, channel: row.channel, kind: f.kind, partner };",
+   "count": 1
+  },
+  {
+   "note": "Job-complete ingest stores invoice meta",
+   "find": "        const row = {\n          month, channel: f.channel, scope: f.scope || 'leased', partner,\n          filename: f.filename, mime: 'application/pdf', size: buf.length, source: 'portal',\n          uploaded_by: by, data: dataB64\n        };\n        if (pool) {\n          const r = await pool.query(\n            `INSERT INTO platform_invoices (month, channel, scope, partner, filename, mime, size, source, uploaded_by, data)\n             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,\n            [row.month, row.channel, row.scope, row.partner, row.filename, row.mime, row.size, row.source, row.uploaded_by, row.data]);\n          saved.push({ id: r.rows[0].id, filename: row.filename, channel: row.channel, kind: f.kind, partner });",
+   "replace": "        const row = {\n          month, channel: f.channel, scope: f.scope || 'leased', partner,\n          filename: f.filename, mime: 'application/pdf', size: buf.length, source: 'portal',\n          uploaded_by: by, data: dataB64, meta: fileMetaJson(f)\n        };\n        if (pool) {\n          const r = await pool.query(\n            `INSERT INTO platform_invoices (month, channel, scope, partner, filename, mime, size, source, uploaded_by, data, meta)\n             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,\n            [row.month, row.channel, row.scope, row.partner, row.filename, row.mime, row.size, row.source, row.uploaded_by, row.data, row.meta]);\n          saved.push({ id: r.rows[0].id, filename: row.filename, channel: row.channel, kind: f.kind, partner });",
+   "count": 1
+  },
+  {
+   "note": "Server Expect classifies normal/cancel/extend document counts",
+   "find": "function piAirbnbRowsFromBookings(month, bks) {\n  const inv = [], credit = [], missing = [];\n  (bks || []).forEach(function (b) {\n    const plat = String((b && (b.platform || b.channel)) || '').toLowerCase();\n    if (plat.indexOf('air') < 0) return;\n    const channelYm = piYmFromUnix(b.createdOnChannel);\n    const hosthubYm = piYmFromUnix(b.created);\n    const createdYm = (channelYm === month || hosthubYm === month) ? month : (channelYm || hosthubYm);\n    const cancelYm = piYmFromUnix(b.cancelledAt);\n    const code = piNormAirbnbCode(b.reservationId || b.reservation_id || b.confirmationCode || '');\n    const row = {\n      code: code,\n      aptId: String((b && b.aptId) || '').trim(),\n      aptName: String((b && b.aptName) || '').trim(),\n      guestName: String((b && b.guestName) || '').trim(),\n      hosthubId: String((b && b.id) || '').trim(),\n      created: b && b.created != null ? b.created : null,\n      createdOnChannel: b && b.createdOnChannel != null ? b.createdOnChannel : (b && b.created_on_channel != null ? b.created_on_channel : null)\n    };\n    if (createdYm === month) {\n      if (code) inv.push(Object.assign({}, row, { kind: 'invoice' }));\n      else missing.push(Object.assign({}, row, { kind: 'invoice' }));\n    }\n    if (b && b.cancelled && cancelYm === month) {\n      if (code) credit.push(Object.assign({}, row, { kind: 'credit_note' }));\n      else missing.push(Object.assign({}, row, { kind: 'credit_note' }));\n    }\n  });\n  return { inv: inv, credit: credit, missing: missing };\n}",
+   "replace": "function piAirbnbRowsFromBookings(month, bks) {\n  // hosthubYm === month — classifyAirbnbStay still opens a stay when Hosthub created is in-month\n  const classified = estimateAirbnbInvoices(month, bks);\n  const inv = [], credit = [];\n  classified.stays.forEach(function (s) {\n    const row = {\n      code: s.code,\n      aptId: s.aptId,\n      aptName: s.aptName,\n      guestName: s.guestName,\n      hosthubId: s.hosthubId,\n      created: s.created,\n      createdOnChannel: s.createdOnChannel,\n      stayKind: s.stayKind,\n      docs: s.docs\n    };\n    if (s.inCreated) inv.push(Object.assign({}, row, { kind: 'invoice' }));\n    if (s.inCancel) credit.push(Object.assign({}, row, { kind: 'credit_note' }));\n  });\n  return { inv: inv, credit: credit, missing: classified.missing, stays: classified.stays, estimate: classified.estimate };\n}",
+   "count": 1
+  },
+  {
+   "note": "airbnb-codes returns estimate + unique stays",
+   "find": "    built = { inv: built.inv, credit: built.credit, missing: still };\n    return {\n      reservations: rows.filter(function (x) { return piNormAirbnbCode(x.code); }),\n      source: 'db+hosthub',\n      missing: still.length,\n      persisted: persisted,\n      hosthubFetched: bf.fetched\n    };\n  }\n  return {\n    reservations: rows.filter(function (x) { return piNormAirbnbCode(x.code); }),\n    source: 'db',\n    missing: 0,\n    persisted: 0\n  };\n}",
+   "replace": "    built = { inv: built.inv, credit: built.credit, missing: still, stays: built.stays, estimate: built.estimate };\n    return {\n      reservations: rows.filter(function (x) { return piNormAirbnbCode(x.code); }),\n      source: 'db+hosthub',\n      missing: still.length,\n      persisted: persisted,\n      hosthubFetched: bf.fetched,\n      stays: built.stays || [],\n      estimate: built.estimate || null\n    };\n  }\n  return {\n    reservations: rows.filter(function (x) { return piNormAirbnbCode(x.code); }),\n    source: 'db',\n    missing: 0,\n    persisted: 0,\n    stays: built.stays || [],\n    estimate: built.estimate || null\n  };\n}",
+   "count": 1
+  },
+  {
+   "note": "GET airbnb-codes includes estimate",
+   "find": "    res.json({\n      ok: true,\n      month: month,\n      reservations: resolved.reservations,\n      missing: resolved.missing || 0,\n      source: resolved.source,\n      persisted: resolved.persisted || 0,\n      count: (resolved.reservations || []).length\n    });",
+   "replace": "    res.json({\n      ok: true,\n      month: month,\n      reservations: resolved.reservations,\n      missing: resolved.missing || 0,\n      source: resolved.source,\n      persisted: resolved.persisted || 0,\n      count: (resolved.reservations || []).length,\n      estimate: resolved.estimate || null,\n      stays: resolved.stays || []\n    });",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "kind: 'both'",
+   "note": "pull kind both"
+  },
+  {
+   "has": "hosthubYm === month",
+   "note": "Hosthub created month also opens stay"
+  },
+  {
+   "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+   "note": "harvest kept"
+  },
+  {
+   "has": "app.post('/api/platform-invoices/pull-stop'",
+   "note": "stop kept"
+  },
+  {
+   "has": "job.hint = 'Pull stopped'",
+   "note": "user Stop still uses Pull stopped"
+  },
+  {
+   "has": "accountant-xls",
+   "note": "Excel download route"
+  },
+  {
+   "has": "buildAccountantXls",
+   "note": "Excel attached on send"
+  },
+  {
+   "has": "estimateAirbnbInvoices",
+   "note": "Expect estimate helper"
+  },
+  {
+   "has": "ADD COLUMN IF NOT EXISTS meta",
+   "note": "invoice meta column"
+  },
+  {
+   "has": "fileMetaJson",
+   "note": "ingest writes meta"
+  }
+ ]
+}

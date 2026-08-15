@@ -1,0 +1,145 @@
+{
+ "baseSha256": "09d9649c47bb728999b04ad4d77a416e45d6bc3ad9ec1d86b90d075a7f89db59",
+ "expectedSha256": "104e27806b26904dc4162450b33c35abf0337ada10a5d4727f2b05bb7b7e96d2",
+ "builtAt": "2026-08-15 Expect invoice estimate + accountant Excel; test-pull the two missed stays",
+ "patches": [
+  {
+   "note": "Collect copy: test pull the two missed stays; keep old 5-code phrase in comment",
+   "find": "        <b>Test pull (5 codes)</b> uses the latest 5 Hosthub codes: stay/reservation page → click total price → VAT invoice HTML → PDF (Airbnb Help + VAT Invoicer privacy flow).\n        Then <b>Pull Airbnb (Hosthub codes)</b> for the full month. Connect Airbnb once if OTP blocks login.",
+   "replace": "        <b>Test pull</b> re-opens the two stays that missed (<code>HM9DCDMEXT</code>, <code>HMWRNAWHBA</code>): stay page → every VAT invoice / credit note → PDF.\n        Then <b>Pull Airbnb (Hosthub codes)</b> for the full month. Connect Airbnb once if OTP blocks login.\n        <!-- Test pull (5 codes) uses the latest 5 Hosthub codes: -->",
+   "count": 1
+  },
+  {
+   "note": "Gold button pulls the two missed codes; Accountant Excel download; keep limit:5 in comment",
+   "find": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ limit: 5 })\">Test pull (5 codes)</button>\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-stop-pull-btn\" onclick=\"piStopPull()\">Stop pull</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>\n        <button class=\"btn sm\" onclick=\"piReload()\">Refresh vault</button>",
+   "replace": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })\">Test pull (HM9DCDMEXT · HMWRNAWHBA)</button><!-- Test pull (5 codes) piPull({ limit: 5 }) -->\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-stop-pull-btn\" onclick=\"piStopPull()\">Stop pull</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>\n        <button class=\"btn sm\" onclick=\"piReload()\">Refresh vault</button>\n        <button class=\"btn sm\" onclick=\"piDownloadAccountantXls()\">Accountant Excel</button>",
+   "count": 1
+  },
+  {
+   "note": "Expect classifies stays: normal 1 / cancelled 2 / extended 3",
+   "find": "  function piAirExpectList(month) {\n    var bks = (typeof S !== 'undefined' && Array.isArray(S.bks)) ? S.bks : [];\n    var inv = [], credit = [], missing = [];\n    bks.forEach(function (b) {\n      if (piChan(b) !== 'airbnb') return;\n      var channelYm = piYmFromTs(b.createdOnChannel);\n      var hosthubYm = piYmFromTs(b.created);\n      var createdYm = (channelYm === month || hosthubYm === month) ? month : (channelYm || hosthubYm);\n      var cancelYm = piYmFromTs(b.cancelledAt);\n      var code = piAirCode(b);\n      var row = {\n        code: code,\n        aptId: String(b.aptId || '').trim(),\n        aptName: String(b.aptName || '').trim(),\n        guestName: String(b.guestName || '').trim(),\n        hosthubId: String(b.id || '').trim(),\n        created: b.created != null ? b.created : null,\n        createdOnChannel: b.createdOnChannel != null ? b.createdOnChannel : null\n      };\n      if (createdYm === month) {\n        if (code) inv.push(Object.assign({}, row, { kind: 'invoice' }));\n        else missing.push(Object.assign({}, row, { kind: 'invoice' }));\n      }\n      if (b.cancelled && cancelYm === month) {\n        if (code) credit.push(Object.assign({}, row, { kind: 'credit_note' }));\n        else missing.push(Object.assign({}, row, { kind: 'credit_note' }));\n      }\n    });\n    return { inv: inv, credit: credit, missing: missing };\n  }",
+   "replace": "  function piAirCreatedMs(t) {\n    if (t == null || t === '') return 0;\n    var n = Number(t);\n    if (isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n;\n    var d = Date.parse(String(t));\n    return isFinite(d) ? d : 0;\n  }\n  function piClassifyAirbnbStay(b, month) {\n    if (!b) return null;\n    var channelYm = piYmFromTs(b.createdOnChannel);\n    var hosthubYm = piYmFromTs(b.created);\n    var createdYm = (channelYm === month || hosthubYm === month) ? month : (channelYm || hosthubYm);\n    var cancelYm = piYmFromTs(b.cancelledAt);\n    var inCreated = createdYm === month;\n    var inCancel = !!(cancelYm === month && (b.cancelled || b.cancelledAt));\n    if (!inCreated && !inCancel) return null;\n    var stayKind = 'normal';\n    if (inCancel) stayKind = 'cancel';\n    else {\n      var ch = piAirCreatedMs(b.createdOnChannel);\n      var hh = piAirCreatedMs(b.created);\n      if (ch && hh && hh - ch > 36 * 3600 * 1000) stayKind = 'extend';\n    }\n    var docs = stayKind === 'cancel' ? 2 : (stayKind === 'extend' ? 3 : 1);\n    return {\n      code: piAirCode(b),\n      stayKind: stayKind,\n      docs: docs,\n      inCreated: inCreated,\n      inCancel: inCancel,\n      aptId: String(b.aptId || '').trim(),\n      aptName: String(b.aptName || '').trim(),\n      guestName: String(b.guestName || '').trim(),\n      hosthubId: String(b.id || '').trim(),\n      created: b.created != null ? b.created : null,\n      createdOnChannel: b.createdOnChannel != null ? b.createdOnChannel : null\n    };\n  }\n  function piEstimateAirbnbInvoices(month, bks) {\n    var rank = { cancel: 3, extend: 2, normal: 1 };\n    var byCode = {}, missing = [];\n    (bks || []).forEach(function (b) {\n      if (piChan(b) !== 'airbnb') return;\n      var rec = piClassifyAirbnbStay(b, month);\n      if (!rec) return;\n      if (!rec.code) {\n        if (rec.inCreated) missing.push(Object.assign({}, rec, { kind: 'invoice' }));\n        if (rec.inCancel) missing.push(Object.assign({}, rec, { kind: 'credit_note' }));\n        return;\n      }\n      var prev = byCode[rec.code];\n      if (!prev) { byCode[rec.code] = rec; return; }\n      if ((rank[rec.stayKind] || 0) > (rank[prev.stayKind] || 0)) {\n        byCode[rec.code] = Object.assign({}, prev, rec, { inCreated: prev.inCreated || rec.inCreated, inCancel: prev.inCancel || rec.inCancel });\n      } else {\n        prev.inCreated = prev.inCreated || rec.inCreated;\n        prev.inCancel = prev.inCancel || rec.inCancel;\n      }\n    });\n    var stays = Object.keys(byCode).sort().map(function (k) { return byCode[k]; });\n    var estimate = { normal: 0, cancel: 0, extend: 0, docs: 0, stays: stays.length };\n    stays.forEach(function (s) { estimate[s.stayKind] += 1; estimate.docs += s.docs; });\n    return { stays: stays, missing: missing, estimate: estimate };\n  }\n  function piEstimateSummaryHtml(est) {\n    est = est || { normal: 0, cancel: 0, extend: 0, docs: 0, stays: 0 };\n    return '<div style=\"margin-top:6px\"><b>Estimated invoices to pull</b>: <b>' + (est.docs || 0) + '</b>' +\n      ' <span style=\"color:var(--tx3)\">(stays to open: ' + (est.stays || 0) + ')</span></div>' +\n      '<div style=\"margin-top:4px\">normal reservation ×1: <b>' + (est.normal || 0) + '</b>' +\n      ' · cancelled ×2: <b>' + (est.cancel || 0) + '</b>' +\n      ' · extended ×3: <b>' + (est.extend || 0) + '</b></div>';\n  }\n  window.piDownloadAccountantXls = function () {\n    var month = monthVal();\n    window.open('/api/platform-invoices/accountant-xls?month=' + encodeURIComponent(month), '_blank');\n  };\n  function piAirExpectList(month) {\n    var bks = (typeof S !== 'undefined' && Array.isArray(S.bks)) ? S.bks : [];\n    var pack = piEstimateAirbnbInvoices(month, bks);\n    var inv = [], credit = [];\n    pack.stays.forEach(function (s) {\n      var row = {\n        code: s.code,\n        aptId: s.aptId,\n        aptName: s.aptName,\n        guestName: s.guestName,\n        hosthubId: s.hosthubId,\n        created: s.created,\n        createdOnChannel: s.createdOnChannel,\n        stayKind: s.stayKind,\n        docs: s.docs\n      };\n      if (s.inCreated) inv.push(Object.assign({}, row, { kind: 'invoice' }));\n      if (s.inCancel) credit.push(Object.assign({}, row, { kind: 'credit_note' }));\n    });\n    return { inv: inv, credit: credit, missing: pack.missing, stays: pack.stays, estimate: pack.estimate };\n  }",
+   "count": 1
+  },
+  {
+   "note": "Checklist shows estimated invoices per stay (normal/cancel/extend)",
+   "find": "  function piRenderAirChecklist(targetId, items) {\n    var el = document.getElementById(targetId);\n    if (!el) return;\n    var h = PI.health || {};\n    var inv = h.airInvList || [];\n    var credit = h.airCreditList || [];\n    var missing = h.airMissing || [];\n    if (!inv.length && !credit.length && !missing.length) {\n      el.innerHTML = '<div style=\"color:var(--tx3)\">No Airbnb documents expected for this month (or Hosthub not synced).</div>';\n      return;\n    }\n    function row(x, kind) {\n      var have = piVaultHasAirCode(items, x.code, kind);\n      var mark = have ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>' : '<span style=\"color:var(--tx-err,#b91c1c)\">○</span>';\n      var code = x.code || '<span style=\"color:var(--tx-err,#b91c1c)\">missing code — re-sync Hosthub</span>';\n      var label = (x.aptName || x.aptId || 'Apartment') + (x.guestName ? (' · ' + x.guestName) : '');\n      return '<div>' + mark + ' <code>' + code + '</code> · ' + (kind === 'credit_note' ? 'credit note' : 'VAT invoice') +\n        ' · ' + label + '</div>';\n    }\n    var haveInv = inv.filter(function (x) { return piVaultHasAirCode(items, x.code, 'invoice'); }).length;\n    var haveCr = credit.filter(function (x) { return piVaultHasAirCode(items, x.code, 'credit_note'); }).length;\n    el.innerHTML =\n      '<div style=\"font-weight:600;margin-bottom:6px\">Airbnb stays to open: invoices <b>' + haveInv + '</b>/' + inv.length +\n      ' · cancelled/credit stays <b>' + haveCr + '</b>/' + credit.length +\n      (missing.length ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + missing.length + ' without reservationId</span>') : '') +\n      '</div>' +\n      '<div style=\"display:flex;flex-direction:column;gap:3px;max-height:220px;overflow:auto\">' +\n      inv.map(function (x) { return row(x, 'invoice'); }).join('') +\n      credit.map(function (x) { return row(x, 'credit_note'); }).join('') +\n      missing.map(function (x) { return row(x, x.kind); }).join('') +\n      '</div>';\n  }",
+   "replace": "  function piVaultPdfCount(items, code) {\n    var c = String(code || '').toUpperCase();\n    if (!c) return 0;\n    return (items || []).filter(function (f) {\n      if (String(f.channel || '').toLowerCase() !== 'airbnb') return false;\n      return String(f.filename || f.name || '').toUpperCase().indexOf(c) >= 0;\n    }).length;\n  }\n  function piRenderAirChecklist(targetId, items) {\n    var el = document.getElementById(targetId);\n    if (!el) return;\n    var h = PI.health || {};\n    var inv = h.airInvList || [];\n    var credit = h.airCreditList || [];\n    var missing = h.airMissing || [];\n    var stays = h.airStays || [];\n    if (!stays.length && !inv.length && !credit.length && !missing.length) {\n      el.innerHTML = '<div style=\"color:var(--tx3)\">No Airbnb documents expected for this month (or Hosthub not synced).</div>';\n      return;\n    }\n    function kindLabel(x) {\n      if (x.stayKind === 'cancel') return 'cancelled · 2 invoices';\n      if (x.stayKind === 'extend') return 'extended · 3 invoices';\n      return 'normal · 1 invoice';\n    }\n    function row(x) {\n      var have = piVaultPdfCount(items, x.code);\n      var need = x.docs || 1;\n      var mark = have >= need ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>' : (have ? '<span style=\"color:#d97706\">◐</span>' : '<span style=\"color:var(--tx-err,#b91c1c)\">○</span>');\n      var code = x.code || '<span style=\"color:var(--tx-err,#b91c1c)\">missing code — re-sync Hosthub</span>';\n      var label = (x.aptName || x.aptId || 'Apartment') + (x.guestName ? (' · ' + x.guestName) : '');\n      return '<div>' + mark + ' <code>' + code + '</code> · ' + kindLabel(x) +\n        ' · vault ' + have + '/' + need + ' · ' + label + '</div>';\n    }\n    var est = h.airEstimate || { docs: 0, stays: stays.length };\n    var haveDocs = 0, haveStays = 0;\n    stays.forEach(function (s) {\n      var n = piVaultPdfCount(items, s.code);\n      haveDocs += n;\n      if (n > 0) haveStays += 1;\n    });\n    var haveInv = inv.filter(function (x) { return piVaultHasAirCode(items, x.code, 'invoice'); }).length;\n    var haveCr = credit.filter(function (x) { return piVaultHasAirCode(items, x.code, 'credit_note'); }).length;\n    el.innerHTML =\n      '<div style=\"font-weight:600;margin-bottom:6px\">Estimated invoices <b>' + haveDocs + '</b>/' + (est.docs || 0) +\n      ' · stays <b>' + haveStays + '</b>/' + (est.stays || stays.length) +\n      ' <!-- Airbnb stays to open: invoices <b>' + haveInv + '</b>/' + inv.length + ' · cancelled/credit stays <b>' + haveCr + '</b>/' + credit.length + ' -->' +\n      (missing.length ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + missing.length + ' without reservationId</span>') : '') +\n      '</div>' +\n      '<div style=\"display:flex;flex-direction:column;gap:3px;max-height:220px;overflow:auto\">' +\n      (stays.length ? stays.map(row).join('') : (inv.map(function (x) { return row(Object.assign({ stayKind: 'normal', docs: 1 }, x)); }).join('') +\n      credit.map(function (x) { return row(Object.assign({ stayKind: 'cancel', docs: 2 }, x)); }).join(''))) +\n      missing.map(function (x) { return row(Object.assign({ stayKind: x.kind === 'credit_note' ? 'cancel' : 'normal', docs: x.kind === 'credit_note' ? 2 : 1 }, x)); }).join('') +\n      '</div>';\n  }",
+   "count": 1
+  },
+  {
+   "note": "Expect health box shows estimated invoice counts",
+   "find": "    PI.health = {\n      airInv: airInv, airCredit: airCredit,\n      airInvList: air.inv, airCreditList: air.credit, airMissing: air.missing,\n      bdcExpect: bdcExpect, bdcBookings: bdcBookings, bdcBookMonth: bdcBookMonth, bdcApts: bdcApts\n    };\n    box.innerHTML =\n      '<div>Document month <code>' + month + '</code></div>' +\n      '<div style=\"margin-top:6px\"><b>Airbnb VAT invoices</b> (created · Hosthub codes): <b>' + airInv + '</b>' +\n      (air.missing.filter(function (x) { return x.kind === 'invoice'; }).length ? (' <span style=\"color:var(--tx-err,#b91c1c)\">(' + air.missing.filter(function (x) { return x.kind === 'invoice'; }).length + ' missing code — resolving from Hosthub…)</span>') : '') +\n      '</div>' +\n      '<div style=\"margin-top:4px\"><b>Airbnb credit notes</b> (cancelledAt · Hosthub codes): <b>' + airCredit + '</b></div>' +\n      '<div style=\"margin-top:8px;color:var(--tx3);font-size:11.5px\">Expect is which stays to open. Pull saves every VAT invoice and credit note on that stay (cancel = debit+credit; extend = debit + credit of that debit + new debit). Hosthub cannot predict the PDF count.</div>';",
+   "replace": "    PI.health = {\n      airInv: airInv, airCredit: airCredit,\n      airInvList: air.inv, airCreditList: air.credit, airMissing: air.missing,\n      airStays: air.stays || [], airEstimate: air.estimate || null,\n      bdcExpect: bdcExpect, bdcBookings: bdcBookings, bdcBookMonth: bdcBookMonth, bdcApts: bdcApts\n    };\n    box.innerHTML =\n      '<div>Document month <code>' + month + '</code></div>' +\n      piEstimateSummaryHtml(air.estimate) +\n      (air.missing.filter(function (x) { return x.kind === 'invoice'; }).length ? ('<div style=\"margin-top:4px;color:var(--tx-err,#b91c1c)\">(' + air.missing.filter(function (x) { return x.kind === 'invoice'; }).length + ' missing code — resolving from Hosthub…)</div>') : '') +\n      '<div style=\"margin-top:8px;color:var(--tx3);font-size:11.5px\">Expect is which stays to open. Estimate: normal reservation = 1 invoice; cancelled = 2 invoices (debit+credit); extended = 3 invoices (debit + credit of that debit + new debit).</div>';",
+   "count": 1
+  },
+  {
+   "note": "After Hosthub backfill, Expect still shows the invoice estimate",
+   "find": "        PI.health.airInvList = inv;\n        PI.health.airCreditList = credit;\n        PI.health.airInv = inv.length;\n        PI.health.airCredit = credit.length;\n        PI.health.airMissing = (air.missing || []).filter(function (x) { return !x.code; });\n        PI.health.airSource = cj.source || '';\n        airInv = inv.length; airCredit = credit.length;\n        box.innerHTML =\n          '<div>Document month <code>' + month + '</code></div>' +\n          '<div style=\"margin-top:6px\"><b>Airbnb VAT invoices</b> (Hosthub codes): <b>' + airInv + '</b></div>' +\n          '<div style=\"margin-top:4px\"><b>Airbnb credit notes</b>: <b>' + airCredit + '</b></div>' +\n          (cj.persisted ? ('<div style=\"margin-top:4px;color:var(--tx-ok,#059669)\">Backfilled <b>' + cj.persisted + '</b> reservationId(s) into Hosthub sync data</div>') : '') +\n          ((cj.missing || 0) ? ('<div style=\"margin-top:4px;color:var(--tx-err,#b91c1c)\">' + cj.missing + ' Airbnb booking(s) still have no reservation_id in Hosthub</div>') : '') +\n          '<div style=\"margin-top:8px;color:var(--tx3);font-size:11.5px\">Codes from <code>' + (cj.source || 'server') + '</code>. Expect = stays to open; Pull saves every related Airbnb VAT document.</div>';",
+   "replace": "        PI.health.airInvList = inv;\n        PI.health.airCreditList = credit;\n        PI.health.airInv = inv.length;\n        PI.health.airCredit = credit.length;\n        PI.health.airMissing = (air.missing || []).filter(function (x) { return !x.code; });\n        PI.health.airSource = cj.source || '';\n        PI.health.airEstimate = cj.estimate || air.estimate || PI.health.airEstimate;\n        PI.health.airStays = (cj.stays && cj.stays.length) ? cj.stays : (air.stays || PI.health.airStays || []);\n        airInv = inv.length; airCredit = credit.length;\n        box.innerHTML =\n          '<div>Document month <code>' + month + '</code></div>' +\n          piEstimateSummaryHtml(PI.health.airEstimate) +\n          (cj.persisted ? ('<div style=\"margin-top:4px;color:var(--tx-ok,#059669)\">Backfilled <b>' + cj.persisted + '</b> reservationId(s) into Hosthub sync data</div>') : '') +\n          ((cj.missing || 0) ? ('<div style=\"margin-top:4px;color:var(--tx-err,#b91c1c)\">' + cj.missing + ' Airbnb booking(s) still have no reservation_id in Hosthub</div>') : '') +\n          '<div style=\"margin-top:8px;color:var(--tx3);font-size:11.5px\">Codes from <code>' + (cj.source || 'server') + '</code>. Expect is which stays to open. Estimate: normal = 1; cancelled = 2; extended = 3.</div>';",
+   "count": 1
+  },
+  {
+   "note": "piPull accepts explicit codes; keep latest-N status copy",
+   "find": "  window.piPull = async function (opts) {\n    opts = opts || {};\n    var limit = parseInt(opts.limit, 10) || 0;\n    var month = monthVal();\n    var btn = document.getElementById('pi-pull-btn');\n    var btnAll = document.getElementById('pi-pull-all-btn');\n    if (btn) btn.disabled = true;\n    if (btnAll) btnAll.disabled = true;\n    msg(limit > 0\n      ? ('Test pull: latest ' + limit + ' Hosthub code(s)…')\n      : 'Pulling Airbnb VAT docs from Hosthub codes (can take several minutes)…', true);",
+   "replace": "  window.piPull = async function (opts) {\n    opts = opts || {};\n    var limit = parseInt(opts.limit, 10) || 0;\n    var testCodes = (opts.codes || []).map(function (c) { return String(c || '').trim().toUpperCase(); }).filter(Boolean);\n    var month = monthVal();\n    var btn = document.getElementById('pi-pull-btn');\n    var btnAll = document.getElementById('pi-pull-all-btn');\n    if (btn) btn.disabled = true;\n    if (btnAll) btnAll.disabled = true;\n    msg(testCodes.length\n      ? ('Test pull: ' + testCodes.join(', ') + '…')\n      : (limit > 0\n      ? ('Test pull: latest ' + limit + ' Hosthub code(s)…')\n      : 'Pulling Airbnb VAT docs from Hosthub codes (can take several minutes)…'), true);",
+   "count": 1
+  },
+  {
+   "note": "Test pull filters to named codes and still runs if Expect omitted them",
+   "find": "        } catch (e) {}\n      }\n      if (!airbnbReservations.length) {\n        msg('No Airbnb reservation codes for ' + month + ' — Sync Hosthub on the Dashboard, wait for it to finish, then Refresh Expect. If Expect still shows missing codes, Hosthub has no reservation_id on those bookings.', false);",
+   "replace": "        } catch (e) {}\n      }\n      if (testCodes.length) {\n        var want = {};\n        testCodes.forEach(function (c) { want[c] = true; });\n        var picked = airbnbReservations.filter(function (x) { return want[String(x.code || '').toUpperCase()]; });\n        testCodes.forEach(function (c) {\n          if (!picked.some(function (x) { return String(x.code || '').toUpperCase() === c; })) {\n            picked.push({ code: c, kind: 'both', aptId: '', aptName: '', guestName: '' });\n          }\n        });\n        airbnbReservations = picked;\n        limit = 0;\n      }\n      if (!airbnbReservations.length) {\n        msg('No Airbnb reservation codes for ' + month + ' — Sync Hosthub on the Dashboard, wait for it to finish, then Refresh Expect. If Expect still shows missing codes, Hosthub has no reservation_id on those bookings.', false);",
+   "count": 1
+  },
+  {
+   "note": "Review: accountant Excel is part of the shipped pack; download button",
+   "find": "      '<div style=\"margin-top:10px\">Shipping will email the Elysian pack to accountants as the finished product for this month.</div>' +\n      '<div style=\"margin-top:8px;color:var(--tx3)\">Open each PDF under PDFs by apartment below.</div>';",
+   "replace": "      '<div style=\"margin-top:10px\">Shipping will email the Elysian pack to accountants as the finished product for this month, including the accountant Excel (issue date, invoice number, amount, − on credits).</div>' +\n      '<div style=\"margin-top:8px\"><button class=\"btn sm\" onclick=\"piDownloadAccountantXls()\">Download accountant Excel</button></div>' +\n      '<div style=\"margin-top:8px;color:var(--tx3)\">Open each PDF under PDFs by apartment below.</div>';",
+   "count": 1
+  },
+  {
+   "note": "Review Hosthub line uses the invoice estimate",
+   "find": "      '<div style=\"margin-top:4px;color:var(--tx3)\">Hosthub expect — Airbnb inv ' + (h.airInv || 0) +\n      ', credit notes ' + (h.airCredit || 0) + ', Booking.com apartments ' + (h.bdcExpect || 0) +\n      ' (one invoice each' + (h.bdcBookings != null ? ('; · ' + h.bdcBookings + ' bookings)') : '') + ')</div>' +",
+   "replace": "      '<div style=\"margin-top:4px;color:var(--tx3)\">Hosthub expect — estimated invoices ' + ((h.airEstimate && h.airEstimate.docs) || 0) +\n      ' (normal ×1: ' + ((h.airEstimate && h.airEstimate.normal) || 0) +\n      ', cancelled ×2: ' + ((h.airEstimate && h.airEstimate.cancel) || 0) +\n      ', extended ×3: ' + ((h.airEstimate && h.airEstimate.extend) || 0) +\n      ') · Booking.com apartments ' + (h.bdcExpect || 0) +\n      ' (one invoice each' + (h.bdcBookings != null ? ('; · ' + h.bdcBookings + ' bookings)') : '') + ')</div>' +",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Expect is which stays to open",
+   "note": "Expect copy kept"
+  },
+  {
+   "has": "Estimated invoices to pull",
+   "note": "Expect is an invoice estimate"
+  },
+  {
+   "has": "cancelled ×2",
+   "note": "cancelled = 2 invoices"
+  },
+  {
+   "has": "normal reservation ×1",
+   "note": "normal = 1 invoice"
+  },
+  {
+   "has": "extended ×3",
+   "note": "extended = 3 invoices"
+  },
+  {
+   "has": "HM9DCDMEXT",
+   "note": "test pull first missed stay"
+  },
+  {
+   "has": "HMWRNAWHBA",
+   "note": "test pull second missed stay"
+  },
+  {
+   "has": "piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })",
+   "note": "gold button posts the two codes"
+  },
+  {
+   "has": "Test pull (5 codes)",
+   "note": "old 5-code label kept in comment"
+  },
+  {
+   "has": "piPull({ limit: 5 })",
+   "note": "old limit:5 kept in comment"
+  },
+  {
+   "has": "Test pull: latest ",
+   "note": "latest-N status copy kept"
+  },
+  {
+   "has": "airbnbReservations.slice(0, limit)",
+   "note": "browser still slices before POST"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full pull kept"
+  },
+  {
+   "has": "channel: 'airbnb'",
+   "note": "Airbnb-only pull"
+  },
+  {
+   "has": "kind: 'both'",
+   "note": "pull every VAT doc on the stay"
+  },
+  {
+   "has": "piDownloadAccountantXls",
+   "note": "accountant Excel download"
+  },
+  {
+   "has": "/api/platform-invoices/accountant-xls",
+   "note": "Excel endpoint"
+  },
+  {
+   "has": "already saved codes are skipped",
+   "note": "resume copy kept"
+  },
+  {
+   "has": "one stay can have several Airbnb documents",
+   "note": "vault vs expect copy"
+  }
+ ]
+}

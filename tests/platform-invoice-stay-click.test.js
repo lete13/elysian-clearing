@@ -43,9 +43,12 @@ document.getElementById('total').addEventListener('click', function () {
 
 function invoiceHtml(id) {
   const credit = /CN/i.test(String(id || ''));
+  const num = credit ? 'AIUC-104771625-GR-1552747-CN-1' : 'AIUC-104771625-GR-1552747';
   return `<!doctype html><html><body>
 <h1>${credit ? 'Credit note' : 'VAT invoice'}</h1>
-<p>${credit ? 'Credit note' : 'Invoice number'} ${id}</p>
+<p>Invoice number ${num}</p>
+<p>4/7/2026</p>
+<p>Total €8.00</p>
 <p>Airbnb service fee</p>
 </body></html>`;
 }
@@ -142,6 +145,16 @@ function runPull(origin, outDir, reservations, limit) {
     assert(fs.existsSync(clickPdf), 'stored stay-click debit PDF at ' + clickPdf + ' (have: ' + clickSaved + ')');
     assert(fs.existsSync(clickCredit), 'stored stay-click credit PDF at ' + clickCredit + ' (have: ' + clickSaved + ')');
     assert(fs.statSync(clickPdf).size > 100, 'PDF has bytes');
+    const clickFiles = (clickRun.parsed.files || []);
+    const debitMeta = clickFiles.find((f) => f.kind === 'invoice') || {};
+    const creditMeta = clickFiles.find((f) => f.kind === 'credit_note') || {};
+    assert.strictEqual(debitMeta.invoiceNumber, 'AIUC-104771625-GR-1552747', 'debit invoice number from VAT HTML');
+    assert.strictEqual(debitMeta.issueDate, '4/7/2026', 'debit issue date from VAT HTML');
+    assert.strictEqual(debitMeta.total, 8, 'debit total euros');
+    assert.strictEqual(debitMeta.sign, '', 'debit Πρόσημο empty');
+    assert.strictEqual(creditMeta.invoiceNumber, 'AIUC-104771625-GR-1552747-CN-1', 'credit invoice number');
+    assert.strictEqual(creditMeta.sign, '-', 'credit Πρόσημο is minus');
+    assert.strictEqual(creditMeta.total, 8, 'credit amount is absolute');
 
     const missRun = await runPull(origin, path.join(outDir, 'miss'), [
       { code: 'HMMISS01', kind: 'invoice', aptName: 'Birdhouse', createdOnChannel: 2000 },
