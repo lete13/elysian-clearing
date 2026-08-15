@@ -1,0 +1,23 @@
+{
+ "baseSha256": "150c8c30dabb732d24dbdca94b63fad0fc89202c7031d0eaf3302baea11077d7",
+ "expectedSha256": "f897af09b4f9529d5f691ed8239baa71e65675481d6c3c873339a02453b1d4ad",
+ "builtAt": "2026-08-15 Operator accounts can open Personnel (emp)",
+ "patches": [
+  {
+   "note": "Grant operator profile the Personnel tab (emp) — John/ops need the roster",
+   "find": "      operator:   ['home','dash','leads','ops','perf','pinfo','co'],",
+   "replace": "      operator:   ['home','dash','leads','ops','emp','perf','pinfo','co'],",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "operator:   ['home','dash','leads','ops','emp','perf','pinfo','co']",
+   "note": "emp in operator access"
+  },
+  {
+   "has": "/^john$/i.test(String(u.user))",
+   "note": "John platinv grant kept"
+  }
+ ]
+}
