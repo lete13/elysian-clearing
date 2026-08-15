@@ -1,0 +1,47 @@
+{
+ "baseSha256": "c09419094d71aa282d777a8ec83cd934b567c62f5dec176cfbbdc9506af7dd6d",
+ "expectedSha256": "cbc32d80bfc9c505dbcb29a3e3f4a75c7ca8e854d664c528357919c9e9d34ca9",
+ "builtAt": "2026-08-15 Daily Ops same-apt check-in pairing via findApt keys",
+ "patches": [
+  {
+   "note": "_opsAptKeyList expands to canonical apt id/name; same-apt helpers",
+   "find": "function _opsAptKeyList(r) {\n  const out = [];\n  if (!r) return out;\n  if (r.aptId != null && String(r.aptId) !== '') out.push(String(r.aptId));\n  if (r.aptName != null && String(r.aptName) !== '') out.push(String(r.aptName));\n  return out;\n}\n",
+   "replace": "function _opsAptKeyList(r) {\n  const out = [];\n  const seen = Object.create(null);\n  function add(v) {\n    const s = String(v == null ? '' : v).trim();\n    if (!s || seen[s]) return;\n    seen[s] = true;\n    out.push(s);\n  }\n  if (!r) return out;\n  add(r.aptId);\n  add(r.aptName);\n  let apt = null;\n  if (r.aptId && typeof aptById === 'function') apt = aptById(r.aptId) || null;\n  if ((!apt || !apt.id) && typeof findApt === 'function' && r.aptName) apt = findApt(r.aptName);\n  if ((!apt || !apt.id) && typeof _opsAptOf === 'function') {\n    const a = _opsAptOf(r);\n    if (a && a.id) apt = a;\n  }\n  if (apt) {\n    add(apt.id);\n    add(apt.name);\n  }\n  return out;\n}\nfunction _opsSameOpsApt(a, b) {\n  const ka = (typeof _opsAptKeyList === 'function') ? _opsAptKeyList(a) : [];\n  if (!ka.length) return false;\n  const set = Object.create(null);\n  ka.forEach(function (k) { set[k] = true; });\n  const kb = (typeof _opsAptKeyList === 'function') ? _opsAptKeyList(b) : [];\n  for (let i = 0; i < kb.length; i++) if (set[kb[i]]) return true;\n  return false;\n}\nfunction _opsMarkSeenApt(seen, r) {\n  const keys = (typeof _opsAptKeyList === 'function') ? _opsAptKeyList(r) : [String((r && (r.aptId || r.aptName)) || '')];\n  let hit = false;\n  keys.forEach(function (k) {\n    if (!k) return;\n    if (seen.has(k)) hit = true;\n    seen.add(k);\n  });\n  return hit;\n}\n",
+   "count": 1
+  },
+  {
+   "note": "_opsAutoRows pairs same-day check-in by canonical apt, not raw id/name string",
+   "find": "  checkouts.forEach(bk => {\n    const key = bk.aptId||bk.aptName;\n    if (seen.has(key)) return;\n    seen.add(key);\n    const apt = S.apts.find(a => a.id === bk.aptId) || {};\n    const nxt = S.bks.find(b =>\n      ((bk.aptId && b.aptId === bk.aptId) || (bk.aptName && b.aptName === bk.aptName)) &&\n      onDay(b.checkIn) && b.id !== bk.id && !b.cancelled\n    );\n    const _k = _opsClassify(bk.guestName, nxt && nxt.guestName);\n    rows.push({\n      aptId: bk.aptId||'',\n      aptName: bk.aptName||'',\n",
+   "replace": "  checkouts.forEach(bk => {\n    if (_opsMarkSeenApt(seen, bk)) return;\n    const resolved = (typeof findApt === 'function' && bk.aptName) ? findApt(bk.aptName) : null;\n    const apt = (bk.aptId && typeof aptById === 'function' && aptById(bk.aptId)) || resolved || (S.apts.find(a => a.id === bk.aptId) || {});\n    const nxt = S.bks.find(b =>\n      ((typeof _opsSameOpsApt === 'function') ? _opsSameOpsApt(bk, b) : ((bk.aptId && b.aptId === bk.aptId) || (bk.aptName && b.aptName === bk.aptName))) &&\n      onDay(b.checkIn) && b.id !== bk.id && !b.cancelled\n    );\n    const _k = _opsClassify(bk.guestName, nxt && nxt.guestName);\n    rows.push({\n      aptId: (apt && apt.id) || bk.aptId || '',\n      aptName: (apt && apt.name) || bk.aptName || '',\n",
+   "count": 1
+  },
+  {
+   "note": "_opsAutoRows check-in-only uses canonical apt keys and resolved names",
+   "find": "  const checkinOnly = S.bks.filter(b => {\n    if (!onDay(b.checkIn)) return false;\n    if (b.cancelled) return false;\n    const key = b.aptId||b.aptName;\n    return !seen.has(key);\n  });\n  checkinOnly.sort((a,b) => (typeof window.aptAreaCompare === 'function')\n    ? window.aptAreaCompare(_opsAptOf(a), _opsAptOf(b))\n    : (a.aptName||'').localeCompare(b.aptName||''));\n  checkinOnly.forEach(bk => {\n    // A block with no matching checkout still counts as prep/maintenance/extension.\n    const _k = _opsClassify('', bk.guestName);\n    rows.push({\n      aptId: bk.aptId||'', aptName: bk.aptName||'',\n",
+   "replace": "  const checkinOnly = S.bks.filter(b => {\n    if (!onDay(b.checkIn)) return false;\n    if (b.cancelled) return false;\n    const keys = (typeof _opsAptKeyList === 'function') ? _opsAptKeyList(b) : [String(b.aptId || b.aptName || '')];\n    return !keys.some(function (k) { return k && seen.has(k); });\n  });\n  checkinOnly.sort((a,b) => (typeof window.aptAreaCompare === 'function')\n    ? window.aptAreaCompare(_opsAptOf(a), _opsAptOf(b))\n    : (a.aptName||'').localeCompare(b.aptName||''));\n  checkinOnly.forEach(bk => {\n    // A block with no matching checkout still counts as prep/maintenance/extension.\n    const _k = _opsClassify('', bk.guestName);\n    const resolved = (typeof findApt === 'function' && bk.aptName) ? findApt(bk.aptName) : null;\n    const apt = (bk.aptId && typeof aptById === 'function' && aptById(bk.aptId)) || resolved || {};\n    _opsMarkSeenApt(seen, bk);\n    rows.push({\n      aptId: (apt && apt.id) || bk.aptId || '', aptName: (apt && apt.name) || bk.aptName || '',\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function _opsSameOpsApt",
+   "note": "same-apt helper"
+  },
+  {
+   "has": "function _opsMarkSeenApt",
+   "note": "seen-set helper"
+  },
+  {
+   "has": "_opsSameOpsApt(bk, b)",
+   "note": "checkout pairing uses canonical apt"
+  },
+  {
+   "has": "_opsAptKeyList(b)",
+   "note": "check-in-only uses apt key list"
+  },
+  {
+   "has": "findApt(bk.aptName)",
+   "note": "resolve Hosthub listing names"
+  }
+ ]
+}

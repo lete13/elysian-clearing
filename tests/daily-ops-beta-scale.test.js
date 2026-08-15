@@ -200,15 +200,15 @@ assert(/ob-table-wrap\s*\{[^}]*overflow-y:\s*visible/.test(css), 'table height f
 assert(/\.ob-dispatch-row\.tone-hot td/.test(css), 'hot tone styles present');
 assert(/\.ob-dispatch-row\.tone-same td/.test(css), 'same-day tone styles present');
 
-// Arrival-only check-ins (no clean target) must stay visible under Open + Attention.
-const unityArrival = {
-  aptId: 'unity-1',
-  aptName: 'Athens Unity Apartment',
+// Bare arrival-only rows (no clean target) must stay visible under Open + Attention.
+const bareArrival = {
+  aptId: 'arrival-1',
+  aptName: 'Arrival Studio',
   checkoutGuest: '',
   isCheckinOnly: true,
   checkinSameDay: 'checkin_only',
   nextNights: 3,
-  nextGuest: 'Unity Guest',
+  nextGuest: 'Arriving Guest',
   people: 2,
   arrivalTime: '15:00',
   comments: '',
@@ -217,23 +217,23 @@ const unityArrival = {
   cleanerName: '',
   cleanDone: false,
 };
-rows.push(unityArrival);
-apartments.push({ id: 'unity-1', name: 'Athens Unity Apartment', address: 'Unity St', area: 'Athens' });
+rows.push(bareArrival);
+apartments.push({ id: 'arrival-1', name: 'Arrival Studio', address: '1 Arrival St', area: 'Athens' });
 context._opsCleanTarget = (row) => (row && row.isCheckinOnly ? null : row);
 context._opsBetaState.filter = 'open';
 context._opsBetaState.pageSize = 0;
 context._opsBetaState.page = 1;
 context.renderOps();
-assert(panel.innerHTML.includes('Athens Unity Apartment'), 'Open filter keeps arrival-only Unity check-in');
+assert(panel.innerHTML.includes('Arrival Studio'), 'Open filter keeps arrival-only rows');
 assert(panel.innerHTML.includes('Άφιξη'), 'arrival-only chip rendered under Open');
 assert(/Open \d+/.test(panel.innerHTML), 'Open filter badge still present');
 
 context._opsBetaState.filter = 'attention';
 context.renderOps();
-assert(panel.innerHTML.includes('Athens Unity Apartment'), 'Attention filter keeps arrival-only Unity check-in');
+assert(panel.innerHTML.includes('Arrival Studio'), 'Attention filter keeps arrival-only rows');
 
 context._opsBetaState.filter = 'all';
 context.renderOps();
-assert(panel.innerHTML.includes('Athens Unity Apartment'), 'All filter still shows arrival-only Unity check-in');
+assert(panel.innerHTML.includes('Arrival Studio'), 'All filter still shows arrival-only rows');
 
 console.log('daily-ops-beta-scale: ok (promoted #tab-ops + note colors + chips + fit-all + urgency + arrival filters)');
