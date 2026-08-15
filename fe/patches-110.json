@@ -1,0 +1,61 @@
+{
+ "baseSha256": "104e27806b26904dc4162450b33c35abf0337ada10a5d4727f2b05bb7b7e96d2",
+ "expectedSha256": "ce49b02661a0e7bcd06348927e25a38157aaf4b41297c884471cd529de5cacf4",
+ "builtAt": "2026-08-15 Cleaner image: by cleaner → linens → drivers → Ρεπό/Άδειες last",
+ "patches": [
+  {
+   "note": "Staff strip keeps only Εφημερία / Ρεπό / Άδειες (same compact format)",
+   "find": "  const staffParts = [];\n  const oncall = filled('oncall'); if (oncall.length) staffParts.push('Εφημ. ' + oncall.join(', '));\n  const repo = filled('repo'); if (repo.length) staffParts.push('Ρεπό ' + repo.join(', '));\n  const adeies = filled('adeies'); if (adeies.length) staffParts.push('Άδ. ' + adeies.join(', '));\n  const imat = filled('imatismos_cholargos').concat(filled('imatismos_thess'));\n  if (imat.length) staffParts.push('Ιματ. ' + imat.join(', '));\n  const odigoi = filled('odigoi'); if (odigoi.length) staffParts.push('Οδηγ. ' + odigoi.join(', '));\n  const staffHtml = staffParts.length\n    ? '<div style=\"margin-top:6px;padding:5px 7px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:6px;font-size:10px;color:#334155;line-height:1.35\">' + _opsEscHtml(staffParts.join(' · ')) + '</div>'\n    : '';",
+   "replace": "  // Ρεπό / Άδειες (and Εφημ.) stay in the compact strip, rendered last.\n  // Linens + drivers are separate blocks under the by-cleaner schedule.\n  const staffParts = [];\n  const oncall = filled('oncall'); if (oncall.length) staffParts.push('Εφημ. ' + oncall.join(', '));\n  const repo = filled('repo'); if (repo.length) staffParts.push('Ρεπό ' + repo.join(', '));\n  const adeies = filled('adeies'); if (adeies.length) staffParts.push('Άδ. ' + adeies.join(', '));\n  const staffHtml = staffParts.length\n    ? '<div style=\"margin-top:6px;padding:5px 7px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:6px;font-size:10px;color:#334155;line-height:1.35\">' + _opsEscHtml(staffParts.join(' · ')) + '</div>'\n    : '';",
+   "count": 1
+  },
+  {
+   "note": "Poster order: cleaners → Ιματισμός → Οδηγοί → Ρεπό/Άδειες last",
+   "find": "  wrap.innerHTML =\n    '<div style=\"border:1.5px solid #0F172A;border-radius:8px;overflow:hidden\">' +\n    '<div style=\"padding:7px 8px 6px;background:#0F172A;color:#fff;text-align:center\">' +\n    '<div style=\"font-size:13px;font-weight:900;letter-spacing:.06em\">ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ</div>' +\n    '<div style=\"margin-top:2px;font-size:10px;font-weight:600;opacity:.85\">' + _opsEscHtml(dateLbl) + ' · ' + rows.length + ' καθ.</div>' +\n    '</div>' +\n    '<table style=\"width:100%;border-collapse:collapse;table-layout:fixed\">' +\n    '<col style=\"width:42%\"><col style=\"width:10%\"><col style=\"width:12%\"><col style=\"width:36%\">' +\n    '<thead><tr style=\"background:#E2E8F0\">' +\n    '<th style=\"padding:3px 5px;text-align:left;font-size:9px;font-weight:800;color:#475569;letter-spacing:.04em\">ΚΑΤΑΛΥΜΑ</th>' +\n    '<th style=\"padding:3px 4px;text-align:center;font-size:9px;font-weight:800;color:#475569\">ΕΙΔΟΣ</th>' +\n    '<th style=\"padding:3px 4px;text-align:left;font-size:9px;font-weight:800;color:#475569\">ΕΡΓ.</th>' +\n    '<th style=\"padding:3px 5px;text-align:left;font-size:9px;font-weight:800;color:#475569\">ΣΧΟΛΙΑ</th>' +\n    '</tr></thead><tbody>' +\n    (tbody || '<tr><td colspan=\"4\" style=\"padding:10px;text-align:center;color:#94A3B8;font-size:11px\">Καμία καθαριότητα</td></tr>') +\n    '</tbody></table></div>' + staffHtml + imatPoster + driversPoster;\n  document.body.appendChild(wrap);\n  return wrap;\n}",
+   "replace": "  wrap.innerHTML =\n    '<div style=\"border:1.5px solid #0F172A;border-radius:8px;overflow:hidden\">' +\n    '<div style=\"padding:7px 8px 6px;background:#0F172A;color:#fff;text-align:center\">' +\n    '<div style=\"font-size:13px;font-weight:900;letter-spacing:.06em\">ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ</div>' +\n    '<div style=\"margin-top:2px;font-size:10px;font-weight:600;opacity:.85\">' + _opsEscHtml(dateLbl) + ' · ' + rows.length + ' καθ. · ανά καθαρίστρια</div>' +\n    '</div>' +\n    '<table style=\"width:100%;border-collapse:collapse;table-layout:fixed\">' +\n    '<col style=\"width:42%\"><col style=\"width:10%\"><col style=\"width:12%\"><col style=\"width:36%\">' +\n    '<thead><tr style=\"background:#E2E8F0\">' +\n    '<th style=\"padding:3px 5px;text-align:left;font-size:9px;font-weight:800;color:#475569;letter-spacing:.04em\">ΚΑΤΑΛΥΜΑ</th>' +\n    '<th style=\"padding:3px 4px;text-align:center;font-size:9px;font-weight:800;color:#475569\">ΕΙΔΟΣ</th>' +\n    '<th style=\"padding:3px 4px;text-align:left;font-size:9px;font-weight:800;color:#475569\">ΕΡΓ.</th>' +\n    '<th style=\"padding:3px 5px;text-align:left;font-size:9px;font-weight:800;color:#475569\">ΣΧΟΛΙΑ</th>' +\n    '</tr></thead><tbody>' +\n    (tbody || '<tr><td colspan=\"4\" style=\"padding:10px;text-align:center;color:#94A3B8;font-size:11px\">Καμία καθαριότητα</td></tr>') +\n    '</tbody></table></div>' +\n    // After cleaners: Ιματισμός → Οδηγοί → Ρεπό/Άδειες last (compact strip).\n    imatPoster + driversPoster + staffHtml;\n  document.body.appendChild(wrap);\n  return wrap;\n}",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Ρεπό / Άδειες (and Εφημ.) stay in the compact strip, rendered last",
+   "note": "layout comment"
+  },
+  {
+   "has": "ανά καθαρίστρια",
+   "note": "by-cleaner subtitle"
+  },
+  {
+   "has": "staffParts.push('Ρεπό '",
+   "note": "Ρεπό kept in strip"
+  },
+  {
+   "has": "staffParts.push('Άδ. '",
+   "note": "Άδειες kept in strip"
+  },
+  {
+   "hasNot": "staffParts.push('Ιματ. '",
+   "note": "Ιματισμός not in strip"
+  },
+  {
+   "hasNot": "staffParts.push('Οδηγ. '",
+   "note": "drivers not in strip"
+  },
+  {
+   "has": "imatPoster + driversPoster + staffHtml",
+   "note": "Ρεπό/Άδειες after linens+drivers"
+  },
+  {
+   "has": "ΙΜΑΤΙΣΜΟΣ",
+   "note": "linens block kept"
+  },
+  {
+   "has": "ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ",
+   "note": "drivers block kept"
+  },
+  {
+   "has": "opsCopyCleaningImage",
+   "note": "cleaner image entry kept"
+  }
+ ]
+}
