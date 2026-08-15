@@ -42,11 +42,12 @@ function extractFn(source, name) {
 
 const html = applyChain();
 assert(html.includes('ανά καθαρίστρια'), 'poster subtitle says by cleaner');
-assert(html.includes('Day-off / leave stay in the compact strip'), 'layout note present');
+assert(html.includes('rendered last'), 'layout note says strip is last');
 assert(!/staffParts\.push\('Ιματ\./.test(html), 'Ιματισμός not in compact staff strip');
 assert(!/staffParts\.push\('Οδηγ\./.test(html), 'drivers not in compact staff strip');
 assert(/staffParts\.push\('Ρεπό '/.test(html), 'Ρεπό stays in strip');
 assert(/staffParts\.push\('Άδ\. '/.test(html), 'Άδειες stays in strip');
+assert(html.includes('imatPoster + driversPoster + staffHtml'), 'staff strip after linens+drivers');
 
 const appended = [];
 const context = {
@@ -104,8 +105,9 @@ assert(out.includes('Ρεπό Maria, Eleni'), 'Ρεπό kept in compact strip');
 assert(out.includes('Άδ. Anna'), 'Άδειες kept in compact strip');
 assert(out.includes('ΙΜΑΤΙΣΜΟΣ'), 'linens block present');
 assert(out.includes('ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ'), 'drivers block present');
-assert(out.indexOf('Ρεπό') < out.indexOf('ΙΜΑΤΙΣΜΟΣ'), 'day-off strip before linens');
 assert(out.indexOf('ΙΜΑΤΙΣΜΟΣ') < out.indexOf('ΟΔΗΓΟΙ'), 'linens before drivers');
+assert(out.indexOf('ΟΔΗΓΟΙ') < out.indexOf('Ρεπό'), 'drivers before Ρεπό/Άδειες');
+assert(out.indexOf('ΟΔΗΓΟΙ') < out.indexOf('Άδ.'), 'drivers before Άδειες');
 assert(!/Ιματ\. Linen/.test(out), 'linens not duplicated in compact strip');
 assert(!/Οδηγ\. Yannis/.test(out), 'drivers not duplicated in compact strip');
 assert(out.includes('ανά καθαρίστρια'), 'by-cleaner label in header');
