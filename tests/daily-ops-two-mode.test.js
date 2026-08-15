@@ -44,21 +44,45 @@ const html = applyChain('fe', 'index.html');
 
 assert(html.includes('function _opsSetView('), 'view toggle exists');
 assert(html.includes('function _opsCrewBoardHtml('), 'in-app crew board exists');
+assert(html.includes('function _opsFitBoard('), 'row auto-fit exists');
 assert(html.includes('>Ημέρα</th>'), 'clustered Ημέρα column');
 assert(html.includes('>Συνεργείο</th>'), 'clustered Συνεργείο column');
 assert(html.includes('textarea[data-field]'), 'auto-save reads comment textareas');
 assert(!html.includes('CO ✓'), 'CO ✓ stays gone');
+assert(!html.includes("names.length ? '+ άλλη"), 'mass-assignment second cleaner is gone');
 assert(html.includes('_opsFlowCell(row, i)'), 'ops rows use the day cell');
 assert(html.includes('_opsCrewCol(_ct)'), 'ops rows use the stacked crew column');
 assert(html.includes('_opsNotesCell(row, i, _cRed, _cBlue)'), 'ops rows use notes textarea');
 assert(html.includes('_opsFlowExtraCell(ex)'), 'extra rows use the day cell');
 assert(html.includes('colspan="8"'), 'empty board is 8 columns');
+assert(html.includes('ΕΦΗΜΕΡΙΑ / ON CALL'), 'cleaning poster has on call');
+assert(html.includes('ox-repo-adeies'), 'repo/adeies split onto two columns');
+assert(html.includes('add.slice(0, 1)'), 'cleaner write replaces instead of appending');
 
 const sandbox = {
   console,
   window: {},
+  setTimeout() { return 0; },
+  clearTimeout() {},
+  requestAnimationFrame(fn) { fn(); },
+  addEventListener() {},
+  innerHeight: 800,
   document: {
-    getElementById() { return null; },
+    getElementById(id) {
+      if (id === 'tab-ops') return sandbox.tabOps || null;
+      return null;
+    },
+    createElement() {
+      const el = {
+        id: '',
+        style: { cssText: '' },
+        innerHTML: '',
+        setAttribute() {},
+      };
+      sandbox._posterEl = el;
+      return el;
+    },
+    body: { appendChild() {} },
   },
   S: { daily: { extra: {} } },
   localStorage: {
@@ -88,6 +112,9 @@ vm.runInContext(
     extractFn(html, '_opsFlowCell'),
     extractFn(html, '_opsCrewBoardHtml'),
     extractFn(html, '_opsCombinedBoardHtml'),
+    extractFn(html, '_opsFitBoard'),
+    extractFn(html, '_opsBuildCrewPoster'),
+    extractFn(html, '_opsCleanerCell'),
     'function _opsCheckoutDateCell() { return \'<td class="ox-c">15/8/2026</td>\'; }',
     'function _opsCheckinCell() { return \'<td class="ox-c"><div class="opsx-pill">Ναι</div></td>\'; }',
     'function _opsCleanDayInfo() { return window._day || { done: 0, total: 0, extras: [], clean: [] }; }',
@@ -99,7 +126,6 @@ vm.runInContext(
     'function _opsAptLines(r) { return { name: r.aptName || \'\', addr: r.address || \'\' }; }',
     'function _opsAptOf() { return {}; }',
     'function _opsCleanTickCell() { return \'<td class="ox-c ox-cd"><input type="checkbox" class="opsx-chk"></td>\'; }',
-    'function _opsCleanerCell(t) { return \'<td data-cleaners-cell="1" class="opsx-clean-cell"><input class="opsx-cname"></td>\'; }',
     'function _opsCleanTaskCell() { return \'<td class="ox-tsk"><select class="opsx-sel"></select></td>\'; }',
     'function _opsCleanTypeChip() { return \'<span class="opsx-bdg">TURNOVER</span>\'; }',
     'function _opsCommentChips() { return \'\'; }',
@@ -180,5 +206,53 @@ assert.ok(crewHtml.includes('Maria'), 'crew sheet groups by cleaner');
 assert.ok(!crewHtml.includes('id="ops-shot-ops"'), 'crew mode does not render the ops table');
 assert.ok(crewHtml.includes('Ιματισμός'), 'crew footer has linen');
 assert.ok(crewHtml.includes('Οδηγοί / Διαδρομές'), 'crew footer has drivers');
+assert.ok(crewHtml.includes('Εφημερία / On call'), 'crew footer has on call');
+assert.ok(!crewHtml.includes('ox-cj-meta'), 'reservation details stay off the crew sheet');
+assert.ok(!crewHtml.includes('ox-cj-crew'), 'crew sheet does not re-assign cleaners');
+assert.ok(!crewHtml.includes('15:00'), 'arrival time stays off the crew sheet');
+assert.ok(crewHtml.includes('οδηγίες'), 'crew comments are instructions');
+
+const cell = sandbox._opsCleanerCell(sameDay);
+assert.ok(cell.includes('data-cleaners-cell="1"'), 'cleaner cell hook stays');
+assert.ok(cell.includes('value="Maria"'), 'single cleaner shown in the input');
+assert.ok(!cell.includes('opsx-cchip'), 'cleaner chips are gone');
+assert.ok(!cell.includes('+ άλλη'), 'second-cleaner prompt is gone');
+
+sandbox.S.daily.extra['2026-08-15'] = {
+  oncall: { 0: 'Eleni' },
+  repo: { 0: 'Anna', 1: 'Sofia', 2: 'Giota', 3: 'Katerina' },
+  adeies: { 0: 'Niki' },
+  imatismos_cholargos: { 0: 'Linen A' },
+  imatismos_thess: { 0: 'Linen B' },
+  odigoi: { 0: 'Giorgos' },
+  odigoiRoutes: { 0: [{ name: 'Votsala 1', key: 'v1' }] },
+};
+const poster = sandbox._opsBuildCrewPoster();
+assert.ok(poster && poster.innerHTML.includes('ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ'), 'poster title');
+assert.ok(poster.innerHTML.includes('ΕΦΗΜΕΡΙΑ / ON CALL'), 'poster has on call');
+assert.ok(poster.innerHTML.includes('Eleni'), 'poster lists the on-call name');
+assert.ok(poster.innerHTML.includes('ΙΜΑΤΙΣΜΟΣ'), 'poster has linens');
+assert.ok(poster.innerHTML.includes('ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ'), 'poster has drivers');
+assert.ok(poster.innerHTML.includes('Giorgos'), 'poster lists the driver');
+assert.ok(poster.innerHTML.includes('Διαδρομή:'), 'poster lists the route');
+assert.ok(poster.innerHTML.includes('Ρεπό'), 'poster has a tiny repo strip');
+assert.ok(poster.innerHTML.includes('<br>'), 'repo names split across two lines');
+assert.ok(poster.innerHTML.includes('Άδειες'), 'poster has a tiny adeies strip');
+assert.ok(poster.innerHTML.includes('ΣΧΟΛΙΑ'), 'poster keeps instructions column');
+
+sandbox.tabOps = {
+  querySelector() { return { offsetHeight: 40 }; },
+  style: { setProperty(k, v) { this[k] = v; } },
+  classList: {
+    items: new Set(),
+    toggle(c, on) { if (on) this.items.add(c); else this.items.delete(c); },
+    add(c) { this.items.add(c); },
+  },
+};
+sandbox._opsRows = Array.from({ length: 18 }, function (_, i) { return { id: 'r' + i }; });
+sandbox._opsFitBoard();
+assert.ok(sandbox.tabOps.style['--ops-row-h'], 'fit sets row height from checkout count');
+assert.ok(sandbox.tabOps.classList.items.has('ox-fit'), 'fit class applied');
+assert.ok(sandbox.tabOps.classList.items.has('ox-dense'), '18 checkouts go dense');
 
 console.log('daily-ops-two-mode: ok');
