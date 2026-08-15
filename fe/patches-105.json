@@ -1,0 +1,71 @@
+{
+ "baseSha256": "d573745fa6a1e3e76b0f26d48b51cb39ef716571c9bf81da7951d0fd71b293f3",
+ "expectedSha256": "d9ebc175333e577fb4ea65fc06cb5df809c503dccc1c76a3bcc9ce2f208ad6f4",
+ "builtAt": "2026-08-15 Daily Ops: restore clean ✓ sink+strike; drop CO column",
+ "patches": [
+  {
+   "note": "Strike through apartment name when clean ✓ is checked",
+   "find": "        <span class=\"opsx-aptn${_kind ? ' ox-off' : ''}\">${_ln.name}</span>\n        ${_tags}${_opsCleanTypeChip(_ct)}",
+   "replace": "        <span class=\"opsx-aptn${(_kind || _cDone) ? ' ox-off' : ''}\">${_ln.name}</span>\n        ${_tags}${_opsCleanTypeChip(_ct)}",
+   "count": 1
+  },
+  {
+   "note": "Drop CO ✓ column from main board rows (Early covers that)",
+   "find": "    ${_opsCheckoutDateCell(row, i)}\n    <td class=\"ox-c\">\n      <input type=\"checkbox\" class=\"opsx-chk\" ${row.checkoutRequested?'checked':''} onchange=\"opsSetRow(${i},'checkoutRequested',this.checked);_opsAutoSave()\" title=\"Checkout ζητήθηκε\">\n    </td>\n    ${_opsCheckinCell(row, i)}",
+   "replace": "    ${_opsCheckoutDateCell(row, i)}\n    ${_opsCheckinCell(row, i)}",
+   "count": 1
+  },
+  {
+   "note": "Extra-clean rows drop the CO ✓ dash cell",
+   "find": "'<td class=\"ox-tgc\"><span class=\"opsx-dash\">μόνο καθαρισμός</span></td>' +\n    dash + dash +\n    '<td class=\"ox-c\">' + (ex.nextNights",
+   "replace": "'<td class=\"ox-tgc\"><span class=\"opsx-dash\">μόνο καθαρισμός</span></td>' +\n    dash +\n    '<td class=\"ox-c\">' + (ex.nextNights",
+   "count": 1
+  },
+  {
+   "note": "Board sort: cleaned rows sink to bottom; empty colspan 12",
+   "find": "function _opsBoardRowsHtml() {\n  const main = (_opsRows || []).map(function (r, i) { return { r: r, i: i }; });\n  const merged = {};\n  main.forEach(function (p) {\n    const t = _opsCleanTarget(p.r);\n    if (t && t !== p.r) merged[_opsCleanStorageKey(t)] = true;\n  });\n  let extras = (_opsCleanExtras || []).filter(function (ex) {\n    return !merged[_opsCleanStorageKey(ex)];\n  });\n  if ((window._opsCleanSort || 'status') === 'route') {\n    const nameOf = function (r) {\n      const t = _opsCleanTarget(r) || r;\n      const l = (typeof _opsCleanerList === 'function') ? _opsCleanerList(t) : [];\n      return String(l[0] || '\\uFFFF');\n    };\n    const cmp = function (a, b) {\n      // Rows with no clean (maintenance / prep / extended) still sink.\n      const sa = _opsCleanTarget(a) ? 0 : 1;\n      const sb = _opsCleanTarget(b) ? 0 : 1;\n      if (sa !== sb) return sa - sb;\n      const c = nameOf(a).localeCompare(nameOf(b), 'el', { sensitivity: 'base' });\n      if (c) return c;\n      if (typeof window.aptProximityCompare === 'function') {\n        const pc = window.aptProximityCompare(_opsAptOf(a), _opsAptOf(b));\n        if (pc) return pc;\n      }\n      return String(a.aptName || '').localeCompare(String(b.aptName || ''));\n    };\n    main.sort(function (a, b) { return cmp(a.r, b.r); });\n    extras = extras.slice().sort(cmp);\n  }\n  let n = 0;\n  const html = main.map(function (p) { n++; return _opsBuildRow(p.r, p.i, n); }).join('') +\n    extras.map(function (ex) { n++; return _opsBuildExtraRow(ex, n); }).join('');\n  if (html) return html;\n  return '<tr><td colspan=\"13\" style=\"text-align:center;padding:34px 20px;color:#94A3B8;font-size:13px\">Δεν υπάρχουν checkout για ' +\n    _opsFmtDate(_opsDate) + '</td></tr>';\n}\n",
+   "replace": "function _opsBoardRowsHtml() {\n  const main = (_opsRows || []).map(function (r, i) { return { r: r, i: i }; });\n  const merged = {};\n  main.forEach(function (p) {\n    const t = _opsCleanTarget(p.r);\n    if (t && t !== p.r) merged[_opsCleanStorageKey(t)] = true;\n  });\n  let extras = (_opsCleanExtras || []).filter(function (ex) {\n    return !merged[_opsCleanStorageKey(ex)];\n  });\n  const isDone = function (r) {\n    const t = (typeof _opsCleanTarget === 'function') ? _opsCleanTarget(r) : r;\n    return !!(t && t.cleanDone);\n  };\n  const nameOf = function (r) {\n    const t = _opsCleanTarget(r) || r;\n    const l = (typeof _opsCleanerList === 'function') ? _opsCleanerList(t) : [];\n    return String(l[0] || '\\uFFFF');\n  };\n  const cmp = function (a, b) {\n    // Done cleans sink to the bottom (and get struck off in the name cell).\n    const da = isDone(a) ? 1 : 0, db = isDone(b) ? 1 : 0;\n    if (da !== db) return da - db;\n    // Rows with no clean (maintenance / prep / extended) still sink under open work.\n    const sa = _opsCleanTarget(a) ? 0 : 1;\n    const sb = _opsCleanTarget(b) ? 0 : 1;\n    if (sa !== sb) return sa - sb;\n    if ((window._opsCleanSort || 'status') === 'route') {\n      const c = nameOf(a).localeCompare(nameOf(b), 'el', { sensitivity: 'base' });\n      if (c) return c;\n      if (typeof window.aptProximityCompare === 'function') {\n        const pc = window.aptProximityCompare(_opsAptOf(a), _opsAptOf(b));\n        if (pc) return pc;\n      }\n    }\n    return String(a.aptName || '').localeCompare(String(b.aptName || ''), 'el', { sensitivity: 'base' });\n  };\n  main.sort(function (a, b) { return cmp(a.r, b.r); });\n  extras = extras.slice().sort(cmp);\n  let n = 0;\n  const html = main.map(function (p) { n++; return _opsBuildRow(p.r, p.i, n); }).join('') +\n    extras.map(function (ex) { n++; return _opsBuildExtraRow(ex, n); }).join('');\n  if (html) return html;\n  return '<tr><td colspan=\"12\" style=\"text-align:center;padding:34px 20px;color:#94A3B8;font-size:13px\">Δεν υπάρχουν checkout για ' +\n    _opsFmtDate(_opsDate) + '</td></tr>';\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Remove CO ✓ column header from combined board",
+   "find": "    '<th style=\"min-width:92px\">Check out</th>' +\n    '<th class=\"ox-c\" style=\"width:40px\" title=\"Ο πελάτης ζήτησε checkout\">CO ✓</th>' +\n    '<th style=\"min-width:128px\">Check in ίδιας</th>' +",
+   "replace": "    '<th style=\"min-width:92px\">Check out</th>' +\n    '<th style=\"min-width:128px\">Check in ίδιας</th>' +",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "(_kind || _cDone) ? ' ox-off'",
+   "note": "clean ✓ strikes the apartment name"
+  },
+  {
+   "has": "isDone(a) ? 1 : 0",
+   "note": "cleaned rows sort to bottom"
+  },
+  {
+   "hasNot": "CO ✓",
+   "note": "CO ✓ column gone"
+  },
+  {
+   "hasNot": "Checkout ζητήθηκε",
+   "note": "CO checkbox gone from board"
+  },
+  {
+   "has": "colspan=\"12\"",
+   "note": "empty state spans 12 columns"
+  },
+  {
+   "has": "opsToggleEarly",
+   "note": "Early button kept"
+  },
+  {
+   "has": "opsToggleCleanDoneKey",
+   "note": "clean tick kept"
+  },
+  {
+   "has": "Επανεκκίνηση ✓",
+   "note": "restart kept"
+  }
+ ]
+}
