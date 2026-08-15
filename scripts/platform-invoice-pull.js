@@ -610,6 +610,31 @@ function looksLikeAirbnbInvoiceHtml(url, bodyText) {
   return false;
 }
 
+/** True only for a real stay/details page — not a hosting 200 that says the reservation is missing. */
+function airbnbReservationPageIsOpen(url, bodyText, code) {
+  const u = String(url || '');
+  const t = String(bodyText || '').replace(/\s+/g, ' ');
+  const c = String(code || '').trim();
+  if (!c) return false;
+  if (/\/(login|signin|signup)(\/|$|\?)/i.test(u) && !/hosting/i.test(u)) return false;
+  const missingCopy = /we can.?t find|doesn.?t exist|couldn.?t find|page not found|that page doesn.?t exist|no longer available|δεν μπορο[υύ]με να βρο[υύ]με|δεν υπ[αά]ρχει/i.test(
+    t
+  );
+  const codeInText = t.toUpperCase().indexOf(c.toUpperCase()) >= 0;
+  const staySignals = /check-?in|check-?out|confirmation code|guest/i.test(t);
+  if (missingCopy && !staySignals) return false;
+  const esc = c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const onStayOrDetails = new RegExp(
+    '/hosting/(?:stay|reservations(?:/details)?)/' + esc + '(?:/|$|\\?)',
+    'i'
+  ).test(u);
+  if (!onStayOrDetails) return false;
+  if (missingCopy && !codeInText) return false;
+  if (codeInText && staySignals) return true;
+  if (onStayOrDetails && staySignals && !missingCopy) return true;
+  return false;
+}
+
 function vatIdFromAirbnbUrl(url) {
   const m = String(url || '').match(/\/(?:vat[_-]?invoice|tax[_-]?invoice|credit[_-]?note)\/([A-Za-z0-9_-]+)/i);
   if (!m) return '';
@@ -978,10 +1003,11 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     portalOrigin + '/hosting/reservations/details/' + encodeURIComponent(code),
     portalOrigin + '/hosting/reservations/' + encodeURIComponent(code),
     portalOrigin + '/hosting/reservations?confirmation_code=' + encodeURIComponent(code),
+    portalOrigin + '/hosting/reservations?confirmationCode=' + encodeURIComponent(code),
   ];
   let opened = false;
   for (const url of urls) {
-    const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
     await settleAirbnbHostPage(page);
     if (/log.?in|sign.?in/i.test(page.url())) {
       stopTap();
@@ -990,20 +1016,45 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     }
     const landed = page.url();
     const text = await page.locator('body').innerText().catch(() => '');
-    if (/we can.t find|not found|doesn.t exist|couldn.t find/i.test(text) && !(res && res.ok()) && !/\/hosting\/stay\//i.test(landed)) {
-      continue;
-    }
-    if (
-      /\/hosting\/stay\//i.test(landed) ||
-      /reservation|confirmation|guest|check-?in|vat|invoice|booking/i.test(text)
-    ) {
+    if (airbnbReservationPageIsOpen(landed, text, code)) {
       opened = true;
       break;
+    }
+    const stayHref = await page
+      .evaluate((c) => {
+        const needle = String(c || '').toUpperCase();
+        const a = Array.from(document.querySelectorAll('a[href]')).find((el) => {
+          const href = String(el.getAttribute('href') || '').toUpperCase();
+          return href.indexOf('/HOSTING/STAY/' + needle) >= 0 || href.indexOf('/HOSTING/RESERVATIONS/DETAILS/' + needle) >= 0;
+        });
+        if (!a) return '';
+        try {
+          return new URL(a.getAttribute('href'), location.origin).href;
+        } catch (e) {
+          return '';
+        }
+      }, code)
+      .catch(() => '');
+    if (stayHref) {
+      await page.goto(new URL(stayHref, landed).href, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+      await settleAirbnbHostPage(page);
+      const after = await page.locator('body').innerText().catch(() => '');
+      if (airbnbReservationPageIsOpen(page.url(), after, code)) {
+        opened = true;
+        break;
+      }
     }
   }
   if (!opened) {
     stopTap();
-    errors.push({ channel: 'airbnb', code, error: 'Could not open Airbnb reservation page for code ' + code });
+    errors.push({
+      channel: 'airbnb',
+      code,
+      error:
+        'Could not open Airbnb reservation ' +
+        code +
+        ' (stay URL was a miss or a hosting list; details/search also failed)',
+    });
     await page.screenshot({ path: path.join(dir, '_miss-' + code + '.png'), fullPage: true }).catch(() => {});
     return 0;
   }

@@ -13,6 +13,14 @@ const { spawn } = require('child_process');
 const root = path.join(__dirname, '..');
 const worker = path.join(root, 'scripts', 'platform-invoice-pull.js');
 
+function missStayHtml() {
+  return `<!doctype html><html><body>
+<nav>Reservations · Bookings · Calendar</nav>
+<h1>We can't find this reservation</h1>
+<p>That page doesn't exist.</p>
+</body></html>`;
+}
+
 function stayHtml(code) {
   return `<!doctype html><html><body>
 <h1>Stay ${code}</h1>
@@ -48,8 +56,15 @@ function startServer() {
       const u = req.url.split('?')[0];
       const stay = u.match(/^\/hosting\/stay\/([A-Z0-9]+)/i);
       if (stay) {
+        const code = stay[1].toUpperCase();
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(stayHtml(stay[1].toUpperCase()));
+        res.end(code === 'HMMISS01' ? missStayHtml() : stayHtml(code));
+        return;
+      }
+      const details = u.match(/^\/hosting\/reservations\/details\/([A-Z0-9]+)/i);
+      if (details) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(stayHtml(details[1].toUpperCase()));
         return;
       }
       if (/^\/reservation\/vat_invoice\//i.test(u)) {
@@ -127,6 +142,13 @@ function runPull(origin, outDir, reservations, limit) {
     assert(fs.existsSync(clickPdf), 'stored stay-click debit PDF at ' + clickPdf + ' (have: ' + clickSaved + ')');
     assert(fs.existsSync(clickCredit), 'stored stay-click credit PDF at ' + clickCredit + ' (have: ' + clickSaved + ')');
     assert(fs.statSync(clickPdf).size > 100, 'PDF has bytes');
+
+    const missRun = await runPull(origin, path.join(outDir, 'miss'), [
+      { code: 'HMMISS01', kind: 'invoice', aptName: 'Birdhouse', createdOnChannel: 2000 },
+    ]);
+    assert(missRun.parsed && missRun.parsed.ok, 'miss stay URL still saved via details: ' + JSON.stringify(missRun.parsed));
+    const missPdf = path.join(outDir, 'miss', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMMISS01-INV99ABC.pdf');
+    assert(fs.existsSync(missPdf), 'opened /hosting/reservations/details after stay URL miss: ' + missPdf);
 
     const latestRun = await runPull(
       origin,

@@ -26,7 +26,7 @@ assert(worker.includes('listAirbnbVatDocHrefs'), 'collects every VAT invoice/cre
 assert(worker.includes('vatIdFromAirbnbUrl'), 'names PDFs with the Airbnb VAT document id');
 assert(worker.includes("kind: 'both'"), 'pull treats each stay as all related invoices');
 assert(worker.includes('mergeListedHrefs'), 'keeps collecting VAT hrefs after each debit/credit open');
-assert(worker.includes('clicking a VAT/credit control here navigates away'), 'does not click the first VAT link before listing siblings');
+assert(worker.includes('airbnbReservationPageIsOpen'), 'does not treat a missing stay URL as opened');
 assert(worker.includes('PI_AIRBNB_LIMIT'), 'Test pull can slice codes');
 assert(worker.includes('ids/urls found:'), '0-PDF error says what was searched');
 assert(!/hrefs\.length/.test(worker) || worker.indexOf('loadAirbnbReservations') < worker.indexOf('pullAirbnb'), 'Hosthub-driven path present');
@@ -96,7 +96,7 @@ const extractSrc =
   extractBetween(worker, 'kindFromInvoiceBlob', 'airbnbInvoicePagePatterns') +
   extractBetween(worker, 'airbnbInvoiceUrlsForHit', 'attachAirbnbInvoiceNetworkTap');
 const helpers = vm.runInNewContext(
-  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits, vatIdFromAirbnbUrl })',
+  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits, vatIdFromAirbnbUrl, airbnbReservationPageIsOpen })',
   { URL: URL, encodeURIComponent: encodeURIComponent }
 );
 const html = '<script>{"vatInvoiceId":"INV99ABC","vatInvoice":{"id":"INV99ABC","url":"https://www.airbnb.com/reservation/vat_invoice/INV99ABC"}}</script>';
@@ -116,6 +116,33 @@ assert(tokenHits.some((h) => String(h.href || '').indexOf('/reservation/vat_invo
 assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/hosting/stay/HMHPBAREC3', 'Guest check-in reservation €120'));
 assert(helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/INV99ABC', 'VAT invoice'));
 assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/HMHPBAREC3', 'We can’t find that page'));
+assert.strictEqual(
+  helpers.airbnbReservationPageIsOpen(
+    'https://www.airbnb.com/hosting/stay/HM9DCDMEXT',
+    "We can't find this reservation. Reservations · Bookings",
+    'HM9DCDMEXT'
+  ),
+  false,
+  'hosting 200 with missing copy is not an open stay'
+);
+assert.strictEqual(
+  helpers.airbnbReservationPageIsOpen(
+    'https://www.airbnb.com/hosting/reservations/details/HM9DCDMEXT',
+    'Guest Alex · check-in 12 Jul · reservation HM9DCDMEXT',
+    'HM9DCDMEXT'
+  ),
+  true,
+  'details page with the confirmation code is open'
+);
+assert.strictEqual(
+  helpers.airbnbReservationPageIsOpen(
+    'https://www.airbnb.com/hosting/reservations',
+    'Upcoming reservations · booking · guest check-in',
+    'HMWRNAWHBA'
+  ),
+  false,
+  'reservations list is not the stay'
+);
 assert.strictEqual(helpers.usefulAirbnbInvoiceHits([{ id: 'HMHPBAREC3' }, { id: 'INV99ABC' }], 'HMHPBAREC3').length, 1);
 assert.strictEqual(helpers.vatIdFromAirbnbUrl('https://www.airbnb.com/reservation/vat_invoice/INV99ABC'), 'INV99ABC');
 
