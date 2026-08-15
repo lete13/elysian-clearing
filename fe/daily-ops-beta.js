@@ -136,11 +136,16 @@
     return main.concat(extra);
   }
 
+  function isArrivalOnly(row) {
+    return !!(row && (row.isCheckinOnly || row.checkinSameDay === 'checkin_only'));
+  }
+
   function itemAttention(item) {
     var row = item.row || {};
     var target = item.target;
     var notes = String(row.comments || row.cleanTaskNote || '');
     return !!(
+      isArrivalOnly(row) ||
       (target && !target.cleanDone) ||
       (target && cleaners(target).length === 0) ||
       row.checkinSameDay === 'unknown' ||
@@ -153,8 +158,10 @@
     var q = String(state.search || '').toLowerCase().trim();
     var out = items.filter(function (item) {
       var target = item.target;
+      var row = item.row || {};
       if (state.filter === 'attention' && !itemAttention(item)) return false;
-      if (state.filter === 'open' && (!target || target.cleanDone)) return false;
+      // Arrival-only check-ins have no clean target — still count as open work.
+      if (state.filter === 'open' && !isArrivalOnly(row) && (!target || target.cleanDone)) return false;
       if (state.filter === 'done' && (!target || !target.cleanDone)) return false;
       if (state.filter === 'unassigned' && (!target || cleaners(target).length > 0)) return false;
       if (!q) return true;
@@ -173,6 +180,7 @@
     } else if (state.sort === 'status') {
       out.sort(function (a, b) {
         function rank(item) {
+          if (isArrivalOnly(item.row)) return 0;
           if (!item.target) return 4;
           if (item.target.cleanDone) return 3;
           if (!cleaners(item.target).length || item.row.checkinSameDay === 'unknown' || item.row.isPriority) return 0;
@@ -581,7 +589,10 @@
   }
 
   function statusSummary(items) {
-    var open = items.filter(function (item) { return item.target && !item.target.cleanDone; }).length;
+    var open = items.filter(function (item) {
+      if (isArrivalOnly(item.row)) return true;
+      return !!(item.target && !item.target.cleanDone);
+    }).length;
     var unassigned = items.filter(function (item) { return item.target && !cleaners(item.target).length; }).length;
     var decisions = items.filter(itemAttention).length;
     return { open: open, unassigned: unassigned, decisions: decisions };
