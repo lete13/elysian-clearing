@@ -158,8 +158,16 @@ assert(panel.innerHTML.includes('👶'), 'park bed uses a baby icon');
 assert(panel.innerHTML.includes('☀️'), 'early check-in uses a sun icon');
 assert(!/>L</.test(panel.innerHTML) && !/>P</.test(panel.innerHTML), 'letter flag labels are gone');
 
+assert(panel.innerHTML.includes('tone-hot'), 'ops-urgency hot tone is rendered');
+assert(panel.innerHTML.includes('tone-warn'), 'ops-urgency warn tone is rendered');
+assert(panel.innerHTML.includes('tone-done'), 'ops-urgency done tone is rendered');
+assert(panel.innerHTML.includes('Priority / late / sofa'), 'color legend lists hot tone');
+assert(panel.innerHTML.includes('ob-tone-legend'), 'color legend is on the board');
+
 const css = fs.readFileSync(path.join(rootDir, 'fe', 'daily-ops-beta.css'), 'utf8');
 assert(!/ob-table-wrap\s*\{[^}]*max-height/.test(css), 'table wrap has no fixed max-height');
 assert(/ob-table-wrap\s*\{[^}]*overflow-y:\s*visible/.test(css), 'table height follows row count');
+assert(/\.ob-dispatch-row\.tone-hot td/.test(css), 'hot tone styles present');
+assert(/\.ob-dispatch-row\.tone-same td/.test(css), 'same-day tone styles present');
 
-console.log('daily-ops-beta-scale: ok (paging + fit-all height)');
+console.log('daily-ops-beta-scale: ok (paging + fit-all height + ops urgency colors)');
