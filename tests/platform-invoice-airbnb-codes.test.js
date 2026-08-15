@@ -86,11 +86,18 @@ assert(srv72.patches.some((p) => (p.replace || '').includes("kind: 'both'")), 's
 assert(srv72.patches.some((p) => (p.replace || '').includes('hosthubYm === month')), 'Hosthub created month opens stay');
 const fe109 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-109.json'), 'utf8'));
 const srv73 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-73.json'), 'utf8'));
+const fe110 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-110.json'), 'utf8'));
+const srv74 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-74.json'), 'utf8'));
 assert(fe109.patches.some((p) => (p.replace || '').includes("piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })")), 'FE test pull is the two missed stays');
 assert(fe109.patches.some((p) => (p.replace || '').includes('Estimated invoices to pull')), 'FE Expect estimates invoices');
 assert(fe109.patches.some((p) => (p.replace || '').includes('piDownloadAccountantXls')), 'FE downloads accountant Excel');
 assert(srv73.patches.some((p) => (p.replace || '').includes('buildAccountantXls')), 'server attaches accountant Excel');
 assert(srv73.patches.some((p) => (p.replace || '').includes('estimateAirbnbInvoices')), 'server Expect estimate');
+assert(fe110.patches.some((p) => (p.replace || '').includes('+2 per extra extend')), 'FE multi-extend copy');
+assert(fe110.patches.some((p) => (p.replace || '').includes('piCountAirbnbExtends')), 'FE counts extra Hosthub ids');
+assert(fe110.patches.some((p) => (p.replace || '').includes('checkIn: x.checkIn')), 'FE posts check-in with pull');
+assert(srv74.patches.some((p) => (p.replace || '').includes('buildAccountantXls(rows, bks)')), 'Excel download joins Hosthub');
+assert(srv74.patches.some((p) => (p.replace || '').includes('buildAccountantXls(rows, xlsBks)')), 'Excel ship joins Hosthub');
 assert(worker.includes('parseAirbnbVatFields'), 'worker parses Airbnb VAT number/date/amount');
 assert(worker.includes('invoiceNumber: fields.invoiceNumber'), 'saved event carries invoice number');
 
@@ -262,7 +269,51 @@ assert.strictEqual(est.estimate.docs, 1 + 2 + 3, 'docs = normal1 + cancel2 + ext
 assert.strictEqual(est.stays.find((s) => s.code === 'HMABCDEF').docs, 1);
 assert.strictEqual(est.stays.find((s) => s.code === 'HMCANCEL1').docs, 2);
 assert.strictEqual(est.stays.find((s) => s.code === 'HMEXTEND1').docs, 3);
+assert.strictEqual(est.stays.find((s) => s.code === 'HMEXTEND1').extends, 1);
 assert.strictEqual(est.stays.find((s) => s.code === 'HMCANCEL1').stayKind, 'cancel');
+
+const multi = [
+  { platform: 'Airbnb', reservationId: 'HMMULTI2', id: 'e1', createdOnChannel: 1722470400, created: 1722470400, checkIn: '1/8/2024', checkOut: '5/8/2024', aptName: 'Birdhouse' },
+  { platform: 'Airbnb', reservationId: 'HMMULTI2', id: 'e2', createdOnChannel: 1722470400, created: 1722556800, checkIn: '1/8/2024', checkOut: '8/8/2024', aptName: 'Birdhouse' },
+  { platform: 'Airbnb', reservationId: 'HMMULTI2', id: 'e3', createdOnChannel: 1722470400, created: 1722643200, checkIn: '1/8/2024', checkOut: '12/8/2024', aptName: 'Birdhouse' },
+];
+const est2 = estimateAirbnbInvoices('2024-08', multi);
+assert.strictEqual(est2.stays.length, 1);
+assert.strictEqual(est2.stays[0].extends, 2, '3 Hosthub ids = 2 extends');
+assert.strictEqual(est2.stays[0].docs, 5, '2 extends = 1+2n = 5 invoices');
+assert.strictEqual(est2.estimate.extendDocs, 5);
+assert.strictEqual(est2.stays[0].checkOut, '12/8/2024', 'later checkout wins');
+
+const four = [];
+for (let i = 0; i < 5; i++) {
+  four.push({
+    platform: 'Airbnb',
+    reservationId: 'HMFOURX',
+    id: 'id' + i,
+    createdOnChannel: 1722470400,
+    created: 1722470400,
+    checkIn: '1/8/2024',
+    checkOut: 5 + i + '/8/2024',
+  });
+}
+const est4 = estimateAirbnbInvoices('2024-08', four);
+assert.strictEqual(est4.stays[0].extends, 4, '5 Hosthub ids = 4 extends');
+assert.strictEqual(est4.stays[0].docs, 9, '4 extends = 9 invoices');
+
+const lifetime = [
+  { platform: 'Airbnb', reservationId: 'HMLIFE1', id: 'old', createdOnChannel: 1719792000, created: 1719792000 },
+  { platform: 'Airbnb', reservationId: 'HMLIFE1', id: 'new', createdOnChannel: 1719792000, created: 1722470400, checkIn: '1/8/2024', checkOut: '10/8/2024' },
+];
+const estLife = estimateAirbnbInvoices('2024-08', lifetime);
+assert.strictEqual(estLife.stays[0].extends, 1, 'out-of-month extra Hosthub id still counts');
+assert.strictEqual(estLife.stays[0].docs, 3);
+
+const cancelExt = [
+  { platform: 'Airbnb', reservationId: 'HMCANX1', id: 'a', createdOnChannel: 1719792000, created: 1719792000, cancelled: true, cancelledAt: 1722470400 },
+  { platform: 'Airbnb', reservationId: 'HMCANX1', id: 'b', createdOnChannel: 1719792000, created: 1722470400, cancelled: true, cancelledAt: 1722470400 },
+];
+assert.strictEqual(estimateAirbnbInvoices('2024-08', cancelExt).stays[0].docs, 2, 'cancel stays at 2 even with extra ids');
+assert.strictEqual(estimateAirbnbInvoices('2024-08', cancelExt).stays[0].stayKind, 'cancel');
 
 const debitHtml = 'Invoice number AIUC-104771625-GR-1552747 issued 4/7/2026 Total €8.00';
 const debit = helpers.parseAirbnbVatFields(debitHtml, 'invoice', '');
@@ -291,23 +342,47 @@ const creditRow = accountantRow({
   meta: { invoiceNumber: 'AIUC-104771625-GR-1552747-CN-1', issueDate: '4/7/2026', total: 8, sign: '-' },
 });
 assert.strictEqual(creditRow.sign, '-');
-const xls = buildAccountantXls([
-  { channel: 'airbnb', meta: { invoiceNumber: 'AIUC-AAA', issueDate: '4/7/2026', total: 8, sign: '' } },
-  { channel: 'airbnb', kind: 'credit_note', meta: { invoiceNumber: 'AIUC-AAA-CN-1', issueDate: '4/7/2026', total: 8, sign: '-' } },
-  { channel: 'booking', meta: { invoiceNumber: 'BDC-1', issueDate: '1/7/2026', total: 99, sign: '' } },
-]).toString('utf8');
+const xls = buildAccountantXls(
+  [
+    {
+      channel: 'airbnb',
+      filename: 'Airbnb/2026-07/Birdhouse/invoice-HMTEST1-INV.pdf',
+      meta: { invoiceNumber: 'AIUC-AAA', issueDate: '4/7/2026', total: 8, sign: '', reservationId: 'HMTEST1' },
+    },
+    {
+      channel: 'airbnb',
+      filename: 'Airbnb/2026-07/Birdhouse/credit_note-HMTEST1-CN.pdf',
+      kind: 'credit_note',
+      meta: { invoiceNumber: 'AIUC-AAA-CN-1', issueDate: '4/7/2026', total: 8, sign: '-' },
+    },
+    { channel: 'booking', meta: { invoiceNumber: 'BDC-1', issueDate: '1/7/2026', total: 99, sign: '' } },
+  ],
+  [{ platform: 'Airbnb', reservationId: 'HMTEST1', aptName: 'Birdhouse', checkIn: '1/7/2026', checkOut: '5/7/2026' }]
+).toString('utf8');
 assert(xls.includes('Ημερομηνία'), 'Excel has issue-date header');
 assert(xls.includes('Αιτιολογία'), 'Excel has invoice-number header');
 assert(xls.includes('Κατάστημα'), 'Excel has empty store column header');
 assert(xls.includes('Αρ. συναλλαγής'), 'Excel has empty txn column header');
 assert(xls.includes('Πρόσημο ποσού'), 'Excel has sign header');
+assert(xls.includes('Reservation id'), 'Excel has reservation id header');
+assert(xls.includes('Listing name'), 'Excel has listing name header');
+assert(xls.includes('Check-in'), 'Excel has check-in header');
+assert(xls.includes('Check-out'), 'Excel has check-out header');
 assert(xls.includes('AIUC-AAA'), 'Excel has debit invoice number');
 assert(xls.includes('AIUC-AAA-CN-1'), 'Excel has credit invoice number');
+assert(xls.includes('HMTEST1'), 'Excel has reservation id');
+assert(xls.includes('Birdhouse'), 'Excel has listing name from Hosthub');
+assert(xls.includes('1/7/2026'), 'Excel has check-in');
+assert(xls.includes('5/7/2026'), 'Excel has check-out');
 assert(!xls.includes('BDC-1'), 'Excel skips Booking.com');
 assert(!xls.includes('ΥΠ10'), 'txn column is empty, not ΥΠ10');
 const rowsXml = xls.split('<Row>').slice(2); // skip workbook noise / header
 assert(rowsXml.some((r) => r.includes('AIUC-AAA-CN-1') && r.includes('>-</Data>')), 'credit Πρόσημο is minus');
 assert(rowsXml.some((r) => r.includes('>AIUC-AAA<') && !r.includes('AIUC-AAA-CN') && !/Πρόσημο[\s\S]*>-</.test(r)), 'debit Πρόσημο empty');
+assert(
+  rowsXml.some((r) => r.includes('AIUC-AAA-CN-1') && r.includes('HMTEST1') && r.includes('1/7/2026')),
+  'credit row still joins Hosthub from filename code'
+);
 
 // Code regex used by worker
 const re = /^[A-Z0-9]{6,20}$/;

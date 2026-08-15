@@ -1,8 +1,13 @@
 'use strict';
 /**
  * Hosthub → estimated Airbnb VAT documents for a month.
- * normal = 1 debit; cancelled = debit + credit; extended = original debit + credit of that debit + new debit.
+ * normal = 1 debit; cancelled = debit + credit (2);
+ * n extends = 1 + 2n (each extra extend = credit of previous debit + new debit).
  * Cancel wins over extend over normal when the same confirmation code appears twice.
+ *
+ * Hosthub usually updates one calendar event in place (same id) — that still
+ * counts as one extend when Hosthub `created` is >36h after Airbnb `createdOnChannel`.
+ * Extra Hosthub event ids on the same confirmation code raise n (lifetime, not only in-month).
  */
 
 function ymFromTs(t) {
@@ -32,13 +37,50 @@ function airCode(b) {
     .toUpperCase();
 }
 
+function hosthubIdOf(b) {
+  return String((b && (b.id || b.hosthubId)) || '').trim();
+}
+
+function dmyKey(s) {
+  const m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return 0;
+  return Date.UTC(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+}
+
 const RANK = { cancel: 3, extend: 2, normal: 1 };
-const DOCS = { cancel: 2, extend: 3, normal: 1 };
 const EXTEND_MS = 36 * 3600 * 1000;
 
 function isAirbnbBooking(b) {
   const plat = String((b && (b.platform || b.channel)) || '').toLowerCase();
   return plat.indexOf('air') >= 0;
+}
+
+function countExtends(allBks, seed) {
+  const ids = {};
+  (allBks || []).forEach(function (b) {
+    const id = hosthubIdOf(b);
+    if (id) ids[id] = true;
+  });
+  const unique = Object.keys(ids).length;
+  if (unique > 1) return unique - 1;
+  const rows = allBks && allBks.length ? allBks : seed ? [seed] : [];
+  for (let i = 0; i < rows.length; i++) {
+    const b = rows[i];
+    const ch = createdMs(b && b.createdOnChannel);
+    const hh = createdMs(b && b.created);
+    if (ch && hh && hh - ch > EXTEND_MS) return 1;
+  }
+  if (seed && !(allBks && allBks.length)) {
+    const ch = createdMs(seed.createdOnChannel);
+    const hh = createdMs(seed.created);
+    if (ch && hh && hh - ch > EXTEND_MS) return 1;
+  }
+  return 0;
+}
+
+function docsForStay(stayKind, n) {
+  if (stayKind === 'cancel') return 2;
+  return 1 + 2 * (n || 0);
 }
 
 function classifyAirbnbStay(b, month) {
@@ -57,18 +99,22 @@ function classifyAirbnbStay(b, month) {
     const hh = createdMs(b.created);
     if (ch && hh && hh - ch > EXTEND_MS) stayKind = 'extend';
   }
+  const n = stayKind === 'extend' ? 1 : 0;
   return {
     code: airCode(b),
     stayKind: stayKind,
-    docs: DOCS[stayKind],
+    extends: n,
+    docs: docsForStay(stayKind, n),
     inCreated: inCreated,
     inCancel: inCancel,
     aptId: String((b && b.aptId) || '').trim(),
     aptName: String((b && b.aptName) || '').trim(),
     guestName: String((b && b.guestName) || '').trim(),
-    hosthubId: String((b && (b.id || b.hosthubId)) || '').trim(),
+    hosthubId: hosthubIdOf(b),
     created: b.created != null ? b.created : null,
     createdOnChannel: b.createdOnChannel != null ? b.createdOnChannel : null,
+    checkIn: b.checkIn != null ? String(b.checkIn) : '',
+    checkOut: b.checkOut != null ? String(b.checkOut) : '',
     cancelled: !!b.cancelled,
     cancelledAt: b.cancelledAt != null ? b.cancelledAt : null,
   };
@@ -76,21 +122,33 @@ function classifyAirbnbStay(b, month) {
 
 function mergeStay(prev, next) {
   if (!prev) return next;
-  if ((RANK[next.stayKind] || 0) > (RANK[prev.stayKind] || 0)) {
-    return Object.assign({}, prev, next, {
-      inCreated: prev.inCreated || next.inCreated,
-      inCancel: prev.inCancel || next.inCancel,
+  const later = dmyKey(next.checkOut) >= dmyKey(prev.checkOut) ? next : prev;
+  const base = (RANK[next.stayKind] || 0) > (RANK[prev.stayKind] || 0)
+    ? Object.assign({}, prev, next)
+    : Object.assign({}, next, prev, {
+      stayKind: prev.stayKind,
+      docs: prev.docs,
+      extends: prev.extends,
     });
-  }
-  return Object.assign({}, next, prev, {
-    stayKind: prev.stayKind,
-    docs: prev.docs,
+  return Object.assign({}, base, {
     inCreated: prev.inCreated || next.inCreated,
     inCancel: prev.inCancel || next.inCancel,
+    checkIn: later.checkIn || base.checkIn || '',
+    checkOut: later.checkOut || base.checkOut || '',
+    aptName: later.aptName || base.aptName || '',
+    aptId: later.aptId || base.aptId || '',
   });
 }
 
 function estimateAirbnbInvoices(month, bks) {
+  const allByCode = {};
+  (bks || []).forEach(function (b) {
+    if (!isAirbnbBooking(b)) return;
+    const code = airCode(b);
+    if (!code) return;
+    if (!allByCode[code]) allByCode[code] = [];
+    allByCode[code].push(b);
+  });
   const byCode = {};
   const missing = [];
   (bks || []).forEach(function (b) {
@@ -107,12 +165,20 @@ function estimateAirbnbInvoices(month, bks) {
   const stays = Object.keys(byCode)
     .sort()
     .map(function (k) {
-      return byCode[k];
+      const s = byCode[k];
+      const n = countExtends(allByCode[k] || [], s);
+      const stayKind = s.stayKind === 'cancel' ? 'cancel' : (n > 0 ? 'extend' : 'normal');
+      return Object.assign({}, s, {
+        stayKind: stayKind,
+        extends: n,
+        docs: docsForStay(stayKind, n),
+      });
     });
-  const estimate = { normal: 0, cancel: 0, extend: 0, docs: 0, stays: stays.length };
+  const estimate = { normal: 0, cancel: 0, extend: 0, docs: 0, stays: stays.length, extendDocs: 0 };
   stays.forEach(function (s) {
     estimate[s.stayKind] += 1;
     estimate.docs += s.docs;
+    if (s.stayKind === 'extend') estimate.extendDocs += s.docs;
   });
   return { stays: stays, missing: missing, estimate: estimate };
 }
@@ -122,5 +188,7 @@ module.exports = {
   createdMs,
   classifyAirbnbStay,
   estimateAirbnbInvoices,
+  countExtends,
+  docsForStay,
   EXTEND_MS,
 };

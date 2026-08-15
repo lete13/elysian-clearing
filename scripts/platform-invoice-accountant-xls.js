@@ -2,6 +2,7 @@
 /**
  * Accountant import sheet (Greek bank/expense template):
  * A/A, Ημερομηνία, Αιτιολογία, Κατάστημα, Τοκισμός από, Αρ. συναλλαγής, Ποσό, Πρόσημο ποσού
+ * then Reservation id, Listing name, Check-in, Check-out (stay identity; not part of the import block).
  */
 
 function xmlEscape(s) {
@@ -24,6 +25,9 @@ function parseMeta(row) {
     total: row.total,
     sign: row.sign || '',
     reservationId: row.reservationId || '',
+    listingName: row.listingName || row.aptName || '',
+    checkIn: row.checkIn || '',
+    checkOut: row.checkOut || '',
   };
 }
 
@@ -36,7 +40,47 @@ function fallbackInvoiceNumber(row) {
   return '';
 }
 
-function accountantRow(row) {
+function codeFromFilename(row) {
+  const leaf = String((row && row.filename) || '')
+    .split('/')
+    .pop() || '';
+  const m = leaf.toUpperCase().match(/(?:INVOICE|CREDIT_NOTE)-([A-Z0-9]{6,20})/);
+  return m ? m[1] : '';
+}
+
+function listingFromFilename(row) {
+  const parts = String((row && row.filename) || '').split('/').filter(Boolean);
+  // Airbnb/2026-07/Birdhouse/invoice-CODE-vat.pdf
+  if (parts.length >= 4) return parts[2];
+  return '';
+}
+
+function dmyKey(s) {
+  const m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return 0;
+  return Date.UTC(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+}
+
+function airCode(b) {
+  return String((b && (b.reservationId || b.reservation_id || b.confirmationCode || b.code)) || '')
+    .trim()
+    .toUpperCase();
+}
+
+function indexBookings(bks) {
+  const map = {};
+  (bks || []).forEach(function (b) {
+    const plat = String((b && (b.platform || b.channel)) || '').toLowerCase();
+    if (plat && plat.indexOf('air') < 0 && plat.indexOf('booking') < 0) return;
+    const c = airCode(b);
+    if (!c) return;
+    const prev = map[c];
+    if (!prev || dmyKey(b.checkOut) >= dmyKey(prev.checkOut)) map[c] = b;
+  });
+  return map;
+}
+
+function accountantRow(row, byCode) {
   const meta = parseMeta(row);
   const invoiceNumber = String(meta.invoiceNumber || fallbackInvoiceNumber(row) || '').trim();
   const issueDate = String(meta.issueDate || '').trim();
@@ -50,11 +94,29 @@ function accountantRow(row) {
   if (typeof total === 'number') total = Math.abs(total);
   const creditFile = /credit/i.test(String((row && row.filename) || '')) || String((row && row.kind) || '') === 'credit_note';
   const outSign = sign || (creditFile ? '-' : '');
+  const code = String(meta.reservationId || row.reservationId || codeFromFilename(row) || '')
+    .trim()
+    .toUpperCase();
+  const bk = (byCode && code && byCode[code]) || null;
+  const listingName = String(
+    meta.listingName ||
+      (bk && bk.aptName) ||
+      (row && row.aptName) ||
+      (row && row.partner && String(row.partner).toLowerCase() !== 'credit_note' ? row.partner : '') ||
+      listingFromFilename(row) ||
+      ''
+  ).trim();
+  const checkIn = String((meta.checkIn || (bk && bk.checkIn) || row.checkIn || '')).trim();
+  const checkOut = String((meta.checkOut || (bk && bk.checkOut) || row.checkOut || '')).trim();
   return {
     issueDate: issueDate,
     invoiceNumber: invoiceNumber,
     total: total,
     sign: outSign,
+    reservationId: code,
+    listingName: listingName,
+    checkIn: checkIn,
+    checkOut: checkOut,
   };
 }
 
@@ -64,7 +126,7 @@ function issueDateKey(dmy) {
   return Date.UTC(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
 }
 
-function buildAccountantXls(rows) {
+function buildAccountantXls(rows, bks) {
   const headers = [
     'A/A',
     'Ημερομηνία',
@@ -74,11 +136,16 @@ function buildAccountantXls(rows) {
     'Αρ. συναλλαγής',
     'Ποσό',
     'Πρόσημο ποσού',
+    'Reservation id',
+    'Listing name',
+    'Check-in',
+    'Check-out',
   ];
+  const byCode = indexBookings(bks);
   const recs = [];
   (rows || []).forEach((row) => {
     if (String((row && row.channel) || '').toLowerCase() === 'booking') return;
-    const rec = accountantRow(row);
+    const rec = accountantRow(row, byCode);
     if (!rec.invoiceNumber && rec.total === '' && !rec.issueDate) return;
     recs.push(rec);
   });
@@ -97,7 +164,20 @@ function buildAccountantXls(rows) {
   );
   recs.forEach((rec, i) => {
     const n = i + 1;
-    const cells = [n, rec.issueDate, rec.invoiceNumber, '', rec.issueDate, '', rec.total, rec.sign];
+    const cells = [
+      n,
+      rec.issueDate,
+      rec.invoiceNumber,
+      '',
+      rec.issueDate,
+      '',
+      rec.total,
+      rec.sign,
+      rec.reservationId,
+      rec.listingName,
+      rec.checkIn,
+      rec.checkOut,
+    ];
     lines.push(
       '<Row>' +
         cells
@@ -126,6 +206,9 @@ function fileMetaJson(f) {
     total: f && f.total != null && f.total !== '' ? f.total : '',
     sign: f && f.sign === '-' ? '-' : '',
     reservationId: f && (f.reservationId || f.code) ? String(f.reservationId || f.code) : '',
+    listingName: f && (f.listingName || f.aptName) ? String(f.listingName || f.aptName) : '',
+    checkIn: f && f.checkIn ? String(f.checkIn) : '',
+    checkOut: f && f.checkOut ? String(f.checkOut) : '',
     vatId: f && f.vatId ? String(f.vatId) : '',
     kind: f && f.kind ? String(f.kind) : '',
   });
@@ -137,4 +220,5 @@ module.exports = {
   accountantRow,
   buildAccountantXls,
   fileMetaJson,
+  codeFromFilename,
 };

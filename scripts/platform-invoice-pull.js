@@ -18,7 +18,7 @@
  *   AIRBNB_OTP (optional one-shot code if password login hits OTP)
  *   PI_APARTMENTS_JSON (optional JSON array of {aptId,aptName} for partner matching)
  *   PI_AIRBNB_RESERVATIONS_JSON — Hosthub-driven Airbnb codes (VAT Invoicer-style):
- *     JSON array of {code, kind:'invoice'|'credit_note'|'both', aptId, aptName, guestName, created, createdOnChannel}
+ *     JSON array of {code, kind:'invoice'|'credit_note'|'both', aptId, aptName, guestName, created, createdOnChannel, checkIn, checkOut}
  *     Worker opens /hosting/stay/{CODE} (Airbnb's current reservation page), clicks the
  *     total price (Airbnb Help 438), finds every VAT invoice / credit note ID on that stay,
  *     opens each invoice HTML, prints PDF. Cancel = debit + credit; extend = original debit
@@ -261,6 +261,8 @@ function loadAirbnbReservations() {
             : r && r.created_on_channel != null
               ? r.created_on_channel
               : null,
+        checkIn: r && r.checkIn != null ? String(r.checkIn) : r && r.check_in != null ? String(r.check_in) : '',
+        checkOut: r && r.checkOut != null ? String(r.checkOut) : r && r.check_out != null ? String(r.check_out) : '',
       }))
       .filter((r) => r.code && /^[A-Z0-9]{6,20}$/.test(r.code));
     const limit = loadAirbnbLimit();
@@ -1159,6 +1161,9 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       issueDate: fields.issueDate || '',
       total: fields.total,
       sign: fields.sign || '',
+      listingName: aptName,
+      checkIn: resv.checkIn || '',
+      checkOut: resv.checkOut || '',
       filename: rel.replace(/\\/g, '/'),
       path: cap.saved.path,
       bytes: cap.saved.bytes,
@@ -1177,6 +1182,9 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       issueDate: fields.issueDate || '',
       total: fields.total,
       sign: fields.sign || '',
+      listingName: aptName,
+      checkIn: resv.checkIn || '',
+      checkOut: resv.checkOut || '',
       filename: rel.replace(/\\/g, '/'),
       path: cap.saved.path,
       bytes: cap.saved.bytes,
@@ -1377,6 +1385,8 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
       prev.kind = 'both';
       if (!prev.aptId && r.aptId) prev.aptId = r.aptId;
       if (!prev.aptName && r.aptName) prev.aptName = r.aptName;
+      if (!prev.checkIn && r.checkIn) prev.checkIn = r.checkIn;
+      if (!prev.checkOut && r.checkOut) prev.checkOut = r.checkOut;
     }
 
     const limit = loadAirbnbLimit();

@@ -17,7 +17,7 @@ The app **pulls** them automatically from the host portals (Platform Invoices), 
 | Airbnb | Credit note | Hosthub **`cancelledAt`**, and also when Airbnb credits the previous debit on **extend**. Pull saves every credit note on that stay. |
 
 Confirm in month A and cancel in month B → keep **both** documents.
-Extend in month B → original debit + credit of that debit + new debit.
+Extend in month B → original debit + credit of that debit + new debit. Each further extend adds another credit + new debit (**1 + 2n**).
 
 **Expect** estimates how many invoices Pull should save:
 
@@ -25,11 +25,12 @@ Extend in month B → original debit + credit of that debit + new debit.
 |---|---|
 | Normal reservation | **1** (VAT debit) |
 | Cancelled | **2** (debit + credit note) |
-| Extended (Hosthub `created` more than 36h after Airbnb `createdOnChannel`) | **3** (original debit + credit of that debit + new debit) |
+| 1 extend (Hosthub `created` more than 36h after Airbnb `createdOnChannel`, or one extra Hosthub event id) | **3** (original debit + credit of that debit + new debit) |
+| n extends | **1 + 2n** (2→5, 3→7, 4→9) |
 
-Same confirmation code is one stay; cancel wins over extend over normal.
+Same confirmation code is one stay; cancel wins over extend over normal. Extra Hosthub event ids on that code (lifetime, not only in-month) raise n. One Hosthub event updated in place still estimates one extend. Pull saves every VAT document on the stay.
 
-Ship emails every accountant group the PDFs **plus** an Excel (`Airbnb-VAT-YYYY-MM.xls`) in the import layout: Ημερομηνία = issue date, Αιτιολογία = invoice number (`AIUC-…`), Κατάστημα empty, Τοκισμός από = issue date, Αρ. συναλλαγής empty, Ποσό = total €, Πρόσημο ποσού = empty if positive / `-` if credit. Collect/Review can download the same file.
+Ship emails every accountant group the PDFs **plus** an Excel (`Airbnb-VAT-YYYY-MM.xls`) in the import layout: Ημερομηνία = issue date, Αιτιολογία = invoice number (`AIUC-…`), Κατάστημα empty, Τοκισμός από = issue date, Αρ. συναλλαγής empty, Ποσό = total €, Πρόσημο ποσού = empty if positive / `-` if credit. After those columns: Reservation id, Listing name, Check-in, Check-out (from Hosthub / pull meta). Collect/Review can download the same file.
 
 Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperties.eu`.
 
@@ -38,7 +39,7 @@ Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperti
 Same idea as [VAT Invoicer](https://vatinvoicer.com/privacy/): while logged into Airbnb hosting, take **reservation confirmation codes**, open each reservation, **find the VAT invoice ID on that page**, open Airbnb’s **VAT invoice HTML page**, and print it to PDF.
 
 1. Hosthub sync stores each booking’s channel **`reservation_id`** as `reservationId` (Airbnb confirmation code).
-2. Platform Invoices → **Expect** lists stays to open **and** estimates invoices to pull (normal ×1, cancelled ×2, extended ×3).
+2. Platform Invoices → **Expect** lists stays to open **and** estimates invoices to pull (normal ×1, cancelled ×2, extended ×3 for the first extend, then +2 per extra extend).
 3. **Test pull (HM9DCDMEXT · HMWRNAWHBA)** re-opens the two stays that previously missed, then **Pull Airbnb (Hosthub codes)** for the full month. **Stop pull** kills a running job (SIGTERM). Codes go to the worker as `PI_AIRBNB_RESERVATIONS_JSON` (`PI_AIRBNB_LIMIT` slices a latest-N test run).
 4. Worker opens `https://www.airbnb.com/hosting/stay/{CODE}`. A hosting 200 that says the reservation is missing is **not** treated as opened — it then tries `/hosting/reservations/details/{CODE}` and reservations search (the path a human uses). It waits for GraphQL, clicks the **total price** then **every VAT invoice / credit note** on that stay, searches HTML/JSON for VAT invoice IDs, opens each invoice HTML, and `page.pdf()`s it. The stay-page shell is never saved as a PDF.
 5. PDFs are **stored by platform / month / apartment**: `Airbnb/2026-07/Birdhouse/invoice-HMXXXX-VATID.pdf` (one file per Airbnb VAT document; a stay can have several). The vault `partner` field is the apartment name (credit notes stay under that apartment; kind is in the filename).

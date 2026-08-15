@@ -1,0 +1,83 @@
+{
+ "baseSha256": "94474f5ddf4732bad6a76ce53ac1224adec9822ddbbf86448137c0660f79f407",
+ "expectedSha256": "1edd13446e3e6f2b33289ba697d1efdf3cea21ec28d47a4bf09d9e8f8b7329af",
+ "builtAt": "2026-08-15 Accountant Excel joins Hosthub stay columns",
+ "patches": [
+  {
+   "note": "Excel download joins Hosthub bookings for stay columns",
+   "find": "    const buf = buildAccountantXls(rows);\n    const name = 'Airbnb-VAT-' + month + '.xls';",
+   "replace": "    const bks = await piLoadDbBookings();\n    const buf = buildAccountantXls(rows, bks);\n    const name = 'Airbnb-VAT-' + month + '.xls';",
+   "count": 1
+  },
+  {
+   "note": "Ship Excel joins Hosthub bookings for stay columns",
+   "find": "    const xlsBuf = buildAccountantXls(rows);",
+   "replace": "    const xlsBks = await piLoadDbBookings();\n    const xlsBuf = buildAccountantXls(rows, xlsBks);",
+   "count": 1
+  },
+  {
+   "note": "List API exposes listing / check-in / check-out from meta",
+   "find": "    reservationId: meta.reservationId || ''\n  };\n}",
+   "replace": "    reservationId: meta.reservationId || '',\n    listingName: meta.listingName || '',\n    checkIn: meta.checkIn || '',\n    checkOut: meta.checkOut || ''\n  };\n}",
+   "count": 1
+  },
+  {
+   "note": "Client-sourced pull codes keep check-in/out",
+   "find": "        created: x.created != null ? x.created : null,\n        createdOnChannel: x.createdOnChannel != null ? x.createdOnChannel : null\n      };",
+   "replace": "        created: x.created != null ? x.created : null,\n        createdOnChannel: x.createdOnChannel != null ? x.createdOnChannel : null,\n        checkIn: x.checkIn != null ? String(x.checkIn) : '',\n        checkOut: x.checkOut != null ? String(x.checkOut) : ''\n      };",
+   "count": 1
+  },
+  {
+   "note": "airbnb-codes stay rows include check-in/out and extend count",
+   "find": "      created: s.created,\n      createdOnChannel: s.createdOnChannel,\n      stayKind: s.stayKind,\n      docs: s.docs",
+   "replace": "      created: s.created,\n      createdOnChannel: s.createdOnChannel,\n      checkIn: s.checkIn || '',\n      checkOut: s.checkOut || '',\n      stayKind: s.stayKind,\n      extends: s.extends || 0,\n      docs: s.docs",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "kind: 'both'",
+   "note": "pull kind both"
+  },
+  {
+   "has": "hosthubYm === month",
+   "note": "Hosthub created month also opens stay"
+  },
+  {
+   "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+   "note": "harvest kept"
+  },
+  {
+   "has": "app.post('/api/platform-invoices/pull-stop'",
+   "note": "stop kept"
+  },
+  {
+   "has": "job.hint = 'Pull stopped'",
+   "note": "user Stop still uses Pull stopped"
+  },
+  {
+   "has": "accountant-xls",
+   "note": "Excel download route"
+  },
+  {
+   "has": "buildAccountantXls(rows, bks)",
+   "note": "Excel download joins bookings"
+  },
+  {
+   "has": "buildAccountantXls(rows, xlsBks)",
+   "note": "Excel ship joins bookings"
+  },
+  {
+   "has": "estimateAirbnbInvoices",
+   "note": "Expect estimate helper"
+  },
+  {
+   "has": "listingName: meta.listingName",
+   "note": "list API listing name"
+  },
+  {
+   "has": "fileMetaJson",
+   "note": "ingest writes meta"
+  }
+ ]
+}
