@@ -149,7 +149,7 @@ assert(panel.innerHTML.includes('>Notes<'), 'notes stay on the main table');
 assert(panel.innerHTML.includes('⏰'), 'late checkout uses a clock icon');
 assert(panel.innerHTML.includes('❗'), 'priority uses an exclamation icon');
 assert(panel.innerHTML.includes('👶'), 'park bed uses a baby icon');
-assert(panel.innerHTML.includes('🌅'), 'early check-in uses a sunrise icon');
+assert(panel.innerHTML.includes('☀️'), 'early check-in uses a sun icon');
 assert(!/>L</.test(panel.innerHTML) && !/>P</.test(panel.innerHTML), 'letter flag labels are gone');
 
 console.log('daily-ops-beta-scale: ok (200 rows, 4 pages, bulk assignment, table-only)');

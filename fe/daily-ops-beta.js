@@ -230,7 +230,7 @@
       ['late', '⏰', 'Late checkout', row.lateCheckout, 'hot'],
       ['priority', '❗', 'Priority', row.isPriority, 'hot'],
       ['park', '👶', 'Παρκοκρεβάτο', row.parkBed, 'cool'],
-      ['early', '🌅', 'Early check-in', row.earlyCheckin, 'cool'],
+      ['early', '☀️', 'Early check-in', row.earlyCheckin, 'cool'],
     ];
     return '<div class="ob-row-flags">' + defs.map(function (f) {
       return '<button type="button" class="ob-mini-flag ' + f[4] + (f[3] ? ' on' : '') + '" data-ob-action="flag" data-ob-index="' + index + '" data-ob-flag="' + f[0] + '" title="' + f[2] + '" aria-label="' + f[2] + '">' + f[1] + '</button>';
