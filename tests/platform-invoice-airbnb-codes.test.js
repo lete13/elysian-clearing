@@ -21,6 +21,9 @@ assert(worker.includes("event: 'progress'"), 'worker emits per-code progress for
 assert(worker.includes('No Hosthub Airbnb reservation codes provided'), 'fails closed without codes');
 assert(worker.includes('function extractAirbnbVatInvoiceHits'), 'searches reservation HTML for VAT invoice IDs');
 assert(worker.includes('reservation/vat_invoice/'), 'opens Airbnb VAT invoice HTML page from the ID');
+assert(worker.includes('clickAirbnbStayInvoiceCandidate'), 'clicks the stay-page VAT invoice link');
+assert(worker.includes('stay-click'), 'saves PDF from stay-page click');
+assert(worker.includes('airbnbInvoiceNavMs'), 'dead invoice URLs fail in seconds, not 45s');
 assert(worker.includes('looksLikeAirbnbInvoiceHtml'), 'will not PDF the reservation details shell');
 assert(worker.includes('listAirbnbVatDocHrefs'), 'collects every VAT invoice/credit note href on the stay');
 assert(worker.includes('vatIdFromAirbnbUrl'), 'names PDFs with the Airbnb VAT document id');
@@ -142,6 +145,7 @@ assert(tokenHits.some((h) => h.id === 'TOK99XYZ'), 'extracts vatInvoiceToken');
 assert(tokenHits.some((h) => String(h.href || '').indexOf('/reservation/vat_invoice/TOK99XYZ') >= 0), 'extracts vatInvoiceUrl');
 assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/hosting/stay/HMHPBAREC3', 'Guest check-in reservation €120'));
 assert(helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/INV99ABC', 'VAT invoice'));
+assert(helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/invoice/INV99ABC', 'VAT invoice Invoice number AIUC-1'));
 assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/HMHPBAREC3', 'We can’t find that page'));
 assert.strictEqual(
   helpers.airbnbReservationPageIsOpen(
@@ -179,6 +183,7 @@ assert(!helpers.airbnbBareInvoicePath('https://www.airbnb.com/reservation/vat_in
 const shortHtml = '<a href="/invoice/23k6jHjbbk9">VAT invoice</a>';
 const shortHits = helpers.extractAirbnbVatInvoiceHits(shortHtml, 'https://www.airbnb.com');
 assert(shortHits.some((h) => h.id === '23k6jHjbbk9'), 'extracts stay-page /invoice/token as VAT id');
+assert(shortHits.some((h) => String(h.href || '').indexOf('/invoice/23k6jHjbbk9') >= 0), 'keeps stay-page /invoice/ href to click');
 const shortUrls = helpers.airbnbInvoiceUrlsForHit(
   { kind: 'invoice', href: 'https://www.airbnb.com/invoice/23k6jHjbbk9', id: '' },
   'https://www.airbnb.com',

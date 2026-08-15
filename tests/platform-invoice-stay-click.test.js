@@ -28,14 +28,28 @@ function stayHtml(code) {
 <button type="button" id="total">Total €1,234</button>
 <script>
 document.getElementById('total').addEventListener('click', function () {
-  var a = document.createElement('a');
-  a.href = '/invoice/INV99ABC';
-  a.textContent = 'VAT invoice';
-  document.body.appendChild(a);
-  var c = document.createElement('a');
-  c.href = '/invoice/CN88XYZ';
-  c.textContent = 'Credit note';
-  document.body.appendChild(c);
+  function mount(id, label) {
+    var a = document.createElement('a');
+    a.href = '/invoice/' + id;
+    a.textContent = label;
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var credit = /CN/i.test(id);
+      var num = credit ? 'AIUC-104771625-GR-1552747-CN-1' : 'AIUC-104771625-GR-1552747';
+      var date = credit ? '4/8/2026' : '4/7/2026';
+      history.pushState({}, '', '/invoice/' + id);
+      document.body.innerHTML =
+        '<h1>' + (credit ? 'Credit note' : 'VAT invoice') + '</h1>' +
+        '<p>Invoice number ' + num + '</p>' +
+        '<p>' + date + '</p>' +
+        '<p>Total €8.00</p>' +
+        '<p>Airbnb service fee</p>';
+    }, true);
+    document.body.appendChild(a);
+  }
+  mount('INV99ABC', 'VAT invoice');
+  mount('CN88XYZ', 'Credit note');
 });
 </script>
 </body></html>`;
@@ -82,9 +96,8 @@ function startServer() {
         return;
       }
       if (/^\/reservation\/vat_invoice\//i.test(u) || /^\/reservation\/invoice\//i.test(u)) {
-        const id = u.split('/').pop() || '';
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(invoiceHtml(id));
+        res.writeHead(302, { location: '/404' });
+        res.end();
         return;
       }
       res.writeHead(404, { 'content-type': 'text/plain' });

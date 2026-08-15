@@ -541,7 +541,7 @@ function extractAirbnbVatInvoiceHits(html, origin) {
   const shortInvRe = /\/invoice\/([A-Za-z0-9_-]{6,})/gi;
   while ((m = shortInvRe.exec(text))) {
     if (/vat[_-]?invoice|tax[_-]?invoice/i.test(m[0])) continue;
-    add('invoice', abs('/reservation/vat_invoice/' + m[1]), m[1], 'short-invoice-id');
+    add('invoice', abs('/invoice/' + m[1]), m[1], 'short-invoice-id');
   }
   const arrRe = /"(vatInvoices|taxInvoices|hostVatInvoices|vatDocuments|taxDocuments|creditNotes|debitNotes)"\s*:\s*(\[[^\]]{0,8000}\])/gi;
   while ((m = arrRe.exec(text))) {
@@ -603,13 +603,45 @@ function airbnbInvoiceUrlsForHit(hit, origin, pageUrlPatterns) {
         if (swapped !== t) push(swapped);
       }
     });
-    // Stay-page hrefs are now /invoice/{token}; that path 404s. The HTML lives on
-    // Airbnb's VAT invoice pages (same token).
+    // Address-bar goto of /invoice/{token} 404s. Click the stay-page link instead.
+    // Reconstruct vat/tax URLs only as a short fallback after the click.
     push(origin0 + '/reservation/vat_invoice/' + encodeURIComponent(id));
     push(origin0 + '/reservation/tax_invoice/' + encodeURIComponent(id));
-    push(origin0 + '/reservation/invoice/' + encodeURIComponent(id));
   }
   return urls;
+}
+
+function airbnbInvoiceNavMs() {
+  return airbnbPortalIsLive() ? 8000 : 12000;
+}
+
+function airbnbInvoiceLandedDead(url, nav) {
+  const landed = String(url || '');
+  if (nav && typeof nav.status === 'function' && nav.status() >= 400) return true;
+  return /\/404(\?|$|\/)/i.test(landed);
+}
+
+async function clickAirbnbStayInvoiceCandidate(page, context, cand) {
+  const token = String((cand && cand.id) || vatIdFromAirbnbUrl(cand && cand.href) || '').replace(/[^A-Za-z0-9_-]/g, '');
+  if (!token) return { clicked: false, target: page, popup: null };
+  const links = page.locator('a[href*="' + token + '"]');
+  const n = await links.count().catch(() => 0);
+  let link = null;
+  for (let i = 0; i < n; i++) {
+    const el = links.nth(i);
+    if (await el.isVisible().catch(() => false)) {
+      link = el;
+      break;
+    }
+  }
+  if (!link) return { clicked: false, target: page, popup: null };
+  const popupP = context.waitForEvent('page', { timeout: 5000 }).catch(() => null);
+  await link.click({ timeout: 3000, noWaitAfter: true }).catch(() => null);
+  const popup = await popupP;
+  const target = popup || page;
+  await target.waitForLoadState('domcontentloaded', { timeout: airbnbInvoiceNavMs() }).catch(() => {});
+  await page.waitForTimeout(airbnbPortalIsLive() ? 800 : 250);
+  return { clicked: true, target: target, popup: popup };
 }
 
 function looksLikeAirbnbInvoiceHtml(url, bodyText) {
@@ -1218,10 +1250,17 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
   }
 
   async function goStay() {
-    if (!/\/hosting\/stay\//i.test(page.url())) {
-      await page.goto(reservationUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-      await settleAirbnbHostPage(page);
-    }
+    const here = String(page.url() || '');
+    if (/\/hosting\/stay\//i.test(here) && !/\/404(\?|$|\/)/i.test(here)) return;
+    await page.goto(reservationUrl, { waitUntil: 'domcontentloaded', timeout: airbnbInvoiceNavMs() }).catch(() => {});
+    await page.waitForTimeout(airbnbPortalIsLive() ? 600 : 200);
+  }
+
+  async function afterInvoiceAttempt(popup) {
+    if (popup) await popup.close().catch(() => {});
+    await goStay();
+    await clickAirbnbStayTotalPrice(page);
+    mergeListedHrefs(await listAirbnbVatDocHrefs(page));
   }
 
   async function revealAndCollect(how) {
@@ -1237,10 +1276,6 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       const k = kindFromInvoiceBlob(page.url() + ' ' + (await page.locator('body').innerText().catch(() => '')));
       const vid = vatIdFromAirbnbUrl(page.url());
       await saveIfInvoice(page, k, how, vid);
-      if (vid) {
-        await page.goto(portalOrigin + '/reservation/vat_invoice/' + encodeURIComponent(vid), { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-        await saveIfInvoice(page, k, how + '-rewritten', vid);
-      }
       await goStay();
       await clickAirbnbStayTotalPrice(page);
       await settleAirbnbHostPage(page);
@@ -1297,38 +1332,48 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       addCandidate(d.kind, d.href, vatIdFromAirbnbUrl(d.href), 'listed-href');
     });
   }
+  mergeListedHrefs(await listAirbnbVatDocHrefs(page));
   for (const hit of hits) {
     if (hit.id && String(hit.id).toUpperCase() === code) continue;
     const kind = hit.kind === 'credit_note' ? 'credit_note' : 'invoice';
-    for (const href of airbnbInvoiceUrlsForHit(hit, origin, templates)) {
-      addCandidate(kind, href, hit.id || vatIdFromAirbnbUrl(href), hit.how || 'scan');
-    }
+    addCandidate(kind, hit.href, hit.id || vatIdFromAirbnbUrl(hit.href), hit.how || 'scan');
   }
   mergeListedHrefs(await listAirbnbVatDocHrefs(page));
 
   for (let i = 0; i < candidates.length && i < 24; i++) {
     const cand = candidates[i];
     if (airbnbDocAlreadyHave(alreadyHave, cand.kind, code, cand.id)) continue;
-    const openUrls = airbnbInvoiceUrlsForHit(cand, origin, templates);
-    if (!openUrls.length && cand.href && !airbnbBareInvoicePath(cand.href)) openUrls.push(cand.href);
     let savedThis = false;
+    await goStay();
+    await clickAirbnbStayTotalPrice(page);
+    try {
+      const clicked = await clickAirbnbStayInvoiceCandidate(page, context, cand);
+      if (clicked.clicked) {
+        if (!airbnbInvoiceLandedDead(clicked.target.url(), null)) {
+          const ok = await saveIfInvoice(clicked.target, cand.kind, 'stay-click', cand.id);
+          if (ok) savedThis = true;
+        }
+        await afterInvoiceAttempt(clicked.popup);
+      }
+    } catch (e) {
+      errors.push({ channel: 'airbnb', code, kind: cand.kind, error: e.message });
+    }
+    if (savedThis) continue;
+    const openUrls = airbnbInvoiceUrlsForHit(cand, origin, templates);
     for (const href of openUrls) {
       try {
-        const popupP = context.waitForEvent('page', { timeout: 4000 }).catch(() => null);
-        const nav = await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
-        const landed = String(page.url() || '');
-        if ((nav && nav.status() >= 400) || /\/404(\?|$|\/)/i.test(landed) || airbnbBareInvoicePath(landed)) {
-          await popupP;
-          continue;
-        }
-        await page.waitForTimeout(1200);
+        await goStay();
+        const popupP = context.waitForEvent('page', { timeout: 2500 }).catch(() => null);
+        const nav = await page.goto(href, { waitUntil: 'domcontentloaded', timeout: airbnbInvoiceNavMs() }).catch(() => null);
         const popup = await popupP;
         const target = popup || page;
+        if (airbnbInvoiceLandedDead(target.url(), nav) || airbnbBareInvoicePath(target.url())) {
+          if (popup) await popup.close().catch(() => {});
+          continue;
+        }
+        await page.waitForTimeout(airbnbPortalIsLive() ? 700 : 200);
         const ok = await saveIfInvoice(target, cand.kind, cand.how || 'invoice-id', cand.id);
-        if (popup) await popup.close().catch(() => {});
-        await goStay();
-        await clickAirbnbStayTotalPrice(page);
-        mergeListedHrefs(await listAirbnbVatDocHrefs(page));
+        await afterInvoiceAttempt(popup);
         if (ok) {
           savedThis = true;
           break;
@@ -1337,9 +1382,7 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
         errors.push({ channel: 'airbnb', code, kind: cand.kind, error: e.message });
       }
     }
-    if (!savedThis) {
-      await goStay();
-    }
+    if (!savedThis) await goStay();
   }
 
   if (!savedCount) {
@@ -1348,19 +1391,20 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     bag = await collectAirbnbInvoiceHits(page, netHits, 'both');
     for (const hit of usefulAirbnbInvoiceHits(bag.hits, code)) {
       const kind = hit.kind === 'credit_note' ? 'credit_note' : 'invoice';
-      for (const href of airbnbInvoiceUrlsForHit(hit, origin, bag.templates || [])) {
-        if (airbnbDocAlreadyHave(alreadyHave, kind, code, hit.id || vatIdFromAirbnbUrl(href))) continue;
-        if (airbnbBareInvoicePath(href)) continue;
-        await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-        const landed = String(page.url() || '');
-        if (/\/404(\?|$|\/)/i.test(landed) || airbnbBareInvoicePath(landed)) {
-          await goStay();
-          continue;
+      const cand = { kind: kind, href: hit.href, id: hit.id || vatIdFromAirbnbUrl(hit.href) };
+      if (airbnbDocAlreadyHave(alreadyHave, kind, code, cand.id)) continue;
+      await goStay();
+      await clickAirbnbStayTotalPrice(page);
+      let clicked = { clicked: false, popup: null };
+      try {
+        clicked = await clickAirbnbStayInvoiceCandidate(page, context, cand);
+        if (clicked.clicked && !airbnbInvoiceLandedDead(clicked.target.url(), null)) {
+          await saveIfInvoice(clicked.target, kind, 'rescan-click', cand.id);
         }
-        await page.waitForTimeout(1200);
-        await saveIfInvoice(page, kind, 'rescan-id', hit.id || '');
-        await goStay();
+      } catch (eRescan) {
+        errors.push({ channel: 'airbnb', code, kind: kind, error: eRescan.message });
       }
+      await afterInvoiceAttempt(clicked.popup);
     }
   }
 
@@ -1370,8 +1414,9 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       origin + '/reservation/tax_invoice/' + encodeURIComponent(code),
     ];
     for (const href of lastUrls) {
-      await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-      await page.waitForTimeout(1200);
+      await page.goto(href, { waitUntil: 'domcontentloaded', timeout: airbnbInvoiceNavMs() }).catch(() => {});
+      if (airbnbInvoiceLandedDead(page.url(), null)) continue;
+      await page.waitForTimeout(airbnbPortalIsLive() ? 700 : 200);
       await saveIfInvoice(page, 'invoice', 'code-as-invoice-id', '');
     }
   }
