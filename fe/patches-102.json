@@ -1,0 +1,265 @@
+{
+ "baseSha256": "4b2e2eee7109b4646a70c2bcdd06f10f44cf6c50855fef1d95115fb2a24a3eb8",
+ "expectedSha256": "10a658c07561dc4c3ff8105f7df248109f32146b81fade82fafd4eaf61e628c1",
+ "builtAt": "2026-08-15 Daily Ops: one combined checkout + cleaning board, staff blocks below",
+ "patches": [
+  {
+   "note": "Cleaning day prep becomes its own function (_opsPrepareCleanDay)",
+   "find": "function _opsCleaningTableHtml() {\n  // Drop any stubs that leaked into the live list before building the schedule.\n",
+   "replace": "// Syncs the cleaning state of the day (turnovers, extras, saved cleanDone /\n// cleaner assignments) and reports the totals. Rendering lives in\n// _opsCombinedBoardHtml — this only touches data.\nfunction _opsPrepareCleanDay() {\n  // Drop any stubs that leaked into the live list before building the schedule.\n",
+   "count": 1
+  },
+  {
+   "note": "Prep returns the day totals; add the shared cleaning-cell builders",
+   "find": "  _opsCleanExtras.forEach(function (ex) { turnovers.push(ex); });\n\n  let clean = turnovers;\n  if (!clean.length) return '';\n  const typeRank = { turnover: 0, refresh: 1, sofa_bed: 2 };\n  const _cleanSort = window._opsCleanSort || 'status';\n  clean = clean.slice().sort(function (a, b) {\n    if (_cleanSort === 'route') {\n      const ca = ((typeof _opsCleanerList === 'function' ? _opsCleanerList(a) : [])[0] || a.cleanerName || '￿');\n      const cb = ((typeof _opsCleanerList === 'function' ? _opsCleanerList(b) : [])[0] || b.cleanerName || '￿');\n      const ccmp = String(ca).localeCompare(String(cb), 'el', { sensitivity: 'base' });\n      if (ccmp) return ccmp;\n      if (typeof window.aptProximityCompare === 'function') {\n        const pc = window.aptProximityCompare(_opsAptOf(a), _opsAptOf(b));\n        if (pc) return pc;\n      }\n    }\n    const da = a.cleanDone ? 1 : 0, db = b.cleanDone ? 1 : 0;\n    if (da !== db) return da - db;\n    const ta = typeRank[a.cleanType] != null ? typeRank[a.cleanType] : 9;\n    const tb = typeRank[b.cleanType] != null ? typeRank[b.cleanType] : 9;\n    if (ta !== tb) return ta - tb;\n    return String(a.aptName || '').localeCompare(String(b.aptName || ''));\n  });\n  const clList = (Array.isArray(S.cleaners) ? S.cleaners : []).filter(function (nm) {\n    return typeof _opsIsCleanerRole === 'function' ? _opsIsCleanerRole(nm) : true;\n  });\n  const TASKS = [\n    ['katharismos', 'Καθαρισμός'],\n    ['prepare_sofa', 'Prepare sofa bed'],\n    ['episkeui', 'Επισκευή βλάβης'],\n    ['extra', 'Extra']\n  ];\n  const typeMeta = function (t) {\n    if (t === 'refresh') return { label: 'REFRESH', bg: '#DBEAFE', fg: '#1E40AF', edge: '#3B82F6' };\n    if (t === 'sofa_bed') return { label: 'SOFA BED', bg: '#FEE2E2', fg: '#991B1B', edge: '#DC2626' };\n    return { label: 'TURNOVER', bg: '#ECFDF5', fg: '#065F46', edge: '#10B981' };\n  };\n  const driverList = (Array.isArray(S.cleaners) ? S.cleaners : []).filter(function (nm) {\n    if (typeof _opsIsOperatorRole === 'function' && _opsIsOperatorRole(nm)) return false;\n    return true;\n  }).slice().sort(function (a, b) {\n    const ta = (typeof _opsIsTransporterRole === 'function' && _opsIsTransporterRole(a)) ? 0 : 1;\n    const tb = (typeof _opsIsTransporterRole === 'function' && _opsIsTransporterRole(b)) ? 0 : 1;\n    if (ta !== tb) return ta - tb;\n    try { return a.localeCompare(b, 'el', { sensitivity: 'base' }); }\n    catch (e) { return a.localeCompare(b); }\n  });\n  const datalist = '<datalist id=\"ops-cleaners-datalist\">' +\n    clList.map(function (nm) {\n      return '<option value=\"' + String(nm).replace(/\"/g, '&quot;') + '\">';\n    }).join('') + '</datalist>' +\n    '<datalist id=\"ops-drivers-datalist\">' +\n    driverList.map(function (nm) {\n      return '<option value=\"' + String(nm).replace(/\"/g, '&quot;') + '\">';\n    }).join('') + '</datalist>';\n\n  const esc = function (s) {\n    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\"/g, '&quot;');\n  };\n",
+   "replace": "  _opsCleanExtras.forEach(function (ex) { turnovers.push(ex); });\n\n  const out = {\n    date: _opsDate,\n    clean: turnovers,\n    extras: _opsCleanExtras || [],\n    done: turnovers.filter(function (r) { return !!r.cleanDone; }).length,\n    total: turnovers.length,\n  };\n  window._opsCleanDay = out;\n  return out;\n}\n\n// renderOps prepares the day once per paint; anything that repaints only the\n// tbody reuses that snapshot instead of rebuilding the extras.\nfunction _opsCleanDayInfo() {\n  const d = window._opsCleanDay;\n  if (d && d.date === _opsDate) return d;\n  return (typeof _opsPrepareCleanDay === 'function')\n    ? _opsPrepareCleanDay()\n    : { date: _opsDate, clean: [], extras: [], done: 0, total: 0 };\n}\n\nconst OPS_CLEAN_TASKS = [\n  ['katharismos', 'Καθαρισμός'],\n  ['prepare_sofa', 'Prepare sofa bed'],\n  ['episkeui', 'Επισκευή βλάβης'],\n  ['extra', 'Extra']\n];\n\nfunction _opsCleanTypeMeta(t) {\n  if (t === 'refresh') return { label: 'REFRESH', bg: '#DBEAFE', fg: '#1E40AF', edge: '#3B82F6' };\n  if (t === 'sofa_bed') return { label: 'SOFA', bg: '#FEE2E2', fg: '#991B1B', edge: '#DC2626' };\n  return { label: 'TURNOVER', bg: '#ECFDF5', fg: '#065F46', edge: '#10B981' };\n}\n\n// A Daily Ops row is on the cleaning schedule when it is a plain turnover.\nfunction _opsRowOnClean(row) {\n  if (!row) return false;\n  if (typeof _opsIsCleanStub === 'function' && _opsIsCleanStub(row)) return false;\n  return !row.isExtended && !row.isPreparation && !row.isMaintenance && !row.isCheckinOnly;\n}\n\n// Object that owns cleaner / cleanDone / cleanTask for a board line: the row\n// itself for turnovers, otherwise the extra (sofa, refresh) built for the same\n// apartment — so a check-in-only arrival needing sofa beds stays ONE line.\nfunction _opsCleanTarget(row) {\n  if (!row) return null;\n  if (_opsRowOnClean(row)) return row;\n  const k = String(row.aptId || row.aptName || '');\n  if (!k) return null;\n  return (_opsCleanExtras || []).find(function (ex) {\n    return String(ex.aptId || ex.aptName) === k;\n  }) || null;\n}\n\n// Composite key so sofa/refresh extras are not confused with the turnover row.\n// The literal is pasted inside double-quoted on* attributes, so the quotes\n// JSON.stringify adds have to be entities or the HTML parser cuts the handler\n// off at the first one (checkbox, crew input, task, note).\nfunction _opsCleanKeyJs(r) {\n  const keyRaw = String(r.aptId || r.aptName || '') + '::' + String(r.cleanType || 'turnover');\n  return JSON.stringify(keyRaw).replace(/\"/g, '&quot;');\n}\n\nfunction _opsCleanTickCell(target) {\n  if (!target) return '<td class=\"ox-c ox-cd\"><span class=\"opsx-dash\" title=\"Εκτός προγράμματος καθαρισμού\">—</span></td>';\n  const key = _opsCleanKeyJs(target);\n  return '<td class=\"ox-c ox-cd\">' +\n    '<input type=\"checkbox\" class=\"opsx-chk\" ' + (target.cleanDone ? 'checked' : '') +\n    ' onchange=\"opsToggleCleanDoneKey(' + key + ',this.checked)\" title=\"Σημείωσε ως καθαρισμένο\"></td>';\n}\n\n// Comment tags rendered as chips (priority / sofa / Route: …) above the note.\nfunction _opsCommentChips(noteVal) {\n  const esc = _opsEscHtml;\n  return _opsSplitComments(String(noteVal || '')).map(function (p) {\n    const clue = p === OPS_TAG_PARK || p === OPS_TAG_EARLY;\n    const hot = !clue && (p === OPS_TAG_PRIORITY || OPS_LONG_RE.test(p) || /sofa bed/i.test(p) || p === OPS_TAG_LATE || /^Route:/i.test(p));\n    return '<span class=\"opsx-nchip\" style=\"' +\n      (clue ? 'background:#DBEAFE;color:#1D4ED8' : hot ? 'background:#FEE2E2;color:#B91C1C' : 'background:#F3F4F6;color:#374151') +\n      '\">' + esc(p) + '</span>';\n  }).join('');\n}\n\n// Καθαρίστρια: multi-cleaner chips + datalist input, same UX as the old sheet.\n// legacy capture typography token: font-size:16px;font-weight:700;letter-spacing:0\nfunction _opsCleanerCell(target) {\n  if (!target) return '<td class=\"opsx-clean-cell\"><span class=\"opsx-dash\">—</span></td>';\n  const esc = _opsEscHtml;\n  const key = _opsCleanKeyJs(target);\n  const names = (typeof _opsCleanerList === 'function') ? _opsCleanerList(target) : [];\n  const chips = names.map(function (nm, ni) {\n    return '<span class=\"opsx-cchip\">' + esc(nm) +\n      '<button type=\"button\" onclick=\"opsRemoveCleanerAt(' + key + ',' + ni + ')\" title=\"Αφαίρεση\">×</button></span>';\n  }).join('');\n  return '<td data-cleaners-cell=\"1\" data-cleaners-names=\"' + esc(names.join(' · ')) + '\" class=\"opsx-clean-cell' + (names.length ? ' ox-set' : '') + '\">' +\n    (chips ? '<div class=\"opsx-cchips\">' + chips + '</div>' : '') +\n    '<input type=\"text\" list=\"ops-cleaners-datalist\" value=\"\" placeholder=\"' + (names.length ? '+ άλλη…' : 'Καθαρίστρια…') + '\" ' +\n    'class=\"opsx-cname' + (names.length ? ' ox-set' : '') + '\" ' +\n    'onkeydown=\"if(event.key===\\'Enter\\'){event.preventDefault();opsAddCleanerKey(' + key + ',this.value);}\" ' +\n    'onchange=\"opsAddCleanerKey(' + key + ',this.value)\"></td>';\n}\n\nfunction _opsCleanTaskCell(target) {\n  if (!target) return '<td class=\"ox-c ox-tsk\"><span class=\"opsx-dash\">—</span></td>';\n  const key = _opsCleanKeyJs(target);\n  const cur = String(target.cleanTask || 'katharismos');\n  const opts = OPS_CLEAN_TASKS.map(function (t) {\n    return '<option value=\"' + t[0] + '\"' + (cur === t[0] ? ' selected' : '') + '>' + t[1] + '</option>';\n  }).join('');\n  return '<td class=\"ox-tsk\"><select class=\"opsx-sel\" onchange=\"opsSetCleanFieldKey(' + key + ',\\'cleanTask\\',this.value)\">' + opts + '</select></td>';\n}\n\nfunction _opsCleanTypeChip(target) {\n  if (!target) return '';\n  const tm = _opsCleanTypeMeta(target.cleanType);\n  const gap = (target.cleanType === 'refresh' && target._gapDays) ? (' · ' + target._gapDays + 'd') : '';\n  return '<span class=\"opsx-bdg\" style=\"background:' + tm.bg + ';color:' + tm.fg + '\" title=\"Στο πρόγραμμα καθαρισμού\">' + tm.label + gap + '</span>';\n}\n\nfunction _opsDatalistsHtml() {\n  const clList = (Array.isArray(S.cleaners) ? S.cleaners : []).filter(function (nm) {\n    return typeof _opsIsCleanerRole === 'function' ? _opsIsCleanerRole(nm) : true;\n  });\n  const driverList = (Array.isArray(S.cleaners) ? S.cleaners : []).filter(function (nm) {\n    if (typeof _opsIsOperatorRole === 'function' && _opsIsOperatorRole(nm)) return false;\n    return true;\n  }).slice().sort(function (a, b) {\n    const ta = (typeof _opsIsTransporterRole === 'function' && _opsIsTransporterRole(a)) ? 0 : 1;\n    const tb = (typeof _opsIsTransporterRole === 'function' && _opsIsTransporterRole(b)) ? 0 : 1;\n    if (ta !== tb) return ta - tb;\n    try { return a.localeCompare(b, 'el', { sensitivity: 'base' }); }\n    catch (e) { return a.localeCompare(b); }\n  });\n  return '<datalist id=\"ops-cleaners-datalist\">' +\n    clList.map(function (nm) {\n      return '<option value=\"' + String(nm).replace(/\"/g, '&quot;') + '\">';\n    }).join('') + '</datalist>' +\n    '<datalist id=\"ops-drivers-datalist\">' +\n    driverList.map(function (nm) {\n      return '<option value=\"' + String(nm).replace(/\"/g, '&quot;') + '\">';\n    }).join('') + '</datalist>';\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Old cleaning tbody → extras row builder + combined tbody builder",
+   "find": "  const body = clean.map(function (r) {\n    // Composite key so sofa/refresh extras are not confused with the turnover row.\n    // JSON.stringify so apostrophes / quotes in names cannot break inline handlers.\n    const keyRaw = String(r.aptId || r.aptName || '') + '::' + String(r.cleanType || 'turnover');\n    // The literal is pasted inside double-quoted on* attributes, so the quotes\n    // JSON.stringify adds have to be entities or the HTML parser cuts the\n    // handler off at the first one (checkbox, crew input, task, note).\n    const key = JSON.stringify(keyRaw).replace(/\"/g, '&quot;');\n    const keyAttr = keyRaw.replace(/\"/g, '');\n    const area = (typeof window.aptAreaLabel === 'function') ? window.aptAreaLabel(_opsAptOf(r)) : '';\n    const names = (typeof _opsCleanerList === 'function') ? _opsCleanerList(r) : (String(r.cleanerName || '') ? [String(r.cleanerName)] : []);\n    const cur = names.join(' · ');\n    const done = !!r.cleanDone;\n    const curTask = String(r.cleanTask || 'katharismos');\n    const taskOpts = TASKS.map(function (t) {\n      return '<option value=\"' + t[0] + '\"' + (curTask === t[0] ? ' selected' : '') + '>' + t[1] + '</option>';\n    }).join('');\n    const noteVal = String(r.comments || r.cleanTaskNote || '');\n    const chips = _opsSplitComments(noteVal).map(function (p) {\n      const clue = p === OPS_TAG_PARK || p === OPS_TAG_EARLY;\n      const hot = !clue && (p === OPS_TAG_PRIORITY || OPS_LONG_RE.test(p) || /sofa bed/i.test(p) || p === OPS_TAG_LATE || /^Route:/i.test(p));\n      return '<span style=\"display:inline-block;margin:1px 3px 1px 0;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.01em;' +\n        (clue ? 'background:#DBEAFE;color:#1D4ED8' : hot ? 'background:#FEE2E2;color:#B91C1C' : 'background:#F3F4F6;color:#374151') + '\">' + esc(p) + '</span>';\n    }).join('');\n    const tm = typeMeta(r.cleanType);\n    const gap = (r.cleanType === 'refresh' && r._gapDays) ? (' · ' + r._gapDays + 'd empty') : '';\n    const cl = (typeof _opsAptLines === 'function') ? _opsAptLines(r) : { name: (r.aptName || ''), addr: '' };\n    return '<tr style=\"background:' + (done ? '#F0FDF4' : '#fff') + '\">' +\n      '<td style=\"padding:0;width:5px;background:' + tm.edge + ';border:none\"></td>' +\n      '<td style=\"padding:10px 6px;border-bottom:1px solid #EEF1F6;text-align:center;width:40px;vertical-align:middle\">' +\n      '<input type=\"checkbox\" class=\"opsx-chk\" ' + (done ? 'checked' : '') + ' onchange=\"opsToggleCleanDoneKey(' + key + ',this.checked)\" title=\"Σημείωσε ως καθαρισμένο\"></td>' +\n      '<td style=\"padding:9px 10px;border-bottom:1px solid #EEF1F6;vertical-align:middle;min-width:190px\">' +\n      '<div style=\"font-weight:700;font-size:14px;letter-spacing:-.01em;line-height:1.2;' + (done ? 'color:#9CA3AF;text-decoration:line-through' : 'color:#0F172A') + '\">' + esc(cl.name) + '</div>' +\n      (cl.addr ? '<div style=\"margin-top:1px;font-size:11px;color:#64748B;line-height:1.25\">' + esc(cl.addr) + '</div>' : '') +\n      '<div style=\"margin-top:5px;display:flex;flex-wrap:wrap;gap:5px;align-items:center\">' +\n      '<span style=\"background:' + tm.bg + ';color:' + tm.fg + ';font-size:9px;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:5px\">' + tm.label + gap + '</span>' +\n      (area ? '<span style=\"font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#A8B2C1\">' + esc(area) + '</span>' : '') +\n      '</div></td>' +\n      '<td data-cleaners-cell=\"1\" data-cleaners-names=\"' + esc(cur) + '\" style=\"padding:9px 12px;border-bottom:1px solid #EEF1F6;width:236px;vertical-align:middle;background:' + (names.length ? '#FFFBEB' : 'transparent') + '\">' +\n      '<div style=\"display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin:0 0 6px\">' +\n      names.map(function (nm, ni) {\n        return '<span style=\"display:inline-flex;align-items:center;gap:5px;background:#0F172A;color:#fff;font-size:13px;font-weight:700;padding:6px 9px;border-radius:8px;line-height:1.1\">' +\n          esc(nm) +\n          '<button type=\"button\" onclick=\"opsRemoveCleanerAt(' + key + ',' + ni + ')\" title=\"Αφαίρεση\" ' +\n          'style=\"border:none;background:transparent;color:#FCA5A5;cursor:pointer;font-size:15px;line-height:1;padding:0 0 0 2px;font-weight:800\">×</button></span>';\n      }).join('') +\n      '</div>' +\n      '<input type=\"text\" list=\"ops-cleaners-datalist\" value=\"\" placeholder=\"' + (names.length ? '+ άλλη…' : 'όνομα…') + '\" ' +\n      'onkeydown=\"if(event.key===\\'Enter\\'){event.preventDefault();opsAddCleanerKey(' + key + ',this.value);}\" ' +\n      'onchange=\"opsAddCleanerKey(' + key + ',this.value)\" ' +\n      'style=\"width:100%;border:2px solid ' + (names.length ? '#0F172A' : '#D1D5DB') + ';border-radius:9px;background:#fff;font-size:16px;font-weight:700;letter-spacing:0;outline:none;color:#0F172A;padding:9px 8px;box-sizing:border-box;text-align:center;line-height:1.2;font-family:inherit\"></td>' +\n      '<td style=\"padding:9px 8px;border-bottom:1px solid #EEF1F6;width:154px;vertical-align:middle\">' +\n      '<select class=\"opsx-sel\" onchange=\"opsSetCleanFieldKey(' + key + ',\\'cleanTask\\',this.value)\">' + taskOpts + '</select></td>' +\n      '<td style=\"padding:9px 8px;border-bottom:1px solid #EEF1F6;vertical-align:middle\">' +\n      (chips ? '<div style=\"margin:0 0 5px;line-height:1.6\">' + chips + '</div>' : '') +\n      '<textarea data-clean-note=\"' + keyAttr + '\" rows=\"2\" placeholder=\"όλα τα σχόλια Daily Ops…\" ' +\n      'oninput=\"opsSetCleanFieldKey(' + key + ',\\'comments\\',this.value)\" ' +\n      'style=\"width:100%;min-height:46px;border:1px solid #E5E7EB;border-radius:9px;background:#FAFAFA;font-size:12px;outline:none;color:#111827;padding:7px 9px;box-sizing:border-box;resize:vertical;font-family:inherit;line-height:1.4\">' + esc(noteVal) + '</textarea></td>' +\n      '</tr>';\n  }).join('');\n",
+   "replace": "// Cleaning-only line (sofa / refresh / extra clean with no checkout today):\n// the ops columns stay muted, the cleaning columns are fully interactive.\nfunction _opsBuildExtraRow(ex, n) {\n  const esc = _opsEscHtml;\n  const key = _opsCleanKeyJs(ex);\n  const keyAttr = _opsCleanStorageKey(ex).replace(/\"/g, '');\n  const done = !!ex.cleanDone;\n  const cl = (typeof _opsAptLines === 'function') ? _opsAptLines(ex) : { name: (ex.aptName || ''), addr: '' };\n  const area = (typeof window.aptAreaLabel === 'function') ? window.aptAreaLabel(_opsAptOf(ex)) : '';\n  const noteVal = String(ex.comments || ex.cleanTaskNote || '');\n  const chips = (typeof _opsCommentChips === 'function') ? _opsCommentChips(noteVal) : '';\n  const dash = '<td class=\"ox-c\"><span class=\"opsx-dash\">—</span></td>';\n  return '<tr data-ri=\"-1\" data-clean-extra=\"1\" style=\"background:' + (done ? '#F0FDF4' : '#FBFDFF') + '\">' +\n    _opsCleanTickCell(ex) +\n    '<td class=\"ox-n\">' + n + '</td>' +\n    '<td class=\"ox-apt\"><div class=\"opsx-aptl\">' +\n    '<span class=\"opsx-aptn' + (done ? ' ox-off' : '') + '\">' + esc(cl.name) + '</span>' +\n    _opsCleanTypeChip(ex) +\n    '</div>' +\n    ((cl.addr || area) ? '<div class=\"opsx-sub\">' + esc(cl.addr) +\n      (area ? '<span class=\"opsx-area\" title=\"Area - sets the order of this list\">' + esc(area) + '</span>' : '') + '</div>' : '') +\n    '</td>' +\n    '<td class=\"ox-tgc\"><span class=\"opsx-dash\">μόνο καθαρισμός</span></td>' +\n    dash + dash +\n    '<td class=\"ox-c\">' + (ex.nextNights\n      ? '<span class=\"opsx-pill\" style=\"background:#E0E7FF;color:#3730A3;cursor:default\">🔑 ' + ex.nextNights + ' νύχτες</span>'\n      : '<span class=\"opsx-dash\">—</span>') + '</td>' +\n    '<td class=\"ox-c\">' + (ex.people ? '<b>' + esc(ex.people) + '</b>' : '<span class=\"opsx-dash\">—</span>') + '</td>' +\n    dash +\n    _opsCleanerCell(ex) +\n    _opsCleanTaskCell(ex) +\n    '<td>' + (chips ? '<div class=\"opsx-nchips\">' + chips + '</div>' : '') +\n    '<textarea data-clean-note=\"' + esc(keyAttr) + '\" rows=\"1\" class=\"opsx-ctxt\" placeholder=\"σχόλια καθαρισμού…\" ' +\n    'oninput=\"opsSetCleanFieldKey(' + key + ',\\'comments\\',this.value)\">' + esc(noteVal) + '</textarea></td>' +\n    '<td class=\"ox-act\"><span class=\"opsx-dash\">—</span></td>' +\n    '</tr>';\n}\n\n// One tbody for the whole day: Daily Ops rows first (with their cleaning cells\n// attached), then the cleans that have no checkout row of their own.\nfunction _opsBoardRowsHtml() {\n  const main = (_opsRows || []).map(function (r, i) { return { r: r, i: i }; });\n  const merged = {};\n  main.forEach(function (p) {\n    const t = _opsCleanTarget(p.r);\n    if (t && t !== p.r) merged[_opsCleanStorageKey(t)] = true;\n  });\n  let extras = (_opsCleanExtras || []).filter(function (ex) {\n    return !merged[_opsCleanStorageKey(ex)];\n  });\n  if ((window._opsCleanSort || 'status') === 'route') {\n    const nameOf = function (r) {\n      const t = _opsCleanTarget(r) || r;\n      const l = (typeof _opsCleanerList === 'function') ? _opsCleanerList(t) : [];\n      return String(l[0] || '\\uFFFF');\n    };\n    const cmp = function (a, b) {\n      const c = nameOf(a).localeCompare(nameOf(b), 'el', { sensitivity: 'base' });\n      if (c) return c;\n      if (typeof window.aptProximityCompare === 'function') {\n        const pc = window.aptProximityCompare(_opsAptOf(a), _opsAptOf(b));\n        if (pc) return pc;\n      }\n      return String(a.aptName || '').localeCompare(String(b.aptName || ''));\n    };\n    main.sort(function (a, b) { return cmp(a.r, b.r); });\n    extras = extras.slice().sort(cmp);\n  }\n  let n = 0;\n  const html = main.map(function (p) { n++; return _opsBuildRow(p.r, p.i, n); }).join('') +\n    extras.map(function (ex) { n++; return _opsBuildExtraRow(ex, n); }).join('');\n  if (html) return html;\n  return '<tr><td colspan=\"13\" style=\"text-align:center;padding:34px 20px;color:#94A3B8;font-size:13px\">Δεν υπάρχουν checkout για ' +\n    _opsFmtDate(_opsDate) + '</td></tr>';\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Staff blocks (βάρδια / ιματισμός / οδηγοί) move into _opsStaffBlocksHtml",
+   "find": "  const doneCount = clean.filter(function (r) { return r.cleanDone; }).length;\n\n",
+   "replace": "// ΒΑΡΔΙΑ / ΡΕΠΟ / ΑΔΕΙΕΣ + ΙΜΑΤΙΣΜΟΣ + ΟΔΗΓΟΙ — rendered once, under the board.\nfunction _opsStaffBlocksHtml() {\n  const esc = function (s) {\n    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\"/g, '&quot;');\n  };\n",
+   "count": 1
+  },
+  {
+   "note": "Duplicate cleaning sheet replaced by the combined board markup",
+   "find": "\n  const dateLbl = (typeof _opsDayLabel === 'function') ? _opsDayLabel(_opsDate) : _opsFmtDate(_opsDate);\n  const donePct = clean.length ? Math.round((doneCount * 100) / clean.length) : 0;\n  // legacy labels (chain assertions): Cleaning schedule / Καθαρισμοί σήμερα / Καθαρίστρια / font-size:17px;font-weight:900\n  return '<div style=\"margin-top:22px\" id=\"ops-cleaning-table\">' + datalist +\n    '<div id=\"ops-crew-share-bar\" style=\"margin:0 0 12px;padding:12px 14px;border-radius:13px;background:#0F172A;border:1px solid #1E293B;color:#fff;display:flex;gap:10px;align-items:center;flex-wrap:wrap\">' +\n    '<div style=\"flex:1;min-width:180px\">' +\n    '<div style=\"font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#C9A84C\">Αποστολή στο συνεργείο</div>' +\n    '<div style=\"margin-top:3px;font-size:14px;font-weight:700;color:#F8FAFC\">Αντιγραφή εικόνας ή κειμένου για WhatsApp</div>' +\n    '</div>' +\n    '<button onclick=\"opsCopyCleaningImage()\" title=\"Αντιγραφή όμορφης αφίσας ανά καθαρίστρια\" style=\"font-family:inherit;font-size:13px;height:36px;padding:0 16px;border:none;border-radius:9px;background:#F8FAFC;cursor:pointer;color:#0F172A;font-weight:800\">Αντιγραφή εικόνας</button>' +\n    '<button onclick=\"opsCopyCleanList()\" title=\"Αντιγραφή λίστας για WhatsApp\" style=\"font-family:inherit;font-size:13px;height:36px;padding:0 14px;border:1px solid rgba(255,255,255,.35);border-radius:9px;background:transparent;cursor:pointer;color:#fff;font-weight:700\">Αντιγραφή κειμένου</button>' +\n    '<button onclick=\"opsToggleCleanSort()\" title=\"Εναλλαγή ταξινόμησης\" style=\"font-family:inherit;font-size:12px;height:36px;padding:0 12px;border:1px solid rgba(255,255,255,.25);border-radius:9px;background:rgba(255,255,255,.06);cursor:pointer;color:#E2E8F0;font-weight:600\">' + (_cleanSort === 'route' ? 'Ανά καθαρίστρια' : 'Κατάσταση') + '</button>' +\n    '<button onclick=\"opsManageCleaners()\" title=\"Add or remove cleaners\" style=\"font-family:inherit;font-size:12px;height:36px;padding:0 12px;border:1px solid rgba(255,255,255,.25);border-radius:9px;background:rgba(255,255,255,.06);cursor:pointer;color:#E2E8F0;font-weight:600\">Καθαρίστριες</button>' +\n    '<button onclick=\"opsRestartCleaningSchedule()\" title=\"Μηδενίζει τα ✓ της ημέρας και ξεκινά το πρόγραμμα από την αρχή\" style=\"font-family:inherit;font-size:12px;height:36px;padding:0 12px;border:1px solid #FCA5A5;border-radius:9px;background:rgba(220,38,38,.18);cursor:pointer;color:#FECACA;font-weight:700\">Επανεκκίνηση ✓</button>' +\n    '</div>' +\n    '<div id=\"ops-cleaning-shot\" data-crew-sheet=\"1\" style=\"background:#ffffff;padding:16px 16px 18px;border:1px solid #E5E7EB;border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.05)\">' +\n    '<div style=\"display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:0 0 14px;padding-bottom:12px;border-bottom:2px solid #0F172A\">' +\n    '<div style=\"min-width:230px\">' +\n    '<div style=\"font-size:9px;font-weight:800;letter-spacing:.18em;color:#94A3B8;text-transform:uppercase\">Πρόγραμμα ημέρας</div>' +\n    '<div style=\"margin-top:2px;font-size:22px;font-weight:900;color:#0F172A;letter-spacing:.05em;line-height:1.15\">ΠΡΟΓΡΑΜΑ ΚΑΘΑΡΙΣΜΟΥ</div>' +\n    '<div style=\"margin-top:3px;font-size:12.5px;font-weight:600;color:#475569\">' + dateLbl + '</div>' +\n    '</div>' +\n    '<div class=\"opsx-prog\" style=\"flex:1;min-width:240px\">' +\n    '<div style=\"text-align:right\">' +\n    '<div class=\"ox-num\" id=\"ops-clean-count\">' + doneCount + '<i>/' + clean.length + '</i></div>' +\n    '<div class=\"ox-lbl\">έτοιμα</div>' +\n    '</div>' +\n    '<div class=\"opsx-track' + (doneCount >= clean.length ? ' ox-full' : '') + '\"><span style=\"width:' + donePct + '%\"></span></div>' +\n    '</div>' +\n    '</div>' +\n    '<table class=\"opsx-cln\">' +\n    '<thead><tr>' +\n    '<th style=\"padding:0;width:5px;border:none;background:#0F172A\"></th>' +\n    '<th class=\"ox-c\" style=\"width:40px\">✓</th>' +\n    '<th>ΚΑΤΑΛΥΜΑ</th>' +\n    '<th class=\"ox-c\" style=\"color:#F1DFB0\">ΚΑΘΑΡΙΣΤΡΙΑ</th>' +\n    '<th>ΕΡΓΑΣΙΑ</th>' +\n    '<th>ΣΧΟΛΙΑ</th>' +\n    '</tr></thead><tbody>' + body + '</tbody></table>' +\n    dailyBlocks +\n    '</div>' +\n    '</div>';\n}\n",
+   "replace": "\n  return '<div id=\"ops-staff-blocks\" class=\"opsx-staff\">' +\n    '<div class=\"opsx-staff-in\">' +\n    dailyBlocks +\n    '</div>' +\n    '</div>';\n}\n\n// Legacy entry point: the cleaning schedule is now part of the combined board.\nfunction _opsCleaningTableHtml() {\n  return (typeof _opsCombinedBoardHtml === 'function') ? _opsCombinedBoardHtml() : '';\n}\n\n// ONE interactive board: checkout + arrivals + cleaner assignment + clean ✓.\n// #ops-shot-ops is what the \"Ops image\" button captures; the crew poster\n// (opsCopyCleaningImage) stays the cleaner-facing screenshot.\nfunction _opsCombinedBoardHtml() {\n  const day = _opsCleanDayInfo();\n  const doneCount = day.done;\n  const total = day.total;\n  const donePct = total ? Math.round((doneCount * 100) / total) : 0;\n  const dateLbl = (typeof _opsDayLabel === 'function') ? _opsDayLabel(_opsDate) : _opsFmtDate(_opsDate);\n  const _cleanSort = window._opsCleanSort || 'status';\n  const bodyHtml = _opsBoardRowsHtml();\n  const lineCount = (_opsRows || []).length + (day.extras || []).length;\n  // legacy labels (chain assertions): Cleaning schedule / Καθαρισμοί σήμερα / Καθαρίστρια / font-size:17px;font-weight:900\n  return '<div id=\"ops-cleaning-table\">' + _opsDatalistsHtml() +\n    '<div id=\"ops-crew-share-bar\" class=\"opsx-crew\">' +\n    '<span class=\"ox-lb\">Αποστολή στο συνεργείο</span>' +\n    '<button class=\"ox-pri\" onclick=\"opsCopyCleaningImage()\" title=\"Αντιγραφή όμορφης αφίσας ανά καθαρίστρια\">🧹 Αντιγραφή εικόνας</button>' +\n    '<button onclick=\"opsCopyCleanList()\" title=\"Αντιγραφή λίστας για WhatsApp\">Αντιγραφή κειμένου</button>' +\n    '<button onclick=\"opsToggleCleanSort()\" title=\"Εναλλαγή ταξινόμησης\">' + (_cleanSort === 'route' ? 'Ανά καθαρίστρια' : 'Κατάσταση') + '</button>' +\n    '<button onclick=\"opsManageCleaners()\" title=\"Add or remove cleaners\">Καθαρίστριες</button>' +\n    '<span class=\"ox-sp\"></span>' +\n    '<button class=\"ox-warn\" onclick=\"opsRestartCleaningSchedule()\" title=\"Μηδενίζει τα ✓ της ημέρας και ξεκινά το πρόγραμμα από την αρχή\">Επανεκκίνηση ✓</button>' +\n    '</div>' +\n    '<div id=\"ops-shot-ops\" data-crew-sheet=\"1\" class=\"opsx-board\">' +\n    '<div class=\"opsx-bhd\">' +\n    '<div class=\"ox-hl\">' +\n    '<div class=\"ox-eb\">Elysian — Daily Operations</div>' +\n    '<div class=\"ox-tt\">ΠΡΟΓΡΑΜΜΑ ΗΜΕΡΑΣ · CHECKOUT &amp; ΚΑΘΑΡΙΣΜΟΙ</div>' +\n    '<div class=\"ox-dt\">' + dateLbl + '</div>' +\n    '</div>' +\n    '<div class=\"ox-rt\">' +\n    '<span class=\"opsx-kpi\"><b>' + lineCount + '</b> γραμμές</span>' +\n    '<span class=\"opsx-kpi\"><b id=\"ops-clean-count\">' + doneCount + '<i>/' + total + '</i></b> καθαρά</span>' +\n    '<span class=\"opsx-track' + (total && doneCount >= total ? ' ox-full' : '') + '\" style=\"display:inline-block;flex:0 0 120px;min-width:120px;vertical-align:middle\"><span style=\"width:' + donePct + '%\"></span></span>' +\n    '</div></div>' +\n    '<table class=\"opsx-main opsx-comb\">' +\n    '<thead><tr>' +\n    '<th class=\"ox-c\" style=\"width:38px\" title=\"Καθαρίστηκε\">🧹✓</th>' +\n    '<th style=\"width:26px\">#</th>' +\n    '<th class=\"ox-l\" style=\"min-width:180px\">Κατάλυμα</th>' +\n    '<th style=\"width:228px\" title=\"Late / Pri · Παρκ · Early\">Flags</th>' +\n    '<th style=\"min-width:92px\">Check out</th>' +\n    '<th class=\"ox-c\" style=\"width:40px\" title=\"Ο πελάτης ζήτησε checkout\">CO ✓</th>' +\n    '<th style=\"min-width:128px\">Check in ίδιας</th>' +\n    '<th style=\"width:48px\">👥</th>' +\n    '<th style=\"width:80px\">⏰</th>' +\n    '<th class=\"ox-l\" style=\"width:186px;color:#F1DFB0\" title=\"Καθαρίστρια — ανάθεση συνεργείου\">ΚΑΘΑΡΙΣΤΡΙΑ</th>' +\n    '<th style=\"width:120px\">Εργασία</th>' +\n    '<th class=\"ox-l\" style=\"min-width:160px\">Σχόλια</th>' +\n    '<th style=\"width:120px\"></th>' +\n    '</tr></thead>' +\n    '<tbody id=\"ops-tbody\">' + bodyHtml + '</tbody></table>' +\n    '</div></div>';\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Ops row accepts a display number (board keeps one running count)",
+   "find": "function _opsBuildRow(row, i) {\n",
+   "replace": "function _opsBuildRow(row, i, n) {\n",
+   "count": 1
+  },
+  {
+   "note": "Ops row starts with the clean ✓ cell and carries its row index",
+   "find": "  return `<tr style=\"background:${_rowBg};${_rowBrd}\">\n    <td class=\"ox-n\">${i+1}</td>\n",
+   "replace": "  // Cleaning cells hang off the row itself for turnovers, or off the extra\n  // (sofa / refresh) built for the same apartment.\n  const _ct = (typeof _opsCleanTarget === 'function') ? _opsCleanTarget(row) : null;\n  const _n = (n == null) ? (i + 1) : n;\n  return `<tr data-ri=\"${i}\" style=\"background:${_rowBg};${_rowBrd}\">\n    ${_opsCleanTickCell(_ct)}\n    <td class=\"ox-n\">${_n}</td>\n",
+   "count": 1
+  },
+  {
+   "note": "Apartment cell shows the clean type chip",
+   "find": "        ${_tags}\n      </div>\n",
+   "replace": "        ${_tags}${_opsCleanTypeChip(_ct)}\n      </div>\n",
+   "count": 1
+  },
+  {
+   "note": "Cleaner + εργασία cells sit between ⏰ and Σχόλια",
+   "find": "        oninput=\"opsSetRow(${i},'arrivalTime',this.value);_opsAutoSave()\"\n        placeholder=\"—\">\n    </td>\n    <td>\n",
+   "replace": "        oninput=\"opsSetRow(${i},'arrivalTime',this.value);_opsAutoSave()\"\n        placeholder=\"—\">\n    </td>\n    ${_opsCleanerCell(_ct)}\n    ${_opsCleanTaskCell(_ct)}\n    <td>\n",
+   "count": 1
+  },
+  {
+   "note": "Partial repaints keep the cleaning-only rows (arrow-function call sites)",
+   "find": "tbody.innerHTML = _opsRows.map((row,idx) => _opsBuildRow(row,idx)).join('');",
+   "replace": "tbody.innerHTML = _opsBoardRowsHtml();",
+   "count": 6
+  },
+  {
+   "note": "Partial repaint after removing a row keeps the cleaning-only rows",
+   "find": "tbody.innerHTML = _opsRows.map((r,idx) => _opsBuildRow(r,idx)).join('');",
+   "replace": "tbody.innerHTML = _opsBoardRowsHtml();",
+   "count": 1
+  },
+  {
+   "note": "Kind toggle repaint keeps the cleaning-only rows",
+   "find": "tbody.innerHTML = _opsRows.map(function (r, idx) { return _opsBuildRow(r, idx); }).join('');",
+   "replace": "tbody.innerHTML = _opsBoardRowsHtml();",
+   "count": 1
+  },
+  {
+   "note": "Rental-info prefetch repaint keeps the cleaning-only rows",
+   "find": "tbody.innerHTML = _opsRows.map(function (row, idx) { return _opsBuildRow(row, idx); }).join('');",
+   "replace": "tbody.innerHTML = _opsBoardRowsHtml();",
+   "count": 1
+  },
+  {
+   "note": "Auto-save reads the row index from the <tr>, not its position",
+   "find": "      tbody.querySelectorAll('tr').forEach(function(tr, i) {\n        if (!_opsRows[i]) return;\n        const inputs = tr.querySelectorAll('input[type=text], input[type=number]');\n        inputs.forEach(function(inp) {\n          const field = inp.dataset.field;\n          if (field) _opsRows[i][field] = inp.value;\n        });\n      });\n",
+   "replace": "      tbody.querySelectorAll('tr').forEach(function(tr, i) {\n        // Cleaning-only rows carry data-ri=\"-1\" and the board can be sorted by\n        // cleaner, so position is not the index into _opsRows.\n        const ri = (tr.dataset && tr.dataset.ri != null) ? parseInt(tr.dataset.ri, 10) : i;\n        if (!_opsRows[ri]) return;\n        const inputs = tr.querySelectorAll('input[type=text], input[type=number]');\n        inputs.forEach(function(inp) {\n          const field = inp.dataset.field;\n          if (field) _opsRows[ri][field] = inp.value;\n        });\n      });\n",
+   "count": 1
+  },
+  {
+   "note": "Ops image captures #ops-shot-ops (board only, no staff blocks)",
+   "find": "async function opsCopyImage() {\n  const el = document.getElementById('ops-printable');\n",
+   "replace": "async function opsCopyImage() {\n  const el = document.getElementById('ops-shot-ops') || document.getElementById('ops-printable');\n",
+   "count": 1
+  },
+  {
+   "note": "Ops image toast names the board",
+   "find": "        await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);\n        toast('📋 Copied to clipboard!', 'ok');\n",
+   "replace": "        await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);\n        toast('Ops image copied', 'ok');\n",
+   "count": 1
+  },
+  {
+   "note": "renderOps prepares the cleaning day instead of pre-building rows",
+   "find": "  const rowsHtml = _opsRows.length\n    ? _opsRows.map(function(r,i){ return _opsBuildRow(r,i); }).join('')\n    : '<tr><td colspan=\"10\" style=\"text-align:center;padding:34px 20px;color:#94A3B8;font-size:13px\">Δεν υπάρχουν checkout για ' + _opsFmtDate(_opsDate) + '</td></tr>';\n",
+   "replace": "  // One interactive board holds checkout + cleaning, so the day's cleaning\n  // state is synced once here and reused by the bar, the table and the poster.\n  const _cleanDay = (typeof _opsPrepareCleanDay === 'function')\n    ? _opsPrepareCleanDay()\n    : { done: 0, total: 0, clean: [], extras: [] };\n",
+   "count": 1
+  },
+  {
+   "note": "Command bar shows clean progress and both screenshot buttons",
+   "find": "        <span class=\"opsx-stat\" title=\"Γραμμές στον πίνακα της ημέρας\"><b>${_opsRows.length}</b> checkout</span>\n        ${pendingTasks.length ? `<span class=\"opsx-stat\" title=\"Ανοιχτές εργασίες\"><b>${pendingTasks.length}</b> tasks</span>` : ''}\n        <div class=\"opsx-sp\"></div>\n        <button class=\"opsx-btn\" onclick=\"opsCopyImage()\" title=\"Αντιγραφή ολόκληρου του πίνακα ως εικόνα\">📋 Copy Image</button>\n",
+   "replace": "        <span class=\"opsx-stat\" title=\"Γραμμές στον πίνακα της ημέρας\"><b>${_opsRows.length}</b> checkout</span>\n        <span class=\"opsx-stat\" title=\"Ολοκληρωμένοι καθαρισμοί\"><b>${_cleanDay.done}/${_cleanDay.total}</b> clean</span>\n        ${pendingTasks.length ? `<span class=\"opsx-stat\" title=\"Ανοιχτές εργασίες\"><b>${pendingTasks.length}</b> tasks</span>` : ''}\n        <div class=\"opsx-sp\"></div>\n        <button class=\"opsx-btn\" onclick=\"opsCopyImage()\" title=\"Αντιγραφή του πίνακα ημέρας ως εικόνα (για operations)\">📋 Ops image</button>\n        <button class=\"opsx-btn ox-gold\" onclick=\"opsCopyCleaningImage()\" title=\"Αντιγραφή αφίσας συνεργείου (οδηγίες καθαρισμού) για WhatsApp\">🧹 Cleaner image</button>\n",
+   "count": 1
+  },
+  {
+   "note": "renderOps swaps the two tables for the combined board + staff blocks",
+   "find": "      <!-- ── Zone 1: checkout / arrivals board ───────────────────────────── -->\n      <div id=\"ops-printable\">\n        <div class=\"opsx-bhd\">\n          <div>\n            <div class=\"ox-eb\">Elysian — Daily Operations</div>\n            <div class=\"ox-tt\">1 · CHECKOUT / ΑΦΙΞΕΙΣ — ${_opsFmtDate(_opsDate)}</div>\n          </div>\n          <div class=\"ox-rt\">\n            <span class=\"opsx-kpi\"><b>${_opsRows.length}</b> γραμμές</span>\n            ${pendingTasks.length ? `<span class=\"opsx-kpi\"><b>${pendingTasks.length}</b> tasks</span>` : ''}\n          </div>\n        </div>\n        <table class=\"opsx-main\">\n          <thead>\n            <tr>\n              <th style=\"width:30px\">#</th>\n              <th class=\"ox-l\" style=\"min-width:210px\">Καταλύματα</th>\n              <th style=\"width:246px\" title=\"Late checkout and priority flags\">Late / Pri</th>\n              <th style=\"min-width:106px\">Check out</th>\n              <th style=\"width:42px\" title=\"Cleaned\">✓</th>\n              <th style=\"min-width:150px\">Check in ίδιας</th>\n              <th style=\"width:56px\">👥</th>\n              <th style=\"min-width:96px\">⏰ Άφιξη</th>\n              <th class=\"ox-l\" style=\"min-width:200px\">Σχόλια</th>\n              <th style=\"width:128px\"></th>\n            </tr>\n          </thead>\n          <tbody id=\"ops-tbody\">${rowsHtml}</tbody>\n        </table>\n\n        ${typeof _opsCleaningTableHtml === 'function' ? _opsCleaningTableHtml() : ''}\n",
+   "replace": "      <!-- ── One board: checkout + καθαρισμοί, staff blocks underneath ──── -->\n      <div id=\"ops-printable\">\n        ${typeof _opsCombinedBoardHtml === 'function' ? _opsCombinedBoardHtml() : ''}\n\n        ${typeof _opsStaffBlocksHtml === 'function' ? _opsStaffBlocksHtml() : ''}\n",
+   "count": 1
+  },
+  {
+   "note": "Combined board, cleaner cell, crew bar and staff CSS",
+   "find": "    '#tab-ops .opsx-foot{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch}',\n",
+   "replace": "    '#tab-ops .opsx-foot{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch}',\n    // Combined board: denser columns so 13 of them still fit a laptop screen.\n    '#tab-ops .opsx-board{background:#fff}',\n    '#tab-ops .opsx-bhd .ox-hl{min-width:220px}',\n    '#tab-ops .opsx-bhd .ox-dt{margin-top:2px;font-size:11.5px;font-weight:600;color:#475569}',\n    '#tab-ops .opsx-comb{font-size:11.5px}',\n    '#tab-ops .opsx-comb thead th{padding:8px 6px;font-size:8.5px;letter-spacing:.08em}',\n    '#tab-ops .opsx-comb tbody td{padding:4px 6px;height:46px}',\n    '#tab-ops .opsx-comb td.ox-cd{width:38px;padding:4px 2px}',\n    '#tab-ops .opsx-comb td.ox-n{width:26px;padding:4px 1px}',\n    '#tab-ops .opsx-comb td.ox-apt{min-width:180px;padding:5px 8px}',\n    '#tab-ops .opsx-comb td.ox-tgc{width:228px;padding:4px 4px}',\n    '#tab-ops .opsx-comb td.ox-tsk{width:120px;padding:4px 5px}',\n    '#tab-ops .opsx-comb td.ox-act{width:120px}',\n    '#tab-ops .opsx-comb .opsx-tg{height:26px;margin:0;padding:0 6px;font-size:9.5px;line-height:24px}',\n    '#tab-ops .opsx-comb .opsx-sel{padding:5px 6px;font-size:11px}',\n    '#tab-ops .opsx-comb .opsx-pill{min-height:26px;padding:3px 8px;font-size:11px;line-height:18px}',\n    '#tab-ops .opsx-comb .opsx-cin{min-height:28px;padding:5px 7px;font-size:11.5px}',\n    '#tab-ops .opsx-comb .opsx-aptn{font-size:12.5px}',\n    '#tab-ops .opsx-dash{color:#C3CBD6;font-size:10.5px;font-weight:600;letter-spacing:.02em}',\n    // Cleaner column: chips + datalist input, inline-block so html2canvas keeps\n    // them on one line inside #ops-printable.\n    '#tab-ops .opsx-clean-cell{width:186px;padding:4px 6px;text-align:center;vertical-align:middle}',\n    '#tab-ops .opsx-clean-cell.ox-set{background:#FFFBEB}',\n    '#tab-ops .opsx-cchips{display:block;margin:0 0 3px;font-size:0;text-align:center}',\n    '#tab-ops .opsx-cchip{display:inline-block;margin:1px 3px 1px 0;padding:3px 7px;border-radius:7px;background:#0F172A;color:#fff;font-size:11px;font-weight:700;line-height:1.2;white-space:nowrap;vertical-align:middle}',\n    '#tab-ops .opsx-cchip button{border:none;background:transparent;color:#FCA5A5;cursor:pointer;font-size:13px;font-weight:800;line-height:1;padding:0 0 0 3px}',\n    '#tab-ops .opsx-cname{width:100%;box-sizing:border-box;padding:6px;border:1.5px solid #D1D5DB;border-radius:8px;background:#fff;font-family:inherit;font-size:12.5px;font-weight:700;text-align:center;color:#0F172A;outline:none}',\n    '#tab-ops .opsx-cname.ox-set{border-color:#0F172A}',\n    '#tab-ops .opsx-cname:focus{border-color:#C9A84C}',\n    '#tab-ops .opsx-nchips{display:block;margin:0 0 3px;font-size:0;line-height:1.5}',\n    '#tab-ops .opsx-nchip{display:inline-block;margin:1px 3px 1px 0;padding:1px 6px;border-radius:999px;font-size:9.5px;font-weight:700;line-height:1.6;vertical-align:middle}',\n    '#tab-ops .opsx-ctxt{width:100%;box-sizing:border-box;min-height:30px;padding:5px 7px;border:1px solid #E5E7EB;border-radius:7px;background:#FAFAFA;font-family:inherit;font-size:11.5px;line-height:1.35;color:#111827;outline:none;resize:vertical}',\n    '#tab-ops .opsx-ctxt:focus{border-color:#C9A84C;background:#fff}',\n    // Crew share toolbar sits above the board and stays out of the ops shot.\n    '#tab-ops .opsx-crew{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 11px;padding:8px 12px;border-radius:11px;background:#0F172A;border:1px solid #1E293B}',\n    '#tab-ops .opsx-crew .ox-lb{font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#C9A84C}',\n    '#tab-ops .opsx-crew .ox-sp{flex:1 1 8px}',\n    '#tab-ops .opsx-crew button{height:32px;padding:0 12px;border:1px solid rgba(255,255,255,.25);border-radius:9px;background:rgba(255,255,255,.06);color:#E2E8F0;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}',\n    '#tab-ops .opsx-crew button:hover{background:rgba(255,255,255,.16);color:#fff}',\n    '#tab-ops .opsx-crew button.ox-pri{background:#F8FAFC;border-color:#F8FAFC;color:#0F172A;font-weight:800}',\n    '#tab-ops .opsx-crew button.ox-warn{border-color:#FCA5A5;background:rgba(220,38,38,.18);color:#FECACA;font-weight:700}',\n    '#tab-ops .opsx-staff .opsx-sect:first-child{margin-top:16px}',\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function _opsPrepareCleanDay()",
+   "note": "clean-day prep extracted"
+  },
+  {
+   "has": "function _opsCombinedBoardHtml()",
+   "note": "combined board builder exists"
+  },
+  {
+   "has": "function _opsStaffBlocksHtml()",
+   "note": "staff blocks render on their own"
+  },
+  {
+   "has": "function _opsBoardRowsHtml()",
+   "note": "one tbody for ops rows + cleaning extras"
+  },
+  {
+   "has": "id=\"ops-shot-ops\"",
+   "note": "ops screenshot target"
+  },
+  {
+   "has": "data-crew-sheet=\"1\"",
+   "note": "crew sheet hook survives"
+  },
+  {
+   "has": "opsToggleCleanDoneKey(",
+   "note": "clean ✓ toggle wired in the board"
+  },
+  {
+   "has": "ops-cleaners-datalist",
+   "note": "cleaner datalist survives"
+  },
+  {
+   "has": "ops-drivers-datalist",
+   "note": "driver datalist survives"
+  },
+  {
+   "has": "data-cleaners-cell=\"1\"",
+   "note": "cleaner cell hook survives"
+  },
+  {
+   "has": "data-clean-note=\"",
+   "note": "cleaning note hook survives"
+  },
+  {
+   "has": "data-field=\"comments\"",
+   "note": "shared comments field survives"
+  },
+  {
+   "has": "JSON.stringify(keyRaw).replace(/\"/g, '&quot;')",
+   "note": "legacy key-escaping token kept"
+  },
+  {
+   "has": "blockTable('Εφημερία', 'oncall', 1)",
+   "note": "εφημερία block survives"
+  },
+  {
+   "has": "ΟΔΗΓΟΙ / ΔΙΑΔΡΟΜΕΣ",
+   "note": "drivers block survives"
+  },
+  {
+   "has": "ΙΜΑΤΙΣΜΟΣ",
+   "note": "ιματισμός block survives"
+  },
+  {
+   "has": "opsRestartCleaningSchedule",
+   "note": "restart survives"
+  },
+  {
+   "has": "Επανεκκίνηση ✓",
+   "note": "restart button survives"
+  },
+  {
+   "has": "Αντιγραφή εικόνας",
+   "note": "crew image button survives"
+  },
+  {
+   "has": "Cleaning schedule",
+   "note": "legacy label token kept"
+  },
+  {
+   "has": "Καθαρισμοί σήμερα",
+   "note": "legacy label token kept"
+  },
+  {
+   "has": "Καθαρίστρια",
+   "note": "cleaner column label"
+  },
+  {
+   "has": "font-size:17px;font-weight:900",
+   "note": "legacy style token kept"
+  },
+  {
+   "has": "id=\"ops-clean-count\"",
+   "note": "clean progress counter survives"
+  },
+  {
+   "has": "🧹 Cleaner image",
+   "note": "cleaner screenshot button on the command bar"
+  },
+  {
+   "has": "📋 Ops image",
+   "note": "ops screenshot button on the command bar"
+  },
+  {
+   "has": "Ops image copied",
+   "note": "ops image toast"
+  },
+  {
+   "has": "opsx-clean-cell",
+   "note": "cleaner column styling"
+  },
+  {
+   "has": "data-ri=",
+   "note": "row index travels with the <tr>"
+  },
+  {
+   "has": "ΚΑΘΑΡΙΣΤΡΙΑ",
+   "note": "cleaner column header"
+  },
+  {
+   "has": "function _opsCommentChips(",
+   "note": "comment tag chips still rendered"
+  },
+  {
+   "hasNot": "1 · CHECKOUT / ΑΦΙΞΕΙΣ",
+   "note": "old zone-1 heading gone"
+  },
+  {
+   "hasNot": "<table class=\"opsx-cln\">",
+   "note": "second schedule table gone"
+  },
+  {
+   "hasNot": "'<th>ΚΑΤΑΛΥΜΑ</th>'",
+   "note": "old cleaning sheet head gone"
+  }
+ ]
+}
