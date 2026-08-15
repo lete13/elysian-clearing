@@ -26,24 +26,16 @@
   ],
   "assertions": [
     {
-      "has": "id=\"nav-opsbeta\">Daily Ops (Beta)",
-      "note": "Beta has its own navigation entry"
-    },
-    {
-      "has": "id=\"tab-opsbeta\"",
-      "note": "Beta has its own tab panel"
-    },
-    {
       "has": "/fe/daily-ops-beta.css",
-      "note": "Beta CSS is loaded separately"
+      "note": "Beta CSS is loaded (later promoted to #tab-ops)"
     },
     {
       "has": "/fe/daily-ops-beta.js",
-      "note": "Beta JS is loaded separately"
+      "note": "Beta JS is loaded (later replaces renderOps)"
     },
     {
       "has": "id=\"tab-ops\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>",
-      "note": "Original Daily Ops tab remains intact"
+      "note": "Daily Ops tab panel remains the mount point"
     }
   ]
 }

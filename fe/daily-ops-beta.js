@@ -1,8 +1,7 @@
-/* Daily Ops (Beta)
+/* Daily Ops — promoted Beta table UI
  *
- * Isolated renderer for #tab-opsbeta. It does not invoke the original renderer;
- * both tabs share the existing Daily Ops state and persistence helpers so an
- * edit made in either view is visible in the other.
+ * Renders into #tab-ops and replaces classic renderOps(). Shares S.daily /
+ * _ops* persistence with the rest of the app (cleaners, staff, crew poster).
  */
 (function () {
   'use strict';
@@ -259,6 +258,20 @@
     return 'tone-open';
   }
 
+  function cleanerChipsHtml(target) {
+    if (!target) return '<span class="ob-row-muted">—</span>';
+    var key = cleanKey(target);
+    var names = cleaners(target);
+    var chips = names.map(function (nm, ni) {
+      return '<span class="ob-cchip">' + esc(nm) +
+        '<button type="button" data-ob-action="cleaner-remove" data-ob-key="' + encoded(key) + '" data-ob-idx="' + ni + '" title="Αφαίρεση">×</button></span>';
+    }).join('');
+    return '<div class="ob-cchips-wrap">' +
+      (chips ? '<div class="ob-cchips">' + chips + '</div>' : '') +
+      '<input class="ob-input ob-row-cleaner" list="ops-beta-cleaners" value="" placeholder="' + (names.length ? '+ άλλη…' : 'Καθαρίστρια…') + '" data-ob-action="cleaner-add" data-ob-key="' + encoded(key) + '">' +
+      '</div>';
+  }
+
   function colorLegendHtml() {
     return '<div class="ob-tone-legend" title="Reservation color coding">' +
       '<span class="ob-tone-lg"><i class="tone-hot"></i>Priority / late / sofa</span>' +
@@ -291,9 +304,7 @@
     var cleanControl = target
       ? '<input class="ob-clean-check ob-row-clean" type="checkbox" data-ob-action="clean" data-ob-key="' + encoded(item.key) + '"' + (done ? ' checked' : '') + ' title="Καθαρίστηκε">'
       : '<span class="ob-row-muted">—</span>';
-    var cleanerControl = target
-      ? '<input class="ob-input ob-row-cleaner" list="ops-beta-cleaners" value="' + esc(names) + '" data-ob-action="cleaners" data-ob-key="' + encoded(item.key) + '" placeholder="Unassigned">'
-      : '<span class="ob-row-muted">—</span>';
+    var cleanerControl = target ? cleanerChipsHtml(target) : '<span class="ob-row-muted">—</span>';
     var taskControl = target
       ? '<select class="ob-select ob-row-task" data-ob-action="clean-field" data-ob-key="' + encoded(item.key) + '" data-ob-field="cleanTask">' + taskOptions(target.cleanTask) + '</select>'
       : '<span class="ob-row-muted">—</span>';
@@ -553,7 +564,7 @@
   }
 
   function render() {
-    var root = document.getElementById('tab-opsbeta');
+    var root = document.getElementById('tab-ops');
     if (!root) return;
     window._opsFastSave = true;
     if (typeof startDbPoll === 'function') {
@@ -601,7 +612,7 @@
 
     root.innerHTML = '<div class="ob-shell">' +
       '<div class="ob-command">' +
-        '<div class="ob-title"><span class="ob-title-mark">β</span><div><b>Daily Ops <span class="ob-beta">BETA</span></b><small>Live bookings + saved operator work</small></div></div>' +
+        '<div class="ob-title"><span class="ob-title-mark">Ops</span><div><b>Daily Ops</b><small>Checkout &amp; cleaning · live bookings</small></div></div>' +
         '<button class="ob-btn ob-square" data-ob-action="nav" data-ob-days="-1" title="Previous day">←</button>' +
         '<button class="ob-btn' + (isToday ? ' ob-primary' : '') + '" data-ob-action="today">Today</button>' +
         '<button class="ob-btn ob-square" data-ob-action="nav" data-ob-days="1" title="Next day">→</button>' +
@@ -610,6 +621,7 @@
         '<span class="ob-stat"><b>' + cleanDay.done + '/' + cleanDay.total + '</b> clean</span>' +
         '<span class="ob-stat"><b>' + tasks.filter(function (t) { return !t.completed; }).length + '</b> tasks</span>' +
         '<span class="ob-spacer"></span>' +
+        '<button class="ob-btn" data-ob-action="manage-cleaners" title="Add or remove cleaners">Καθαρίστριες</button>' +
         '<button class="ob-btn" data-ob-action="ops-image">📋 Ops image</button>' +
         '<button class="ob-btn ob-gold" data-ob-action="cleaner-image">🧹 Cleaner image</button>' +
         '<button class="ob-btn ob-gold" data-ob-action="schedule-check">📸 Check schedule</button>' +
@@ -738,10 +750,45 @@
   function updateCleaners(key, value) {
     var row = findClean(key);
     if (!row) return;
-    var list = String(value || '').split(',').map(function (name) { return name.trim(); }).filter(Boolean);
-    row.cleanerNames = list;
-    row.cleanerName = list[0] || '';
+    var list = String(value || '').split(/\s*[·,;|/]\s*/).map(function (name) { return name.trim(); }).filter(Boolean);
+    if (typeof _opsWriteCleaners === 'function') _opsWriteCleaners(row, list);
+    else {
+      row.cleanerNames = list;
+      row.cleanerName = list.join(' · ');
+    }
     queueSave();
+  }
+
+  function addCleanerChip(key, value) {
+    if (typeof opsAddCleanerKey === 'function') {
+      opsAddCleanerKey(key, value);
+      return;
+    }
+    var row = findClean(key);
+    if (!row) return;
+    var add = String(value || '').split(/\s*[·,;|/]\s*/).map(function (name) { return name.trim(); }).filter(Boolean);
+    if (!add.length) return;
+    var list = cleaners(row).concat(add);
+    if (typeof _opsWriteCleaners === 'function') _opsWriteCleaners(row, list);
+    else { row.cleanerNames = list; row.cleanerName = list.join(' · '); }
+    persist(true);
+    rerender();
+  }
+
+  function removeCleanerChip(key, idx) {
+    if (typeof opsRemoveCleanerAt === 'function') {
+      opsRemoveCleanerAt(key, idx);
+      return;
+    }
+    var row = findClean(key);
+    if (!row) return;
+    var list = cleaners(row).slice();
+    if (idx < 0 || idx >= list.length) return;
+    list.splice(idx, 1);
+    if (typeof _opsWriteCleaners === 'function') _opsWriteCleaners(row, list);
+    else { row.cleanerNames = list; row.cleanerName = list.join(' · '); }
+    persist(true);
+    rerender();
   }
 
   function selectItems(items, checked) {
@@ -776,8 +823,8 @@
   function bulkCleaner(name) {
     if (!name) return;
     applySelected(function (target) {
-      target.cleanerNames = [name];
-      target.cleanerName = name;
+      if (typeof _opsWriteCleaners === 'function') _opsWriteCleaners(target, [name]);
+      else { target.cleanerNames = [name]; target.cleanerName = name; }
     });
   }
 
@@ -840,6 +887,10 @@
   }
 
   function restartCleans() {
+    if (typeof opsRestartCleaningSchedule === 'function') {
+      opsRestartCleaningSchedule();
+      return;
+    }
     if (!window.confirm('Clear only the cleaning ✓ marks for ' + dateLabel(_opsDate) + '? Cleaners, comments, flags and staff blocks will stay.')) return;
     mainAndExtras().forEach(function (item) { if (item.target) item.target.cleanDone = false; });
     _opsEnsure();
@@ -862,7 +913,7 @@
           document.head.appendChild(script);
         });
       }
-      if (typeof toast === 'function') toast('Capturing Daily Ops Beta…');
+      if (typeof toast === 'function') toast('Capturing Daily Ops…');
       var canvas = await html2canvas(el, {
         scale: 2,
         backgroundColor: '#F4F6FA',
@@ -873,15 +924,15 @@
       if (!blob) throw new Error('Could not build PNG');
       if (navigator.clipboard && window.ClipboardItem) {
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        if (typeof toast === 'function') toast('Beta board copied — paste into chat', 'ok');
+        if (typeof toast === 'function') toast('Ops board copied — paste into chat', 'ok');
       } else {
         var link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = 'daily-ops-beta-' + (_opsDate || 'today') + '.png';
+        link.download = 'daily-ops-' + (_opsDate || 'today') + '.png';
         document.body.appendChild(link);
         link.click();
         link.remove();
-        if (typeof toast === 'function') toast('Downloaded Beta board PNG', 'ok');
+        if (typeof toast === 'function') toast('Downloaded Ops board PNG', 'ok');
       }
     };
     run().catch(function (error) {
@@ -918,10 +969,10 @@
         toggleFlag(Number(button.dataset.obIndex), button.dataset.obFlag);
       } else if (action === 'checkin') {
         toggleCheckin(Number(button.dataset.obIndex));
-      } else if (action === 'kind') {
-        toggleKind(Number(button.dataset.obIndex), button.dataset.obKind);
-      } else if (action === 'remove-row') {
-        removeRow(Number(button.dataset.obIndex));
+      } else if (action === 'cleaner-remove') {
+        removeCleanerChip(decoded(button.dataset.obKey), Number(button.dataset.obIdx));
+      } else if (action === 'manage-cleaners') {
+        if (typeof opsManageCleaners === 'function') opsManageCleaners();
       } else if (action === 'task-add') {
         addTask();
       } else if (action === 'task-delete') {
@@ -983,8 +1034,9 @@
       } else if (action === 'clean-field') {
         updateCleanField(decoded(input.dataset.obKey), input.dataset.obField, input.value);
         if (input.tagName === 'SELECT') rerender();
-      } else if (action === 'cleaners') {
-        updateCleaners(decoded(input.dataset.obKey), input.value); rerender();
+      } else if (action === 'cleaner-add') {
+        addCleanerChip(decoded(input.dataset.obKey), input.value);
+        input.value = '';
       } else if (action === 'task-toggle') {
         toggleTask(input.dataset.obId, input.checked);
       } else if (action === 'staff') {
@@ -997,6 +1049,15 @@
         if (input.files && input.files[0] && typeof opsScheduleCheck === 'function') opsScheduleCheck(input.files[0]);
         input.value = '';
       }
+    });
+
+    root.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter') return;
+      var input = event.target.closest('[data-ob-action="cleaner-add"]');
+      if (!input || !root.contains(input)) return;
+      event.preventDefault();
+      addCleanerChip(decoded(input.dataset.obKey), input.value);
+      input.value = '';
     });
 
     root.addEventListener('input', function (event) {
@@ -1018,8 +1079,6 @@
         updateComment(Number(input.dataset.obIndex), decoded(input.dataset.obKey), input.value);
       } else if (action === 'clean-field' && input.tagName !== 'SELECT') {
         updateCleanField(decoded(input.dataset.obKey), input.dataset.obField, input.value);
-      } else if (action === 'cleaners') {
-        updateCleaners(decoded(input.dataset.obKey), input.value);
       } else if (action === 'notes') {
         _opsNotes = input.value;
         queueSave();
@@ -1029,14 +1088,6 @@
   }
 
   window.renderOpsBeta = render;
-
-  var previousShowTab = window.showTab;
-  if (typeof previousShowTab === 'function' && !previousShowTab._opsBetaWrapped) {
-    var wrappedShowTab = function (name, button) {
-      previousShowTab(name, button);
-      if (name === 'opsbeta') window.requestAnimationFrame(render);
-    };
-    wrappedShowTab._opsBetaWrapped = true;
-    window.showTab = wrappedShowTab;
-  }
+  // Promote Beta UI to the canonical Daily Ops tab.
+  window.renderOps = render;
 })();

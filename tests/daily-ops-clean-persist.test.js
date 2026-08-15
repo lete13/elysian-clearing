@@ -122,11 +122,22 @@ assert(!html.includes('Checkout ζητήθηκε'), 'CO checkbox removed from Da
 const betaCss = fs.readFileSync(path.join(root, 'fe/daily-ops-beta.css'), 'utf8');
 const betaJs = fs.readFileSync(path.join(root, 'fe/daily-ops-beta.js'), 'utf8');
 assert(
-  /ob-card\.ob-done \.ob-card-name strong[\s\S]*text-decoration:\s*line-through/.test(betaCss),
-  'Beta strikes cleaned apartment names'
+  /ob-card\.ob-done \.ob-card-name strong[\s\S]*text-decoration:\s*line-through/.test(betaCss) ||
+    /\.ob-dispatch-row\.tone-done[\s\S]*line-through/.test(betaCss) ||
+    /ob-dispatch-row\.done[\s\S]*line-through/.test(betaCss),
+  'promoted Daily Ops strikes cleaned apartment names'
 );
-assert(!/ζητήθηκε/.test(betaJs), 'Beta drops checkout-requested checkbox (Early replaces it)');
-assert(/data-ob-action="clean"/.test(betaJs), 'Beta keeps clean ✓ control');
-assert(/item\.target\.cleanDone\) return 3/.test(betaJs), 'Beta sinks done cards in status sort');
+assert(!/ζητήθηκε/.test(betaJs), 'Daily Ops drops checkout-requested checkbox (Early replaces it)');
+assert(/data-ob-action="clean"/.test(betaJs), 'Daily Ops keeps clean ✓ control');
+assert(/item\.target\.cleanDone\) return 3/.test(betaJs), 'Daily Ops sinks done rows in status sort');
+assert(/getElementById\('tab-ops'\)/.test(betaJs), 'promoted UI renders into #tab-ops');
+assert(/window\.renderOps = render/.test(betaJs), 'promoted UI replaces renderOps');
+assert(!/nav-opsbeta|tab-opsbeta|opsbeta/.test(betaJs), 'no Beta dual-tab wiring left in UI script');
+assert(/cleanerChipsHtml|ob-cchip/.test(betaJs), 'multi-cleaner chips present');
+assert(/manage-cleaners/.test(betaJs), 'Καθαρίστριες roster manage wired');
+
+assert(!html.includes('id="nav-opsbeta"'), 'Beta nav removed from tip HTML');
+assert(!html.includes('id="tab-opsbeta"'), 'Beta tab panel removed from tip HTML');
+assert(html.includes('id="nav-ops">Daily Ops'), 'single Daily Ops nav remains');
 
 console.log('daily-ops-clean-persist: ok');

@@ -72,7 +72,7 @@ const context = {
     { key: 'isExtended', manual: 'extendedManual' },
   ],
   document: {
-    getElementById(id) { return id === 'tab-opsbeta' ? panel : null; },
+    getElementById(id) { return id === 'tab-ops' ? panel : null; },
     createElement() { return { style: {}, setAttribute() {}, click() {}, remove() {} }; },
     head: { appendChild() {} },
     body: { appendChild() {} },
@@ -163,11 +163,19 @@ assert(panel.innerHTML.includes('tone-warn'), 'ops-urgency warn tone is rendered
 assert(panel.innerHTML.includes('tone-done'), 'ops-urgency done tone is rendered');
 assert(panel.innerHTML.includes('Priority / late / sofa'), 'color legend lists hot tone');
 assert(panel.innerHTML.includes('ob-tone-legend'), 'color legend is on the board');
+assert(panel.innerHTML.includes('Καθαρίστριες'), 'roster manage button present');
+assert(panel.innerHTML.includes('ob-cchip') || panel.innerHTML.includes('Καθαρίστρια'), 'cleaner chips / add field present');
+assert(!panel.innerHTML.includes('BETA'), 'Beta badge removed after promote');
+assert(typeof context.renderOps === 'function', 'renderOps overwritten by promoted UI');
+assert.strictEqual(context.renderOps, context.renderOpsBeta, 'renderOps and renderOpsBeta are the same renderer');
 
 const css = fs.readFileSync(path.join(rootDir, 'fe', 'daily-ops-beta.css'), 'utf8');
+assert(!/#tab-opsbeta/.test(css), 'CSS retargeted off #tab-opsbeta');
+assert(/#tab-ops\s*\{/.test(css), 'CSS scoped to #tab-ops');
+assert(/\.ob-cchip/.test(css), 'cleaner chip styles present');
 assert(!/ob-table-wrap\s*\{[^}]*max-height/.test(css), 'table wrap has no fixed max-height');
 assert(/ob-table-wrap\s*\{[^}]*overflow-y:\s*visible/.test(css), 'table height follows row count');
 assert(/\.ob-dispatch-row\.tone-hot td/.test(css), 'hot tone styles present');
 assert(/\.ob-dispatch-row\.tone-same td/.test(css), 'same-day tone styles present');
 
-console.log('daily-ops-beta-scale: ok (paging + fit-all height + ops urgency colors)');
+console.log('daily-ops-beta-scale: ok (promoted #tab-ops + chips + fit-all + urgency colors)');

@@ -1,0 +1,49 @@
+{
+ "baseSha256": "a218531c4bf5b0713b4c29447216ebc9a10b4782fa658c416545310dd8667bc2",
+ "expectedSha256": "c09419094d71aa282d777a8ec83cd934b567c62f5dec176cfbbdc9506af7dd6d",
+ "builtAt": "2026-08-15 Promote Daily Ops Beta table UI to #tab-ops; drop dual nav",
+ "patches": [
+  {
+   "note": "Remove Daily Ops (Beta) nav — Beta UI is now Daily Ops",
+   "find": "    <button class=\"nav-btn\" data-tab=\"ops\" onclick=\"showTab('ops',this)\" id=\"nav-ops\">Daily Ops</button>\n    <button class=\"nav-btn\" data-tab=\"ops\" onclick=\"showTab('opsbeta',this)\" id=\"nav-opsbeta\">Daily Ops (Beta)</button>\n    <button class=\"nav-btn\" data-tab=\"emp\" onclick=\"showTab('emp',this)\" id=\"nav-emp\">Personnel</button>",
+   "replace": "    <button class=\"nav-btn\" data-tab=\"ops\" onclick=\"showTab('ops',this)\" id=\"nav-ops\">Daily Ops</button>\n    <button class=\"nav-btn\" data-tab=\"emp\" onclick=\"showTab('emp',this)\" id=\"nav-emp\">Personnel</button>",
+   "count": 1
+  },
+  {
+   "note": "Remove unused #tab-opsbeta panel",
+   "find": "<!-- DAILY OPS TAB -->\n<div id=\"tab-ops\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n\n<!-- DAILY OPS BETA TAB — isolated renderer, shared data -->\n<div id=\"tab-opsbeta\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n\n<!-- PERSONNEL TAB -->",
+   "replace": "<!-- DAILY OPS TAB — Beta table UI promoted via /fe/daily-ops-beta.js -->\n<div id=\"tab-ops\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n\n<!-- PERSONNEL TAB -->",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "hasNot": "id=\"nav-opsbeta\"",
+   "note": "no Beta nav"
+  },
+  {
+   "hasNot": "id=\"tab-opsbeta\"",
+   "note": "no Beta tab panel"
+  },
+  {
+   "has": "id=\"nav-ops\">Daily Ops",
+   "note": "single Daily Ops nav"
+  },
+  {
+   "has": "id=\"tab-ops\" class=\"tab-panel\"",
+   "note": "ops tab remains"
+  },
+  {
+   "has": "/fe/daily-ops-beta.js",
+   "note": "promoted UI script still loaded"
+  },
+  {
+   "has": "/fe/daily-ops-beta.css",
+   "note": "promoted UI styles still loaded"
+  },
+  {
+   "has": "Beta table UI promoted",
+   "note": "comment documents promote"
+  }
+ ]
+}
