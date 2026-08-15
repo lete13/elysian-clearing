@@ -243,6 +243,32 @@
     }).join('') + '</div>';
   }
 
+  // Option A — Ops urgency: soft row tint + left edge, highest signal first.
+  function rowToneClass(item) {
+    var row = (item && item.row) || {};
+    var target = item && item.target;
+    var notes = String(row.comments || row.cleanTaskNote || '');
+    var sofa = /Prepare [12] sofa bed/i.test(notes);
+    if (target && target.cleanDone) return 'tone-done';
+    if (!target) return 'tone-excluded';
+    if (row.isPriority || row.lateCheckout || sofa) return 'tone-hot';
+    if (!cleaners(target).length || row.checkinSameDay === 'unknown') return 'tone-warn';
+    if (row.checkinSameDay === 'yes' || row.checkinSameDay === 'checkin_only' || row.isCheckinOnly || row.earlyCheckin) {
+      return 'tone-same';
+    }
+    return 'tone-open';
+  }
+
+  function colorLegendHtml() {
+    return '<div class="ob-tone-legend" title="Reservation color coding">' +
+      '<span class="ob-tone-lg"><i class="tone-hot"></i>Priority / late / sofa</span>' +
+      '<span class="ob-tone-lg"><i class="tone-warn"></i>Unassigned / CI unknown</span>' +
+      '<span class="ob-tone-lg"><i class="tone-same"></i>Same-day / Early</span>' +
+      '<span class="ob-tone-lg"><i class="tone-open"></i>Normal open</span>' +
+      '<span class="ob-tone-lg"><i class="tone-done"></i>Clean ✓ done</span>' +
+      '</div>';
+  }
+
   function dispatchRowHtml(item, displayNumber) {
     var row = item.row || {};
     var target = item.target;
@@ -257,6 +283,7 @@
     var note = String(row.comments || row.cleanTaskNote || '');
     var keyAttr = target ? ' data-ob-key="' + encoded(item.key) + '"' : '';
     var statusClass = done ? 'done' : (!target ? 'excluded' : (!names ? 'unassigned' : 'open'));
+    var toneClass = rowToneClass(item);
     var statusText = done ? 'DONE' : (!target ? 'NO CLEAN' : (!names ? 'UNASSIGNED' : 'OPEN'));
     var checkin = item.extra
       ? '<span class="ob-row-muted">—</span>'
@@ -282,7 +309,7 @@
     var badges = (type ? '<span class="ob-row-type ' + type.cls + '">' + esc(type.label) + '</span>' : '') +
       (kind ? '<span class="ob-row-type ob-amber">' + esc(kind.label) + '</span>' : '') +
       (row.isOwner ? '<span class="ob-row-type ob-red">OWNER</span>' : '');
-    return '<tr class="ob-dispatch-row ' + statusClass + (selected ? ' selected' : '') + '" data-ob-id="' + encoded(id) + '">' +
+    return '<tr class="ob-dispatch-row ' + statusClass + ' ' + toneClass + (selected ? ' selected' : '') + '" data-ob-id="' + encoded(id) + '">' +
       '<td class="ob-center"><input type="checkbox" data-ob-action="select" data-ob-id="' + encoded(id) + '"' + (selected ? ' checked' : '') + (target ? '' : ' disabled') + ' aria-label="Select ' + esc(lines.name || row.aptName) + '"></td>' +
       '<td class="ob-center">' + cleanControl + '</td>' +
       '<td class="ob-property-cell"><div class="ob-property-line"><b>' + displayNumber + ' · ' + esc(lines.name || row.aptName || 'Apartment') + '</b>' + badges + '</div><small>' + esc([area, lines.addr].filter(Boolean).join(' · ')) + '</small></td>' +
@@ -599,6 +626,7 @@
         bulkBarHtml(visibleItems, allItems) +
         '<div id="ops-beta-board-capture">' +
           '<div class="ob-board-head"><div><h2>DISPATCH CONSOLE · CHECKOUT &amp; CLEANING</h2><small>' + esc(dateLabel(_opsDate)) + ' · showing ' + pageItems.length + ' of ' + visibleItems.length + ' matching rows</small></div><span class="ob-spacer"></span><b>' + cleanDay.done + ' / ' + cleanDay.total + ' clean</b><div class="ob-progress"><span style="width:' + pct + '%"></span></div></div>' +
+          colorLegendHtml() +
           '<div class="ob-dispatch-layout"><div class="ob-dispatch-main">' +
             '<div class="ob-table-wrap"><table class="ob-dispatch-table"><thead><tr>' +
               '<th class="ob-center"><input type="checkbox" data-ob-action="select-page"' + (pageAllSelected ? ' checked' : '') + ' title="Select this page"></th>' +
