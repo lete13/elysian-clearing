@@ -13,6 +13,8 @@ const root = path.join(__dirname, '..');
 const worker = fs.readFileSync(path.join(root, 'scripts', 'platform-invoice-pull.js'), 'utf8');
 const srv70 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-70.json'), 'utf8'));
 const fe104 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-104.json'), 'utf8'));
+const srv71 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-71.json'), 'utf8'));
+const fe106 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-106.json'), 'utf8'));
 
 function parseWorkerResult(stdout) {
   const lines = String(stdout || '').trim().split('\n').filter(Boolean);
@@ -48,6 +50,8 @@ assert.strictEqual(parseWorkerResult(stdout), null, 'progress-only stdout is not
 assert(srv70.patches.some((p) => (p.replace || '').includes("j.event === 'progress' || j.event === 'saved'")));
 assert(srv70.patches.some((p) => (p.replace || '').includes('piPullWalkPdfs')));
 assert(fe104.patches.some((p) => (p.replace || '').includes('Pull interrupted')));
+assert(fe106.patches.some((p) => (p.replace || '').includes('Server restarted during pull')));
+assert(srv71.patches.some((p) => (p.replace || '').includes('Server restarted during pull')));
 assert(!/Pull failed — Pulling Airbnb/.test((fe104.patches[0] || {}).replace || ''));
 
 function extractBetween(source, startName, nextName) {

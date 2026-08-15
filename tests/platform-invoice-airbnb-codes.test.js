@@ -71,6 +71,10 @@ assert(worker.includes('function loadAirbnbHaveSet'), 'worker skips vaulted code
 assert(worker.includes("event: 'saved'"), 'worker emits saved as each PDF lands');
 assert(fe92.patches.some((p) => (p.replace || '').includes('no pull job with that id')), 'vanished job id is Pull stopped');
 assert(srv66.patches.some((p) => (p.replace || '').includes("status: 'cancelled'")), 'missing job GET is cancelled');
+const fe106 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-106.json'), 'utf8'));
+const srv71 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-71.json'), 'utf8'));
+assert(fe106.patches.some((p) => (p.replace || '').includes('Server restarted during pull')), 'gone job is a restart');
+assert(srv71.patches.some((p) => (p.replace || '').includes('Server restarted during pull')), 'API gone job is a restart');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

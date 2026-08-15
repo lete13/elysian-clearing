@@ -1,0 +1,35 @@
+{
+ "baseSha256": "3f5559b39b3fcae5cb6576e73733c38f76f26271da77f76dc937f54393391b64",
+ "expectedSha256": "99009e20f1470e375cc0adcafb37b1a67954b446d8ba1071e23e40118822abe2",
+ "builtAt": "2026-08-15 Vanished pull job is a server restart, not Stop",
+ "patches": [
+  {
+   "note": "Missing in-memory pull job after deploy is a restart, not Stop",
+   "find": "  if (!job) {\n    return res.json({\n      ok: true,\n      job: {\n        id: String(req.params.jobId || ''),\n        status: 'cancelled',\n        hint: 'Pull stopped',\n        error: null,\n        saved: [],\n        errors: [],\n        gone: true\n      }\n    });\n  }",
+   "replace": "  if (!job) {\n    return res.json({\n      ok: true,\n      job: {\n        id: String(req.params.jobId || ''),\n        status: 'cancelled',\n        hint: 'Server restarted during pull. Check PDFs by apartment — files already saved are kept. Pull again to continue; already saved codes are skipped.',\n        error: null,\n        saved: [],\n        errors: [],\n        gone: true\n      }\n    });\n  }",
+   "count": 2
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Server restarted during pull",
+   "note": "gone job copy"
+  },
+  {
+   "has": "already saved codes are skipped",
+   "note": "resume kept"
+  },
+  {
+   "has": "try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}",
+   "note": "harvest kept"
+  },
+  {
+   "has": "app.post('/api/platform-invoices/pull-stop'",
+   "note": "stop kept"
+  },
+  {
+   "has": "job.hint = 'Pull stopped'",
+   "note": "user Stop still uses Pull stopped"
+  }
+ ]
+}

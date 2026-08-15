@@ -1,0 +1,55 @@
+{
+ "baseSha256": "d9ebc175333e577fb4ea65fc06cb5df809c503dccc1c76a3bcc9ce2f208ad6f4",
+ "expectedSha256": "c9f37e221ac4883dd50019e268c6406e93df2cbe7af464368151f4f56a57b7ad",
+ "builtAt": "2026-08-15 Deploy during Pull says server restarted, not Stop",
+ "patches": [
+  {
+   "note": "Vanished job (gone) is a restart; user cancel stays Pull stopped",
+   "find": "    if (job.status === 'cancelled' || job.gone || /no pull job with that id|pull stopped/i.test(String(job.error || job.hint || ''))) {\n      msg(job.hint || 'Pull stopped', true);\n      return;\n    }",
+   "replace": "    if (job.gone) {\n      msg(job.hint || 'Server restarted during pull. Check PDFs by apartment — files already saved are kept. Pull again to continue; already saved codes are skipped.', true);\n      var vaultGone = document.getElementById('pi-vault-heading') || document.getElementById('pi-leased-list');\n      if (vaultGone) try { vaultGone.scrollIntoView({ block: 'start' }); } catch (eScroll) {}\n      return;\n    }\n    if (job.status === 'cancelled' || /no pull job with that id|pull stopped/i.test(String(job.error || job.hint || ''))) {\n      msg(job.hint || 'Pull stopped', true);\n      return;\n    }",
+   "count": 1
+  },
+  {
+   "note": "Watch: gone/404 is restart; cancelled without gone is Stop",
+   "find": "        if (res.status === 404 || window._piPullStopped || /no pull job with that id/i.test((r && r.error) || '')) {\n          msg('Pull stopped', true);\n          await piHealth();\n          await piReload();\n          return;\n        }",
+   "replace": "        if (res.status === 404 || window._piPullStopped || /no pull job with that id/i.test((r && r.error) || '')) {\n          msg(window._piPullStopped ? 'Pull stopped' : 'Server restarted during pull. Check PDFs by apartment — files already saved are kept. Pull again to continue; already saved codes are skipped.', true);\n          await piHealth();\n          await piReload();\n          return;\n        }",
+   "count": 1
+  },
+  {
+   "note": "Watch cancelled+gone uses restart copy",
+   "find": "      if (job.status === 'cancelled') {\n        msg(job.hint || 'Pull stopped', true);\n        await piHealth();\n        await piReload();\n        return;\n      }",
+   "replace": "      if (job.status === 'cancelled' || job.gone) {\n        msg(job.gone\n          ? (job.hint || 'Server restarted during pull. Check PDFs by apartment — files already saved are kept. Pull again to continue; already saved codes are skipped.')\n          : (job.hint || 'Pull stopped'), true);\n        if (job.gone) {\n          var vaultGoneW = document.getElementById('pi-vault-heading') || document.getElementById('pi-leased-list');\n          if (vaultGoneW) try { vaultGoneW.scrollIntoView({ block: 'start' }); } catch (eScroll) {}\n        }\n        await piHealth();\n        await piReload();\n        return;\n      }",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Server restarted during pull",
+   "note": "deploy during pull"
+  },
+  {
+   "has": "already saved codes are skipped",
+   "note": "resume kept"
+  },
+  {
+   "has": "Pull stopped",
+   "note": "user Stop kept"
+  },
+  {
+   "has": "PDFs by apartment — click Open to view",
+   "note": "vault heading kept"
+  },
+  {
+   "has": "Pull Airbnb (Hosthub codes)",
+   "note": "full pull kept"
+  },
+  {
+   "has": "Test pull (5 codes)",
+   "note": "test pull kept"
+  },
+  {
+   "has": "channel: 'airbnb'",
+   "note": "Airbnb-only pull"
+  }
+ ]
+}
