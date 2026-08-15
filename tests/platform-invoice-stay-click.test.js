@@ -55,6 +55,22 @@ document.getElementById('total').addEventListener('click', function () {
 </body></html>`;
 }
 
+function staySoft404Html(code) {
+  return `<!doctype html><html><body>
+<h1>Stay ${code}</h1>
+<p>Guest Alex · check-in 12 Jul · reservation ${code}</p>
+<button type="button" id="total">Total €1,234</button>
+<script>
+document.getElementById('total').addEventListener('click', function () {
+  var a = document.createElement('a');
+  a.href = '/invoice/SOFT99ABC';
+  a.textContent = 'VAT invoice';
+  document.body.appendChild(a);
+});
+</script>
+</body></html>`;
+}
+
 function invoiceHtml(id) {
   const credit = /CN/i.test(String(id || ''));
   const num = credit ? 'AIUC-104771625-GR-1552747-CN-1' : 'AIUC-104771625-GR-1552747';
@@ -76,13 +92,20 @@ function startServer() {
       if (stay) {
         const code = stay[1].toUpperCase();
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(code === 'HMMISS01' ? missStayHtml() : stayHtml(code));
+        if (code === 'HMMISS01') res.end(missStayHtml());
+        else if (code === 'HMSOFT01') res.end(staySoft404Html(code));
+        else res.end(stayHtml(code));
         return;
       }
       const details = u.match(/^\/hosting\/reservations\/details\/([A-Z0-9]+)/i);
       if (details) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(stayHtml(details[1].toUpperCase()));
+        return;
+      }
+      if (/^\/invoice\/SOFT99ABC/i.test(u)) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end("<!doctype html><html><body><h1>We can't find that page</h1></body></html>");
         return;
       }
       if (/^\/invoice\//i.test(u)) {
@@ -93,6 +116,12 @@ function startServer() {
       if (u === '/404') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end('<!doctype html><html><body><h1>404</h1><p>We can\'t find that page</p></body></html>');
+        return;
+      }
+      if (/^\/vat_invoices\//i.test(u)) {
+        const id = u.split('/').pop();
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(invoiceHtml(id));
         return;
       }
       if (/^\/reservation\/vat_invoice\//i.test(u) || /^\/reservation\/invoice\//i.test(u)) {
@@ -189,6 +218,15 @@ function runPull(origin, outDir, reservations, limit) {
     assert(missRun.parsed && missRun.parsed.ok, 'miss stay URL still saved via details: ' + JSON.stringify(missRun.parsed));
     const missPdf = path.join(outDir, 'miss', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMMISS01-INV99ABC.pdf');
     assert(fs.existsSync(missPdf), 'opened /hosting/reservations/details after stay URL miss: ' + missPdf);
+
+    const fetchRun = await runPull(origin, path.join(outDir, 'fetch'), [
+      { code: 'HMSOFT01', kind: 'invoice', aptName: 'Birdhouse', createdOnChannel: 2000 },
+    ]);
+    assert(fetchRun.parsed && fetchRun.parsed.ok, 'fetch path saved a PDF after /invoice/ soft 404: ' + JSON.stringify(fetchRun.parsed));
+    const fetchPdf = path.join(outDir, 'fetch', 'Airbnb', '2026-07', 'Birdhouse', 'invoice-HMSOFT01-SOFT99ABC.pdf');
+    assert(fs.existsSync(fetchPdf), 'fetched /vat_invoices HTML after stay-click soft 404: ' + fetchPdf);
+    const fetchHow = ((fetchRun.parsed.files || [])[0] || {}).how;
+    assert(fetchHow === 'fetch-html' || fetchHow === 'new-tab', 'saved via session fetch or new tab, not the 404 page: ' + fetchHow);
 
     const latestRun = await runPull(
       origin,

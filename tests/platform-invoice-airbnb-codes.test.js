@@ -23,6 +23,11 @@ assert(worker.includes('function extractAirbnbVatInvoiceHits'), 'searches reserv
 assert(worker.includes('reservation/vat_invoice/'), 'opens Airbnb VAT invoice HTML page from the ID');
 assert(worker.includes('clickAirbnbStayInvoiceCandidate'), 'clicks the stay-page VAT invoice link');
 assert(worker.includes('stay-click'), 'saves PDF from stay-page click');
+assert(worker.includes('waitForAirbnbInvoiceHtml'), 'waits for invoice HTML in main#site-content');
+assert(worker.includes('www.airbnb.gr'), 'opens invoices on the Greece Airbnb domain');
+assert(worker.includes('/vat_invoices/'), 'tries legacy /vat_invoices/{token}');
+assert(worker.includes('fetch-html'), 'saves invoice HTML fetched with the host session');
+assert(worker.includes('new-tab'), 'opens invoice URLs in a new tab like VAT Invoicer');
 assert(worker.includes('airbnbInvoiceNavMs'), 'dead invoice URLs fail in seconds, not 45s');
 assert(worker.includes('looksLikeAirbnbInvoiceHtml'), 'will not PDF the reservation details shell');
 assert(worker.includes('listAirbnbVatDocHrefs'), 'collects every VAT invoice/credit note href on the stay');
@@ -126,7 +131,7 @@ const extractSrc =
   extractBetween(worker, 'kindFromInvoiceBlob', 'airbnbInvoicePagePatterns') +
   extractBetween(worker, 'airbnbBareInvoicePath', 'attachAirbnbInvoiceNetworkTap');
 const helpers = vm.runInNewContext(
-  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, airbnbBareInvoicePath, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits, vatIdFromAirbnbUrl, airbnbReservationPageIsOpen, parseAirbnbVatFields })',
+  extractSrc + '\n({ extractAirbnbVatInvoiceHits, airbnbInvoiceUrlsForHit, airbnbBareInvoicePath, looksLikeAirbnbInvoiceHtml, usefulAirbnbInvoiceHits, vatIdFromAirbnbUrl, airbnbReservationPageIsOpen, parseAirbnbVatFields, airbnbInvoiceHosts, airbnbInvoiceSoft404 })',
   { URL: URL, encodeURIComponent: encodeURIComponent }
 );
 const html = '<script>{"vatInvoiceId":"INV99ABC","vatInvoice":{"id":"INV99ABC","url":"https://www.airbnb.com/reservation/vat_invoice/INV99ABC"}}</script>';
@@ -147,6 +152,10 @@ assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/hosting/stay/
 assert(helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/INV99ABC', 'VAT invoice'));
 assert(helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/invoice/INV99ABC', 'VAT invoice Invoice number AIUC-1'));
 assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/reservation/vat_invoice/HMHPBAREC3', 'We can’t find that page'));
+assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/invoice/23k6jHjbbk9', 'Airbnb'));
+assert(helpers.airbnbInvoiceSoft404("We can't find that page"));
+assert(!helpers.airbnbInvoiceSoft404('VAT invoice Invoice number AIUC-104771625-GR-1552747'));
+assert.strictEqual(helpers.airbnbInvoiceHosts('https://www.airbnb.com').join(','), 'www.airbnb.com,www.airbnb.gr');
 assert.strictEqual(
   helpers.airbnbReservationPageIsOpen(
     'https://www.airbnb.com/hosting/stay/HM9DCDMEXT',
@@ -178,7 +187,8 @@ assert.strictEqual(helpers.usefulAirbnbInvoiceHits([{ id: 'HMHPBAREC3' }, { id: 
 assert.strictEqual(helpers.vatIdFromAirbnbUrl('https://www.airbnb.com/reservation/vat_invoice/INV99ABC'), 'INV99ABC');
 assert.strictEqual(helpers.vatIdFromAirbnbUrl('https://www.airbnb.com/invoice/23k6jHjbbk9'), '23k6jHjbbk9');
 assert.strictEqual(helpers.vatIdFromAirbnbUrl('/invoice/23a2NdTYpDo'), '23a2NdTYpDo');
-assert(helpers.airbnbBareInvoicePath('https://www.airbnb.com/invoice/23k6jHjbbk9'), 'stay-page /invoice/token 404s');
+assert.strictEqual(helpers.vatIdFromAirbnbUrl('/vat_invoices/23a2NdTYpDo'), '23a2NdTYpDo');
+assert(helpers.airbnbBareInvoicePath('https://www.airbnb.com/invoice/23k6jHjbbk9'), 'stay-page /invoice/token is the short path');
 assert(!helpers.airbnbBareInvoicePath('https://www.airbnb.com/reservation/vat_invoice/23k6jHjbbk9'));
 const shortHtml = '<a href="/invoice/23k6jHjbbk9">VAT invoice</a>';
 const shortHits = helpers.extractAirbnbVatInvoiceHits(shortHtml, 'https://www.airbnb.com');
@@ -189,8 +199,10 @@ const shortUrls = helpers.airbnbInvoiceUrlsForHit(
   'https://www.airbnb.com',
   []
 );
-assert(shortUrls.some((u) => u.indexOf('/reservation/vat_invoice/23k6jHjbbk9') >= 0), 'rewrites /invoice/token to vat_invoice HTML');
-assert(!shortUrls.some((u) => /airbnb\.com\/invoice\//.test(u)), 'does not open the stay-page /invoice/ 404 path');
+assert(shortUrls.some((u) => u.indexOf('/reservation/vat_invoice/23k6jHjbbk9') >= 0), 'still tries vat_invoice HTML');
+assert(shortUrls.some((u) => /airbnb\.com\/invoice\/23k6jHjbbk9/.test(u)), 'opens /invoice/token in a new tab (VAT Invoicer)');
+assert(shortUrls.some((u) => /airbnb\.gr\/invoice\/23k6jHjbbk9/.test(u)), 'opens /invoice/token on airbnb.gr');
+assert(shortUrls.some((u) => /\/vat_invoices\/23k6jHjbbk9/.test(u)), 'tries legacy /vat_invoices/token');
 assert.strictEqual(helpers.usefulAirbnbInvoiceHits([{ href: 'https://www.airbnb.com/invoice/23k6jHjbbk9' }], 'HM9DCDMEXT').length, 1);
 assert(!helpers.looksLikeAirbnbInvoiceHtml('https://www.airbnb.com/404', "We can't find that page"));
 
