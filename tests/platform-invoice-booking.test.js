@@ -204,5 +204,12 @@ assert(srv83.patches.some((p) => (p.replace || '').includes("existsSync('/tmp/.X
 const srv84 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-84.json'), 'utf8'));
 assert(srv84.patches.some((p) => (p.replace || '').includes('Server started HeadlessChrome')), 'HeadlessChrome is refused');
 assert(srv84.patches.every((p) => !(p.replace || '').includes('falling back to headless')), 'no headless fallback in SRV 84');
+const fe122 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-122.json'), 'utf8'));
+const fe123 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-123.json'), 'utf8'));
+const srv85 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-85.json'), 'utf8'));
+assert.strictEqual(fe123.baseSha256, fe122.expectedSha256, 'FE 123 continues FE 122');
+assert.strictEqual(srv85.baseSha256, srv84.expectedSha256, 'SRV 85 continues SRV 84');
+assert(fe123.patches.some((p) => (p.replace || '').includes('Do not retry now')), 'FE 123 says do not retry');
+assert(srv85.patches.some((p) => (p.replace || '').includes('piBookingMarkNetworkBlocked')), 'SRV 85 marks a network block');
 
 console.log('platform-invoice-booking.test.js: ok');

@@ -196,6 +196,13 @@ assert.strictEqual(srv84.baseSha256, srv83.expectedSha256, 'SRV 84 continues SRV
 assert(fe122.patches.some((p) => (p.replace || '').includes('Server browser:')), 'FE shows browser kind');
 assert(srv84.patches.some((p) => (p.replace || '').includes('Server started HeadlessChrome')), 'SRV refuses HeadlessChrome');
 assert(!srv84.patches.some((p) => (p.replace || '').includes('falling back to headless')), 'SRV does not fall back to headless');
+const fe123 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-123.json'), 'utf8'));
+const srv85 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-85.json'), 'utf8'));
+assert.strictEqual(fe123.baseSha256, fe122.expectedSha256, 'FE 123 continues FE 122');
+assert.strictEqual(srv85.baseSha256, srv84.expectedSha256, 'SRV 85 continues SRV 84');
+assert(fe123.patches.some((p) => (p.replace || '').includes('Do not retry now')), 'FE 123 says do not retry a network block');
+assert(srv85.patches.some((p) => (p.replace || '').includes('piBookingMarkNetworkBlocked')), 'SRV 85 records a server-IP block');
+assert(srv85.patches.some((p) => (p.replace || '').includes('BOOKING_CONNECT_COOLDOWN_MS')), 'SRV 85 has a Connect cooldown');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

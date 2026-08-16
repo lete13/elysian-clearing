@@ -1,0 +1,69 @@
+{
+ "baseSha256": "c6df28e8095956888aa8aef1cc35e230b4ae0282440030737f003ee9e3a30fa2",
+ "expectedSha256": "460d5a7a4f0ea92b76fe66f41034a04545287332abb71d5c223a1fdd9ac72bda",
+ "builtAt": "2026-08-16 Booking.com Connect: cooldown after server-IP block",
+ "patches": [
+  {
+   "note": "Blocked hint is a server-network cooldown, not wait-one-minute",
+   "find": "function piBookingBlockedHint() {\n  return 'Booking.com blocked this sign-in (Try again later). Wait one minute, Cancel, then Connect Booking again. Type the username in the box below (it goes into the username field), wait until the password field appears, then continue.';\n}\n",
+   "replace": "function piBookingBlockedHint() {\n  return 'Booking.com blocked this sign-in (Try again later). This is not a wrong password — Booking.com blocked this server network. Do not retry now; waiting a minute makes it worse. Leave Collect closed for several hours.';\n}\nlet _piBookingConnectBlockedUntil = 0;\nconst PI_BOOKING_BLOCK_FILE = '/tmp/elysian-booking-connect-blocked-until';\nfunction piBookingCooldownMs() {\n  const n = Number(process.env.BOOKING_CONNECT_COOLDOWN_MS);\n  return Number.isFinite(n) && n >= 0 ? n : (4 * 60 * 60 * 1000);\n}\nfunction piBookingReadBlockedUntil() {\n  if (_piBookingConnectBlockedUntil > Date.now()) return _piBookingConnectBlockedUntil;\n  try {\n    const n = Number(require('fs').readFileSync(PI_BOOKING_BLOCK_FILE, 'utf8'));\n    if (Number.isFinite(n) && n > Date.now()) {\n      _piBookingConnectBlockedUntil = n;\n      return n;\n    }\n  } catch (eRead) {}\n  return 0;\n}\nfunction piBookingMarkNetworkBlocked(job) {\n  const until = Date.now() + piBookingCooldownMs();\n  _piBookingConnectBlockedUntil = Math.max(_piBookingConnectBlockedUntil || 0, until);\n  try { require('fs').writeFileSync(PI_BOOKING_BLOCK_FILE, String(_piBookingConnectBlockedUntil)); } catch (eWrite) {}\n  if (job) {\n    job.networkBlocked = true;\n    job.cooldownUntil = _piBookingConnectBlockedUntil;\n    job.status = 'blocked';\n    job.error = null;\n    job.hint = piBookingBlockedHint();\n    job.updatedAt = Date.now();\n  }\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Public job exposes networkBlocked and cooldownUntil",
+   "find": "    pageSnippet: job.pageSnippet || null,\n    browserKind: job.browserKind || null,\n",
+   "replace": "    pageSnippet: job.pageSnippet || null,\n    browserKind: job.browserKind || null,\n    networkBlocked: !!job.networkBlocked,\n    cooldownUntil: job.cooldownUntil || null,\n",
+   "count": 1
+  },
+  {
+   "note": "Refuse new Booking Connect while the server IP is in cooldown",
+   "find": "    for (const job of _piLoginJobs.values()) {\n      if (String(job.channel || '') !== 'booking') continue;\n      if (job.status === 'starting' || job.status === 'logging_in' || job.status === 'interactive') {\n        return res.json({ ok: true, job: piLoginPublic(job), resumed: true });\n      }\n    }\n",
+   "replace": "    for (const job of _piLoginJobs.values()) {\n      if (String(job.channel || '') !== 'booking') continue;\n      if (job.status === 'starting' || job.status === 'logging_in' || job.status === 'interactive' || job.status === 'blocked') {\n        return res.json({ ok: true, job: piLoginPublic(job), resumed: true });\n      }\n    }\n    const blockedUntil = piBookingReadBlockedUntil();\n    if (blockedUntil > Date.now()) {\n      const remainMin = Math.max(1, Math.ceil((blockedUntil - Date.now()) / 60000));\n      const coolJob = {\n        id: 'cooldown',\n        channel: 'booking',\n        status: 'blocked',\n        networkBlocked: true,\n        cooldownUntil: blockedUntil,\n        hint: piBookingBlockedHint(),\n        error: null,\n        createdAt: Date.now(),\n        updatedAt: Date.now()\n      };\n      return res.status(429).json({\n        ok: false,\n        error: 'Booking.com blocked this server network. Wait ' + remainMin + ' more minutes before Connect Booking. Retrying now makes the block last longer.',\n        cooldownUntil: blockedUntil,\n        job: piLoginPublic(coolJob)\n      });\n    }\n",
+   "count": 1
+  },
+  {
+   "note": "Stop on Try again later as soon as admin.booking.com loads",
+   "find": "    if (process.env.BOOKING_CONNECT_AUTOFILL === '1') await piBookingTryFillLogin(page);\n    if (await piBookingPageLooksLoggedIn(page)) {\n      await piBookingFinishAndSave(job);\n      return;\n    }\n",
+   "replace": "    if (process.env.BOOKING_CONNECT_AUTOFILL === '1') await piBookingTryFillLogin(page);\n    const openSnip = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ').slice(0, 320);\n    job.pageSnippet = openSnip;\n    if (piBookingLooksBlockedText(openSnip)) {\n      piBookingMarkNetworkBlocked(job);\n      await piAirbnbInteractiveSnapshot(job, piBookingBlockedHint());\n      return;\n    }\n    if (await piBookingPageLooksLoggedIn(page)) {\n      await piBookingFinishAndSave(job);\n      return;\n    }\n",
+   "count": 1
+  },
+  {
+   "note": "Interactive poll marks a network block and stops inviting Type/Next",
+   "find": "  job.status = 'interactive';\n  job.error = null;\n  const snip = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ').slice(0, 320);\n  job.pageSnippet = snip;\n  const blocked = piBookingLooksBlockedText(snip);\n  const human = piBookingLooksHumanCheckText(snip);\n  await piAirbnbInteractiveSnapshot(job, human ? piBookingHumanCheckHint() : (blocked ? piBookingBlockedHint() : 'Log into admin.booking.com below. When the Extranet / Finance is visible, click Save session for Pull.'));\n",
+   "replace": "  job.error = null;\n  const snip = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ').slice(0, 320);\n  job.pageSnippet = snip;\n  if (piBookingLooksBlockedText(snip)) {\n    piBookingMarkNetworkBlocked(job);\n    await piAirbnbInteractiveSnapshot(job, piBookingBlockedHint());\n    return;\n  }\n  job.status = 'interactive';\n  const human = piBookingLooksHumanCheckText(snip);\n  await piAirbnbInteractiveSnapshot(job, human ? piBookingHumanCheckHint() : 'Log into admin.booking.com below. When the Extranet / Finance is visible, click Save session for Pull.');\n",
+   "count": 1
+  },
+  {
+   "note": "Click/Type/Enter/Save/Refresh refuse a blocked Booking.com page",
+   "find": "if (!job || !job.page || String(job.channel || '') !== 'booking') return res.status(409).json({ error: 'No active Booking.com browser', job: piLoginPublic(job) });",
+   "replace": "if (!job || !job.page || String(job.channel || '') !== 'booking') return res.status(409).json({ error: 'No active Booking.com browser', job: piLoginPublic(job) });\n    if (job.status === 'blocked' || job.networkBlocked) return res.status(409).json({ error: 'Booking.com blocked this server network. Do not retry from this page.', job: piLoginPublic(job) });",
+   "count": 5
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piBookingMarkNetworkBlocked",
+   "note": "records a server-IP block"
+  },
+  {
+   "has": "BOOKING_CONNECT_COOLDOWN_MS",
+   "note": "cooldown is configurable"
+  },
+  {
+   "has": "Do not retry now",
+   "note": "blocked hint tells the host not to retry"
+  },
+  {
+   "has": "networkBlocked: !!job.networkBlocked",
+   "note": "public job exposes the block"
+  },
+  {
+   "has": "status === 'blocked'",
+   "note": "Connect uses blocked status"
+  },
+  {
+   "hasNot": "Wait one minute, Cancel, then Connect Booking again",
+   "note": "no one-minute retry advice"
+  }
+ ]
+}

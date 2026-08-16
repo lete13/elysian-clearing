@@ -59,6 +59,8 @@ No manual pasting of codes. Booking.com pull is the group Finance → Invoices m
 | `BOOKING_STORAGE_STATE_B64` | Optional fallback. Prefer **Connect Booking** in the app (session vault) |
 | `AIRBNB_STORAGE_STATE_B64` | Optional fallback. Prefer **Connect Airbnb** in the app |
 | `PI_AIRBNB_LIMIT` | Optional max reservation codes (latest N by Hosthub created). Collect **Test pull** sends `HM9DCDMEXT` and `HMWRNAWHBA` by code. |
+| `PLAYWRIGHT_PROXY_SERVER` | Optional residential proxy when Airbnb or Booking.com blocks the Railway IP (`Sign-in failed / Try again later`) |
+| `BOOKING_CONNECT_COOLDOWN_MS` | After Booking.com blocks Connect, refuse new attempts for this many ms (default 4 hours). `0` disables. |
 
 ## Worker
 
@@ -107,6 +109,12 @@ AIRBNB_HOST_EMAIL='…' AIRBNB_HOST_PASSWORD='…' \
 
    If Airlock/bot checks keep blocking login, set optional `PLAYWRIGHT_PROXY_SERVER`
    (residential proxy).
+
+   **Connect Booking** opens headed Chrome on the server (`admin.booking.com`). If the
+   page says **Sign-in failed / Try again later**, that is Booking.com blocking the
+   Railway IP — not a wrong password. Do not retry; waiting a minute makes the block
+   last longer. Leave Collect closed for several hours, or set
+   `PLAYWRIGHT_PROXY_SERVER` to a residential proxy.
 
 3. Review → Ship.
 

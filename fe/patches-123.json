@@ -1,0 +1,59 @@
+{
+ "baseSha256": "c5dc8b3c880cfc897a3fdb059994786e3e4ce5c145dbbc633de69c8a46da12b1",
+ "expectedSha256": "bd62b2377e32868104554a2435cba3e95cc65ba3d4260d5e9eea5520f34ffdb8",
+ "builtAt": "2026-08-16 Booking.com Connect: server-IP block cooldown, do not retry",
+ "patches": [
+  {
+   "note": "Collect: Try again later is a server-network block, not a retry prompt",
+   "find": "If it says <b>Sign-in failed / Try again later</b>, wait a minute, Cancel, and Connect Booking again.",
+   "replace": "If it says <b>Sign-in failed / Try again later</b>, Booking.com blocked this server network — do not retry now; wait several hours.",
+   "count": 1
+  },
+  {
+   "note": "Do not keep the Type/Next panel when Booking.com has already blocked the server",
+   "find": "    if ((st === 'interactive' || st === 'starting' || st === 'logging_in') && document.getElementById('pi-booking-browser')) {",
+   "replace": "    var blockedNow = !!(job.networkBlocked) || st === 'blocked' || /sign[\\s-]?in failed|try again later|blocked this sign-in|blocked this server/i.test(String(job.hint || '') + ' ' + String(job.pageSnippet || ''));\n    if (!blockedNow && (st === 'interactive' || st === 'starting' || st === 'logging_in') && document.getElementById('pi-booking-browser')) {",
+   "count": 1
+  },
+  {
+   "note": "Blocked Connect hides Type/Next and tells the host not to retry",
+   "find": "    } else if (st === 'interactive') {\n      var browserRev = (job.interactive && job.interactive.rev) || Date.now();\n      body = '<div style=\"font-weight:600;margin-bottom:6px\">Operate Booking.com Extranet</div>' +\n        '<div id=\"pi-booking-browser-hint\" style=\"font-size:12.5px;line-height:1.45;margin-bottom:8px\">' +\n        (job.hint || 'Log into admin.booking.com. When Finance / the Extranet is visible, click Save session for Pull.') + '</div>' +\n        (job.browserKind ? ('<div style=\"font-size:11px;color:var(--tx3);margin-bottom:6px\">Server browser: <b>' + String(job.browserKind).replace(/</g,'') + '</b></div>') : '') +\n        (/HeadlessChrome/i.test(String(job.browserKind || '')) ? '<div style=\"margin:8px 0;padding:8px 10px;border:1px solid #b91c1c55;border-radius:8px;background:#b91c1c0d;font-size:12.5px;line-height:1.45\"><b>This is HeadlessChrome.</b> Booking.com will block Next. Cancel and retry after the server display is up — do not keep clicking Next.</div>' : '') +\n        '<div style=\"font-size:11px;color:var(--tx3);margin-bottom:6px\">This browser is running on the server. Use <b>admin.booking.com</b> (not www.booking.com). Type the username in the box — it goes into the username field. Wait for the password field. If Booking.com asks if you are human, click it in the image. Do not paste JSON.</div>' +\n        (/sign[\\s-]?in failed|try again later|blocked this sign-in/i.test(String(job.hint || '') + ' ' + String(job.pageSnippet || ''))\n          ? '<div style=\"margin:8px 0;padding:8px 10px;border:1px solid #b91c1c55;border-radius:8px;background:#b91c1c0d;font-size:12.5px;line-height:1.45\"><b>Booking.com blocked this attempt.</b> Wait one minute, Cancel, Connect Booking again, then type slowly and wait after Next.</div>'\n          : '') +\n        '<img id=\"pi-booking-browser\" alt=\"Interactive Booking.com browser\" data-rev=\"' + browserRev + '\" ' +\n        'src=\"/api/platform-invoices/sessions/booking/login/' + encodeURIComponent(job.id) + '/browser.png?v=' + browserRev + '\" ' +\n        'onclick=\"piBookingBrowserClick(event)\" ' +\n        'style=\"display:block;width:100%;max-width:720px;height:auto;border:1px solid var(--bdr);border-radius:8px;cursor:crosshair;background:#fff\" />' +\n        '<div style=\"display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px\">' +\n        '<input id=\"pi-booking-browser-text\" type=\"text\" autocomplete=\"off\" placeholder=\"Type into focused Booking.com field\" ' +\n        'style=\"min-width:230px;flex:1;padding:7px 9px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg2)\" ' +\n        'onkeydown=\"if(event.key===\\'Enter\\'){event.preventDefault();piBookingBrowserType();}\" />' +\n        '<button class=\"btn gold sm\" onclick=\"piBookingBrowserType()\">Type</button>' +\n        '<button class=\"btn sm\" onclick=\"piBookingBrowserKey(\\'Enter\\')\">Enter</button>' +\n        '<button class=\"btn sm\" onclick=\"piBookingBrowserKey(\\'Tab\\')\">Tab</button>' +\n        '<button class=\"btn sm\" onclick=\"piBookingBrowserKey(\\'Backspace\\')\">⌫</button>' +\n        '<button class=\"btn sm\" onclick=\"piBookingBrowserRefresh()\">Refresh screen</button>' +\n        '<button class=\"btn gold sm\" onclick=\"piBookingBrowserSave()\">Save session for Pull</button>' +\n        '<button class=\"btn sm\" onclick=\"piCancelBookingConnect()\">Cancel</button>' +\n        '</div>' +\n        '<div style=\"font-size:10.5px;color:var(--tx3);margin-top:5px\">Tip: click a field in the image, type in the box above, then press Type or Enter. Password values go only to this Booking.com browser.</div>';\n",
+   "replace": "    } else if (st === 'interactive' || st === 'blocked') {\n      var browserRev = (job.interactive && job.interactive.rev) || Date.now();\n      var netBlocked = !!(job.networkBlocked) || st === 'blocked' || /sign[\\s-]?in failed|try again later|blocked this sign-in|blocked this server/i.test(String(job.hint || '') + ' ' + String(job.pageSnippet || ''));\n      var remain = '';\n      if (netBlocked && job.cooldownUntil) {\n        var mins = Math.max(1, Math.ceil((Number(job.cooldownUntil) - Date.now()) / 60000));\n        remain = ' Wait about ' + mins + ' more minutes.';\n      }\n      var hasShot = !!(job.id && job.id !== 'cooldown' && (job.interactive || st === 'interactive' || st === 'blocked'));\n      body = '<div style=\"font-weight:600;margin-bottom:6px\">' + (netBlocked ? 'Booking.com blocked this server' : 'Operate Booking.com Extranet') + '</div>' +\n        '<div id=\"pi-booking-browser-hint\" style=\"font-size:12.5px;line-height:1.45;margin-bottom:8px\">' +\n        (job.hint || 'Log into admin.booking.com. When Finance / the Extranet is visible, click Save session for Pull.') + '</div>' +\n        (job.browserKind ? ('<div style=\"font-size:11px;color:var(--tx3);margin-bottom:6px\">Server browser: <b>' + String(job.browserKind).replace(/</g,'') + '</b></div>') : '') +\n        (/HeadlessChrome/i.test(String(job.browserKind || '')) ? '<div style=\"margin:8px 0;padding:8px 10px;border:1px solid #b91c1c55;border-radius:8px;background:#b91c1c0d;font-size:12.5px;line-height:1.45\"><b>This is HeadlessChrome.</b> Booking.com will block Next. Cancel and retry after the server display is up — do not keep clicking Next.</div>' : '') +\n        '<div style=\"font-size:11px;color:var(--tx3);margin-bottom:6px\">This browser is running on the server. Use <b>admin.booking.com</b> (not www.booking.com). Type the username in the box — it goes into the username field. Wait for the password field. If Booking.com asks if you are human, click it in the image. Do not paste JSON.</div>' +\n        (netBlocked\n          ? '<div style=\"margin:8px 0;padding:8px 10px;border:1px solid #b91c1c55;border-radius:8px;background:#b91c1c0d;font-size:12.5px;line-height:1.45\"><b>Booking.com blocked this attempt.</b> This is not a wrong password. Booking.com blocked this server network (Sign-in failed / Try again later). Do not retry now — waiting a minute makes it worse. Leave Collect closed for several hours.' + remain + '</div>'\n          : '') +\n        (hasShot ? ('<img id=\"pi-booking-browser\" alt=\"Interactive Booking.com browser\" data-rev=\"' + browserRev + '\" ' +\n        'src=\"/api/platform-invoices/sessions/booking/login/' + encodeURIComponent(job.id) + '/browser.png?v=' + browserRev + '\" ' +\n        (netBlocked ? '' : 'onclick=\"piBookingBrowserClick(event)\" ') +\n        'style=\"display:block;width:100%;max-width:720px;height:auto;border:1px solid var(--bdr);border-radius:8px;' + (netBlocked ? 'background:#fff' : 'cursor:crosshair;background:#fff') + '\" />') : '') +\n        (netBlocked\n          ? ('<div style=\"margin-top:10px\"><button class=\"btn sm\" onclick=\"piCancelBookingConnect()\">Cancel</button></div>')\n          : ('<div style=\"display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px\">' +\n        '<input id=\"pi-booking-browser-text\" type=\"text\" autocomplete=\"off\" placeholder=\"Type into focused Booking.com field\" ' +\n        'style=\"min-width:230px;flex:1;padding:7px 9px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg2)\" ' +\n        'onkeydown=\"if(event.key===\\'Enter\\'){event.preventDefault();piBookingBrowserType();}\" />' +\n        '<button class=\"btn gold sm\" onclick=\"piBookingBrowserType()\">Type</button>' +\n        '<button class=\"btn sm\" onclick=\"piBookingBrowserKey(\\'Enter\\')\">Enter</button>' +\n        '<button class=\"btn sm\" onclick=\"piBookingBrowserKey(\\'Tab\\')\">Tab</button>' +\n        '<button class=\"btn sm\" onclick=\"piBookingBrowserKey(\\'Backspace\\')\">⌫</button>' +\n        '<button class=\"btn sm\" onclick=\"piBookingBrowserRefresh()\">Refresh screen</button>' +\n        '<button class=\"btn gold sm\" onclick=\"piBookingBrowserSave()\">Save session for Pull</button>' +\n        '<button class=\"btn sm\" onclick=\"piCancelBookingConnect()\">Cancel</button>' +\n        '</div>' +\n        '<div style=\"font-size:10.5px;color:var(--tx3);margin-top:5px\">Tip: click a field in the image, type in the box above, then press Type or Enter. Password values go only to this Booking.com browser.</div>'));\n",
+   "count": 1
+  },
+  {
+   "note": "Connect start shows the cooldown job instead of a generic failure",
+   "find": "      if (!res.ok || !j.ok) throw new Error((j && j.error) || (j && j.hint) || 'connect start failed');\n      window._piBookingLoginId = j.job && j.job.id;",
+   "replace": "      if (j && j.job && (j.job.status === 'blocked' || j.job.networkBlocked)) {\n        window._piBookingLoginId = (j.job.id && j.job.id !== 'cooldown') ? j.job.id : null;\n        if (window._piBookingLoginTimer) { clearInterval(window._piBookingLoginTimer); window._piBookingLoginTimer = null; }\n        piRenderBookingConnect(j.job);\n        msg((j && j.error) || j.job.hint || 'Booking.com blocked this server network', false);\n        return;\n      }\n      if (!res.ok || !j.ok) throw new Error((j && j.error) || (j && j.hint) || 'connect start failed');\n      window._piBookingLoginId = j.job && j.job.id;",
+   "count": 1
+  },
+  {
+   "note": "Stop polling once Booking.com has blocked this server",
+   "find": "      } else if (r.job.status === 'error') {\n        if (window._piBookingLoginTimer) { clearInterval(window._piBookingLoginTimer); window._piBookingLoginTimer = null; }\n        msg(r.job.error || 'Connect failed', false);\n      }",
+   "replace": "      } else if (r.job.status === 'error' || r.job.status === 'blocked' || r.job.networkBlocked) {\n        if (window._piBookingLoginTimer) { clearInterval(window._piBookingLoginTimer); window._piBookingLoginTimer = null; }\n        if (r.job.status === 'error') msg(r.job.error || 'Connect failed', false);\n        else msg(r.job.hint || 'Booking.com blocked this server network', false);\n      }",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Do not retry now",
+   "note": "Collect tells the host not to retry a network block"
+  },
+  {
+   "has": "blocked this server network",
+   "note": "names the server-network block"
+  },
+  {
+   "has": "Booking.com blocked this attempt",
+   "note": "keeps the in-app block banner"
+  },
+  {
+   "has": "st === 'blocked'",
+   "note": "renders blocked Connect state"
+  },
+  {
+   "hasNot": "wait a minute, Cancel, and Connect Booking again",
+   "note": "does not tell the host to retry in a minute"
+  }
+ ]
+}

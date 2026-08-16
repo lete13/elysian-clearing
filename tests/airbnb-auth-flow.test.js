@@ -624,6 +624,29 @@ async function main() {
   assert(frontend.includes('wait for the password field'), 'Collect says wait after username');
   assert(frontend.includes('it is filled for you') || frontend.includes('it goes into the username field'), 'Collect says Type fills username');
   assert(frontend.includes('Server browser:'), 'Collect shows which Chrome launched');
+  assert(frontend.includes('Do not retry now'), 'Collect tells the host not to retry a Booking.com network block');
+  assert(frontend.includes('blocked this server network'), 'Collect names the server-network block');
+  assert(!frontend.includes('wait a minute, Cancel, and Connect Booking again'), 'Collect does not tell the host to retry in a minute');
+  assert(server.includes('piBookingMarkNetworkBlocked'), 'Booking Connect records a server-IP block');
+  assert(server.includes('BOOKING_CONNECT_COOLDOWN_MS'), 'Booking Connect cooldown is configurable');
+  const hintSrc = extractFn(server, 'piBookingBlockedHint');
+  const hintCtx = {};
+  vm.runInNewContext(hintSrc + '\nthis.hint = piBookingBlockedHint;', hintCtx);
+  assert(hintCtx.hint().includes('Do not retry now'), 'blocked hint says do not retry');
+  assert(!hintCtx.hint().includes('Wait one minute'), 'blocked hint does not say wait one minute');
+  const cdSrc = extractFn(server, 'piBookingCooldownMs');
+  const cdCtx = { process: { env: {} } };
+  vm.runInNewContext(cdSrc + '\nthis.ms = piBookingCooldownMs;', cdCtx);
+  assert.strictEqual(cdCtx.ms(), 4 * 60 * 60 * 1000, 'default Booking Connect cooldown is 4 hours');
+  const cdZero = { process: { env: { BOOKING_CONNECT_COOLDOWN_MS: '0' } } };
+  vm.runInNewContext(cdSrc + '\nthis.ms = piBookingCooldownMs;', cdZero);
+  assert.strictEqual(cdZero.ms(), 0, 'BOOKING_CONNECT_COOLDOWN_MS=0 disables cooldown');
+  const blockedPub = loginPublicCtx.pub({
+    id: 'bk1', channel: 'booking', status: 'blocked', networkBlocked: true, cooldownUntil: 99,
+    createdAt: 1, updatedAt: 2,
+  });
+  assert.strictEqual(blockedPub.networkBlocked, true, 'public job exposes networkBlocked');
+  assert.strictEqual(blockedPub.cooldownUntil, 99, 'public job exposes cooldownUntil');
 
   console.log('airbnb auth flow OK: interactive in-app browser, background Pull harvest, sanitized OTP diagnostics, Booking.com in-app Connect');
 }
