@@ -45,7 +45,7 @@ Same idea as [VAT Invoicer](https://vatinvoicer.com/privacy/): while logged into
 
 Airbnb does not expose a labeled download link on the reservation details page — that is why looking only for `a[href]` with the word “invoice” saved 0 PDFs.
 
-No manual pasting of codes. Booking.com remains available but is secondary while Airbnb Hosthub pull is the focus.
+No manual pasting of codes. Booking.com pull is the group Finance → Invoices mass extract for the document month (`channel=booking`).
 
 ## Railway variables
 
@@ -64,7 +64,7 @@ No manual pasting of codes. Booking.com remains available but is secondary while
 
 1. Reuses Airbnb / Booking session vault (or password login).
 2. **Airbnb:** for each Hosthub confirmation code → reservation page → **every** VAT invoice / credit note HTML → PDF stored as `Airbnb/{issue-month}/{apartment}/{kind}-{code}-{vatId}.pdf`.
-3. **Booking.com (optional):** admin.booking.com Finance → Invoices, one PDF per property.
+3. **Booking.com:** group **Finance → Invoices** mass extract for document month M (June stays → July invoice). One PDF per Booking property; **Votsala 1–8 share one PDF** filed under `Votsala`. Filing key is `bookingHotelId` (unmapped → `unmapped-{id}`). No per-property homepage walk. No Booking.com Excel.
 4. `POST /api/platform-invoices/pull` stores them in `platform_invoices` with `source=portal`.
 
 CLI with codes:
@@ -72,6 +72,13 @@ CLI with codes:
 ```bash
 PI_AIRBNB_RESERVATIONS_JSON='[{"code":"HMXXXXXXX","kind":"invoice","aptName":"Birdhouse"}]' \
   npm run pull:platform-invoices -- --month=2026-07 --channel=airbnb --out=/tmp/pi-out
+```
+
+Booking.com (session vault or `BOOKING_HOST_EMAIL` / `BOOKING_HOST_PASSWORD`):
+
+```bash
+PI_APARTMENTS_JSON='[{"aptId":"b1","aptName":"Birdhouse","bookingHotelId":"10980606"}]' \
+  npm run pull:platform-invoices -- --month=2026-07 --channel=booking --out=/tmp/pi-out
 ```
 
 Airbnb may ask for an **email/SMS code** on password login. Connect once:

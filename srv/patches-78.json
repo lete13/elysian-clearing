@@ -1,0 +1,67 @@
+{
+ "baseSha256": "641ad5bf73c52e5a1883095943a846af4152faa7b1092a3e591082a05294a589",
+ "expectedSha256": "02cd43516a7054d77042ac61131c1f4e1072fd1adefe74ffeabfc3c1997177e4",
+ "builtAt": "2026-08-16 Booking.com pull job hints + keep bookingHotelId",
+ "patches": [
+  {
+   "note": "Keep bookingHotelId when a stale client save sends it blank",
+   "find": "['ownerEmail','ownerEmail2','ownerEmail3','clearGroup','ownerName','ownerSurname','ownerPhone']",
+   "replace": "['ownerEmail','ownerEmail2','ownerEmail3','clearGroup','bookingHotelId','ownerName','ownerSurname','ownerPhone']",
+   "count": 1
+  },
+  {
+   "note": "Progress hint names Booking.com when that channel is running",
+   "find": "      job.hint = 'Pulling Airbnb ' + (j.done || 0) + '/' + (j.total || 0) +\n        (j.code ? (' · ' + j.code) : '') +\n        (j.skipped ? ' · already in vault' : '') +\n        (j.saved ? (' · ' + j.saved + ' PDF(s) so far') : '') + '…';",
+   "replace": "      job.hint = (String(job.channel || '').toLowerCase() === 'booking' ? 'Pulling Booking.com ' : 'Pulling Airbnb ') + (j.done || 0) + '/' + (j.total || 0) +\n        (j.code ? (' · ' + j.code) : '') +\n        (j.skipped ? ' · already in vault' : '') +\n        (j.saved ? (' · ' + j.saved + ' PDF(s) so far') : '') + '…';",
+   "count": 1
+  },
+  {
+   "note": "Job start hint is channel-aware",
+   "find": "  job.hint = 'Saving the live Airbnb session, then pulling VAT PDFs…';",
+   "replace": "  job.hint = String(channel).toLowerCase() === 'booking'\n    ? 'Saving the live Booking.com session, then mass-extracting invoices…'\n    : 'Saving the live Airbnb session, then pulling VAT PDFs…';",
+   "count": 1
+  },
+  {
+   "note": "Booking.com pull hint after sessions materialize",
+   "find": "  job.hint = (limitN > 0 ? 'Test pull (latest): ' : '') + 'Pulling Airbnb VAT PDFs from ' + airbnbReservations.length + ' Hosthub code(s)…';",
+   "replace": "  job.hint = String(channel).toLowerCase() === 'booking'\n    ? ('Mass-extracting Booking.com invoices for ' + month + '…')\n    : ((limitN > 0 ? 'Test pull (latest): ' : '') + 'Pulling Airbnb VAT PDFs from ' + airbnbReservations.length + ' Hosthub code(s)…');",
+   "count": 1
+  },
+  {
+   "note": "Reconnect hint covers a cleared Booking session",
+   "find": "      job.reconnectHint = cleared.indexOf('airbnb') >= 0\n        ? 'Airbnb session cleared. Click Connect Airbnb in Collect, enter the email code, wait until it says connected, then Pull again. Do not paste session JSON.'\n        : undefined;",
+   "replace": "      job.reconnectHint = cleared.indexOf('airbnb') >= 0\n        ? 'Airbnb session cleared. Click Connect Airbnb in Collect, enter the email code, wait until it says connected, then Pull again. Do not paste session JSON.'\n        : (cleared.indexOf('booking') >= 0\n        ? 'Booking.com session cleared. Click Connect Booking in Collect, then Pull Booking.com again.'\n        : undefined);",
+   "count": 1
+  },
+  {
+   "note": "Done hint for Booking.com mass extract",
+   "find": "        job.hint = saved.length\n          ? ('Pulled ' + saved.length + ' Airbnb PDF(s) from ' + job.airbnbCodes + ' Hosthub code(s).')\n          : ('Airbnb pull saved 0 PDFs from ' + job.airbnbCodes + ' Hosthub code(s).');",
+   "replace": "        job.hint = String(channel).toLowerCase() === 'booking'\n          ? (saved.length ? ('Pulled ' + saved.length + ' Booking.com PDF(s).') : ('Booking.com pull saved 0 PDFs.'))\n          : (saved.length\n          ? ('Pulled ' + saved.length + ' Airbnb PDF(s) from ' + job.airbnbCodes + ' Hosthub code(s).')\n          : ('Airbnb pull saved 0 PDFs from ' + job.airbnbCodes + ' Hosthub code(s).'));",
+   "count": 1
+  },
+  {
+   "note": "POST /pull starting hint is channel-aware",
+   "find": "    hint: 'Starting Airbnb pull in the background…',",
+   "replace": "    hint: String(channel).toLowerCase() === 'booking'\n      ? 'Starting Booking.com pull in the background…'\n      : 'Starting Airbnb pull in the background…',",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "bookingHotelId",
+   "note": "merge keeps Booking id"
+  },
+  {
+   "has": "Mass-extracting Booking.com invoices",
+   "note": "booking job hint"
+  },
+  {
+   "has": "Starting Booking.com pull in the background",
+   "note": "POST hint"
+  },
+  {
+   "has": "Pulled ' + saved.length + ' Booking.com PDF(s).",
+   "note": "done hint"
+  }
+ ]
+}

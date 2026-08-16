@@ -16,7 +16,7 @@
  *   BOOKING_HOST_EMAIL / BOOKING_HOST_PASSWORD
  *   PLAYWRIGHT_PROXY_SERVER (optional, e.g. http://user:pass@host:port)
  *   AIRBNB_OTP (optional one-shot code if password login hits OTP)
- *   PI_APARTMENTS_JSON (optional JSON array of {aptId,aptName} for partner matching)
+ *   PI_APARTMENTS_JSON (optional JSON array of {aptId,aptName,bookingHotelId,clearGroup})
  *   PI_AIRBNB_RESERVATIONS_JSON — Hosthub-driven Airbnb codes (VAT Invoicer-style):
  *     JSON array of {code, kind:'invoice'|'credit_note'|'both', aptId, aptName, guestName, created, createdOnChannel, checkIn, checkOut}
  *     Worker opens /hosting/stay/{CODE} (Airbnb's current reservation page), clicks the
@@ -26,7 +26,9 @@
  *     + credit of that debit + new debit. Filenames are kind-{code}-{vatId}.pdf.
  *   PI_AIRBNB_LIMIT — optional max codes (Collect "Test pull (5 codes)" = latest N by created).
  *
- * Booking.com: https://admin.booking.com/ — one invoice per property/apartment.
+ * Booking.com: https://admin.booking.com/ group Finance → Invoices mass extract
+ * for document month M (June stays → July invoice). One PDF per Booking property;
+ * Votsala 1–8 share one id / one PDF. Filing uses bookingHotelId only.
  * Dating: Booking invoice month M covers bookings from M−1;
  *         Airbnb VAT file month = invoice issue date on the VAT HTML (extensions reissue).
  */
@@ -35,6 +37,7 @@
 const fs = require('fs');
 const path = require('path');
 const { issueDateToMonth } = require('./platform-invoice-accountant-xls');
+const booking = require('./platform-invoice-booking');
 
 function arg(name, def) {
   const p = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -1799,267 +1802,37 @@ function onAdminExtranet(url) {
   }
 }
 
-async function listBookingProperties(page) {
-  const found = [];
-  const tryUrls = [
-    'https://admin.booking.com/hotel/hoteladmin/groups/home/index.html',
-    'https://admin.booking.com/hotel/hoteladmin/groups/home.html',
-    'https://admin.booking.com/',
-  ];
-  for (const u of tryUrls) {
-    await page.goto(u, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
-    await page.waitForTimeout(2000);
-    if (!page.url().includes('admin.booking.com')) continue;
-    const rows = await page
-      .$$eval(
-        'a[href*="hotel_id"], a[href*="hoteladmin"], a[href*="extranet_ng"], [data-testid*="property"] a, table a',
-        (as) => {
-          const out = [];
-          const seen = new Set();
-          as.forEach((a) => {
-            const href = a.getAttribute('href') || '';
-            if (!/hotel_id|hoteladmin|extranet/i.test(href)) return;
-            let abs = href;
-            try {
-              abs = new URL(href, location.origin).href;
-            } catch (e) {}
-            if (!/admin\.booking\.com/i.test(abs)) return;
-            if (/login|sign-in|account\.booking/i.test(abs)) return;
-            const name = (a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-            const key = abs.replace(/#.*$/, '');
-            if (seen.has(key)) return;
-            seen.add(key);
-            out.push({ url: key, name: name || key });
-          });
-          return out.slice(0, 80);
-        }
-      )
-      .catch(() => []);
-    for (const r of rows) {
-      if (!found.some((f) => f.url === r.url)) found.push(r);
-    }
-    if (found.length >= 2) break;
+async function bookingAcceptCookies(page) {
+  for (const sel of [
+    'button:has-text("Accept")',
+    'button:has-text("Agree")',
+    '#onetrust-accept-btn-handler',
+  ]) {
+    const b = page.locator(sel).first();
+    if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
   }
-  if (!found.length) {
-    found.push({ url: page.url(), name: 'current' });
-  }
-  return found;
 }
 
-async function downloadBookingInvoicesForProperty(page, month, dir, files, errors, prop, apts) {
-  const [year, mon] = month.split('-').map(Number);
-  const monthNames = [
-    '',
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-  const apt = matchApartment(prop.name, apts);
-  const partner = apt.aptId || apt.aptName || prop.name || '';
-
-  // Keep hotel_id when present so invoices page stays in property context
-  let hotelQ = '';
-  try {
-    const u = new URL(prop.url);
-    hotelQ = u.search || '';
-  } catch (e) {}
-
-  const invoiceUrls = [
-    'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/finance/invoices.html' + hotelQ,
-    'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/finance/invoice.html' + hotelQ,
-    'https://admin.booking.com/hotel/hoteladmin/finance_invoices.html' + hotelQ,
-    'https://admin.booking.com/hotel/hoteladmin/finance/invoices.html' + hotelQ,
-    'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/documents.html' + hotelQ,
-  ];
-
-  if (prop.url && /hoteladmin|extranet/i.test(prop.url)) {
-    await page.goto(prop.url, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
-    await page.waitForTimeout(1500);
-  }
-
-  let opened = false;
-  for (const u of invoiceUrls) {
-    const res = await page.goto(u, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
-    await page.waitForTimeout(1200);
-    const url = page.url();
-    const text = await page.locator('body').innerText().catch(() => '');
-    if (
-      url.includes('admin.booking.com') &&
-      /invoice|τιμολ|finance|document/i.test(text + url) &&
-      !/sign.?in|log.?in|loginname/i.test(url)
-    ) {
-      opened = true;
-      break;
-    }
-    if (res && res.ok() && url.includes('admin.booking.com') && !/login/i.test(url)) {
-      opened = true;
-      break;
-    }
-  }
-  if (!opened) {
-    for (const label of ['Finance', 'Invoices', 'Documents', 'Οικονομικά', 'Τιμολόγια']) {
-      const fin = page.locator(`a:has-text("${label}"), button:has-text("${label}"), [role="link"]:has-text("${label}")`).first();
-      if (await fin.count()) {
-        await fin.click().catch(() => {});
-        await page.waitForTimeout(1500);
-        if (page.url().includes('admin.booking.com')) {
-          opened = true;
-          break;
-        }
-      }
-    }
-  }
-  if (!opened) {
-    errors.push({
-      channel: 'booking',
-      property: prop.name,
-      error: 'Could not open Finance/Invoices for property',
-      url: page.url(),
-    });
-    return 0;
-  }
-
-  const monthLabel = monthNames[mon] || String(mon);
-  const monthSelect = page.locator('select[name*="month" i], select[id*="month" i], [data-testid*="month"] select').first();
-  if (await monthSelect.count()) {
-    await monthSelect.selectOption({ label: monthLabel }).catch(() =>
-      monthSelect.selectOption({ value: String(mon) }).catch(() =>
-        monthSelect.selectOption({ value: String(mon).padStart(2, '0') }).catch(() => {})
-      )
-    );
-  }
-  const yearSelect = page.locator('select[name*="year" i], select[id*="year" i], [data-testid*="year"] select').first();
-  if (await yearSelect.count()) {
-    await yearSelect.selectOption({ value: String(year) }).catch(() =>
-      yearSelect.selectOption({ label: String(year) }).catch(() => {})
-    );
-  }
-
-  const gen = page
-    .locator(
-      'button:has-text("Generate"), a:has-text("Generate"), button:has-text("All outstanding"), a:has-text("All outstanding"), button:has-text("Download all"), a:has-text("Download all")'
-    )
-    .first();
-  if (await gen.count()) await gen.click().catch(() => {});
-  await page.waitForTimeout(2000);
-
-  const dlLoc = page.locator(
-    'a[href*=".pdf"], a[download], a:has-text("PDF"), a:has-text("Download"), button:has-text("Download"), a:has-text("outstanding")'
-  );
-  const n = await dlLoc.count();
-  let got = 0;
-  for (let i = 0; i < Math.min(n, 15); i++) {
-    const el = dlLoc.nth(i);
-    const label = ((await el.innerText().catch(() => '')) + ' ' + (await el.getAttribute('href').catch(() => ''))).toLowerCase();
-    if (label && !/\.pdf|download|invoice|outstanding|τιμολ/.test(label)) continue;
-    const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 20000 }).catch(() => null),
-      el.click({ timeout: 5000 }).catch(() => null),
-    ]);
-    if (!download) continue;
-    const aptName = apt.aptName || prop.name || partner || 'Apartment';
-    const rel = piInvoiceStoreRel({
-      channel: 'booking',
-      month,
-      aptName,
-      kind: 'invoice',
-      code: String(apt.aptId || aptName || 'apt').replace(/\s+/g, '_').slice(0, 40),
-    });
-    const storeRoot = path.resolve(dir, '..');
-    const abs = path.join(storeRoot, rel);
-    ensureDir(path.dirname(abs));
-    const saved = await saveDownload(download, path.dirname(abs), path.basename(rel));
-    files.push({
-      channel: 'booking',
-      kind: 'invoice',
-      scope: 'leased',
-      partner: aptName,
-      aptName,
-      filename: rel.replace(/\\/g, '/'),
-      path: saved.path,
-      bytes: saved.bytes,
-      source: 'portal',
-    });
-    emitJson({
-      event: 'saved',
-      channel: 'booking',
-      kind: 'invoice',
-      partner: aptName,
-      aptName,
-      filename: rel.replace(/\\/g, '/'),
-      path: saved.path,
-      bytes: saved.bytes,
-    });
-    got++;
-    // Booking = one invoice per apartment — stop after first PDF for this property
-    break;
-  }
-  if (!got) {
-    errors.push({
-      channel: 'booking',
-      property: prop.name,
-      error: 'No PDF download on invoices page for this apartment',
-      url: page.url(),
-    });
-    await page
-      .screenshot({
-        path: path.join(dir, '_invoices-' + String(prop.name || 'x').replace(/[^\w.\-]+/g, '_').slice(0, 30) + '.png'),
-        fullPage: true,
-      })
-      .catch(() => {});
-  }
-  return got;
-}
-
-/**
- * Booking.com host extranet — ALWAYS via https://admin.booking.com/
- * Pulls one invoice per property (apartment).
- */
-async function pullBooking(page, context, month, outDir, files, errors) {
+async function ensureBookingLoggedIn(page, context, dir, errors) {
   const email = process.env.BOOKING_HOST_EMAIL || '';
   const pass = process.env.BOOKING_HOST_PASSWORD || '';
   const stored = await loadStorageState('BOOKING');
   if (stored && stored.__error) {
     errors.push({ channel: 'booking', error: 'BOOKING session invalid: ' + stored.__error });
-    return;
+    return false;
   }
   if (!stored && (!email || !pass)) {
     errors.push({
       channel: 'booking',
       error: 'Connect Booking session (or set BOOKING_HOST_EMAIL / BOOKING_HOST_PASSWORD)',
     });
-    return;
+    return false;
   }
-  const dir = path.join(outDir, 'booking');
-  ensureDir(dir);
-  const apts = loadApartments();
-
   try {
     if (!stored) {
-      await page.goto('https://admin.booking.com/', {
-        waitUntil: 'domcontentloaded',
-        timeout: 60000,
-      });
+      await page.goto('https://admin.booking.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForTimeout(2500);
-
-      for (const sel of [
-        'button:has-text("Accept")',
-        'button:has-text("Agree")',
-        '#onetrust-accept-btn-handler',
-      ]) {
-        const b = page.locator(sel).first();
-        if (await b.count()) await b.click({ timeout: 2000 }).catch(() => {});
-      }
-
+      await bookingAcceptCookies(page);
       const emailInput = page.locator('#loginname, input[name="loginname"]').first();
       await emailInput.waitFor({ state: 'visible', timeout: 30000 });
       await emailInput.fill(email);
@@ -2068,7 +1841,6 @@ async function pullBooking(page, context, month, outDir, files, errors) {
         .first()
         .click({ timeout: 10000 });
       await page.waitForTimeout(2500);
-
       const bodyAfterNext = await page.locator('body').innerText().catch(() => '');
       if (/make sure you.re human|are you human|captcha/i.test(bodyAfterNext)) {
         errors.push({
@@ -2078,9 +1850,8 @@ async function pullBooking(page, context, month, outDir, files, errors) {
           url: page.url(),
         });
         await page.screenshot({ path: path.join(dir, '_captcha.png'), fullPage: true }).catch(() => {});
-        return;
+        return false;
       }
-
       const passInput = page
         .locator('input[type="password"]:not([id="hidden-password"]), input[name="password"], #password')
         .first();
@@ -2093,7 +1864,6 @@ async function pullBooking(page, context, month, outDir, files, errors) {
         .first()
         .click();
       await page.waitForTimeout(5000);
-
       for (let i = 0; i < 20; i++) {
         const url = page.url();
         if (onAdminExtranet(url) || (url.includes('admin.booking.com') && !/login|sign-in/i.test(url))) break;
@@ -2105,7 +1875,7 @@ async function pullBooking(page, context, month, outDir, files, errors) {
             url,
           });
           await page.screenshot({ path: path.join(dir, '_login-blocked.png'), fullPage: true }).catch(() => {});
-          return;
+          return false;
         }
         await page.waitForTimeout(1000);
       }
@@ -2113,7 +1883,6 @@ async function pullBooking(page, context, month, outDir, files, errors) {
       await page.goto('https://admin.booking.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForTimeout(2500);
     }
-
     if (!page.url().includes('admin.booking.com') || /login|sign-in|loginname/i.test(page.url())) {
       errors.push({
         channel: 'booking',
@@ -2121,26 +1890,341 @@ async function pullBooking(page, context, month, outDir, files, errors) {
         url: page.url(),
       });
       await page.screenshot({ path: path.join(dir, '_wrong-host.png'), fullPage: true }).catch(() => {});
-      return;
+      return false;
     }
-
     await persistSession('BOOKING', context);
     await page.screenshot({ path: path.join(dir, '_after-login.png'), fullPage: true }).catch(() => {});
+    return true;
+  } catch (e) {
+    errors.push({ channel: 'booking', error: e.message, url: page.url() });
+    await page.screenshot({ path: path.join(dir, '_error.png'), fullPage: true }).catch(() => {});
+    return false;
+  }
+}
 
-    const props = await listBookingProperties(page);
-    let total = 0;
-    for (const prop of props) {
-      total += await downloadBookingInvoicesForProperty(page, month, dir, files, errors, prop, apts);
+async function bookingClickNav(page, labels) {
+  for (const label of labels) {
+    const loc = page.locator(`a:has-text("${label}"), button:has-text("${label}"), [role="link"]:has-text("${label}")`).first();
+    if (await loc.count()) {
+      await loc.click({ timeout: 4000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      return true;
     }
-    if (!total) {
+  }
+  return false;
+}
+
+async function openBookingInvoicesPage(page, dir, errors) {
+  for (const u of booking.BOOKING_INVOICE_URLS) {
+    if (pullStopRequested()) return false;
+    await page.goto(u, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
+    await page.waitForTimeout(1800);
+    await bookingAcceptCookies(page);
+    const url = page.url();
+    const text = await page.locator('body').innerText().catch(() => '');
+    if (/login|sign-in|loginname/i.test(url)) continue;
+    if (!url.includes('admin.booking.com')) continue;
+    if (/invoice|τιμολ|finance|document|οικονομ/i.test(text + url)) {
+      if (!/invoice|τιμολ/i.test(text + url)) {
+        await bookingClickNav(page, ['Finance', 'Invoices', 'Documents', 'Οικονομικά', 'Τιμολόγια']);
+      }
+      await page.screenshot({ path: path.join(dir, '_invoices.png'), fullPage: true }).catch(() => {});
+      return true;
+    }
+    const clicked = await bookingClickNav(page, ['Finance', 'Invoices', 'Documents', 'Οικονομικά', 'Τιμολόγια']);
+    if (clicked) {
+      const t2 = await page.locator('body').innerText().catch(() => '');
+      if (/invoice|τιμολ|finance|document/i.test(t2 + page.url())) {
+        await page.screenshot({ path: path.join(dir, '_invoices.png'), fullPage: true }).catch(() => {});
+        return true;
+      }
+    }
+  }
+  errors.push({
+    channel: 'booking',
+    error: 'Could not open group Finance → Invoices on admin.booking.com',
+    url: page.url(),
+  });
+  await page.screenshot({ path: path.join(dir, '_no-invoices.png'), fullPage: true }).catch(() => {});
+  return false;
+}
+
+async function bookingSelectMonth(page, month) {
+  const [year, mon] = String(month).split('-').map(Number);
+  const monthLabel = booking.MONTH_NAMES_EN[mon] || String(mon);
+  const monthEl = booking.MONTH_NAMES_EL[mon] || '';
+  const monthSelect = page.locator('select[name*="month" i], select[id*="month" i], [data-testid*="month"] select').first();
+  if (await monthSelect.count()) {
+    await monthSelect
+      .selectOption({ label: monthLabel })
+      .catch(() => monthSelect.selectOption({ value: String(mon) }).catch(() =>
+        monthSelect.selectOption({ value: String(mon).padStart(2, '0') }).catch(() => {})
+      ));
+  }
+  const yearSelect = page.locator('select[name*="year" i], select[id*="year" i], [data-testid*="year"] select').first();
+  if (await yearSelect.count()) {
+    await yearSelect.selectOption({ value: String(year) }).catch(() =>
+      yearSelect.selectOption({ label: String(year) }).catch(() => {})
+    );
+  }
+  for (const label of [monthLabel + ' ' + year, monthLabel, monthEl, String(year)].filter(Boolean)) {
+    const chip = page.locator(`button:has-text("${label}"), a:has-text("${label}"), [role="option"]:has-text("${label}")`).first();
+    if (await chip.count()) {
+      await chip.click({ timeout: 2500 }).catch(() => {});
+      break;
+    }
+  }
+  const apply = page.locator('button:has-text("Apply"), button:has-text("Filter"), button:has-text("Search"), button:has-text("Εφαρμογή")').first();
+  if (await apply.count()) await apply.click({ timeout: 2500 }).catch(() => {});
+  await page.waitForTimeout(2000);
+}
+
+async function bookingClickMassExtract(page) {
+  const gen = page.locator(
+    [
+      'button:has-text("Download all")',
+      'a:has-text("Download all")',
+      'button:has-text("Download all invoices")',
+      'a:has-text("Download all invoices")',
+      'button:has-text("Generate")',
+      'a:has-text("Generate")',
+      'button:has-text("All outstanding")',
+      'a:has-text("All outstanding")',
+      'button:has-text("Export")',
+      'a:has-text("Export")',
+      'button:has-text("Λήψη όλων")',
+      'a:has-text("Λήψη όλων")',
+    ].join(', ')
+  ).first();
+  if (await gen.count()) {
+    await gen.click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2500);
+    return true;
+  }
+  return false;
+}
+
+async function fetchBookingPdf(page, url) {
+  const abs = new URL(url, page.url()).href;
+  const resp = await page.request.get(abs, { timeout: 60000 });
+  const buf = Buffer.from(await resp.body());
+  return buf;
+}
+
+function fileBookingPdf(buf, meta, month, dir, files, apts) {
+  if (!booking.looksLikePdf(buf)) return null;
+  const text = booking.pdfExtractText(buf);
+  if (booking.isBookingStatementBlob(meta.name || meta.url || '', text)) return null;
+  const fields = booking.parseBookingInvoiceFields(
+    (meta.hotelId || '') + ' ' + (meta.url || '') + ' ' + (meta.name || '') + ' ' + text
+  );
+  const hotelId = fields.hotelId || booking.normalizeHotelId(meta.hotelId) || booking.parseBookingHotelId(meta.url || meta.name || '');
+  const resolved = booking.resolveBookingApt(hotelId, apts);
+  const invoiceNo = fields.invoiceNumber || meta.invoiceNo || '';
+  const leaf = booking.bookingInvoiceFilename(resolved.bookingHotelId || hotelId, invoiceNo);
+  const rel = piInvoiceStoreRel({
+    channel: 'booking',
+    month: month,
+    aptName: resolved.folder,
+    kind: 'invoice',
+    code: leaf.replace(/^invoice-/, '').replace(/\.pdf$/i, ''),
+  });
+  const storeRoot = path.resolve(dir, '..');
+  const abs = path.join(storeRoot, rel);
+  ensureDir(path.dirname(abs));
+  fs.writeFileSync(abs, buf);
+  const rec = {
+    channel: 'booking',
+    kind: 'invoice',
+    scope: 'leased',
+    partner: resolved.folder,
+    aptName: resolved.folder,
+    aptId: resolved.aptId,
+    bookingHotelId: resolved.bookingHotelId || hotelId,
+    mapped: !!resolved.mapped,
+    invoiceNumber: invoiceNo,
+    issueDate: fields.issueDate || '',
+    total: fields.total,
+    filename: rel.replace(/\\/g, '/'),
+    path: abs,
+    bytes: buf.length,
+    source: 'portal',
+  };
+  files.push(rec);
+  emitJson({
+    event: 'saved',
+    channel: 'booking',
+    kind: 'invoice',
+    partner: resolved.folder,
+    aptName: resolved.folder,
+    bookingHotelId: rec.bookingHotelId,
+    mapped: rec.mapped,
+    filename: rec.filename,
+    path: rec.path,
+    bytes: rec.bytes,
+    invoiceNumber: invoiceNo,
+  });
+  return rec;
+}
+
+/**
+ * Booking.com host extranet — ALWAYS via https://admin.booking.com/
+ * Mass-extract every apartment invoice for the document month. Do not walk
+ * property homepages. File by bookingHotelId (Votsala → folder Votsala).
+ */
+async function pullBooking(page, context, month, outDir, files, errors) {
+  const dir = path.join(outDir, 'booking');
+  ensureDir(dir);
+  const apts = loadApartments();
+  const captured = [];
+  const jsonTargets = [];
+
+  page.on('response', function (res) {
+    (async function () {
+      try {
+        const ct = String((res.headers()['content-type'] || '')).toLowerCase();
+        const url = res.url();
+        if (ct.includes('pdf') || /\.pdf(\?|$)/i.test(url)) {
+          const buf = Buffer.from(await res.body());
+          if (booking.looksLikePdf(buf)) captured.push({ buf: buf, url: url, name: path.basename(String(url).split('?')[0]) || 'invoice.pdf' });
+          return;
+        }
+        if (ct.includes('zip') || /\.zip(\?|$)/i.test(url)) {
+          const buf = Buffer.from(await res.body());
+          if (booking.looksLikeZip(buf)) {
+            booking.unzipPdfEntries(buf).forEach(function (ent) {
+              captured.push({ buf: ent.buf, url: url, name: ent.name });
+            });
+          }
+          return;
+        }
+        if (ct.includes('json')) {
+          const text = await res.text();
+          if (text && text.length > 8 && text.length < 8e6) {
+            try { booking.harvestBookingInvoicePayloads(JSON.parse(text), jsonTargets); } catch (eJson) {}
+          }
+        }
+      } catch (eTap) {}
+    })();
+  });
+
+  page.on('download', function (download) {
+    (async function () {
+      try {
+        const name = download.suggestedFilename() || 'download.bin';
+        const tmp = path.join(dir, '_dl-' + Date.now() + '-' + String(name).replace(/[^\w.-]+/g, '_').slice(0, 80));
+        await download.saveAs(tmp);
+        const buf = fs.readFileSync(tmp);
+        if (booking.looksLikeZip(buf)) {
+          booking.unzipPdfEntries(buf).forEach(function (ent) {
+            captured.push({ buf: ent.buf, url: name, name: ent.name });
+          });
+        } else if (booking.looksLikePdf(buf)) {
+          captured.push({ buf: buf, url: name, name: name });
+        }
+      } catch (eDl) {}
+    })();
+  });
+
+  try {
+    const ok = await ensureBookingLoggedIn(page, context, dir, errors);
+    if (!ok) return;
+    const opened = await openBookingInvoicesPage(page, dir, errors);
+    if (!opened) return;
+    await bookingSelectMonth(page, month);
+    await page.screenshot({ path: path.join(dir, '_invoices-month.png'), fullPage: true }).catch(() => {});
+    await bookingClickMassExtract(page);
+    await page.waitForTimeout(2500);
+
+    const html = await page.content();
+    const domTargets = booking.listBookingInvoiceTargets(html, page.url(), month);
+    const evalRows = await page
+      .evaluate(function () {
+        const out = [];
+        const els = document.querySelectorAll('a[href], button[data-href], [data-hotel-id], tr, [role="row"]');
+        els.forEach(function (el) {
+          const href = el.getAttribute('href') || el.getAttribute('data-href') || '';
+          const text = ((el.closest('tr') || el).innerText || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+          const hid = el.getAttribute('data-hotel-id') || el.getAttribute('data-hotelid') || '';
+          if (!href && !hid && !/invoice|pdf|download|τιμολ/i.test(text)) return;
+          out.push({ href: href, text: text, hotelId: hid });
+        });
+        return out.slice(0, 400);
+      })
+      .catch(() => []);
+    const targets = booking.dedupeInvoiceTargets(jsonTargets.concat(domTargets).concat(evalRows), month);
+    const total = Math.max(targets.length, captured.length, 1);
+    emitJson({ event: 'progress', done: 0, total: total, saved: files.length, code: 'invoices' });
+
+    let idx = 0;
+    for (const t of targets) {
+      if (pullStopRequested()) break;
+      idx += 1;
+      emitJson({
+        event: 'progress',
+        done: idx,
+        total: Math.max(targets.length, 1),
+        saved: files.length,
+        code: t.hotelId || t.invoiceNo || 'invoice',
+      });
+      const href = t.href || t.url;
+      if (!href || href.charAt(0) === '#') continue;
+      if (booking.isBookingStatementBlob(href, t.text)) continue;
+      try {
+        const buf = await fetchBookingPdf(page, href);
+        if (booking.looksLikeZip(buf)) {
+          booking.unzipPdfEntries(buf).forEach(function (ent) {
+            captured.push({ buf: ent.buf, url: href, name: ent.name, hotelId: t.hotelId, invoiceNo: t.invoiceNo });
+          });
+        } else if (booking.looksLikePdf(buf)) {
+          captured.push({ buf: buf, url: href, name: path.basename(String(href).split('?')[0]) || 'invoice.pdf', hotelId: t.hotelId, invoiceNo: t.invoiceNo });
+        }
+      } catch (eFetch) {
+        const loc = page.locator(`a[href="${href}"]`).first();
+        if (await loc.count()) {
+          const [download] = await Promise.all([
+            page.waitForEvent('download', { timeout: 15000 }).catch(() => null),
+            loc.click({ timeout: 4000 }).catch(() => null),
+          ]);
+          if (download) {
+            const name = download.suggestedFilename() || 'invoice.pdf';
+            const tmp = path.join(dir, '_click-' + Date.now() + '-' + String(name).replace(/[^\w.-]+/g, '_').slice(0, 80));
+            await download.saveAs(tmp).catch(() => null);
+            if (fs.existsSync(tmp)) {
+              const buf = fs.readFileSync(tmp);
+              if (booking.looksLikePdf(buf)) captured.push({ buf: buf, url: href, name: name, hotelId: t.hotelId, invoiceNo: t.invoiceNo });
+            }
+          }
+        }
+      }
+    }
+
+    await page.waitForTimeout(1500);
+    const seenHotel = {};
+    captured.forEach(function (item) {
+      if (!item || !item.buf) return;
+      const fields = booking.parseBookingInvoiceFields(
+        (item.hotelId || '') + ' ' + (item.url || '') + ' ' + (item.name || '') + ' ' + booking.pdfExtractText(item.buf)
+      );
+      const hid = fields.hotelId || booking.normalizeHotelId(item.hotelId);
+      if (hid && seenHotel[hid]) return;
+      const rec = fileBookingPdf(item.buf, item, month, dir, files, apts);
+      if (rec && rec.bookingHotelId) seenHotel[rec.bookingHotelId] = true;
+    });
+
+    if (pullStopRequested()) {
+      errors.push({ channel: 'booking', error: 'Pull stopped' });
+    }
+    if (!files.filter(function (f) { return f.channel === 'booking'; }).length) {
+      const tooEarly = booking.bookingTooEarly(month);
       errors.push({
         channel: 'booking',
-        error:
-          'No Booking PDFs downloaded across ' +
-          props.length +
-          ' propert' +
-          (props.length === 1 ? 'y' : 'ies') +
-          ' — check Finance → Invoices for the document month.',
+        error: tooEarly
+          ? ('Booking.com invoices for ' + month + ' are not out yet (first week of the month). Retry after the 7th.')
+          : ('No Booking PDFs from Finance → Invoices mass extract for ' + month + ' — check the session still has Finance access.'),
+        tooEarly: tooEarly || undefined,
+        url: page.url(),
+        targets: targets.length,
       });
     }
     await persistSession('BOOKING', context);

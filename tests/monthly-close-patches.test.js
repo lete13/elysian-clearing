@@ -367,5 +367,10 @@ const keptApts = mergeCtx.mergeAptsProtect(
 assert.strictEqual(keptApts[0].ownerEmail, 'a@b.c', 'incoming empty ownerEmail does not wipe the saved address');
 assert.strictEqual(keptApts[0].clearGroup, 'Michalakopoulou', 'incoming empty clearGroup does not drop the clearing group');
 assert.strictEqual(keptApts[0].mgmtFee, 15, 'intentional field edits still win');
+const keptHotel = mergeCtx.mergeAptsProtect(
+  [{ id: 'h', name: 'Horizon', bookingHotelId: '10980606' }],
+  [{ id: 'h', name: 'Horizon', bookingHotelId: '' }]
+);
+assert.strictEqual(keptHotel[0].bookingHotelId, '10980606', 'incoming empty bookingHotelId does not drop the Booking id');
 
 console.log(`monthly-close patches OK: ${patchCount} patches in ${chainFiles.length} chain file(s), ${scripts.length} scripts, ${declared.length} declared checks, ${sha}; server: ${srvCount} patches in ${srvChain.length} chain file(s), ${srvSha}`);

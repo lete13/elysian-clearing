@@ -35,6 +35,7 @@ assert(html.includes('function piStoreYm'), 'year/month helper');
 assert(html.includes('PDFs by apartment — click Open to view'), 'collect vault heading kept');
 assert(html.includes('Guided monthly run'), 'retrieve still has guided run copy');
 assert(html.includes('Pull Airbnb (Hosthub codes)'), 'full pull kept');
+assert(html.includes('piPullBooking()'), 'Booking.com pull');
 assert(html.includes("piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })"), 'test pull kept');
 
 const start = html.indexOf('function piStoreApt(it)');

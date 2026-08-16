@@ -129,6 +129,17 @@ assert(fe115.patches.some((p) => (p.replace || '').includes('function renderVaul
 assert(fe115.patches.some((p) => (p.replace || '').includes('apartment → platform → year → month')), 'FE folder copy');
 assert(srv77.patches.some((p) => (p.replace || '').includes("month === 'all'")), 'API lists whole vault');
 assert(srv77.patches.some((p) => (p.replace || '').includes('ORDER BY partner, channel, month')), 'API orders apartment then platform then month');
+const fe116 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-116.json'), 'utf8'));
+const srv78 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-78.json'), 'utf8'));
+assert.strictEqual(fe116.baseSha256, fe115.expectedSha256, 'FE 116 continues FE 115');
+assert.strictEqual(srv78.baseSha256, srv77.expectedSha256, 'SRV 78 continues SRV 77');
+assert(fe116.patches.some((p) => (p.replace || '').includes('piPullBooking()')), 'FE Pull Booking.com');
+assert(fe116.patches.some((p) => (p.replace || '').includes("channel: 'booking'")), 'FE posts channel booking');
+assert(fe116.patches.some((p) => (p.replace || '').includes("folder === 'Votsala'")), 'FE Votsala BDC expect');
+assert(srv78.patches.some((p) => (p.replace || '').includes('bookingHotelId')), 'SRV keeps bookingHotelId');
+assert(srv78.patches.some((p) => (p.replace || '').includes('Mass-extracting Booking.com invoices')), 'SRV booking job hint');
+assert(worker.includes('openBookingInvoicesPage'), 'worker mass-extracts group invoices');
+assert(worker.includes("require('./platform-invoice-booking')"), 'worker uses booking helpers');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

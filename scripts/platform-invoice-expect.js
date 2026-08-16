@@ -207,11 +207,14 @@ function estimateAirbnbInvoices(month, bks) {
   return { stays: stays, missing: missing, estimate: estimate };
 }
 
+const booking = require('./platform-invoice-booking');
+
 module.exports = {
   ymFromTs,
   createdMs,
   classifyAirbnbStay,
   estimateAirbnbInvoices,
+  estimateBookingInvoices: booking.estimateBookingInvoices,
   countExtends,
   docsForStay,
   docsInMonth,
