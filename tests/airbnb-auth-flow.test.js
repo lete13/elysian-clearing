@@ -515,12 +515,19 @@ async function main() {
     page: { human: true, readyToSave: true },
     context: {},
   };
+  const bookingLive = {
+    id: 'bdc1', status: 'interactive', channel: 'booking',
+    page: { readyToSave: true, loggedIn: true },
+    context: {},
+  };
   harvestCtx._piLoginJobs.set(liveIdle.id, liveIdle);
   harvestCtx._piLoginJobs.set(captchaLive.id, captchaLive);
+  harvestCtx._piLoginJobs.set(bookingLive.id, bookingLive);
   assert.strictEqual(await harvestCtx.harvest(), true);
-  assert.deepStrictEqual(harvestCtx.savedSessions, ['live1'], 'Pull harvests the idle logged-in browser and skips CAPTCHA');
+  assert.deepStrictEqual(harvestCtx.savedSessions, ['live1'], 'Pull harvests the idle logged-in browser and skips CAPTCHA and Booking.com');
   assert.strictEqual(liveIdle.status, 'connected');
   assert.strictEqual(captchaLive.status, 'awaiting_captcha');
+  assert.strictEqual(bookingLive.status, 'interactive', 'Airbnb harvest leaves Booking.com Connect alone');
 
   assert(server.includes('try { await piAirbnbHarvestLiveJobs(); } catch (eHarvest) {}'), 'Pull harvests live Connect cookies first');
   assert(server.includes("app.post('/api/platform-invoices/sessions/airbnb/login/:jobId/browser/save'"), 'manual save route exists');
@@ -548,7 +555,46 @@ async function main() {
   assert(frontend.includes('upstream error'), 'proxy cutoff is explained instead of a JSON parse crash');
   assert(frontend.includes("channel: 'airbnb'"), 'Pull still posts Airbnb Hosthub codes');
 
-  console.log('airbnb auth flow OK: interactive in-app browser, background Pull harvest, sanitized OTP diagnostics');
+  const bookingLooksSrc = extractFn(server, 'piBookingPageLooksLoggedIn');
+  const bookingLookCtx = { URL: URL };
+  vm.runInNewContext(bookingLooksSrc + '\nthis.looks = piBookingPageLooksLoggedIn;', bookingLookCtx);
+  function bdcPage(opts) {
+    opts = opts || {};
+    return {
+      url: () => opts.url || 'https://admin.booking.com/',
+      locator: selector => {
+        if (selector.indexOf('password') >= 0 || selector.indexOf('loginname') >= 0) {
+          return { count: async () => opts.visibleLogin ? 1 : 0 };
+        }
+        return { count: async () => 0 };
+      },
+    };
+  }
+  assert.strictEqual(await bookingLookCtx.looks(bdcPage({
+    url: 'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/home.html',
+  })), true, 'Extranet home is logged in');
+  assert.strictEqual(await bookingLookCtx.looks(bdcPage({
+    url: 'https://admin.booking.com/groups/invoices',
+  })), true, 'group invoices path is logged in');
+  assert.strictEqual(await bookingLookCtx.looks(bdcPage({
+    url: 'https://account.booking.com/sign-in?op_token=secret',
+    visibleLogin: true,
+  })), false, 'account.booking.com sign-in is never logged in');
+  assert.strictEqual(await bookingLookCtx.looks(bdcPage({
+    url: 'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/home.html',
+    visibleLogin: true,
+  })), false, 'visible login fields are not logged in');
+  assert(server.includes("app.post('/api/platform-invoices/sessions/booking/login'"), 'Booking.com in-app login route exists');
+  assert(server.includes('try { await piBookingHarvestLiveJobs(); } catch (eBdcHarvest) {}'), 'Pull harvests live Booking.com Connect cookies');
+  assert(server.includes('inAppConnectBooking: !!playwrightOk'), 'status advertises Booking in-app Connect without requiring env passwords');
+  assert(frontend.includes('piConnectBookingInApp()'), 'Connect Booking is in-app');
+  assert(frontend.includes('id="pi-booking-connect"'), 'Collect has Booking.com connect panel');
+  assert(frontend.includes('piBookingBrowserSave'), 'Booking Save session is wired');
+  assert(frontend.includes('Operate Booking.com Extranet'), 'Booking interactive title');
+  assert(!frontend.includes("onclick=\"piConnectSession('booking')\""), 'Connect Booking no longer opens the JSON prompt');
+  assert(frontend.includes("if (channel === 'booking' || channel === 'bdc') return piConnectBookingInApp();"), 'leftover Connect Booking still goes in-app');
+
+  console.log('airbnb auth flow OK: interactive in-app browser, background Pull harvest, sanitized OTP diagnostics, Booking.com in-app Connect');
 }
 
 main().catch(error => {

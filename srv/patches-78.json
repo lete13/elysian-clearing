@@ -1,81 +1,67 @@
 {
  "baseSha256": "641ad5bf73c52e5a1883095943a846af4152faa7b1092a3e591082a05294a589",
- "expectedSha256": "5bc65600aef2ca65e13550aaf7a11fb417282b6255700b9574b64963699dae02",
- "builtAt": "2026-08-15 Expect gaps, keep cancelled Airbnb codes, skip tiny PDFs",
+ "expectedSha256": "02cd43516a7054d77042ac61131c1f4e1072fd1adefe74ffeabfc3c1997177e4",
+ "builtAt": "2026-08-16 Booking.com pull job hints + keep bookingHotelId",
  "patches": [
   {
-   "note": "Require expectGaps next to estimateAirbnbInvoices",
-   "find": "const { estimateAirbnbInvoices } = require('./scripts/platform-invoice-expect');",
-   "replace": "const { estimateAirbnbInvoices, expectGaps, TINY_PDF_BYTES } = require('./scripts/platform-invoice-expect');",
+   "note": "Keep bookingHotelId when a stale client save sends it blank",
+   "find": "['ownerEmail','ownerEmail2','ownerEmail3','clearGroup','ownerName','ownerSurname','ownerPhone']",
+   "replace": "['ownerEmail','ownerEmail2','ownerEmail3','clearGroup','bookingHotelId','ownerName','ownerSurname','ownerPhone']",
    "count": 1
   },
   {
-   "note": "Hosthub keeps cancelled Airbnb stays that still have an HM confirmation code",
-   "find": "  const bookingEvs = allEvents.filter(e => {\n    const t = (e.type || '').toLowerCase();\n    if (t.includes('hold') || t.includes('block')) return false; // exclude holds/blocks\n    if (e.is_visible !== false) return true;  // active booking — always include\n    // Cancelled booking: only include if there is financial value (owner keeps some payment).\n    // NOTE: Hosthub money fields are { cents, currency } objects — parseFloat() on them\n    // returns NaN, which silently dropped ALL cancelled bookings from this pipeline and\n    // forced the (now removed) separate cancelled-sync workarounds that stored taxes as 0.\n    const money = v => (v && typeof v === 'object') ? (v.cents || 0) / 100 : (parseFloat(v || 0) || 0);\n    // Require actual GUEST-payment evidence (not booking_value): cancelled manual/direct\n    // calendar entries (owner blocks, \"extend\" placeholders, offline bookings) carry a\n    // booking_value but guest_paid = 0 — those are not retained revenue and must be dropped.\n    const gross = money(e.total_price) || money(e.guest_paid) || money(e.total_reservation_price);\n    return gross > 0;\n  });\n",
-   "replace": "  const bookingEvs = allEvents.filter(e => {\n    const t = (e.type || '').toLowerCase();\n    if (t.includes('hold') || t.includes('block')) return false; // exclude holds/blocks\n    if (e.is_visible !== false) return true;  // active booking — always include\n    // Cancelled booking: only include if there is financial value (owner keeps some payment).\n    // NOTE: Hosthub money fields are { cents, currency } objects — parseFloat() on them\n    // returns NaN, which silently dropped ALL cancelled bookings from this pipeline and\n    // forced the (now removed) separate cancelled-sync workarounds that stored taxes as 0.\n    const money = v => (v && typeof v === 'object') ? (v.cents || 0) / 100 : (parseFloat(v || 0) || 0);\n    // Airbnb VAT invoices exist even when guest_paid = 0 (cancelled before payout).\n    // Keep those confirmation codes so Expect/Pull can still open the stay.\n    // cancelled:true still lets Payments Check / reports ignore them as revenue.\n    const airCode = String(\n      (e && e.reservation_id) ||\n      (e && e.reservationId) ||\n      (e && e.source && (e.source.reservation_id || e.source.confirmation_code)) ||\n      (e && e.guest && e.guest.confirmation_code) ||\n      (e && e.airbnb_confirmation_code) ||\n      ''\n    ).trim().toUpperCase();\n    if (/^HM[A-Z0-9]{6,18}$/.test(airCode)) return true;\n    // Require actual GUEST-payment evidence (not booking_value): cancelled manual/direct\n    // calendar entries (owner blocks, \"extend\" placeholders, offline bookings) carry a\n    // booking_value but guest_paid = 0 — those are not retained revenue and must be dropped.\n    const gross = money(e.total_price) || money(e.guest_paid) || money(e.total_reservation_price);\n    return gross > 0;\n  });\n",
+   "note": "Progress hint names Booking.com when that channel is running",
+   "find": "      job.hint = 'Pulling Airbnb ' + (j.done || 0) + '/' + (j.total || 0) +\n        (j.code ? (' · ' + j.code) : '') +\n        (j.skipped ? ' · already in vault' : '') +\n        (j.saved ? (' · ' + j.saved + ' PDF(s) so far') : '') + '…';",
+   "replace": "      job.hint = (String(job.channel || '').toLowerCase() === 'booking' ? 'Pulling Booking.com ' : 'Pulling Airbnb ') + (j.done || 0) + '/' + (j.total || 0) +\n        (j.code ? (' · ' + j.code) : '') +\n        (j.skipped ? ' · already in vault' : '') +\n        (j.saved ? (' · ' + j.saved + ' PDF(s) so far') : '') + '…';",
    "count": 1
   },
   {
-   "note": "GET airbnb-codes includes Expect vs vault gaps",
-   "find": "    const resolved = await piResolveAirbnbReservations(month, []);\n    res.json({\n      ok: true,\n      month: month,\n      reservations: resolved.reservations,\n      missing: resolved.missing || 0,\n      source: resolved.source,\n      persisted: resolved.persisted || 0,\n      count: (resolved.reservations || []).length,\n      estimate: resolved.estimate || null,\n      stays: resolved.stays || []\n    });\n",
-   "replace": "    const resolved = await piResolveAirbnbReservations(month, []);\n    let vaultRows = [];\n    try {\n      if (pool) {\n        await ensurePlatInvTable();\n        const qVault = await pool.query(\n          'SELECT filename, size, month, channel FROM platform_invoices WHERE LOWER(channel)=LOWER($1)',\n          ['airbnb']\n        );\n        vaultRows = qVault.rows || [];\n      } else {\n        vaultRows = [..._memPlatInv.values()].filter(function (x) {\n          return String(x.channel || '').toLowerCase() === 'airbnb';\n        });\n      }\n    } catch (eVault) {}\n    const gaps = expectGaps(resolved.stays || [], vaultRows);\n    res.json({\n      ok: true,\n      month: month,\n      reservations: resolved.reservations,\n      missing: resolved.missing || 0,\n      source: resolved.source,\n      persisted: resolved.persisted || 0,\n      count: (resolved.reservations || []).length,\n      estimate: resolved.estimate || null,\n      stays: resolved.stays || [],\n      gaps: gaps\n    });\n",
+   "note": "Job start hint is channel-aware",
+   "find": "  job.hint = 'Saving the live Airbnb session, then pulling VAT PDFs…';",
+   "replace": "  job.hint = String(channel).toLowerCase() === 'booking'\n    ? 'Saving the live Booking.com session, then mass-extracting invoices…'\n    : 'Saving the live Airbnb session, then pulling VAT PDFs…';",
    "count": 1
   },
   {
-   "note": "HAVE skips tiny PDFs; pull queue incomplete stays first",
-   "find": "  if (airbnbReservations.length) {\n    airbnbReservations = airbnbReservations.map(function (x) {\n      return Object.assign({}, x, { kind: 'both' });\n    });\n    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));\n    if (limitN > 0) env.PI_AIRBNB_LIMIT = String(limitN);\n  }\n  try {\n    let haveNames = [];\n    if (pool) {\n      await ensurePlatInvTable();\n      const haveRows = await pool.query('SELECT filename FROM platform_invoices WHERE channel=$1 OR channel=$2 ORDER BY id DESC LIMIT 2000', ['airbnb', channel]);\n      haveNames = (haveRows.rows || []).map(function (r) { return r.filename; });\n    } else {\n      haveNames = [..._memPlatInv.values()].filter(function (x) { return String(x.channel || '') === 'airbnb' || x.channel === channel; }).map(function (x) { return x.filename; });\n    }\n    if (haveNames.length) env.PI_AIRBNB_HAVE_JSON = JSON.stringify(haveNames.slice(0, 2000));\n  } catch (eHave) { console.error('[platform-invoices] have-codes', eHave.message); }\n",
-   "replace": "  try {\n    let haveRows = [];\n    if (pool) {\n      await ensurePlatInvTable();\n      const qHave = await pool.query('SELECT filename, size FROM platform_invoices WHERE channel=$1 OR channel=$2 ORDER BY id DESC LIMIT 4000', ['airbnb', channel]);\n      haveRows = qHave.rows || [];\n    } else {\n      haveRows = [..._memPlatInv.values()].filter(function (x) { return String(x.channel || '') === 'airbnb' || x.channel === channel; });\n    }\n    const haveNames = haveRows.filter(function (r) {\n      return r.size == null || Number(r.size) >= (TINY_PDF_BYTES || 2048);\n    }).map(function (r) { return r.filename; });\n    if (haveNames.length) env.PI_AIRBNB_HAVE_JSON = JSON.stringify(haveNames.slice(0, 4000));\n    if (airbnbReservations.length && !(limitN > 0)) {\n      const bksGap = await piLoadDbBookings();\n      const classified = estimateAirbnbInvoices(month, bksGap);\n      const gaps = expectGaps(classified.stays || [], haveRows);\n      const miss = {};\n      (gaps.incomplete || []).forEach(function (g) {\n        if (g && g.code) miss[String(g.code).toUpperCase()] = g.missing;\n      });\n      airbnbReservations = airbnbReservations.map(function (x) {\n        const code = String((x && x.code) || '').toUpperCase();\n        return Object.assign({}, x, { missing: miss[code] || 0 });\n      });\n      airbnbReservations.sort(function (a, b) {\n        return (Number(b.missing) || 0) - (Number(a.missing) || 0);\n      });\n    }\n  } catch (eHave) { console.error('[platform-invoices] have-codes', eHave.message); }\n  if (airbnbReservations.length) {\n    airbnbReservations = airbnbReservations.map(function (x) {\n      return Object.assign({}, x, { kind: 'both' });\n    });\n    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));\n    if (limitN > 0) env.PI_AIRBNB_LIMIT = String(limitN);\n  }\n",
+   "note": "Booking.com pull hint after sessions materialize",
+   "find": "  job.hint = (limitN > 0 ? 'Test pull (latest): ' : '') + 'Pulling Airbnb VAT PDFs from ' + airbnbReservations.length + ' Hosthub code(s)…';",
+   "replace": "  job.hint = String(channel).toLowerCase() === 'booking'\n    ? ('Mass-extracting Booking.com invoices for ' + month + '…')\n    : ((limitN > 0 ? 'Test pull (latest): ' : '') + 'Pulling Airbnb VAT PDFs from ' + airbnbReservations.length + ' Hosthub code(s)…');",
    "count": 1
   },
   {
-   "note": "Do not ingest blank Chromium prints as vault PDFs",
-   "find": "  const buf = fsI.readFileSync(f.path);\n  if (!buf.length) return null;\n  const month = archiveMonthOf(f, job.month);",
-   "replace": "  const buf = fsI.readFileSync(f.path);\n  if (!buf.length || buf.length < (TINY_PDF_BYTES || 2048)) return null;\n  const month = archiveMonthOf(f, job.month);",
+   "note": "Reconnect hint covers a cleared Booking session",
+   "find": "      job.reconnectHint = cleared.indexOf('airbnb') >= 0\n        ? 'Airbnb session cleared. Click Connect Airbnb in Collect, enter the email code, wait until it says connected, then Pull again. Do not paste session JSON.'\n        : undefined;",
+   "replace": "      job.reconnectHint = cleared.indexOf('airbnb') >= 0\n        ? 'Airbnb session cleared. Click Connect Airbnb in Collect, enter the email code, wait until it says connected, then Pull again. Do not paste session JSON.'\n        : (cleared.indexOf('booking') >= 0\n        ? 'Booking.com session cleared. Click Connect Booking in Collect, then Pull Booking.com again.'\n        : undefined);",
    "count": 1
   },
   {
-   "note": "Disk salvage skips tiny PDFs",
-   "find": "      if (!st.size) return;",
-   "replace": "      if (!st.size || st.size < (TINY_PDF_BYTES || 2048)) return;",
+   "note": "Done hint for Booking.com mass extract",
+   "find": "        job.hint = saved.length\n          ? ('Pulled ' + saved.length + ' Airbnb PDF(s) from ' + job.airbnbCodes + ' Hosthub code(s).')\n          : ('Airbnb pull saved 0 PDFs from ' + job.airbnbCodes + ' Hosthub code(s).');",
+   "replace": "        job.hint = String(channel).toLowerCase() === 'booking'\n          ? (saved.length ? ('Pulled ' + saved.length + ' Booking.com PDF(s).') : ('Booking.com pull saved 0 PDFs.'))\n          : (saved.length\n          ? ('Pulled ' + saved.length + ' Airbnb PDF(s) from ' + job.airbnbCodes + ' Hosthub code(s).')\n          : ('Airbnb pull saved 0 PDFs from ' + job.airbnbCodes + ' Hosthub code(s).'));",
+   "count": 1
+  },
+  {
+   "note": "POST /pull starting hint is channel-aware",
+   "find": "    hint: 'Starting Airbnb pull in the background…',",
+   "replace": "    hint: String(channel).toLowerCase() === 'booking'\n      ? 'Starting Booking.com pull in the background…'\n      : 'Starting Airbnb pull in the background…',",
    "count": 1
   }
  ],
  "assertions": [
   {
-   "has": "expectGaps",
-   "note": "Expect vs vault helper"
+   "has": "bookingHotelId",
+   "note": "merge keeps Booking id"
   },
   {
-   "has": "gaps: gaps",
-   "note": "airbnb-codes returns gaps"
+   "has": "Mass-extracting Booking.com invoices",
+   "note": "booking job hint"
   },
   {
-   "has": "/^HM[A-Z0-9]{6,18}$/.test(airCode)",
-   "note": "keep cancelled Airbnb codes"
+   "has": "Starting Booking.com pull in the background",
+   "note": "POST hint"
   },
   {
-   "has": "TINY_PDF_BYTES",
-   "note": "tiny PDF threshold"
-  },
-  {
-   "has": "kind: 'both'",
-   "note": "pull kind both"
-  },
-  {
-   "has": "month === 'all'",
-   "note": "all-vault list kept"
-  },
-  {
-   "has": "estimateAirbnbInvoices",
-   "note": "Expect estimate kept"
-  },
-  {
-   "has": "PI_AIRBNB_HAVE_JSON",
-   "note": "HAVE set kept"
-  },
-  {
-   "has": "app.post('/api/platform-invoices/pull-stop'",
-   "note": "stop kept"
+   "has": "Pulled ' + saved.length + ' Booking.com PDF(s).",
+   "note": "done hint"
   }
  ]
 }

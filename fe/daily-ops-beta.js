@@ -688,6 +688,7 @@
         '</div>' +
       '</div></div>';
     bind(root);
+    prefetchOpsImageLib();
   }
 
   function rerender() {
@@ -934,39 +935,131 @@
     rerender();
   }
 
+  function loadHtml2CanvasPro(opts) {
+    // html2canvas 1.4.1 dies on modern CSS color()/color-mix computed styles.
+    // Pro fork keeps the same API and parses those colors.
+    var quiet = !!(opts && opts.quiet);
+    if (window.__opsHtml2CanvasPro) return Promise.resolve(window.__opsHtml2CanvasPro);
+    if (window.__opsHtml2CanvasProLoading) return window.__opsHtml2CanvasProLoading;
+    if (!quiet && typeof toast === 'function') toast('Loading image export…', 'warn');
+    window.__opsHtml2CanvasProLoading = new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/html2canvas-pro@1.5.11/dist/html2canvas-pro.min.js';
+      script.onload = function () {
+        window.__opsHtml2CanvasPro = window.html2canvas;
+        window.__opsHtml2CanvasProLoading = null;
+        resolve(window.__opsHtml2CanvasPro);
+      };
+      script.onerror = function (err) {
+        window.__opsHtml2CanvasProLoading = null;
+        reject(err);
+      };
+      document.head.appendChild(script);
+    });
+    return window.__opsHtml2CanvasProLoading;
+  }
+
+  function prefetchOpsImageLib() {
+    try { loadHtml2CanvasPro({ quiet: true }); } catch (e) {}
+  }
+
+  function flattenCloneColors(clonedDoc) {
+    if (!clonedDoc) return;
+    var probe = clonedDoc.createElement('canvas');
+    var ctx = probe.getContext && probe.getContext('2d');
+    function toRgb(value) {
+      var raw = String(value || '');
+      if (!raw || raw === 'transparent') return raw;
+      if (/^(#|rgb\(|rgba\(|hsl\(|hsla\()/i.test(raw)) return raw;
+      if (!ctx) return '#ffffff';
+      try {
+        ctx.fillStyle = '#000000';
+        ctx.fillStyle = raw;
+        return ctx.fillStyle || '#ffffff';
+      } catch (e) {
+        return '#ffffff';
+      }
+    }
+    var nodes = clonedDoc.querySelectorAll('*');
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      if (!node || !node.style) continue;
+      var cs = clonedDoc.defaultView && clonedDoc.defaultView.getComputedStyle
+        ? clonedDoc.defaultView.getComputedStyle(node)
+        : null;
+      if (!cs) continue;
+      ['color', 'backgroundColor', 'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor', 'outlineColor'].forEach(function (prop) {
+        var val = cs[prop];
+        if (!val) return;
+        if (/color\s*\(|color-mix\s*\(|oklch\s*\(|oklab\s*\(|lab\s*\(|lch\s*\(/i.test(val)) {
+          node.style[prop] = toRgb(val);
+        }
+      });
+    }
+  }
+
+  function downloadOpsPng(blob) {
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'daily-ops-' + (_opsDate || 'today') + '.png';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { try { URL.revokeObjectURL(link.href); } catch (e) {} }, 1500);
+  }
+
+  function isClipboardFocusError(error) {
+    var msg = String((error && error.message) || error || '').toLowerCase();
+    return msg.indexOf('document is not focused') >= 0
+      || msg.indexOf('not allowed') >= 0
+      || msg.indexOf('clipboard') >= 0 && msg.indexOf('focus') >= 0;
+  }
+
+  async function copyOpsPngToClipboard(blob) {
+    if (!(navigator.clipboard && window.ClipboardItem)) {
+      throw new Error('Clipboard API unavailable');
+    }
+    try {
+      if (typeof window.focus === 'function') window.focus();
+      if (document.body && typeof document.body.focus === 'function') {
+        try { document.body.focus(); } catch (e) {}
+      }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      return 'copied';
+    } catch (error) {
+      if (!isClipboardFocusError(error)) throw error;
+      // Long async capture (first load / heavy board) often loses the transient
+      // user-activation + focus token. Fall back to a file download instead of
+      // failing the whole Ops image action.
+      downloadOpsPng(blob);
+      return 'downloaded';
+    }
+  }
+
   function copyBetaImage() {
     var el = document.getElementById('ops-beta-board-capture');
     if (!el) return;
     var run = async function () {
-      if (typeof html2canvas === 'undefined') {
-        if (typeof toast === 'function') toast('Loading image export…', 'warn');
-        await new Promise(function (resolve, reject) {
-          var script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
+      var capture = await loadHtml2CanvasPro({ quiet: !!window.__opsHtml2CanvasPro || !!window.__opsHtml2CanvasProLoading });
       if (typeof toast === 'function') toast('Capturing Daily Ops…');
-      var canvas = await html2canvas(el, {
+      var canvas = await capture(el, {
         scale: 2,
         backgroundColor: '#F4F6FA',
         useCORS: true,
         logging: false,
+        onclone: function (clonedDoc) { flattenCloneColors(clonedDoc); },
       });
       var blob = await new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
       if (!blob) throw new Error('Could not build PNG');
       if (navigator.clipboard && window.ClipboardItem) {
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        if (typeof toast === 'function') toast('Ops board copied — paste into chat', 'ok');
+        var mode = await copyOpsPngToClipboard(blob);
+        if (typeof toast === 'function') {
+          toast(mode === 'copied'
+            ? 'Ops board copied — paste into chat'
+            : 'Clipboard busy — downloaded Ops board PNG instead', mode === 'copied' ? 'ok' : 'warn');
+        }
       } else {
-        var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'daily-ops-' + (_opsDate || 'today') + '.png';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        downloadOpsPng(blob);
         if (typeof toast === 'function') toast('Downloaded Ops board PNG', 'ok');
       }
     };

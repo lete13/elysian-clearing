@@ -1,113 +1,121 @@
 {
  "baseSha256": "e292a1892cb3d20a0ef4e4a4a675bd8a06ba4520421072f5c473c0b0a30d07af",
- "expectedSha256": "d57dccb3a7a11e968654322780525d907b769f65bcf5102185792b0bb443037b",
- "builtAt": "2026-08-15 Expect vs vault gaps + Pull incomplete",
+ "expectedSha256": "04108e717adbe6e6368c9acf673839cb43dbb72b625ba902c9efce662ee18d24",
+ "builtAt": "2026-08-16 Booking.com July mass-extract + bookingHotelId map",
  "patches": [
   {
-   "note": "Collect: Pull incomplete button next to full pull",
-   "find": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })\">Test pull (HM9DCDMEXT · HMWRNAWHBA)</button><!-- Test pull (5 codes) piPull({ limit: 5 }) -->\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n",
-   "replace": "        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })\">Test pull (HM9DCDMEXT · HMWRNAWHBA)</button><!-- Test pull (5 codes) piPull({ limit: 5 }) -->\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-pull-incomplete-btn\" onclick=\"piPullIncomplete()\">Pull incomplete</button>\n",
+   "note": "Expect copy: Booking.com is live (one PDF per apartment; Votsala grouped)",
+   "find": "        Hosthub created / cancelledAt choose which stays to open. Each PDF archives in the month of its VAT issue date. Booking.com is parked for now.",
+   "replace": "        Hosthub created / cancelledAt choose which stays to open. Each PDF archives in the month of its VAT issue date.\n        <b>Booking.com</b> = one invoice per apartment (June stays → July folder). Votsala 1–8 share one BDC PDF.",
    "count": 1
   },
   {
-   "note": "Ignore tiny PDFs; client Expect-vs-vault gaps",
-   "find": "  function piVaultPdfCount(items, code) {\n    var c = String(code || '').toUpperCase();\n    if (!c) return 0;\n    return (items || []).filter(function (f) {\n      if (String(f.channel || '').toLowerCase() !== 'airbnb') return false;\n      return String(f.filename || f.name || '').toUpperCase().indexOf(c) >= 0;\n    }).length;\n  }\n",
-   "replace": "  function piVaultPdfCount(items, code) {\n    var c = String(code || '').toUpperCase();\n    if (!c) return 0;\n    return (items || []).filter(function (f) {\n      if (String(f.channel || '').toLowerCase() !== 'airbnb') return false;\n      if (f.size != null && Number(f.size) < 2048) return false;\n      return String(f.filename || f.name || '').toUpperCase().indexOf(c) >= 0;\n    }).length;\n  }\n  function piClientGaps(stays, items) {\n    var incomplete = [];\n    var missingDocs = 0;\n    var complete = 0;\n    (stays || []).forEach(function (s) {\n      if (!s || !s.code) return;\n      var have = piVaultPdfCount(items, s.code);\n      var need = s.docs || 1;\n      if (have >= need) { complete += 1; return; }\n      var missing = Math.max(0, need - have);\n      missingDocs += missing;\n      incomplete.push({ code: s.code, kind: s.stayKind || 'normal', need: need, have: have, missing: missing, listing: s.aptName || '' });\n    });\n    incomplete.sort(function (a, b) { return b.missing - a.missing || String(a.code).localeCompare(String(b.code)); });\n    return { complete: complete, incomplete: incomplete, missingDocs: missingDocs };\n  }\n",
+   "note": "Un-dim Booking.com expect list",
+   "find": "<div id=\"pi-bdc-expect-list\" style=\"margin-top:10px;font-size:12.5px;opacity:.55\"></div>",
+   "replace": "<div id=\"pi-bdc-expect-list\" style=\"margin-top:10px;font-size:12.5px\"></div>",
    "count": 1
   },
   {
-   "note": "Checklist sorts incomplete first and uses all-vault PDF counts",
-   "find": "    function row(x) {\n      var have = piVaultPdfCount(items, x.code);\n      var need = x.docs || 1;\n      var mark = have >= need ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>' : (have ? '<span style=\"color:#d97706\">◐</span>' : '<span style=\"color:var(--tx-err,#b91c1c)\">○</span>');\n      var code = x.code || '<span style=\"color:var(--tx-err,#b91c1c)\">missing code — re-sync Hosthub</span>';\n      var label = (x.aptName || x.aptId || 'Apartment') + (x.guestName ? (' · ' + x.guestName) : '');\n      return '<div>' + mark + ' <code>' + code + '</code> · ' + kindLabel(x) +\n        ' · vault ' + have + '/' + need + ' · ' + label + '</div>';\n    }\n    var est = h.airEstimate || { docs: 0, stays: stays.length };\n    var haveDocs = 0, haveStays = 0;\n    stays.forEach(function (s) {\n      var n = piVaultPdfCount(items, s.code);\n      haveDocs += n;\n      if (n > 0) haveStays += 1;\n    });\n",
-   "replace": "    var countItems = (PI.vaultItems && PI.vaultItems.length) ? PI.vaultItems : (items || []);\n    function row(x) {\n      var have = piVaultPdfCount(countItems, x.code);\n      var need = x.docs || 1;\n      var mark = have >= need ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>' : (have ? '<span style=\"color:#d97706\">◐</span>' : '<span style=\"color:var(--tx-err,#b91c1c)\">○</span>');\n      var code = x.code || '<span style=\"color:var(--tx-err,#b91c1c)\">missing code — re-sync Hosthub</span>';\n      var label = (x.aptName || x.aptId || 'Apartment') + (x.guestName ? (' · ' + x.guestName) : '');\n      return '<div>' + mark + ' <code>' + code + '</code> · ' + kindLabel(x) +\n        ' · vault ' + have + '/' + need + ' · ' + label + '</div>';\n    }\n    var est = h.airEstimate || { docs: 0, stays: stays.length };\n    var gaps = h.airGaps || piClientGaps(stays, countItems);\n    var haveDocs = Math.max(0, (est.docs || 0) - (gaps.missingDocs || 0));\n    var haveStays = gaps.complete != null ? gaps.complete : 0;\n    var missMap = {};\n    (gaps.incomplete || []).forEach(function (g) {\n      if (g && g.code) missMap[String(g.code).toUpperCase()] = g.missing;\n    });\n    var stayRows = (stays || []).slice().sort(function (a, b) {\n      var ca = String(a.code || '').toUpperCase();\n      var cb = String(b.code || '').toUpperCase();\n      var ma = missMap[ca] != null ? missMap[ca] : Math.max(0, (a.docs || 1) - piVaultPdfCount(countItems, a.code));\n      var mb = missMap[cb] != null ? missMap[cb] : Math.max(0, (b.docs || 1) - piVaultPdfCount(countItems, b.code));\n      return mb - ma || ca.localeCompare(cb);\n    });\n",
+   "note": "Collect copy mentions Booking.com mass extract",
+   "find": "        Then <b>Pull Airbnb (Hosthub codes)</b> for the full month. Connect Airbnb once if OTP blocks login.\n        <!-- Test pull (5 codes) uses the latest 5 Hosthub codes: -->",
+   "replace": "        Then <b>Pull Airbnb (Hosthub codes)</b> for the full month. Connect Airbnb once if OTP blocks login.\n        <b>Pull Booking.com</b> mass-extracts every apartment invoice for the document month from admin.booking.com Finance → Invoices (Votsala = one PDF).",
    "count": 1
   },
   {
-   "note": "Checklist lists incomplete stays first",
-   "find": "      (missing.length ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + missing.length + ' without reservationId</span>') : '') +\n      '</div>' +\n      '<div style=\"display:flex;flex-direction:column;gap:3px;max-height:220px;overflow:auto\">' +\n      (stays.length ? stays.map(row).join('') : (inv.map(function (x) { return row(Object.assign({ stayKind: 'normal', docs: 1 }, x)); }).join('') +\n",
-   "replace": "      (missing.length ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + missing.length + ' without reservationId</span>') : '') +\n      (gaps.incomplete && gaps.incomplete.length ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + gaps.incomplete.length + ' incomplete</span>') : '') +\n      '</div>' +\n      '<div style=\"display:flex;flex-direction:column;gap:3px;max-height:220px;overflow:auto\">' +\n      (stayRows.length ? stayRows.map(row).join('') : (inv.map(function (x) { return row(Object.assign({ stayKind: 'normal', docs: 1 }, x)); }).join('') +\n",
+   "note": "Unhide Booking checklist and add Pull Booking.com",
+   "find": "      <div id=\"pi-bdc-checklist\" style=\"display:none;margin-bottom:12px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>\n      <div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px\">\n        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })\">Test pull (HM9DCDMEXT · HMWRNAWHBA)</button><!-- Test pull (5 codes) piPull({ limit: 5 }) -->\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-stop-pull-btn\" onclick=\"piStopPull()\">Stop pull</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>",
+   "replace": "      <div id=\"pi-bdc-checklist\" style=\"margin-bottom:12px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>\n      <div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px\">\n        <button class=\"btn gold\" id=\"pi-pull-btn\" onclick=\"piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })\">Test pull (HM9DCDMEXT · HMWRNAWHBA)</button><!-- Test pull (5 codes) piPull({ limit: 5 }) -->\n        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-pull-bdc-btn\" onclick=\"piPullBooking()\">Pull Booking.com</button>\n        <button class=\"btn sm\" id=\"pi-stop-pull-btn\" onclick=\"piStopPull()\">Stop pull</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>\n        <button class=\"btn sm\" id=\"pi-connect-booking-btn\" onclick=\"piConnectSession('booking')\">Connect Booking</button>",
    "count": 1
   },
   {
-   "note": "Expect summary shows vault vs estimated invoices",
-   "find": "  function piEstimateSummaryHtml(est) {\n    est = est || { normal: 0, cancel: 0, extend: 0, docs: 0, stays: 0, extendDocs: 0 };\n    return '<div style=\"margin-top:6px\"><b>Estimated invoices to pull</b>: <b>' + (est.docs || 0) + '</b>' +\n      ' <span style=\"color:var(--tx3)\">(stays to open: ' + (est.stays || 0) + ')</span></div>' +\n      '<div style=\"margin-top:4px\">normal reservation ×1: <b>' + (est.normal || 0) + '</b>' +\n      ' · cancelled ×2: <b>' + (est.cancel || 0) + '</b>' +\n      ' · extended: <b>' + (est.extend || 0) + '</b> stays · <b>' + (est.extendDocs || 0) + '</b> invoices</div>';\n  }\n",
-   "replace": "  function piEstimateSummaryHtml(est, gaps) {\n    est = est || { normal: 0, cancel: 0, extend: 0, docs: 0, stays: 0, extendDocs: 0 };\n    gaps = gaps || {};\n    var html = '<div style=\"margin-top:6px\"><b>Estimated invoices to pull</b>: <b>' + (est.docs || 0) + '</b>' +\n      ' <span style=\"color:var(--tx3)\">(stays to open: ' + (est.stays || 0) + ')</span></div>' +\n      '<div style=\"margin-top:4px\">normal reservation ×1: <b>' + (est.normal || 0) + '</b>' +\n      ' · cancelled ×2: <b>' + (est.cancel || 0) + '</b>' +\n      ' · extended: <b>' + (est.extend || 0) + '</b> stays · <b>' + (est.extendDocs || 0) + '</b> invoices</div>';\n    if (gaps.missingDocs != null) {\n      html += '<div style=\"margin-top:4px\">Vault vs Expect: <b>' + Math.max(0, (est.docs || 0) - (gaps.missingDocs || 0)) + '</b>/' + (est.docs || 0) +\n        ' invoices' + (gaps.missingDocs ? (' · <span style=\"color:var(--tx-err,#b91c1c)\">' + gaps.missingDocs + ' missing</span>') : ' · complete') +\n        (gaps.complete != null ? (' · complete stays ' + gaps.complete + '/' + (est.stays || 0)) : '') + '</div>';\n    }\n    return html;\n  }\n",
+   "note": "Configuration: Booking.com hotel id field",
+   "find": "          <input type=\"text\" value=\"${(a.clearGroup||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;')}\" placeholder=\"e.g. Votsala\" onchange=\"setApt('${a.id}','clearGroup',this.value.trim())\" style=\"width:100%;font-size:12px;padding:7px;border-radius:var(--r);border:1px solid var(--bdr);background:var(--bg);color:var(--tx);margin-bottom:10px\">\n          <div class=\"shdr\">Fiscal contact (Oxygen) - owner's ΑΠΥ/ΤΠΥ is issued to this contact</div>",
+   "replace": "          <input type=\"text\" value=\"${(a.clearGroup||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;')}\" placeholder=\"e.g. Votsala\" onchange=\"setApt('${a.id}','clearGroup',this.value.trim())\" style=\"width:100%;font-size:12px;padding:7px;border-radius:var(--r);border:1px solid var(--bdr);background:var(--bg);color:var(--tx);margin-bottom:10px\">\n          <div class=\"shdr\">Booking.com hotel / apartment id (invoices print this id, not the Elysian name). Votsala 1–8 share one id.</div>\n          <input type=\"text\" value=\"${String(a.bookingHotelId||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;')}\" placeholder=\"e.g. 10980606\" onchange=\"setApt('${a.id}','bookingHotelId',this.value.trim())\" style=\"width:100%;font-size:12px;padding:7px;border-radius:var(--r);border:1px solid var(--bdr);background:var(--bg);color:var(--tx);margin-bottom:10px\">\n          <div class=\"shdr\">Fiscal contact (Oxygen) - owner's ΑΠΥ/ΤΠΥ is issued to this contact</div>",
    "count": 1
   },
   {
-   "note": "Expect health stores local gaps before Hosthub backfill",
-   "find": "    PI.health = {\n      airInv: airInv, airCredit: airCredit,\n      airInvList: air.inv, airCreditList: air.credit, airMissing: air.missing,\n      airStays: air.stays || [], airEstimate: air.estimate || null,\n      bdcExpect: bdcExpect, bdcBookings: bdcBookings, bdcBookMonth: bdcBookMonth, bdcApts: bdcApts\n    };\n    box.innerHTML =\n      '<div>Document month <code>' + month + '</code></div>' +\n      piEstimateSummaryHtml(air.estimate) +\n",
-   "replace": "    var countItemsH = (PI.vaultItems && PI.vaultItems.length) ? PI.vaultItems : (PI.items || []);\n    var localGaps = piClientGaps(air.stays || [], countItemsH);\n    PI.health = {\n      airInv: airInv, airCredit: airCredit,\n      airInvList: air.inv, airCreditList: air.credit, airMissing: air.missing,\n      airStays: air.stays || [], airEstimate: air.estimate || null, airGaps: localGaps,\n      bdcExpect: bdcExpect, bdcBookings: bdcBookings, bdcBookMonth: bdcBookMonth, bdcApts: bdcApts\n    };\n    box.innerHTML =\n      '<div>Document month <code>' + month + '</code></div>' +\n      piEstimateSummaryHtml(air.estimate, localGaps) +\n",
+   "note": "BDC expect groups Votsala and uses stay month (check-in in M−1)",
+   "find": "    var bdcBookings = 0;\n    var bdcMap = {};\n    var bdcBookMonth = piPrevMonth(month);\n    bks.forEach(function (b) {\n      var ch = piChan(b);\n      var createdYm = piYmFromTs(b.createdOnChannel != null ? b.createdOnChannel : b.created);\n      if (ch === 'booking' && createdYm === bdcBookMonth && !b.cancelled) {\n        bdcBookings++;\n        var key = piAptKey(b) || ('unk:' + String(b.id || b.reservationId || b.bookingId || ''));\n        if (!bdcMap[key]) {\n          bdcMap[key] = {\n            aptId: String(b.aptId || b.apartmentId || '').trim(),\n            aptName: String(b.aptName || b.apartmentName || '').trim(),\n            bookings: 0\n          };\n        }\n        bdcMap[key].bookings++;\n      }\n    });",
+   "replace": "    var bdcBookings = 0;\n    var bdcMap = {};\n    var bdcBookMonth = piPrevMonth(month);\n    function piYmFromDmy(s) {\n      var str = String(s || '').trim();\n      var md = str.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);\n      if (md) return md[3] + '-' + String(parseInt(md[2], 10)).padStart(2, '0');\n      md = str.match(/^(20\\d{2})-(\\d{2})/);\n      if (md) return md[1] + '-' + md[2];\n      return '';\n    }\n    function piBdcStayMonth(b) {\n      var ym = piYmFromDmy(b && (b.checkIn || b.check_in));\n      if (ym) return ym;\n      return piYmFromTs(b && (b.createdOnChannel != null ? b.createdOnChannel : b.created));\n    }\n    function piBdcBillingFolder(b) {\n      var apt = null;\n      try {\n        if (b && b.aptId && typeof aptById === 'function') apt = aptById(b.aptId);\n        if (!apt && b && b.aptName && typeof S !== 'undefined' && Array.isArray(S.apts))\n          apt = S.apts.find(function (x) { return x && x.name === b.aptName; }) || null;\n      } catch (eApt) {}\n      var g = apt && apt.clearGroup ? String(apt.clearGroup).trim() : '';\n      if (/^votsala$/i.test(g) || /^Votsala\\b/i.test(String((apt && apt.name) || (b && b.aptName) || ''))) return 'Votsala';\n      return String((apt && apt.name) || (b && (b.aptName || b.apartmentName)) || '').trim();\n    }\n    bks.forEach(function (b) {\n      var ch = piChan(b);\n      if (ch === 'booking' && piBdcStayMonth(b) === bdcBookMonth && !b.cancelled) {\n        bdcBookings++;\n        var folder = piBdcBillingFolder(b) || ('unk:' + String(b.id || b.reservationId || b.bookingId || ''));\n        var key = folder === 'Votsala' ? 'Votsala' : (piAptKey(b) || ('name:' + folder.toLowerCase()));\n        if (!bdcMap[key]) {\n          bdcMap[key] = {\n            aptId: folder === 'Votsala' ? '' : String(b.aptId || b.apartmentId || '').trim(),\n            aptName: folder,\n            bookings: 0\n          };\n        }\n        bdcMap[key].bookings++;\n      }\n    });",
    "count": 1
   },
   {
-   "note": "airbnb-codes response stores server gaps on Expect",
-   "find": "        PI.health.airEstimate = cj.estimate || air.estimate || PI.health.airEstimate;\n        PI.health.airStays = (cj.stays && cj.stays.length) ? cj.stays : (air.stays || PI.health.airStays || []);\n        airInv = inv.length; airCredit = credit.length;\n        box.innerHTML =\n          '<div>Document month <code>' + month + '</code></div>' +\n          piEstimateSummaryHtml(PI.health.airEstimate) +\n",
-   "replace": "        PI.health.airEstimate = cj.estimate || air.estimate || PI.health.airEstimate;\n        PI.health.airStays = (cj.stays && cj.stays.length) ? cj.stays : (air.stays || PI.health.airStays || []);\n        PI.health.airGaps = cj.gaps || PI.health.airGaps || null;\n        airInv = inv.length; airCredit = credit.length;\n        box.innerHTML =\n          '<div>Document month <code>' + month + '</code></div>' +\n          piEstimateSummaryHtml(PI.health.airEstimate, PI.health.airGaps) +\n",
+   "note": "Expect health box shows Booking.com PDF count",
+   "find": "      '<div style=\"margin-top:8px;color:var(--tx3);font-size:11.5px\">Expect is which stays to open. Estimate: normal reservation = 1 invoice; cancelled = 2 invoices (debit+credit); extended ×3 for the first extend, then +2 per extra extend (2→5, 3→7, 4→9). Each PDF archives in the month of its VAT issue date — an extend can put the new debit and credit in a later month. Pull still saves every VAT document on the stay.</div>';",
+   "replace": "      '<div style=\"margin-top:8px;color:var(--tx3);font-size:11.5px\">Expect is which stays to open. Estimate: normal reservation = 1 invoice; cancelled = 2 invoices (debit+credit); extended ×3 for the first extend, then +2 per extra extend (2→5, 3→7, 4→9). Each PDF archives in the month of its VAT issue date — an extend can put the new debit and credit in a later month. Pull still saves every VAT document on the stay.</div>' +\n      '<div style=\"margin-top:6px\"><b>Booking.com</b> (stays in <code>' + bdcBookMonth + '</code>): <b>' + bdcExpect + '</b> invoice PDF(s) — one per apartment; Votsala 1–8 = one PDF</div>';",
    "count": 1
   },
   {
-   "note": "piPull disables Pull incomplete; copy for incomplete queue",
-   "find": "    var btn = document.getElementById('pi-pull-btn');\n    var btnAll = document.getElementById('pi-pull-all-btn');\n    if (btn) btn.disabled = true;\n    if (btnAll) btnAll.disabled = true;\n    msg(testCodes.length\n      ? ('Test pull: ' + testCodes.join(', ') + '…')\n      : (limit > 0\n      ? ('Test pull: latest ' + limit + ' Hosthub code(s)…')\n      : 'Pulling Airbnb VAT docs from Hosthub codes (can take several minutes)…'), true);\n",
-   "replace": "    var btn = document.getElementById('pi-pull-btn');\n    var btnAll = document.getElementById('pi-pull-all-btn');\n    var btnInc = document.getElementById('pi-pull-incomplete-btn');\n    if (btn) btn.disabled = true;\n    if (btnAll) btnAll.disabled = true;\n    if (btnInc) btnInc.disabled = true;\n    msg(testCodes.length\n      ? ((opts.incomplete ? 'Pull incomplete: ' : 'Test pull: ') + testCodes.join(', ') + '…')\n      : (limit > 0\n      ? ('Test pull: latest ' + limit + ' Hosthub code(s)…')\n      : 'Pulling Airbnb VAT docs from Hosthub codes (can take several minutes)…'), true);\n",
+   "note": "After Hosthub backfill, still show Booking.com expect count",
+   "find": "          '<div style=\"margin-top:8px;color:var(--tx3);font-size:11.5px\">Codes from <code>' + (cj.source || 'server') + '</code>. Expect is which stays to open. Each PDF archives in the month of its VAT issue date. Estimate: normal = 1; cancelled = 2; extended ×3 for the first extend, then +2 per extra extend.</div>';",
+   "replace": "          '<div style=\"margin-top:8px;color:var(--tx3);font-size:11.5px\">Codes from <code>' + (cj.source || 'server') + '</code>. Expect is which stays to open. Each PDF archives in the month of its VAT issue date. Estimate: normal = 1; cancelled = 2; extended ×3 for the first extend, then +2 per extra extend.</div>' +\n          '<div style=\"margin-top:6px\"><b>Booking.com</b> (stays in <code>' + bdcBookMonth + '</code>): <b>' + bdcExpect + '</b> invoice PDF(s) — one per apartment; Votsala 1–8 = one PDF</div>';",
    "count": 1
   },
   {
-   "note": "Re-enable Pull incomplete when the job finishes",
-   "find": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; }",
-   "replace": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; if (btnInc) btnInc.disabled = false; }",
+   "note": "BDC checklist copy: Votsala grouped; list unmapped vault folders",
+   "find": "      '<div style=\"font-weight:600;margin-bottom:6px\">Booking.com — one invoice per apartment: <b>' + have + '</b>/' + cov.length + ' covered</div>' +\n      '<div style=\"display:flex;flex-direction:column;gap:4px\">' +\n      cov.map(function (x) {\n        var label = (x.aptName || x.aptId || 'Apartment') + (x.aptId && x.aptName ? (' · ' + x.aptId) : '');\n        var mark = x.have\n          ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>'\n          : '<span style=\"color:var(--tx-err,#b91c1c)\">✗ missing</span>';\n        return '<div>' + mark + ' ' + label +\n          ' <span style=\"color:var(--tx3)\">(' + (x.bookings || 0) + ' booking(s) in prior month)</span></div>';\n      }).join('') + '</div>';",
+   "replace": "      '<div style=\"font-weight:600;margin-bottom:6px\">Booking.com — one invoice per apartment (Votsala = one): <b>' + have + '</b>/' + cov.length + ' covered</div>' +\n      '<div style=\"display:flex;flex-direction:column;gap:4px\">' +\n      cov.map(function (x) {\n        var label = (x.aptName || x.aptId || 'Apartment') + (x.aptId && x.aptName ? (' · ' + x.aptId) : '');\n        var mark = x.have\n          ? '<span style=\"color:var(--tx-ok,#059669)\">✓</span>'\n          : '<span style=\"color:var(--tx-err,#b91c1c)\">✗ missing</span>';\n        return '<div>' + mark + ' ' + label +\n          ' <span style=\"color:var(--tx3)\">(' + (x.bookings || 0) + ' booking(s) in prior month)</span></div>';\n      }).join('') + '</div>';\n    var unmapped = (items || PI.items || []).filter(function (f) {\n      if (String(f.channel || '').toLowerCase() !== 'booking') return false;\n      return /unmapped-/i.test(String(f.partner || '') + ' ' + String(f.filename || ''));\n    });\n    if (unmapped.length) {\n      el.innerHTML += '<div style=\"margin-top:8px;color:var(--tx-err,#b91c1c)\">Unmapped Booking id(s) — paste bookingHotelId on Configuration: ' +\n        unmapped.map(function (f) { return '<code>' + String(f.partner || f.filename || '') + '</code>'; }).join(' · ') + '</div>';\n    }",
    "count": 1
   },
   {
-   "note": "Pull incomplete posts only short Expect codes",
-   "find": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; if (btnInc) btnInc.disabled = false; }\n  };\n  window.piSend = async function (scope) {",
-   "replace": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; if (btnInc) btnInc.disabled = false; }\n  };\n  window.piPullIncomplete = function () {\n    var h = PI.health || {};\n    var items = (PI.vaultItems && PI.vaultItems.length) ? PI.vaultItems : (PI.items || []);\n    var codes = [];\n    if (h.airGaps && h.airGaps.incomplete && h.airGaps.incomplete.length) {\n      codes = h.airGaps.incomplete.map(function (g) { return String(g.code || '').toUpperCase(); }).filter(Boolean);\n    } else {\n      (h.airStays || []).forEach(function (s) {\n        if (s && s.code && piVaultPdfCount(items, s.code) < (s.docs || 1)) codes.push(String(s.code).toUpperCase());\n      });\n    }\n    if (!codes.length) {\n      msg('No incomplete Airbnb stays for this month — vault matches Expect.', false);\n      return;\n    }\n    return piPull({ codes: codes, incomplete: true });\n  };\n  window.piSend = async function (scope) {",
+   "note": "piPull posts bookingHotelId + clearGroup with apartments",
+   "find": "        ? S.apts.map(function (a) { return { aptId: a.id || a.aptId || '', aptName: a.name || a.aptName || '' }; })",
+   "replace": "        ? S.apts.map(function (a) { return { aptId: a.id || a.aptId || '', aptName: a.name || a.aptName || '', bookingHotelId: String(a.bookingHotelId || '').trim(), clearGroup: String(a.clearGroup || '').trim() }; })",
+   "count": 1
+  },
+  {
+   "note": "piPullFinishMsg distinguishes Booking.com vs Airbnb",
+   "find": "    var n = (job.saved || []).length;\n    var codes = job.airbnbCodes || codeCount || 0;",
+   "replace": "    var n = (job.saved || []).length;\n    var codes = job.airbnbCodes || codeCount || 0;\n    var bdc = String((job && job.channel) || '').toLowerCase() === 'booking' || String((job && job.channel) || '').toLowerCase() === 'bdc';",
+   "count": 1
+  },
+  {
+   "note": "0-PDF finish message for Booking.com mass extract",
+   "find": "      msg('Airbnb pull saved 0 PDFs from ' + codes + ' Hosthub code(s)' +\n        (errTxt ? (' — ' + errTxt) : '') +\n        (job.reconnectHint ? (' — ' + job.reconnectHint) : (expired ? ' — click Connect Airbnb, enter the email code, then Pull again' : '')), false);",
+   "replace": "      msg((bdc ? ('Booking.com pull saved 0 PDFs') : ('Airbnb pull saved 0 PDFs from ' + codes + ' Hosthub code(s)')) +\n        (errTxt ? (' — ' + errTxt) : '') +\n        (job.reconnectHint ? (' — ' + job.reconnectHint) : (expired && !bdc ? ' — click Connect Airbnb, enter the email code, then Pull again' : '')), false);",
+   "count": 1
+  },
+  {
+   "note": "Success finish message for Booking.com PDFs",
+   "find": "      msg('Pulled ' + n + ' Airbnb PDF(s) from ' + codes + ' Hosthub code(s)' +\n        (errTxt ? (' · notes: ' + errTxt) : '') +\n        ' — open them under PDFs by apartment below', true);",
+   "replace": "      msg(bdc\n        ? ('Pulled ' + n + ' Booking.com PDF(s)' + (errTxt ? (' · notes: ' + errTxt) : '') + ' — open them under PDFs by apartment below')\n        : ('Pulled ' + n + ' Airbnb PDF(s) from ' + codes + ' Hosthub code(s)' +\n        (errTxt ? (' · notes: ' + errTxt) : '') +\n        ' — open them under PDFs by apartment below'), true);",
+   "count": 1
+  },
+  {
+   "note": "piPullBooking starts a background Booking.com mass extract",
+   "find": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; }\n  };\n  window.piSend = async function (scope) {",
+   "replace": "    finally { if (btn) btn.disabled = false; if (btnAll) btnAll.disabled = false; var btnB = document.getElementById('pi-pull-bdc-btn'); if (btnB) btnB.disabled = false; }\n  };\n  window.piPullBooking = async function () {\n    var month = monthVal();\n    var btn = document.getElementById('pi-pull-bdc-btn');\n    var btnAir = document.getElementById('pi-pull-all-btn');\n    var btnTest = document.getElementById('pi-pull-btn');\n    if (btn) btn.disabled = true;\n    if (btnAir) btnAir.disabled = true;\n    if (btnTest) btnTest.disabled = true;\n    msg('Pulling Booking.com invoices for ' + month + ' (Finance → Invoices mass extract)…', true);\n    try {\n      var apts = (typeof S !== 'undefined' && Array.isArray(S.apts))\n        ? S.apts.map(function (a) {\n            return {\n              aptId: a.id || a.aptId || '',\n              aptName: a.name || a.aptName || '',\n              bookingHotelId: String(a.bookingHotelId || '').trim(),\n              clearGroup: String(a.clearGroup || '').trim()\n            };\n          })\n        : [];\n      var res = await fetch('/api/platform-invoices/pull', {\n        method: 'POST', headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ month: month, channel: 'booking', apartments: apts })\n      });\n      var raw = await res.text();\n      var r = piPullParseResponse(res, raw);\n      if (!res.ok && !(r && r.job)) throw new Error(((r && r.error) || 'pull failed') + (r && r.hint ? (' — ' + r.hint) : ''));\n      if (r && r.job && r.job.id && (r.job.status === 'starting' || r.job.status === 'running')) {\n        msg(r.job.hint || 'Pulling Booking.com in the background…', true);\n        await piWatchPullJob(r.job.id, 0);\n        return;\n      }\n      piPullFinishMsg(r, 0);\n      await piHealth();\n      await piReload();\n    } catch (e) {\n      var em = e && e.message ? String(e.message) : String(e);\n      if (/no pull job with that id|pull stopped/i.test(em)) msg('Pull stopped', true);\n      else msg(em, false);\n    } finally {\n      if (btn) btn.disabled = false;\n      if (btnAir) btnAir.disabled = false;\n      if (btnTest) btnTest.disabled = false;\n    }\n  };\n  window.piSend = async function (scope) {",
    "count": 1
   }
  ],
  "assertions": [
   {
-   "has": "piPullIncomplete",
-   "note": "Pull incomplete helper"
+   "has": "piPullBooking()",
+   "note": "Collect Pull Booking.com"
   },
   {
-   "has": "id=\"pi-pull-incomplete-btn\"",
-   "note": "Pull incomplete button"
+   "has": "channel: 'booking'",
+   "note": "Booking pull posts channel booking"
   },
   {
-   "has": "Vault vs Expect",
-   "note": "Expect shows vault vs estimate"
+   "has": "bookingHotelId",
+   "note": "apartments carry Booking id"
   },
   {
-   "has": "airGaps",
-   "note": "stores Expect gaps"
+   "has": "folder === 'Votsala'",
+   "note": "Votsala grouped expect"
   },
   {
-   "has": "Number(f.size) < 2048",
-   "note": "tiny PDFs ignored in vault count"
+   "has": "id=\"pi-pull-bdc-btn\"",
+   "note": "Pull Booking.com button"
   },
   {
-   "has": "stayRows.map(row)",
-   "note": "incomplete stays first"
+   "has": "setApt('${a.id}','bookingHotelId'",
+   "note": "Configuration Booking id field"
   },
   {
-   "has": "Pull Airbnb (Hosthub codes)",
-   "note": "full pull kept"
-  },
-  {
-   "has": "piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })",
-   "note": "test pull kept"
-  },
-  {
-   "has": "kind: 'both'",
-   "note": "pull every VAT doc"
-  },
-  {
-   "has": "id=\"pi-view-vault\"",
-   "note": "vault view kept"
-  },
-  {
-   "has": "Estimated invoices to pull",
-   "note": "Expect estimate kept"
+   "hasNot": "Booking.com is parked for now",
+   "note": "parked copy removed"
   }
  ]
 }

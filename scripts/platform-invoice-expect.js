@@ -207,6 +207,8 @@ function estimateAirbnbInvoices(month, bks) {
   return { stays: stays, missing: missing, estimate: estimate };
 }
 
+const booking = require('./platform-invoice-booking');
+
 /** Chromium blank prints are a few hundred bytes; a real Airbnb VAT PDF is tens of KB. */
 const TINY_PDF_BYTES = 2048;
 
@@ -272,6 +274,7 @@ module.exports = {
   createdMs,
   classifyAirbnbStay,
   estimateAirbnbInvoices,
+  estimateBookingInvoices: booking.estimateBookingInvoices,
   countExtends,
   docsForStay,
   docsInMonth,

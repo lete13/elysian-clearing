@@ -11,7 +11,7 @@ const vm = require('vm');
 const root = path.join(__dirname, '..');
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
 let sha = crypto.createHash('sha256').update(html).digest('hex');
-for (let n = 1; n <= 120; n++) {
+for (let n = 1; n <= 200; n++) {
   const name = n === 1 ? 'patches.json' : 'patches-' + n + '.json';
   const file = path.join(root, 'fe', name);
   if (!fs.existsSync(file)) break;
@@ -35,10 +35,12 @@ assert(html.includes('function piStoreYm'), 'year/month helper');
 assert(html.includes('PDFs by apartment — click Open to view'), 'collect vault heading kept');
 assert(html.includes('Guided monthly run'), 'retrieve still has guided run copy');
 assert(html.includes('Pull Airbnb (Hosthub codes)'), 'full pull kept');
+assert(html.includes('piPullBooking()'), 'Booking.com pull');
 assert(html.includes("piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })"), 'test pull kept');
-assert(html.includes('piPullIncomplete'), 'Pull incomplete helper');
 assert(html.includes('Vault vs Expect'), 'Expect vs vault copy');
-assert(html.includes('id="pi-pull-incomplete-btn"'), 'Pull incomplete button');
+assert(html.includes('incomplete stays first'), 'month pull opens incomplete stays first');
+assert(!html.includes('piPullIncomplete'), 'no separate Pull incomplete helper');
+assert(!html.includes('id="pi-pull-incomplete-btn"'), 'no Pull incomplete button');
 
 const start = html.indexOf('function piStoreApt(it)');
 const end = html.indexOf('window.piGo = function', start);
@@ -88,6 +90,9 @@ ctx.PI.vaultItems = [
 ctx.renderVaultTree();
 
 assert(tree.innerHTML.indexOf('Birdhouse Apartment') >= 0, 'apartment folder');
+assert(tree.innerHTML.indexOf('class="pi-fold pi-apt"') >= 0, 'apt folder class');
+assert(tree.innerHTML.indexOf('<details open class="pi-fold pi-apt">') < 0, 'apartment folders start closed');
+assert(tree.innerHTML.indexOf('<details class="pi-fold pi-apt" open') < 0, 'apartment folders start closed (attr order)');
 assert(tree.innerHTML.indexOf('Coloneum') >= 0, 'second apartment folder');
 assert(tree.innerHTML.indexOf('Airbnb') >= 0, 'platform subfolder');
 assert(tree.innerHTML.indexOf('Booking.com') >= 0, 'Booking.com subfolder');
