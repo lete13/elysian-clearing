@@ -206,6 +206,10 @@ const betaJs = fs.readFileSync(path.join(rootDir, 'fe', 'daily-ops-beta.js'), 'u
 assert(betaJs.includes('html2canvas-pro@1.5.11'), 'Ops image loads html2canvas-pro');
 assert(betaJs.includes('flattenCloneColors'), 'Ops image flattens unsupported colors in the clone');
 assert(betaJs.includes('onclone'), 'Ops image uses onclone color sanitize');
+assert(betaJs.includes('prefetchOpsImageLib'), 'Ops image library is prefetched on tab render');
+assert(betaJs.includes('copyOpsPngToClipboard'), 'Ops image clipboard helper present');
+assert(betaJs.includes('Clipboard busy — downloaded Ops board PNG instead') || betaJs.includes('downloaded Ops board PNG instead'), 'clipboard focus failure falls back to download');
+assert(betaJs.includes('Document is not focused') || betaJs.includes('document is not focused'), 'clipboard focus error is detected');
 
 // Bare arrival-only rows (no clean target) must stay visible under Open + Attention.
 const bareArrival = {
