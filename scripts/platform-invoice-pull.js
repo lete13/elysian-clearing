@@ -132,7 +132,14 @@ function airbnbDocAlreadyHave(have, kind, code, vatId) {
   return have.has(airbnbHaveKey(kind, c));
 }
 function airbnbResvAlreadyHave(resv, have) {
-  // Always reopen the stay: one saved PDF is not the full debit/credit/extension set.
+  const code = String((resv && resv.code) || '').toUpperCase();
+  if (!code || !have || !have.size) return false;
+  if (have.has(airbnbHaveKey('invoice', code)) || have.has(airbnbHaveKey('credit_note', code))) return true;
+  const invPrefix = 'invoice:' + code + ':';
+  const cnPrefix = 'credit_note:' + code + ':';
+  for (const k of have) {
+    if (k.indexOf(invPrefix) === 0 || k.indexOf(cnPrefix) === 0) return true;
+  }
   return false;
 }
 function requestPullStop(why) {
@@ -1777,6 +1784,7 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
     }
 
     let pulled = 0;
+    let skippedN = 0;
     let idx = 0;
     const total = queue.length;
     const alreadyHave = loadAirbnbHaveSet();
@@ -1784,6 +1792,7 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
       if (pullStopRequested()) break;
       idx += 1;
       if (airbnbResvAlreadyHave(resv, alreadyHave)) {
+        skippedN += 1;
         emitJson({
           event: 'progress',
           done: idx,
@@ -1800,7 +1809,7 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
     if (pullStopRequested()) {
       errors.push({ channel: 'airbnb', error: 'Pull stopped' });
     }
-    if (!pulled) {
+    if (!pulled && skippedN < total) {
       errors.push({
         channel: 'airbnb',
         error: 'Hosthub listed ' + queue.length + ' Airbnb code(s) but 0 PDFs were captured.',
