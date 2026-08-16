@@ -1,0 +1,53 @@
+{
+ "baseSha256": "d9e2eb6b63f911862e222c7bb109e92810bdab23b36abc2c06b90b549d14197a",
+ "expectedSha256": "c6df28e8095956888aa8aef1cc35e230b4ae0282440030737f003ee9e3a30fa2",
+ "builtAt": "2026-08-16 never fall back to HeadlessChrome for Booking Connect",
+ "patches": [
+  {
+   "note": "Never fall back to HeadlessChrome \u2014 Booking.com blocks Next",
+   "find": "async function piBookingLaunchBrowser(pw) {\n  piBookingEnsureDisplay();\n  const args = ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--no-sandbox', '--disable-infobars', '--window-size=1440,900'];\n  const proxy = process.env.PLAYWRIGHT_PROXY_SERVER || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';\n  const opts = { headless: false, args: args, ignoreDefaultArgs: ['--enable-automation'] };\n  if (proxy) opts.proxy = { server: proxy };\n  try {\n    return await pw.chromium.launch(Object.assign({}, opts, { channel: 'chrome' }));\n  } catch (eChrome) {\n    try {\n      return await pw.chromium.launch(opts);\n    } catch (eHeaded) {\n      console.error('[platform-invoices] headed Booking Chrome failed, falling back to headless', eHeaded.message || eHeaded);\n      opts.headless = true;\n      try {\n        return await pw.chromium.launch(Object.assign({}, opts, { channel: 'chrome' }));\n      } catch (eLast) {\n        return await pw.chromium.launch(opts);\n      }\n    }\n  }\n}\n",
+   "replace": "async function piBookingLaunchBrowser(pw) {\n  piBookingEnsureDisplay();\n  const args = ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--no-sandbox', '--disable-setuid-sandbox', '--disable-infobars', '--disable-gpu', '--disable-software-rasterizer', '--window-size=1440,900'];\n  const proxy = process.env.PLAYWRIGHT_PROXY_SERVER || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';\n  const opts = { headless: false, args: args, ignoreDefaultArgs: ['--enable-automation'] };\n  if (proxy) opts.proxy = { server: proxy };\n  let lastErr = null;\n  for (let attempt = 0; attempt < 2; attempt++) {\n    if (attempt) {\n      try { delete process.env.DISPLAY; } catch (eUnset) {}\n      piBookingEnsureDisplay();\n    }\n    try {\n      return await pw.chromium.launch(Object.assign({}, opts, { channel: 'chrome' }));\n    } catch (eChrome) {\n      lastErr = eChrome;\n      try {\n        return await pw.chromium.launch(opts);\n      } catch (eHeaded) {\n        lastErr = eHeaded;\n      }\n    }\n  }\n  throw new Error('Booking.com Connect needs headed Chrome (Xvfb). ' + String((lastErr && lastErr.message) || lastErr || 'launch failed'));\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Public job includes browserKind so Collect can show Chrome vs HeadlessChrome",
+   "find": "    pageSnippet: job.pageSnippet || null,\n    delivery: job.delivery || null,\n",
+   "replace": "    pageSnippet: job.pageSnippet || null,\n    browserKind: job.browserKind || null,\n    delivery: job.delivery || null,\n",
+   "count": 1
+  },
+  {
+   "note": "Refuse HeadlessChrome before opening Booking.com login",
+   "find": "    const ua = await page.evaluate(function () { return navigator.userAgent; }).catch(function () { return ''; });\n    if (/HeadlessChrome/i.test(ua)) console.warn('[platform-invoices] Booking Connect UA is HeadlessChrome \u2014 Next will likely fail');\n    else console.log('[platform-invoices] Booking Connect headed');\n    await page.goto('https://admin.booking.com/', { waitUntil: 'load', timeout: 90000 });\n    await page.waitForTimeout(4000);\n",
+   "replace": "    const ua = await page.evaluate(function () { return navigator.userAgent; }).catch(function () { return ''; });\n    const kindM = String(ua || '').match(/(HeadlessChrome|Chrome)\\/[\\d.]+/);\n    job.browserKind = kindM ? kindM[0] : 'unknown';\n    if (/HeadlessChrome/i.test(ua)) {\n      throw new Error('Server started HeadlessChrome (' + job.browserKind + '). Booking.com blocks Next on that browser. Headed Chrome/Xvfb did not start.');\n    }\n    console.log('[platform-invoices] Booking Connect headed', job.browserKind);\n    await page.goto('https://admin.booking.com/', { waitUntil: 'load', timeout: 90000 });\n    await page.waitForTimeout(4000);\n",
+   "count": 1
+  },
+  {
+   "note": "Interactive hint names the headed Chrome so a block is not mistaken for a bad password",
+   "find": "    job.status = 'interactive';\n    job.error = null;\n    job.hint = 'Log into admin.booking.com below. When the Extranet / Finance is visible, click Save session for Pull.';\n    await piAirbnbInteractiveSnapshot(job);\n",
+   "replace": "    job.status = 'interactive';\n    job.error = null;\n    job.hint = 'Log into admin.booking.com below (' + (job.browserKind || 'Chrome') + '). When the Extranet / Finance is visible, click Save session for Pull.';\n    await piAirbnbInteractiveSnapshot(job);\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Booking.com Connect needs headed Chrome (Xvfb)",
+   "note": "headed launch failure is visible"
+  },
+  {
+   "has": "Server started HeadlessChrome",
+   "note": "HeadlessChrome is refused"
+  },
+  {
+   "has": "browserKind: job.browserKind",
+   "note": "job exposes browser kind"
+  },
+  {
+   "has": "headless: false",
+   "note": "Booking Connect stays headed"
+  },
+  {
+   "hasNot": "falling back to headless",
+   "note": "no silent HeadlessChrome fallback"
+  }
+ ]
+}

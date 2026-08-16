@@ -610,6 +610,10 @@ async function main() {
   assert(!/userAgent:/.test(bookingCtxSrc), 'Booking Connect uses the real browser user-agent');
   const launchSrc = extractFn(server, 'piBookingLaunchBrowser');
   assert(launchSrc.includes('headless: false'), 'Booking Connect launches headed Chrome');
+  assert(!launchSrc.includes('headless: true'), 'Booking Connect does not fall back to headless');
+  assert(!launchSrc.includes('falling back to headless'), 'no silent HeadlessChrome fallback');
+  assert(server.includes('Server started HeadlessChrome'), 'HeadlessChrome is refused before login');
+  assert(server.includes('browserKind: job.browserKind'), 'job exposes browser kind');
   assert(server.includes('piBookingEnsureDisplay'), 'Booking Connect starts Xvfb when DISPLAY is missing');
   assert(server.includes("existsSync('/tmp/.X11-unix/X'"), 'Xvfb starts even when DISPLAY=:99 is pre-set');
   assert(server.includes('piBookingHumanType'), 'Booking Type focuses the username field');
@@ -619,6 +623,7 @@ async function main() {
   assert(frontend.includes('Booking.com blocked this attempt'), 'Collect shows a banner when Booking.com blocks sign-in');
   assert(frontend.includes('wait for the password field'), 'Collect says wait after username');
   assert(frontend.includes('it is filled for you') || frontend.includes('it goes into the username field'), 'Collect says Type fills username');
+  assert(frontend.includes('Server browser:'), 'Collect shows which Chrome launched');
 
   console.log('airbnb auth flow OK: interactive in-app browser, background Pull harvest, sanitized OTP diagnostics, Booking.com in-app Connect');
 }

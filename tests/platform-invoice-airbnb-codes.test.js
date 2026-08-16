@@ -189,6 +189,13 @@ assert(srv82.patches.some((p) => (p.replace || '').includes('headless: false')),
 const srv83 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-83.json'), 'utf8'));
 assert.strictEqual(srv83.baseSha256, srv82.expectedSha256, 'SRV 83 continues SRV 82');
 assert(srv83.patches.some((p) => (p.replace || '').includes("existsSync('/tmp/.X11-unix/X'")), 'SRV starts Xvfb when the display socket is missing');
+const fe122 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-122.json'), 'utf8'));
+const srv84 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-84.json'), 'utf8'));
+assert.strictEqual(fe122.baseSha256, fe121.expectedSha256, 'FE 122 continues FE 121');
+assert.strictEqual(srv84.baseSha256, srv83.expectedSha256, 'SRV 84 continues SRV 83');
+assert(fe122.patches.some((p) => (p.replace || '').includes('Server browser:')), 'FE shows browser kind');
+assert(srv84.patches.some((p) => (p.replace || '').includes('Server started HeadlessChrome')), 'SRV refuses HeadlessChrome');
+assert(!srv84.patches.some((p) => (p.replace || '').includes('falling back to headless')), 'SRV does not fall back to headless');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

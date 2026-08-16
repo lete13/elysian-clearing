@@ -201,5 +201,8 @@ assert(srv82.patches.some((p) => (p.replace || '').includes('not(#hidden-passwor
 assert(srv82.patches.some((p) => (p.replace || '').includes('cn <= 140')), 'FE bootstrap through 140');
 const srv83 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-83.json'), 'utf8'));
 assert(srv83.patches.some((p) => (p.replace || '').includes("existsSync('/tmp/.X11-unix/X'")), 'Xvfb starts if the X socket is missing');
+const srv84 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-84.json'), 'utf8'));
+assert(srv84.patches.some((p) => (p.replace || '').includes('Server started HeadlessChrome')), 'HeadlessChrome is refused');
+assert(!/falling back to headless/.test(JSON.stringify(srv84.patches)), 'no headless fallback in SRV 84');
 
 console.log('platform-invoice-booking.test.js: ok');
