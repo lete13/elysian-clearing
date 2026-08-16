@@ -199,6 +199,13 @@ assert(!/ob-table-wrap\s*\{[^}]*max-height/.test(css), 'table wrap has no fixed 
 assert(/ob-table-wrap\s*\{[^}]*overflow-y:\s*visible/.test(css), 'table height follows row count');
 assert(/\.ob-dispatch-row\.tone-hot td/.test(css), 'hot tone styles present');
 assert(/\.ob-dispatch-row\.tone-same td/.test(css), 'same-day tone styles present');
+assert(!/color-mix\s*\(/.test(css), 'Daily Ops CSS avoids color-mix for html2canvas compatibility');
+assert(!/oklch\s*\(|color\s*\(srgb/i.test(css), 'Daily Ops CSS avoids modern color() forms that break screenshots');
+
+const betaJs = fs.readFileSync(path.join(rootDir, 'fe', 'daily-ops-beta.js'), 'utf8');
+assert(betaJs.includes('html2canvas-pro@1.5.11'), 'Ops image loads html2canvas-pro');
+assert(betaJs.includes('flattenCloneColors'), 'Ops image flattens unsupported colors in the clone');
+assert(betaJs.includes('onclone'), 'Ops image uses onclone color sanitize');
 
 // Bare arrival-only rows (no clean target) must stay visible under Open + Attention.
 const bareArrival = {
