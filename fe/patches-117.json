@@ -1,0 +1,22 @@
+{
+ "baseSha256": "04108e717adbe6e6368c9acf673839cb43dbb72b625ba902c9efce662ee18d24",
+ "expectedSha256": "0afab38bbb0d6416a6d49f985c9aa147a865b9e30b9ba21b79858269adf70c62",
+ "builtAt": "2026-08-16 Vault: apartment folders start closed",
+ "patches": [
+  {
+   "note": "Vault: apartment folders default closed (click to open)",
+   "find": "return '<details' + (files.length ? ' open' : '') + ' class=\"pi-fold pi-apt\">' +",
+   "replace": "return '<details class=\"pi-fold pi-apt\">' +"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "return '<details class=\"pi-fold pi-apt\">' +",
+   "note": "apartment folders start closed"
+  },
+  {
+   "hasNot": "files.length ? ' open' : '') + ' class=\"pi-fold pi-apt\"",
+   "note": "no auto-open on apartment folders"
+  }
+ ]
+}
