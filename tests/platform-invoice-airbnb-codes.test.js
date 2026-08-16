@@ -159,10 +159,27 @@ const fe119 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-119.json
 const srv80 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-80.json'), 'utf8'));
 assert.strictEqual(fe119.baseSha256, fe118.expectedSha256, 'FE 119 continues FE 118');
 assert.strictEqual(srv80.baseSha256, srv79.expectedSha256, 'SRV 80 continues SRV 79');
-assert(fe119.patches.some((p) => (p.replace || '').includes('Try again later')), 'FE explains Booking.com sign-in block');
-assert(srv80.patches.some((p) => (p.replace || '').includes('piBookingLooksBlockedText')), 'SRV detects Try again later');
-assert(srv80.patches.some((p) => (p.replace || '').includes('ignoreDefaultArgs')), 'SRV drops Playwright automation flag for Booking');
-assert(srv80.patches.some((p) => (p.replace || '').includes('BOOKING_CONNECT_AUTOFILL')), 'SRV Booking auto-fill is opt-in');
+assert(!fe119.patches.some((p) => (p.replace || '').includes('piPullIncomplete')), 'no separate Pull incomplete helper');
+assert(!fe119.patches.some((p) => (p.replace || '').includes('pi-pull-incomplete-btn')), 'no Pull incomplete button');
+assert(fe119.patches.some((p) => (p.replace || '').includes('Vault vs Expect')), 'FE vault vs Expect');
+assert(fe119.patches.some((p) => (p.replace || '').includes('Number(f.size) < 2048')), 'FE ignores tiny PDFs');
+assert(fe119.patches.some((p) => (p.replace || '').includes('incomplete stays first')), 'FE month pull copy says incomplete first');
+assert(srv80.patches.some((p) => (p.replace || '').includes('expectGaps')), 'server Expect gaps');
+assert(srv80.patches.some((p) => (p.replace || '').includes('gaps: gaps')), 'airbnb-codes returns gaps');
+assert(srv80.patches.some((p) => (p.replace || '').includes('/^HM[A-Z0-9]{6,18}$/.test(airCode)')), 'keeps cancelled Airbnb HM codes');
+assert(srv80.patches.some((p) => (p.replace || '').includes('TINY_PDF_BYTES')), 'server tiny PDF skip');
+assert(worker.includes('function isTinyPdf'), 'worker rejects tiny PDFs');
+assert(worker.includes('TINY_PDF_BYTES = 2048'), 'worker tiny threshold is 2KB');
+assert(worker.includes('(Number(b.missing) || 0) - (Number(a.missing) || 0)'), 'worker pulls incomplete stays first');
+assert(srv80.patches.some((p) => (p.replace || '').includes("kind: 'both'")), 'pull kind both kept');
+const fe120 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-120.json'), 'utf8'));
+const srv81 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-81.json'), 'utf8'));
+assert.strictEqual(fe120.baseSha256, fe119.expectedSha256, 'FE 120 continues FE 119');
+assert.strictEqual(srv81.baseSha256, srv80.expectedSha256, 'SRV 81 continues SRV 80');
+assert(fe120.patches.some((p) => (p.replace || '').includes('Try again later')), 'FE explains Booking.com sign-in block');
+assert(srv81.patches.some((p) => (p.replace || '').includes('piBookingLooksBlockedText')), 'SRV detects Try again later');
+assert(srv81.patches.some((p) => (p.replace || '').includes('ignoreDefaultArgs')), 'SRV drops Playwright automation flag for Booking');
+assert(srv81.patches.some((p) => (p.replace || '').includes('BOOKING_CONNECT_AUTOFILL')), 'SRV Booking auto-fill is opt-in');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');
@@ -348,7 +365,7 @@ assert(exp.inv.some((x) => x.code === 'HMEXTEND1'), 'Hosthub created in month op
 assert.strictEqual(exp.credit.length, 1);
 assert.strictEqual(exp.credit[0].code, 'HMCANCEL1');
 
-const { estimateAirbnbInvoices } = require(path.join(root, 'scripts', 'platform-invoice-expect'));
+const { estimateAirbnbInvoices, expectGaps, TINY_PDF_BYTES, filenameAirbnbCode } = require(path.join(root, 'scripts', 'platform-invoice-expect'));
 const est = estimateAirbnbInvoices('2024-08', sample);
 assert.strictEqual(est.estimate.normal, 1, 'ordinary stay = 1 invoice');
 assert.strictEqual(est.estimate.cancel, 1, 'cancelled stay listed in cancel month');
@@ -407,6 +424,46 @@ const cancelExt = [
 ];
 assert.strictEqual(estimateAirbnbInvoices('2024-08', cancelExt).stays[0].docs, 1, 'cancel credit this month; debit stays in createdOnChannel month');
 assert.strictEqual(estimateAirbnbInvoices('2024-08', cancelExt).stays[0].stayKind, 'cancel');
+
+assert.strictEqual(TINY_PDF_BYTES, 2048);
+assert.strictEqual(filenameAirbnbCode('Airbnb/2026-07/Le Plaza/invoice-HM2N2TXW4H.pdf'), 'HM2N2TXW4H');
+assert.strictEqual(filenameAirbnbCode('Airbnb/2026-07/X/credit_note-HM3TW2MMBX-CN1.pdf'), 'HM3TW2MMBX');
+
+const gapStays = estimateAirbnbInvoices('2024-08', sample).stays;
+const tinyIgnored = expectGaps(gapStays, [
+  { filename: 'Airbnb/2024-08/X/invoice-HMABCDEF.pdf', size: 9000 },
+  { filename: 'Airbnb/2024-08/X/invoice-HMCANCEL1.pdf', size: 9000 },
+  { filename: 'Airbnb/2024-08/X/invoice-HMEXTEND1.pdf', size: 661 },
+]);
+assert.strictEqual(tinyIgnored.complete, 2, 'tiny extend PDF is not a saved invoice');
+assert.strictEqual(tinyIgnored.incomplete.length, 1);
+assert.strictEqual(tinyIgnored.incomplete[0].code, 'HMEXTEND1');
+assert.strictEqual(tinyIgnored.incomplete[0].need, 2, 'August extend needs the reissue pair');
+assert.strictEqual(tinyIgnored.incomplete[0].have, 0);
+assert.strictEqual(tinyIgnored.missingDocs, 2);
+
+const shortCancel = expectGaps(
+  [{ code: 'HM3TW2MMBX', stayKind: 'cancel', docs: 2, docsStay: 2, aptName: 'Olive' }],
+  [{ filename: 'Airbnb/2026-07/Olive/invoice-HM3TW2MMBX.pdf', size: 12000 }]
+);
+assert.strictEqual(shortCancel.complete, 0);
+assert.strictEqual(shortCancel.incomplete[0].have, 1);
+assert.strictEqual(shortCancel.incomplete[0].missing, 1);
+
+const zeroExtend = expectGaps(
+  [{ code: 'HM4WZ4A8W9', stayKind: 'extend', docs: 2, docsStay: 3, extends: 1, aptName: 'Peaceful' }],
+  []
+);
+assert.strictEqual(zeroExtend.incomplete[0].have, 0);
+assert.strictEqual(zeroExtend.incomplete[0].need, 2);
+assert.strictEqual(zeroExtend.missingDocs, 2);
+
+const emptyPdf = expectGaps(
+  [{ code: 'HM2N2TXW4H', stayKind: 'normal', docs: 1, docsStay: 1 }],
+  [{ filename: 'Airbnb/2026-07/Le Plaza/invoice-HM2N2TXW4H.pdf', size: 661 }]
+);
+assert.strictEqual(emptyPdf.complete, 0, '661-byte blank print does not complete the stay');
+assert.strictEqual(emptyPdf.missingDocs, 1);
 
 const debitHtml = 'Invoice number AIUC-104771625-GR-1552747 issued 4/7/2026 Total €8.00';
 const debit = helpers.parseAirbnbVatFields(debitHtml, 'invoice', '');

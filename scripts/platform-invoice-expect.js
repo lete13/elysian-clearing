@@ -209,6 +209,66 @@ function estimateAirbnbInvoices(month, bks) {
 
 const booking = require('./platform-invoice-booking');
 
+/** Chromium blank prints are a few hundred bytes; a real Airbnb VAT PDF is tens of KB. */
+const TINY_PDF_BYTES = 2048;
+
+function filenameAirbnbCode(fn) {
+  const m = String(fn || '').match(/(?:invoice|credit_note)-([A-Z0-9]+)/i);
+  return m ? m[1].toUpperCase() : '';
+}
+
+function vaultPdfTooSmall(row) {
+  if (!row || (row.size == null && row.bytes == null)) return false;
+  const size = Number(row.size != null ? row.size : row.bytes) || 0;
+  return size < TINY_PDF_BYTES;
+}
+
+/**
+ * Compare Expect stays for a month against vault PDFs (any archive month).
+ * Tiny/empty files do not count. `need` is this-month `docs`, not lifetime docsStay.
+ */
+function expectGaps(stays, vaultRows) {
+  const haveByCode = {};
+  (vaultRows || []).forEach(function (row) {
+    if (vaultPdfTooSmall(row)) return;
+    const code = filenameAirbnbCode(row.filename || row.name || '');
+    if (!code) return;
+    haveByCode[code] = (haveByCode[code] || 0) + 1;
+  });
+  const incomplete = [];
+  let missingDocs = 0;
+  let complete = 0;
+  (stays || []).forEach(function (stay) {
+    const code = String((stay && (stay.code || stay.confirmationCode)) || '').toUpperCase();
+    if (!code) return;
+    const kind = stay.stayKind || stay.kind || 'normal';
+    const docsStay = stay.docsStay != null
+      ? stay.docsStay
+      : (kind === 'cancel' ? 2 : (kind === 'extend' ? (1 + 2 * (stay.extends || 1)) : 1));
+    const need = stay.docs != null ? stay.docs : docsStay;
+    const have = haveByCode[code] || 0;
+    if (have >= need) {
+      complete += 1;
+      return;
+    }
+    const missing = Math.max(0, need - have);
+    missingDocs += missing;
+    incomplete.push({
+      code: code,
+      listing: stay.listing || stay.aptName || '',
+      kind: kind,
+      need: need,
+      have: have,
+      missing: missing,
+      docsStay: docsStay,
+    });
+  });
+  incomplete.sort(function (a, b) {
+    return b.missing - a.missing || a.code.localeCompare(b.code);
+  });
+  return { complete: complete, incomplete: incomplete, missingDocs: missingDocs, tinyPdfBytes: TINY_PDF_BYTES };
+}
+
 module.exports = {
   ymFromTs,
   createdMs,
@@ -218,5 +278,9 @@ module.exports = {
   countExtends,
   docsForStay,
   docsInMonth,
+  expectGaps,
+  filenameAirbnbCode,
+  vaultPdfTooSmall,
+  TINY_PDF_BYTES,
   EXTEND_MS,
 };

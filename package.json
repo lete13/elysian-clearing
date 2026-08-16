@@ -1,7 +1,7 @@
 {
   "name": "elysian-clearing",
   "version": "2.0.0",
-  "description": "Elysian Properties \u2014 Clearing Automation Tool",
+  "description": "Elysian Properties — Clearing Automation Tool",
   "main": "server.js",
   "scripts": {
     "start": "node srv-boot.js",
@@ -9,7 +9,7 @@
     "test": "node tests/monthly-close-patches.test.js && node tests/airbnb-auth-flow.test.js && node tests/daily-ops-checkin-schedule.test.js",
     "pull:platform-invoices": "node scripts/platform-invoice-pull.js",
     "postinstall": "test \"$PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD\" = \"1\" || npx playwright install chromium || true",
-    "test:platform-invoices": "node tests/platform-invoice-airbnb-codes.test.js && node tests/platform-invoice-stay-click.test.js && node tests/platform-invoice-vault-view.test.js && node tests/platform-invoice-pull-midfail.test.js && node tests/platform-invoice-booking.test.js"
+    "test:platform-invoices": "node tests/platform-invoice-airbnb-codes.test.js && node tests/platform-invoice-stay-click.test.js && node tests/platform-invoice-vault-folders.test.js && node tests/platform-invoice-pull-midfail.test.js && node tests/platform-invoice-booking.test.js && node tests/platform-invoice-vault-view.test.js"
   },
   "engines": {
     "node": ">=18.0.0",

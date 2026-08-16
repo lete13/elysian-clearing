@@ -37,6 +37,10 @@ assert(html.includes('Guided monthly run'), 'retrieve still has guided run copy'
 assert(html.includes('Pull Airbnb (Hosthub codes)'), 'full pull kept');
 assert(html.includes('piPullBooking()'), 'Booking.com pull');
 assert(html.includes("piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })"), 'test pull kept');
+assert(html.includes('Vault vs Expect'), 'Expect vs vault copy');
+assert(html.includes('incomplete stays first'), 'month pull opens incomplete stays first');
+assert(!html.includes('piPullIncomplete'), 'no separate Pull incomplete helper');
+assert(!html.includes('id="pi-pull-incomplete-btn"'), 'no Pull incomplete button');
 
 const start = html.indexOf('function piStoreApt(it)');
 const end = html.indexOf('window.piGo = function', start);
