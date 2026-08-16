@@ -181,10 +181,10 @@ assert(booking.looksLikePdf(ents[0].buf));
 assert.strictEqual(booking.isBookingStatementBlob('export.xls', ''), true);
 assert.strictEqual(booking.isBookingStatementBlob('invoice.pdf', 'commission invoice'), false);
 
-const fe117 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-117.json'), 'utf8'));
+const fe118 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-118.json'), 'utf8'));
 const srv79 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-79.json'), 'utf8'));
-assert(fe117.patches.some((p) => (p.replace || '').includes('piConnectBookingInApp()')), 'FE Connect Booking is in-app');
-assert(fe117.patches.some((p) => (p.replace || '').includes('Do not paste JSON')), 'FE tells the host not to paste JSON');
+assert(fe118.patches.some((p) => (p.replace || '').includes('piConnectBookingInApp()')), 'FE Connect Booking is in-app');
+assert(fe118.patches.some((p) => (p.replace || '').includes('Do not paste JSON')), 'FE tells the host not to paste JSON');
 assert(srv79.patches.some((p) => (p.replace || '').includes('https://admin.booking.com/')), 'SRV opens the Extranet, not www.booking.com');
 const bookingLoginPatch = srv79.patches.find((p) => (p.replace || '').includes("app.post('/api/platform-invoices/sessions/booking/login'"));
 assert(bookingLoginPatch, 'SRV has Booking login POST');
