@@ -140,6 +140,18 @@ assert(srv78.patches.some((p) => (p.replace || '').includes('bookingHotelId')), 
 assert(srv78.patches.some((p) => (p.replace || '').includes('Mass-extracting Booking.com invoices')), 'SRV booking job hint');
 assert(worker.includes('openBookingInvoicesPage'), 'worker mass-extracts group invoices');
 assert(worker.includes("require('./platform-invoice-booking')"), 'worker uses booking helpers');
+const fe117 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-117.json'), 'utf8'));
+const srv79 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-79.json'), 'utf8'));
+assert.strictEqual(fe117.baseSha256, fe116.expectedSha256, 'FE 117 continues FE 116');
+assert.strictEqual(srv79.baseSha256, srv78.expectedSha256, 'SRV 79 continues SRV 78');
+assert(fe117.patches.some((p) => (p.replace || '').includes('piConnectBookingInApp()')), 'FE Connect Booking is in-app');
+assert(fe117.patches.some((p) => (p.replace || '').includes('id="pi-booking-connect"')), 'FE Booking connect panel');
+assert(fe117.patches.some((p) => (p.replace || '').includes('piBookingBrowserSave')), 'FE Save session for Booking');
+assert(!fe117.patches.some((p) => (p.replace || '').includes("onclick=\"piConnectSession('booking')\"")), 'FE button does not open JSON prompt');
+assert(srv79.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/sessions/booking/login'")), 'SRV Booking login route');
+assert(srv79.patches.some((p) => (p.replace || '').includes('inAppConnectBooking')), 'SRV advertises in-app Booking Connect');
+assert(srv79.patches.some((p) => (p.replace || '').includes('piBookingPageLooksLoggedIn')), 'SRV Extranet logged-in check');
+assert(srv79.patches.some((p) => (p.replace || '').includes("String(job.channel || 'airbnb') !== 'airbnb'")), 'SRV Airbnb harvest skips Booking jobs');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');
