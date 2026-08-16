@@ -211,5 +211,10 @@ assert.strictEqual(fe123.baseSha256, fe122.expectedSha256, 'FE 123 continues FE 
 assert.strictEqual(srv85.baseSha256, srv84.expectedSha256, 'SRV 85 continues SRV 84');
 assert(fe123.patches.some((p) => (p.replace || '').includes('Do not retry now')), 'FE 123 says do not retry');
 assert(srv85.patches.some((p) => (p.replace || '').includes('piBookingMarkNetworkBlocked')), 'SRV 85 marks a network block');
+const srv86 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-86.json'), 'utf8'));
+assert.strictEqual(srv86.baseSha256, srv85.expectedSha256, 'SRV 86 continues SRV 85');
+assert(srv86.patches.some((p) => (p.replace || '').includes("require('./scripts/platform-invoice-booking-block')")), 'SRV 86 uses the shared block module');
+assert(srv86.patches.some((p) => (p.replace || '').includes('await piBookingReadBlockedUntil')), 'SRV 86 reads the cooldown from Postgres');
+assert(srv86.patches.some((p) => (p.replace || '').includes('Pull will not password-login from this IP')), 'SRV 86 stops Pull password-login while blocked');
 
 console.log('platform-invoice-booking.test.js: ok');

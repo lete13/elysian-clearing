@@ -1,0 +1,83 @@
+{
+ "baseSha256": "460d5a7a4f0ea92b76fe66f41034a04545287332abb71d5c223a1fdd9ac72bda",
+ "expectedSha256": "ff754f95b0576cdf0c4fee7d698eaeb9486e2009d67cfb5ebf991b763041bbfa",
+ "builtAt": "2026-08-16 Booking.com block cooldown in Postgres; Pull headed + no password-login while blocked",
+ "patches": [
+  {
+   "note": "Shared Booking.com block module; persist cooldown in Postgres",
+   "find": "async function piBookingLooksBlocked(page) {\n  const text = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ');\n  return piBookingLooksBlockedText(text);\n}\nfunction piBookingBlockedHint() {\n  return 'Booking.com blocked this sign-in (Try again later). This is not a wrong password — Booking.com blocked this server network. Do not retry now; waiting a minute makes it worse. Leave Collect closed for several hours.';\n}\nlet _piBookingConnectBlockedUntil = 0;\nconst PI_BOOKING_BLOCK_FILE = '/tmp/elysian-booking-connect-blocked-until';\nfunction piBookingCooldownMs() {\n  const n = Number(process.env.BOOKING_CONNECT_COOLDOWN_MS);\n  return Number.isFinite(n) && n >= 0 ? n : (4 * 60 * 60 * 1000);\n}\nfunction piBookingReadBlockedUntil() {\n  if (_piBookingConnectBlockedUntil > Date.now()) return _piBookingConnectBlockedUntil;\n  try {\n    const n = Number(require('fs').readFileSync(PI_BOOKING_BLOCK_FILE, 'utf8'));\n    if (Number.isFinite(n) && n > Date.now()) {\n      _piBookingConnectBlockedUntil = n;\n      return n;\n    }\n  } catch (eRead) {}\n  return 0;\n}\nfunction piBookingMarkNetworkBlocked(job) {\n  const until = Date.now() + piBookingCooldownMs();\n  _piBookingConnectBlockedUntil = Math.max(_piBookingConnectBlockedUntil || 0, until);\n  try { require('fs').writeFileSync(PI_BOOKING_BLOCK_FILE, String(_piBookingConnectBlockedUntil)); } catch (eWrite) {}\n  if (job) {\n    job.networkBlocked = true;\n    job.cooldownUntil = _piBookingConnectBlockedUntil;\n    job.status = 'blocked';\n    job.error = null;\n    job.hint = piBookingBlockedHint();\n    job.updatedAt = Date.now();\n  }\n}\n",
+   "replace": "const piBookingBlock = require('./scripts/platform-invoice-booking-block');\nasync function piBookingLooksBlocked(page) {\n  const text = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ');\n  const watch = page && page._piBookingWatch;\n  if (watch && (watch.blockedHttp || piBookingBlock.looksBlockedStatus(watch.lastStatus))) return true;\n  return piBookingLooksBlockedText(text);\n}\nfunction piBookingBlockedHint() {\n  return 'Booking.com blocked this sign-in (Try again later). This is not a wrong password — Booking.com blocked this server network. Do not retry now; waiting a minute makes it worse. Leave Collect closed for several hours.';\n}\nfunction piBookingCooldownMs() {\n  const n = Number(process.env.BOOKING_CONNECT_COOLDOWN_MS);\n  return Number.isFinite(n) && n >= 0 ? n : (4 * 60 * 60 * 1000);\n}\nasync function piBookingReadBlockedUntil() {\n  const row = await piBookingBlock.readBlocked(pool);\n  return row && Number(row.until) > Date.now() ? Number(row.until) : 0;\n}\nasync function piBookingMarkNetworkBlocked(job) {\n  const watch = job && job.page && job.page._piBookingWatch;\n  const row = await piBookingBlock.markBlocked(pool, {\n    source: 'connect',\n    status: watch && watch.lastStatus,\n    reason: job && job.pageSnippet\n  });\n  const until = (row && row.until) || (Date.now() + piBookingCooldownMs());\n  if (job) {\n    job.networkBlocked = true;\n    job.cooldownUntil = until;\n    job.status = 'blocked';\n    job.error = null;\n    job.hint = piBookingBlockedHint();\n    job.updatedAt = Date.now();\n  }\n}\n",
+   "count": 1
+  },
+  {
+   "note": "Parse Playwright proxy userinfo (Chromium ignores user:pass@host in the URL)",
+   "find": "  const proxy = process.env.PLAYWRIGHT_PROXY_SERVER || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';\n  const opts = { headless: false, args: args, ignoreDefaultArgs: ['--enable-automation'] };\n  if (proxy) opts.proxy = { server: proxy };\n",
+   "replace": "  const proxy = piBookingBlock.parsePlaywrightProxy(process.env.PLAYWRIGHT_PROXY_SERVER || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '');\n  const opts = { headless: false, args: args, ignoreDefaultArgs: ['--enable-automation'] };\n  if (proxy) opts.proxy = proxy;\n",
+   "count": 1
+  },
+  {
+   "note": "Interactive poll treats HTTP 403/429 as a block and awaits Postgres persist",
+   "find": "  if (piBookingLooksBlockedText(snip)) {\n    piBookingMarkNetworkBlocked(job);\n    await piAirbnbInteractiveSnapshot(job, piBookingBlockedHint());\n    return;\n  }\n",
+   "replace": "  if (piBookingLooksBlockedText(snip) || (job.page && job.page._piBookingWatch && job.page._piBookingWatch.blockedHttp)) {\n    await piBookingMarkNetworkBlocked(job);\n    await piAirbnbInteractiveSnapshot(job, piBookingBlockedHint());\n    return;\n  }\n",
+   "count": 1
+  },
+  {
+   "note": "Watch Booking.com HTTP status on the Connect page",
+   "find": "    const page = await context.newPage();\n    job.page = page;\n    const ua = await page.evaluate(function () { return navigator.userAgent; }).catch(function () { return ''; });\n",
+   "replace": "    const page = await context.newPage();\n    job.page = page;\n    job._piBookingWatch = piBookingBlock.attachPageWatch(page);\n    const ua = await page.evaluate(function () { return navigator.userAgent; }).catch(function () { return ''; });\n",
+   "count": 1
+  },
+  {
+   "note": "Open-page block detection uses HTTP status and awaits Postgres persist",
+   "find": "    if (piBookingLooksBlockedText(openSnip)) {\n      piBookingMarkNetworkBlocked(job);\n      await piAirbnbInteractiveSnapshot(job, piBookingBlockedHint());\n      return;\n    }\n",
+   "replace": "    if (piBookingLooksBlockedText(openSnip) || (job._piBookingWatch && job._piBookingWatch.blockedHttp)) {\n      await piBookingMarkNetworkBlocked(job);\n      await piAirbnbInteractiveSnapshot(job, piBookingBlockedHint());\n      return;\n    }\n",
+   "count": 1
+  },
+  {
+   "note": "Connect cooldown reads Postgres so replicas and redeploys share it",
+   "find": "    const blockedUntil = piBookingReadBlockedUntil();\n",
+   "replace": "    const blockedUntil = await piBookingReadBlockedUntil();\n",
+   "count": 1
+  },
+  {
+   "note": "Pull Booking without a session refuses password-login while the IP is blocked",
+   "find": "  if ((channel === 'airbnb' && !airbnbOk) || (channel === 'booking' && !bookingOk) || (channel === 'all' && !airbnbOk && !bookingOk)) {\n    job.status = 'error';\n    job.error = 'Portal not connected';\n    job.hint = 'Use Connect Airbnb / Connect Booking once (session vault), or set host credentials / STORAGE_STATE_B64 on Railway.';\n    job.updatedAt = Date.now();\n    return;\n  }\n",
+   "replace": "  if ((channel === 'airbnb' && !airbnbOk) || (channel === 'booking' && !bookingOk) || (channel === 'all' && !airbnbOk && !bookingOk)) {\n    job.status = 'error';\n    job.error = 'Portal not connected';\n    job.hint = 'Use Connect Airbnb / Connect Booking once (session vault), or set host credentials / STORAGE_STATE_B64 on Railway.';\n    job.updatedAt = Date.now();\n    return;\n  }\n  if (channel === 'booking') {\n    const pullBlockedUntil = await piBookingReadBlockedUntil();\n    const hasBookingSession = !!(bookingSession && bookingSession.storageState);\n    if (pullBlockedUntil > Date.now() && !hasBookingSession) {\n      job.status = 'error';\n      job.error = 'Booking.com blocked this server network. Pull will not password-login from this IP.';\n      job.hint = piBookingBlockedHint();\n      job.updatedAt = Date.now();\n      return;\n    }\n  }\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "require('./scripts/platform-invoice-booking-block')",
+   "note": "Connect uses the shared block module"
+  },
+  {
+   "has": "await piBookingReadBlockedUntil",
+   "note": "cooldown is read from Postgres"
+  },
+  {
+   "has": "await piBookingMarkNetworkBlocked",
+   "note": "block persist is awaited"
+  },
+  {
+   "has": "attachPageWatch",
+   "note": "Connect watches HTTP 403/429"
+  },
+  {
+   "has": "looksBlockedStatus",
+   "note": "HTTP status is part of block detection"
+  },
+  {
+   "has": "parsePlaywrightProxy",
+   "note": "proxy userinfo is parsed for Chromium"
+  },
+  {
+   "has": "Pull will not password-login from this IP",
+   "note": "Pull spawn refuses password-login while blocked"
+  },
+  {
+   "hasNot": "PI_BOOKING_BLOCK_FILE",
+   "note": "Connect no longer treats /tmp as the cooldown store"
+  }
+ ]
+}

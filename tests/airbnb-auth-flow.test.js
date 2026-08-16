@@ -647,6 +647,12 @@ async function main() {
   });
   assert.strictEqual(blockedPub.networkBlocked, true, 'public job exposes networkBlocked');
   assert.strictEqual(blockedPub.cooldownUntil, 99, 'public job exposes cooldownUntil');
+  assert(server.includes("require('./scripts/platform-invoice-booking-block')"), 'Connect persists the block via the shared module');
+  assert(server.includes('await piBookingReadBlockedUntil'), 'Connect cooldown is awaited from Postgres');
+  assert(server.includes('await piBookingMarkNetworkBlocked'), 'Connect block persist is awaited');
+  assert(server.includes('attachPageWatch'), 'Connect watches Booking.com HTTP 403/429');
+  assert(server.includes('Pull will not password-login from this IP'), 'Pull spawn skips password-login while blocked');
+  assert(!server.includes('PI_BOOKING_BLOCK_FILE'), 'Connect no longer stores cooldown only in /tmp');
 
   console.log('airbnb auth flow OK: interactive in-app browser, background Pull harvest, sanitized OTP diagnostics, Booking.com in-app Connect');
 }

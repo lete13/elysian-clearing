@@ -203,6 +203,13 @@ assert.strictEqual(srv85.baseSha256, srv84.expectedSha256, 'SRV 85 continues SRV
 assert(fe123.patches.some((p) => (p.replace || '').includes('Do not retry now')), 'FE 123 says do not retry a network block');
 assert(srv85.patches.some((p) => (p.replace || '').includes('piBookingMarkNetworkBlocked')), 'SRV 85 records a server-IP block');
 assert(srv85.patches.some((p) => (p.replace || '').includes('BOOKING_CONNECT_COOLDOWN_MS')), 'SRV 85 has a Connect cooldown');
+const srv86 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-86.json'), 'utf8'));
+assert.strictEqual(srv86.baseSha256, srv85.expectedSha256, 'SRV 86 continues SRV 85');
+assert(srv86.patches.some((p) => (p.replace || '').includes("require('./scripts/platform-invoice-booking-block')")), 'SRV 86 persists the block in the shared module');
+assert(srv86.patches.some((p) => (p.replace || '').includes('attachPageWatch')), 'SRV 86 watches Booking.com HTTP status');
+assert(worker.includes("require('./platform-invoice-booking-block')"), 'worker shares Connect block detection');
+assert(worker.includes('headless: bookingKind ? false'), 'worker Booking pull is headed');
+assert(worker.includes('Do not password-login from this server IP'), 'worker does not password-login after a block');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

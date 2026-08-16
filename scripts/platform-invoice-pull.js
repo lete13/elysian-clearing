@@ -38,6 +38,7 @@ const fs = require('fs');
 const path = require('path');
 const { issueDateToMonth } = require('./platform-invoice-accountant-xls');
 const booking = require('./platform-invoice-booking');
+const bookingBlock = require('./platform-invoice-booking-block');
 
 function arg(name, def) {
   const p = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -351,18 +352,62 @@ async function persistSession(prefix, context) {
   }
 }
 
+let _bookingBlockPool;
+function bookingBlockPool() {
+  if (_bookingBlockPool !== undefined) return _bookingBlockPool;
+  _bookingBlockPool = bookingBlock.createPoolFromEnv() || null;
+  return _bookingBlockPool;
+}
+async function bookingBlockPoolClose() {
+  if (_bookingBlockPool && typeof _bookingBlockPool.end === 'function') {
+    await _bookingBlockPool.end().catch(function () {});
+  }
+  _bookingBlockPool = undefined;
+}
+
+function bookingEnsureDisplay() {
+  if (!process.env.DISPLAY) process.env.DISPLAY = ':99';
+  try {
+    const n = String(process.env.DISPLAY).replace(/^:/, '').split('.')[0];
+    if (fs.existsSync('/tmp/.X11-unix/X' + n)) return;
+    const { spawn, spawnSync } = require('child_process');
+    const child = spawn('Xvfb', [process.env.DISPLAY, '-screen', '0', '1920x1080x24', '-ac'], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.on('error', function () {});
+    child.unref();
+    spawnSync('sleep', ['0.5']);
+  } catch (eXvfb) {}
+}
+
 async function withBrowser(fn, opts) {
   const pw = await loadPlaywright();
   if (!pw) {
     return { ok: false, error: 'playwright package not installed' };
   }
+  const kind = String((opts && opts.kind) || '').toLowerCase();
+  const bookingKind = kind === 'booking' || kind === 'bdc';
+  if (bookingKind) bookingEnsureDisplay();
   let browser;
-  const proxy = process.env.PLAYWRIGHT_PROXY_SERVER || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+  const proxy = bookingBlock.parsePlaywrightProxy(
+    process.env.PLAYWRIGHT_PROXY_SERVER || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || ''
+  );
   const launchOpts = {
-    headless: !HEADED,
+    headless: bookingKind ? false : !HEADED,
     args: ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--no-sandbox'],
-    ...(proxy ? { proxy: { server: proxy } } : {}),
+    ...(proxy ? { proxy: proxy } : {}),
   };
+  if (bookingKind) {
+    launchOpts.ignoreDefaultArgs = ['--enable-automation'];
+    launchOpts.args = launchOpts.args.concat([
+      '--disable-setuid-sandbox',
+      '--disable-infobars',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--window-size=1440,900',
+    ]);
+  }
   try {
     try {
       browser = await pw.chromium.launch(Object.assign({}, launchOpts, { channel: 'chrome' }));
@@ -377,23 +422,36 @@ async function withBrowser(fn, opts) {
     };
   }
   const storageState = opts && opts.storageState;
-  const context = await browser.newContext({
+  const contextOpts = {
     acceptDownloads: true,
     viewport: { width: 1440, height: 900 },
-    userAgent:
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    locale: 'en-US',
+    locale: bookingKind ? 'en-GB' : 'en-US',
     timezoneId: process.env.PI_AIRBNB_TZ || 'Europe/Athens',
     geolocation: { latitude: 37.9838, longitude: 23.7275 },
     permissions: ['geolocation'],
-    extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+    extraHTTPHeaders: { 'Accept-Language': bookingKind ? 'en-GB,en;q=0.9,el;q=0.8' : 'en-US,en;q=0.9' },
     ...(storageState ? { storageState } : {}),
-  });
+  };
+  if (!bookingKind) {
+    contextOpts.userAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  }
+  const context = await browser.newContext(contextOpts);
   await context.addInitScript(function () {
     Object.defineProperty(navigator, 'webdriver', { get: function () { return undefined; } });
     window.chrome = { runtime: {} };
   });
   const page = await context.newPage();
+  if (bookingKind) {
+    const ua = await page.evaluate(function () { return navigator.userAgent; }).catch(function () { return ''; });
+    if (/HeadlessChrome/i.test(ua)) {
+      await browser.close().catch(function () {});
+      return {
+        ok: false,
+        error: 'Booking.com Pull needs headed Chrome (Xvfb). HeadlessChrome is blocked.',
+      };
+    }
+  }
   try {
     return await fn(page, context, browser);
   } finally {
@@ -1833,12 +1891,43 @@ async function bookingAcceptCookies(page) {
   }
 }
 
+async function bookingDetectBlock(page, dir, errors, stage) {
+  const watch = bookingBlock.attachPageWatch(page);
+  const text = await page.locator('body').innerText().catch(function () { return ''; });
+  if (!bookingBlock.looksBlockedPage({ text: text, status: watch.lastStatus }) && !watch.blockedHttp) return false;
+  const row = await bookingBlock.markBlocked(bookingBlockPool(), {
+    source: 'pull',
+    status: watch.lastStatus,
+    reason: String(text || '').replace(/\s+/g, ' ').slice(0, 320),
+  });
+  errors.push({
+    channel: 'booking',
+    error: bookingBlock.blockedError(row),
+    cooldownUntil: row && row.until,
+    url: page.url(),
+    stage: stage,
+  });
+  await page.screenshot({ path: path.join(dir, '_blocked.png'), fullPage: true }).catch(function () {});
+  return true;
+}
+
 async function ensureBookingLoggedIn(page, context, dir, errors) {
   const email = process.env.BOOKING_HOST_EMAIL || '';
   const pass = process.env.BOOKING_HOST_PASSWORD || '';
   const stored = await loadStorageState('BOOKING');
+  bookingBlock.attachPageWatch(page);
+  const block = await bookingBlock.readBlocked(bookingBlockPool());
+  const blockedNow = bookingBlock.isActive(block);
   if (stored && stored.__error) {
     errors.push({ channel: 'booking', error: 'BOOKING session invalid: ' + stored.__error });
+    return false;
+  }
+  if (!stored && blockedNow) {
+    errors.push({
+      channel: 'booking',
+      error: bookingBlock.blockedError(block),
+      cooldownUntil: block.until,
+    });
     return false;
   }
   if (!stored && (!email || !pass)) {
@@ -1853,6 +1942,7 @@ async function ensureBookingLoggedIn(page, context, dir, errors) {
       await page.goto('https://admin.booking.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForTimeout(2500);
       await bookingAcceptCookies(page);
+      if (await bookingDetectBlock(page, dir, errors, 'after-open')) return false;
       const emailInput = page.locator('#loginname, input[name="loginname"]').first();
       await emailInput.waitFor({ state: 'visible', timeout: 30000 });
       await emailInput.fill(email);
@@ -1861,6 +1951,7 @@ async function ensureBookingLoggedIn(page, context, dir, errors) {
         .first()
         .click({ timeout: 10000 });
       await page.waitForTimeout(2500);
+      if (await bookingDetectBlock(page, dir, errors, 'after-next')) return false;
       const bodyAfterNext = await page.locator('body').innerText().catch(() => '');
       if (/make sure you.re human|are you human|captcha/i.test(bodyAfterNext)) {
         errors.push({
@@ -1884,9 +1975,11 @@ async function ensureBookingLoggedIn(page, context, dir, errors) {
         .first()
         .click();
       await page.waitForTimeout(5000);
+      if (await bookingDetectBlock(page, dir, errors, 'after-signin')) return false;
       for (let i = 0; i < 20; i++) {
         const url = page.url();
         if (onAdminExtranet(url) || (url.includes('admin.booking.com') && !/login|sign-in/i.test(url))) break;
+        if (await bookingDetectBlock(page, dir, errors, 'signin-wait')) return false;
         const t = await page.locator('body').innerText().catch(() => '');
         if (/make sure you.re human|verif|two-factor|authenticator|captcha|challenge/i.test(t)) {
           errors.push({
@@ -1902,11 +1995,12 @@ async function ensureBookingLoggedIn(page, context, dir, errors) {
     } else {
       await page.goto('https://admin.booking.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForTimeout(2500);
+      if (await bookingDetectBlock(page, dir, errors, 'session-open')) return false;
     }
     if (!page.url().includes('admin.booking.com') || /login|sign-in|loginname/i.test(page.url())) {
       errors.push({
         channel: 'booking',
-        error: 'Booking session expired or not on admin.booking.com — reconnect Booking session, then Pull.',
+        error: 'Booking session expired or not on admin.booking.com — reconnect Booking session, then Pull. Do not password-login from this server IP.',
         url: page.url(),
       });
       await page.screenshot({ path: path.join(dir, '_wrong-host.png'), fullPage: true }).catch(() => {});
@@ -1940,6 +2034,7 @@ async function openBookingInvoicesPage(page, dir, errors) {
     await page.goto(u, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
     await page.waitForTimeout(1800);
     await bookingAcceptCookies(page);
+    if (await bookingDetectBlock(page, dir, errors, 'invoices')) return false;
     const url = page.url();
     const text = await page.locator('body').innerText().catch(() => '');
     if (/login|sign-in|loginname/i.test(url)) continue;
@@ -2276,12 +2371,24 @@ async function main() {
       errors.push({ channel: prefix.toLowerCase(), error: prefix + ' session invalid: ' + stored.__error });
       return null;
     }
+    if (prefix === 'BOOKING') {
+      const block = await bookingBlock.readBlocked(bookingBlockPool());
+      const canSession = !!(stored && !stored.__error);
+      if (bookingBlock.isActive(block) && !canSession) {
+        errors.push({
+          channel: 'booking',
+          error: bookingBlock.blockedError(block),
+          cooldownUntil: block.until,
+        });
+        return null;
+      }
+    }
     return withBrowser(
       async (page, context) => {
         await pullFn(page, context, MONTH, OUT, files, errors);
         return true;
       },
-      { storageState: stored || undefined }
+      { storageState: stored || undefined, kind: prefix.toLowerCase() }
     );
   }
 
@@ -2297,10 +2404,12 @@ async function main() {
   if ((wantAirbnb && air && air.error && !wantBooking) || (wantBooking && book && book.error && !wantAirbnb)) {
     const fail = air && air.error ? air : book;
     emitJson(fail);
+    await bookingBlockPoolClose();
     process.exit(1);
   }
   if (wantAirbnb && wantBooking && air && air.error && book && book.error && !files.length) {
     emitJson({ ok: false, error: air.error || book.error, hint: air.hint || book.hint, errors });
+    await bookingBlockPoolClose();
     process.exit(1);
   }
 
@@ -2312,7 +2421,10 @@ async function main() {
     }
   }
 
-  if (pullStop.dumped) process.exit(files.length ? 0 : 1);
+  if (pullStop.dumped) {
+    await bookingBlockPoolClose();
+    process.exit(files.length ? 0 : 1);
+  }
   const result = {
     ok: files.length > 0,
     stopped: pullStopRequested() || undefined,
@@ -2326,6 +2438,7 @@ async function main() {
   };
   pullStop.dumped = true;
   emitJson(result);
+  await bookingBlockPoolClose();
   process.exit(files.length ? 0 : 1);
 }
 
@@ -2335,5 +2448,5 @@ main().catch((e) => {
   } catch (e2) {}
   requestPullStop((e && e.message) || 'main');
   emitStoppedResult();
-  process.exit(1);
+  bookingBlockPoolClose().finally(function () { process.exit(1); });
 });
