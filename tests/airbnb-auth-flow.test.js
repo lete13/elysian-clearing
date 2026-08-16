@@ -612,6 +612,7 @@ async function main() {
   assert(launchSrc.includes('headless: false'), 'Booking Connect launches headed Chrome');
   assert(server.includes('piBookingEnsureDisplay'), 'Booking Connect starts Xvfb when DISPLAY is missing');
   assert(server.includes('piBookingHumanType'), 'Booking Type focuses the username field');
+  assert(server.includes('not(#hidden-password)'), 'Booking Type ignores the hidden password decoy');
   assert(server.includes("ignoreDefaultArgs: ['--enable-automation']"), 'Booking Chrome launch drops --enable-automation');
   assert(server.includes("if (process.env.BOOKING_CONNECT_AUTOFILL === '1') await piBookingTryFillLogin(page);"), 'Connect does not auto-submit Booking.com login');
   assert(frontend.includes('Booking.com blocked this attempt'), 'Collect shows a banner when Booking.com blocks sign-in');
