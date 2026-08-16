@@ -594,6 +594,20 @@ async function main() {
   assert(!frontend.includes("onclick=\"piConnectSession('booking')\""), 'Connect Booking no longer opens the JSON prompt');
   assert(frontend.includes("if (channel === 'booking' || channel === 'bdc') return piConnectBookingInApp();"), 'leftover Connect Booking still goes in-app');
 
+  const blockedSrc = extractFn(server, 'piBookingLooksBlockedText');
+  const blockedCtx = {};
+  vm.runInNewContext(blockedSrc + '\nthis.blocked = piBookingLooksBlockedText;', blockedCtx);
+  assert.strictEqual(blockedCtx.blocked('Sign-in failed. Please try again later.'), true, 'Booking.com try-again-later is a block');
+  assert.strictEqual(blockedCtx.blocked('Sign in to manage your property'), false, 'normal Extranet login copy is not a block');
+  assert.strictEqual(blockedCtx.blocked('Username Also known as Login name'), false, 'username field copy is not a block');
+  const bookingCtxSrc = extractFn(server, 'piBookingNewContext');
+  assert(!/Chrome\/122/.test(bookingCtxSrc), 'Booking Connect does not spoof Chrome 122');
+  assert(!/userAgent:/.test(bookingCtxSrc), 'Booking Connect uses the real browser user-agent');
+  assert(server.includes("ignoreDefaultArgs: ['--enable-automation']"), 'Booking Chrome launch drops --enable-automation');
+  assert(server.includes("if (process.env.BOOKING_CONNECT_AUTOFILL === '1') await piBookingTryFillLogin(page);"), 'Connect does not auto-submit Booking.com login');
+  assert(frontend.includes('Booking.com blocked this attempt'), 'Collect shows a banner when Booking.com blocks sign-in');
+  assert(frontend.includes('wait for the password field'), 'Collect says wait after username');
+
   console.log('airbnb auth flow OK: interactive in-app browser, background Pull harvest, sanitized OTP diagnostics, Booking.com in-app Connect');
 }
 

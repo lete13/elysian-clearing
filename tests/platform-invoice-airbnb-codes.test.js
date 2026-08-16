@@ -155,6 +155,14 @@ assert(srv79.patches.some((p) => (p.replace || '').includes("app.post('/api/plat
 assert(srv79.patches.some((p) => (p.replace || '').includes('inAppConnectBooking')), 'SRV advertises in-app Booking Connect');
 assert(srv79.patches.some((p) => (p.replace || '').includes('piBookingPageLooksLoggedIn')), 'SRV Extranet logged-in check');
 assert(srv79.patches.some((p) => (p.replace || '').includes("String(job.channel || 'airbnb') !== 'airbnb'")), 'SRV Airbnb harvest skips Booking jobs');
+const fe119 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-119.json'), 'utf8'));
+const srv80 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-80.json'), 'utf8'));
+assert.strictEqual(fe119.baseSha256, fe118.expectedSha256, 'FE 119 continues FE 118');
+assert.strictEqual(srv80.baseSha256, srv79.expectedSha256, 'SRV 80 continues SRV 79');
+assert(fe119.patches.some((p) => (p.replace || '').includes('Try again later')), 'FE explains Booking.com sign-in block');
+assert(srv80.patches.some((p) => (p.replace || '').includes('piBookingLooksBlockedText')), 'SRV detects Try again later');
+assert(srv80.patches.some((p) => (p.replace || '').includes('ignoreDefaultArgs')), 'SRV drops Playwright automation flag for Booking');
+assert(srv80.patches.some((p) => (p.replace || '').includes('BOOKING_CONNECT_AUTOFILL')), 'SRV Booking auto-fill is opt-in');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

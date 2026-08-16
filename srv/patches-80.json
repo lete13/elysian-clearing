@@ -1,0 +1,53 @@
+{
+ "baseSha256": "71f5e31e206772498ac84e3c3d7843ef49f925448c2446c2ef92ce9053bc7be4",
+ "expectedSha256": "fa7db537bc54d5637566d58d7be161d158d2bb8177d83ed87862e171ca0ea298",
+ "builtAt": "2026-08-16 Booking.com Connect: no fake UA, no auto-submit",
+ "patches": [
+  {
+   "note": "Booking Connect: detect Sign-in failed / Try again later and launch Chrome without a fake UA",
+   "find": "async function piBookingPageLooksLoggedIn(page) {\n  const url = page.url();\n  if (/account\\.booking\\.com|sign-in|\\/login/i.test(url)) return false;\n",
+   "replace": "\nfunction piBookingLooksBlockedText(text) {\n  return /sign[\\s-]?in failed|try again later|too many (?:attempts|requests)|unusual (?:activity|traffic)|we couldn.?t sign you in/i.test(String(text || ''));\n}\nasync function piBookingLooksBlocked(page) {\n  const text = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ');\n  return piBookingLooksBlockedText(text);\n}\nfunction piBookingBlockedHint() {\n  return 'Booking.com blocked this sign-in (Try again later). Wait one minute, Cancel, then Connect Booking again. Type the username, wait until the password field appears, then continue — clicking Next too quickly trips their check.';\n}\nasync function piBookingLaunchBrowser(pw) {\n  const args = ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--no-sandbox', '--disable-infobars'];\n  const proxy = process.env.PLAYWRIGHT_PROXY_SERVER || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';\n  const opts = { headless: true, args: args, ignoreDefaultArgs: ['--enable-automation'] };\n  if (proxy) opts.proxy = { server: proxy };\n  try {\n    return await pw.chromium.launch(Object.assign({}, opts, { channel: 'chrome' }));\n  } catch (e) {\n    return await pw.chromium.launch(opts);\n  }\n}\nasync function piBookingNewContext(browser) {\n  const context = await browser.newContext({\n    acceptDownloads: true,\n    viewport: { width: 1440, height: 900 },\n    locale: 'en-GB',\n    timezoneId: process.env.PI_AIRBNB_TZ || 'Europe/Athens',\n    geolocation: { latitude: 37.9838, longitude: 23.7275 },\n    permissions: ['geolocation'],\n    extraHTTPHeaders: { 'Accept-Language': 'en-GB,en;q=0.9,el;q=0.8' }\n  });\n  await context.addInitScript(function () {\n    Object.defineProperty(navigator, 'webdriver', { get: function () { return undefined; } });\n    window.chrome = { runtime: {} };\n  });\n  return context;\n}\nasync function piBookingPageLooksLoggedIn(page) {\n  const url = page.url();\n  if (/account\\.booking\\.com|sign-in|\\/login/i.test(url)) return false;\n",
+   "count": 1
+  },
+  {
+   "note": "Keep the blocked-sign-in hint instead of overwriting it on every poll",
+   "find": "  job.status = 'interactive';\n  job.error = null;\n  const snip = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ').slice(0, 320);\n  job.pageSnippet = snip;\n  await piAirbnbInteractiveSnapshot(job, 'Log into admin.booking.com below. When the Extranet / Finance is visible, click Save session for Pull.');\n}",
+   "replace": "  job.status = 'interactive';\n  job.error = null;\n  const snip = (await page.locator('body').innerText().catch(function () { return ''; })).replace(/\\s+/g, ' ').slice(0, 320);\n  job.pageSnippet = snip;\n  const blocked = piBookingLooksBlockedText(snip);\n  await piAirbnbInteractiveSnapshot(job, blocked ? piBookingBlockedHint() : 'Log into admin.booking.com below. When the Extranet / Finance is visible, click Save session for Pull.');\n}",
+   "count": 1
+  },
+  {
+   "note": "Do not auto-submit Booking.com login; wait for their page JS; use Booking Chrome context",
+   "find": "    const browser = await piAirbnbLaunchBrowser(pw);\n    job.browser = browser;\n    const context = await piAirbnbNewContext(browser);\n    job.context = context;\n    const page = await context.newPage();\n    job.page = page;\n    await page.goto('https://admin.booking.com/', { waitUntil: 'domcontentloaded', timeout: 90000 });\n    await page.waitForTimeout(1500);\n    await piBookingTryFillLogin(page);\n",
+   "replace": "    const browser = await piBookingLaunchBrowser(pw);\n    job.browser = browser;\n    const context = await piBookingNewContext(browser);\n    job.context = context;\n    const page = await context.newPage();\n    job.page = page;\n    await page.goto('https://admin.booking.com/', { waitUntil: 'load', timeout: 90000 });\n    await page.waitForTimeout(4000);\n    try {\n      await page.locator('#loginname, input[name=\"loginname\"], input[type=\"email\"], input[autocomplete=\"username\"]').first().waitFor({ state: 'visible', timeout: 20000 });\n    } catch (eWait) {}\n    await page.waitForTimeout(1500);\n    if (process.env.BOOKING_CONNECT_AUTOFILL === '1') await piBookingTryFillLogin(page);\n",
+   "count": 1
+  },
+  {
+   "note": "Type into Booking.com more slowly so Next is not raced",
+   "find": "    if (!job || !job.page || String(job.channel || '') !== 'booking') return res.status(409).json({ error: 'No active Booking.com browser', job: piLoginPublic(job) });\n    const text = String((req.body && req.body.text) || '');\n    if (!text || text.length > 256) return res.status(400).json({ error: 'Type 1-256 characters' });\n    await piAirbnbRunBrowserAction(job, async function () {\n      await job.page.keyboard.type(text, { delay: 45 });\n",
+   "replace": "    if (!job || !job.page || String(job.channel || '') !== 'booking') return res.status(409).json({ error: 'No active Booking.com browser', job: piLoginPublic(job) });\n    const text = String((req.body && req.body.text) || '');\n    if (!text || text.length > 256) return res.status(400).json({ error: 'Type 1-256 characters' });\n    await piAirbnbRunBrowserAction(job, async function () {\n      await job.page.keyboard.type(text, { delay: 95 });\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piBookingLooksBlockedText",
+   "note": "detects Try again later"
+  },
+  {
+   "has": "piBookingLaunchBrowser",
+   "note": "Booking-specific Chrome launch"
+  },
+  {
+   "has": "ignoreDefaultArgs: ['--enable-automation']",
+   "note": "drops Playwright automation flag"
+  },
+  {
+   "has": "BOOKING_CONNECT_AUTOFILL",
+   "note": "auto-fill is opt-in only"
+  },
+  {
+   "has": "keyboard.type(text, { delay: 95 })",
+   "note": "slower Booking typing"
+  }
+ ]
+}

@@ -190,5 +190,9 @@ const bookingLoginPatch = srv79.patches.find((p) => (p.replace || '').includes("
 assert(bookingLoginPatch, 'SRV has Booking login POST');
 assert(!/if \(!\(process\.env\.BOOKING_HOST_EMAIL/.test(bookingLoginPatch.replace), 'Booking Connect does not require env passwords');
 assert(bookingLoginPatch.replace.includes('piBookingTryFillLogin'), 'optional env auto-fill exists');
+const srv80 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-80.json'), 'utf8'));
+assert(srv80.patches.some((p) => (p.replace || '').includes("BOOKING_CONNECT_AUTOFILL === '1'")), 'auto-fill is not the default Connect path');
+assert(srv80.patches.some((p) => (p.replace || '').includes('piBookingNewContext')), 'Booking Connect has its own browser context');
+assert(!srv80.patches.some((p) => (p.replace || '').includes('Chrome/122')), 'Booking context does not spoof Chrome 122');
 
 console.log('platform-invoice-booking.test.js: ok');
