@@ -611,6 +611,7 @@ async function main() {
   const launchSrc = extractFn(server, 'piBookingLaunchBrowser');
   assert(launchSrc.includes('headless: false'), 'Booking Connect launches headed Chrome');
   assert(server.includes('piBookingEnsureDisplay'), 'Booking Connect starts Xvfb when DISPLAY is missing');
+  assert(server.includes("existsSync('/tmp/.X11-unix/X'"), 'Xvfb starts even when DISPLAY=:99 is pre-set');
   assert(server.includes('piBookingHumanType'), 'Booking Type focuses the username field');
   assert(server.includes('not(#hidden-password)'), 'Booking Type ignores the hidden password decoy');
   assert(server.includes("ignoreDefaultArgs: ['--enable-automation']"), 'Booking Chrome launch drops --enable-automation');

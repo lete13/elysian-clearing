@@ -1,0 +1,23 @@
+{
+ "baseSha256": "c66465bb52da13aa6b4f51bed25156f6eb0faf1d1735589a0c8db7eb2065040b",
+ "expectedSha256": "d9e2eb6b63f911862e222c7bb109e92810bdab23b36abc2c06b90b549d14197a",
+ "builtAt": "2026-08-16 start Xvfb even when DISPLAY=:99 is pre-set",
+ "patches": [
+  {
+   "note": "Start Xvfb when the display socket is missing (Railway sets DISPLAY=:99)",
+   "find": "function piBookingEnsureDisplay() {\n  if (process.env.DISPLAY) return;\n  try {\n    const { spawn, spawnSync } = require('child_process');\n    const child = spawn('Xvfb', [':99', '-screen', '0', '1920x1080x24', '-ac'], { detached: true, stdio: 'ignore' });\n    child.on('error', function () {});\n    child.unref();\n    process.env.DISPLAY = ':99';\n    spawnSync('sleep', ['0.5']);\n  } catch (eXvfb) {}\n}\n",
+   "replace": "function piBookingEnsureDisplay() {\n  if (!process.env.DISPLAY) process.env.DISPLAY = ':99';\n  try {\n    const fsD = require('fs');\n    const n = String(process.env.DISPLAY).replace(/^:/, '').split('.')[0];\n    if (fsD.existsSync('/tmp/.X11-unix/X' + n)) return;\n    const { spawn, spawnSync } = require('child_process');\n    const child = spawn('Xvfb', [process.env.DISPLAY, '-screen', '0', '1920x1080x24', '-ac'], { detached: true, stdio: 'ignore' });\n    child.on('error', function () {});\n    child.unref();\n    spawnSync('sleep', ['0.5']);\n  } catch (eXvfb) {}\n}\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "existsSync('/tmp/.X11-unix/X'",
+   "note": "Xvfb starts if the X socket is missing"
+  },
+  {
+   "has": "headless: false",
+   "note": "Booking Connect stays headed"
+  }
+ ]
+}

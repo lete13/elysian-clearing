@@ -199,5 +199,7 @@ assert(srv82.patches.some((p) => (p.replace || '').includes('headless: false')),
 assert(srv82.patches.some((p) => (p.replace || '').includes('piBookingHumanType')), 'Type focuses username');
 assert(srv82.patches.some((p) => (p.replace || '').includes('not(#hidden-password)')), 'Type ignores hidden password decoy');
 assert(srv82.patches.some((p) => (p.replace || '').includes('cn <= 140')), 'FE bootstrap through 140');
+const srv83 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-83.json'), 'utf8'));
+assert(srv83.patches.some((p) => (p.replace || '').includes("existsSync('/tmp/.X11-unix/X'")), 'Xvfb starts if the X socket is missing');
 
 console.log('platform-invoice-booking.test.js: ok');

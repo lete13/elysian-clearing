@@ -186,6 +186,9 @@ assert.strictEqual(fe121.baseSha256, fe120.expectedSha256, 'FE 121 continues FE 
 assert.strictEqual(srv82.baseSha256, srv81.expectedSha256, 'SRV 82 continues SRV 81');
 assert(fe121.patches.some((p) => (p.replace || '').includes('asks if you are human')), 'FE human-check copy');
 assert(srv82.patches.some((p) => (p.replace || '').includes('headless: false')), 'SRV Booking Connect is headed');
+const srv83 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-83.json'), 'utf8'));
+assert.strictEqual(srv83.baseSha256, srv82.expectedSha256, 'SRV 83 continues SRV 82');
+assert(srv83.patches.some((p) => (p.replace || '').includes("existsSync('/tmp/.X11-unix/X'")), 'SRV starts Xvfb when the display socket is missing');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');
