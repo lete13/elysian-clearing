@@ -14,7 +14,7 @@ let html = origHtml;
 // Each file starts where the previous one ended, so a release is a small new
 // file rather than a rewrite of one ever-growing patches.json.
 const chainFiles = ['patches.json'];
-for (let n = 2; n <= 120; n++) {
+for (let n = 2; n <= 140; n++) {
   const f = path.join(root, 'fe', `patches-${n}.json`);
   if (!fs.existsSync(f)) break;
   chainFiles.push(`patches-${n}.json`);

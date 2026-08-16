@@ -3,5 +3,5 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "node srv-boot.js"
+startCommand = "./scripts/docker-start.sh"
 restartPolicyType = "always"

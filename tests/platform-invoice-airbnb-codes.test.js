@@ -180,6 +180,12 @@ assert(fe120.patches.some((p) => (p.replace || '').includes('Try again later')),
 assert(srv81.patches.some((p) => (p.replace || '').includes('piBookingLooksBlockedText')), 'SRV detects Try again later');
 assert(srv81.patches.some((p) => (p.replace || '').includes('ignoreDefaultArgs')), 'SRV drops Playwright automation flag for Booking');
 assert(srv81.patches.some((p) => (p.replace || '').includes('BOOKING_CONNECT_AUTOFILL')), 'SRV Booking auto-fill is opt-in');
+const fe121 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-121.json'), 'utf8'));
+const srv82 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-82.json'), 'utf8'));
+assert.strictEqual(fe121.baseSha256, fe120.expectedSha256, 'FE 121 continues FE 120');
+assert.strictEqual(srv82.baseSha256, srv81.expectedSha256, 'SRV 82 continues SRV 81');
+assert(fe121.patches.some((p) => (p.replace || '').includes('asks if you are human')), 'FE human-check copy');
+assert(srv82.patches.some((p) => (p.replace || '').includes('headless: false')), 'SRV Booking Connect is headed');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

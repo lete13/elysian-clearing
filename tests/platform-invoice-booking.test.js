@@ -194,5 +194,9 @@ const srv81 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-81.json
 assert(srv81.patches.some((p) => (p.replace || '').includes("BOOKING_CONNECT_AUTOFILL === '1'")), 'auto-fill is not the default Connect path');
 assert(srv81.patches.some((p) => (p.replace || '').includes('piBookingNewContext')), 'Booking Connect has its own browser context');
 assert(!srv81.patches.some((p) => (p.replace || '').includes('Chrome/122')), 'Booking context does not spoof Chrome 122');
+const srv82 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-82.json'), 'utf8'));
+assert(srv82.patches.some((p) => (p.replace || '').includes('headless: false')), 'Booking Connect is headed');
+assert(srv82.patches.some((p) => (p.replace || '').includes('piBookingHumanType')), 'Type focuses username');
+assert(srv82.patches.some((p) => (p.replace || '').includes('cn <= 140')), 'FE bootstrap through 140');
 
 console.log('platform-invoice-booking.test.js: ok');

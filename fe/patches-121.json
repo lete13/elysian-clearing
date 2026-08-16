@@ -1,0 +1,28 @@
+{
+ "baseSha256": "a296b0e5c094b91012c5509bd745b6d85ddcc1ef5c3c171b45bedd83320ddc27",
+ "expectedSha256": "f4129ea242763a2b3359ea2b13465371194e8b6903a0caa8b47debcf6e07a289",
+ "builtAt": "2026-08-16 Booking.com Connect uses headed Chrome, not HeadlessChrome",
+ "patches": [
+  {
+   "note": "Collect: Type box fills the username field; headed Chrome; human check stays in the screenshot",
+   "find": "        <b>Connect Booking</b> opens admin.booking.com in this page (log in, then Save session). Type the username, wait for the password field, then continue. If Booking.com says <b>Sign-in failed / Try again later</b>, wait a minute, Cancel, and Connect Booking again. <b>Pull Booking.com</b> mass-extracts every apartment invoice for the document month from Finance → Invoices (Votsala = one PDF).",
+   "replace": "        <b>Connect Booking</b> opens admin.booking.com in this page (log in, then Save session). Click the username field in the screenshot or type it in the box (it is filled for you), wait for the password field, then continue. If Booking.com asks if you are human, click that check in the screenshot. If it says <b>Sign-in failed / Try again later</b>, wait a minute, Cancel, and Connect Booking again. <b>Pull Booking.com</b> mass-extracts every apartment invoice for the document month from Finance → Invoices (Votsala = one PDF).",
+   "count": 1
+  },
+  {
+   "note": "Panel: Type fills username; human check is clickable in the screenshot",
+   "find": "        '<div style=\"font-size:11px;color:var(--tx3);margin-bottom:6px\">This browser is running on the server. Use <b>admin.booking.com</b> (not www.booking.com). Type the username, wait for the password field, then continue. Do not paste JSON.</div>' +\n",
+   "replace": "        '<div style=\"font-size:11px;color:var(--tx3);margin-bottom:6px\">This browser is running on the server. Use <b>admin.booking.com</b> (not www.booking.com). Type the username in the box — it goes into the username field. Wait for the password field. If Booking.com asks if you are human, click it in the image. Do not paste JSON.</div>' +\n"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "it is filled for you",
+   "note": "Type box fills username"
+  },
+  {
+   "has": "asks if you are human",
+   "note": "human check stays in the screenshot"
+  }
+ ]
+}

@@ -600,13 +600,23 @@ async function main() {
   assert.strictEqual(blockedCtx.blocked('Sign-in failed. Please try again later.'), true, 'Booking.com try-again-later is a block');
   assert.strictEqual(blockedCtx.blocked('Sign in to manage your property'), false, 'normal Extranet login copy is not a block');
   assert.strictEqual(blockedCtx.blocked('Username Also known as Login name'), false, 'username field copy is not a block');
+  assert.strictEqual(blockedCtx.blocked("Let's make sure you're human"), false, 'human check is not the Try-again-later block');
+  const humanSrc = extractFn(server, 'piBookingLooksHumanCheckText');
+  const humanCtx = {};
+  vm.runInNewContext(humanSrc + '\nthis.human = piBookingLooksHumanCheckText;', humanCtx);
+  assert.strictEqual(humanCtx.human("Let's make sure you're human"), true, 'human-check copy is detected');
   const bookingCtxSrc = extractFn(server, 'piBookingNewContext');
   assert(!/Chrome\/122/.test(bookingCtxSrc), 'Booking Connect does not spoof Chrome 122');
   assert(!/userAgent:/.test(bookingCtxSrc), 'Booking Connect uses the real browser user-agent');
+  const launchSrc = extractFn(server, 'piBookingLaunchBrowser');
+  assert(launchSrc.includes('headless: false'), 'Booking Connect launches headed Chrome');
+  assert(server.includes('piBookingEnsureDisplay'), 'Booking Connect starts Xvfb when DISPLAY is missing');
+  assert(server.includes('piBookingHumanType'), 'Booking Type focuses the username field');
   assert(server.includes("ignoreDefaultArgs: ['--enable-automation']"), 'Booking Chrome launch drops --enable-automation');
   assert(server.includes("if (process.env.BOOKING_CONNECT_AUTOFILL === '1') await piBookingTryFillLogin(page);"), 'Connect does not auto-submit Booking.com login');
   assert(frontend.includes('Booking.com blocked this attempt'), 'Collect shows a banner when Booking.com blocks sign-in');
   assert(frontend.includes('wait for the password field'), 'Collect says wait after username');
+  assert(frontend.includes('it is filled for you') || frontend.includes('it goes into the username field'), 'Collect says Type fills username');
 
   console.log('airbnb auth flow OK: interactive in-app browser, background Pull harvest, sanitized OTP diagnostics, Booking.com in-app Connect');
 }
