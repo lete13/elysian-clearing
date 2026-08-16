@@ -1,5 +1,7 @@
 # Playwright needs system libs nixpacks does not ship (libglib, etc.).
 # Keep image tag in sync with package.json "playwright" version (exact).
+# Boot: srv-boot.js applies srv/patches*.json → server.gen.js, then that process
+# applies fe/patches*.json to the SPA. Do not change CMD to plain server.js.
 FROM mcr.microsoft.com/playwright:v1.62.1-jammy
 
 WORKDIR /app

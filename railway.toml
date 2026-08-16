@@ -1,7 +1,9 @@
+# Railway: Playwright Docker image + patch-chain boot (see README / Dockerfile).
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+# Must stay srv-boot.js — plain `node server.js` skips srv/patches*.json.
 startCommand = "node srv-boot.js"
 restartPolicyType = "always"

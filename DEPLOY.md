@@ -1,16 +1,16 @@
 # Elysian Clearing — Railway Deployment Guide
 
 ## What you need
-- A GitHub account (free)
-- A Railway account (free to start) → railway.app
-- 15 minutes
+- A GitHub account
+- A Railway account → railway.app
+- ~15 minutes
 
 ---
 
 ## Step 1 — Push to GitHub
 
 1. Go to **github.com → New repository**
-2. Name it `elysian-clearing`, set to **Private**, click Create
+2. Name it `elysian-clearing`, set to **Private** (recommended), click Create
 3. On your computer, open the `elysian-clearing` folder in a terminal:
 
 ```bash
@@ -29,7 +29,9 @@ git push -u origin main
 1. Go to **railway.app** → Log in with GitHub
 2. Click **New Project → Deploy from GitHub repo**
 3. Select `elysian-clearing`
-4. Railway auto-detects Node.js and starts deploying ✓
+4. Railway builds with the **Dockerfile** (Playwright + Chromium). Start command is `node srv-boot.js` (see `railway.toml`).
+
+The boot script applies `srv/patches*.json` to `server.js`, then the server applies `fe/patches*.json` to the SPA. See [`README.md`](README.md) before editing base files.
 
 ---
 
@@ -43,14 +45,18 @@ git push -u origin main
 
 ## Step 4 — Set environment variables
 
-In Railway → your service → **Variables** tab, add:
+In Railway → your service → **Variables** tab. Minimum to open the app:
 
 | Variable | Value |
 |---|---|
 | `HOSTHUB_API_KEY` | Your Hosthub API key |
-| `APP_PASSWORD` | A team password (e.g. `elysian2025`) |
+| `APP_PASSWORD` | A team password |
 
 `DATABASE_URL` is already set by the PostgreSQL add-on.
+
+Useful next: `USERS_JSON` (named logins + roles), `SMTP_*` (owner reports / lead welcome), `VIVA_TX_USER` / `VIVA_TX_PASS` (Payments Check + Cash Flow), `OXYGEN_*` (e-invoicing), Airbnb/Booking session vars for Platform Invoices.
+
+Full annotated list: [`.env.example`](.env.example).
 
 ---
 
@@ -58,19 +64,21 @@ In Railway → your service → **Variables** tab, add:
 
 1. Railway → your service → **Settings → Networking → Generate Domain**
 2. Share `https://your-app.up.railway.app` with your team
-3. Everyone uses the **same password** to log in
+3. Open `/login` (session cookie) when `USERS_JSON` / session auth is live; otherwise Basic Auth uses `APP_PASSWORD`
 
 ---
 
 ## Updating the app
 
-Every time you push code to GitHub, Railway auto-redeploys in ~60 seconds:
+Every push to GitHub redeploys (~1–2 minutes with the Playwright image):
 
 ```bash
 git add .
 git commit -m "Update: description of change"
 git push
 ```
+
+**Frontend / server feature changes** usually ship as a new `fe/patches-N.json` or `srv/patches-N.json` — not by rewriting `index.html` / `server.js`. See README → Architecture.
 
 ---
 
@@ -82,7 +90,7 @@ git push
 | PostgreSQL (1 GB) | ~$5/month |
 | **Total** | **~$10/month** |
 
-The free Trial gives you enough credits to test everything first.
+The free Trial gives you enough credits to test everything first. Playwright image uses more RAM than a plain Node nixpack build — stay on Hobby or above for Platform Invoices.
 
 ---
 
@@ -93,4 +101,3 @@ The free Trial gives you enough credits to test everything first.
 - The app polls for team updates every 60 seconds
 - Click **↻ Refresh** in the top-right to pull the latest immediately
 - The ☁ badge shows sync status (green = saved, amber = saving, red = error)
-

@@ -1,3 +1,5 @@
+# Generated at boot by srv-boot.js — never commit.
 server.gen.js
 node_modules/
+# Intentionally unlocked: Dockerfile installs from package.json only (see Dockerfile comment).
 package-lock.json
