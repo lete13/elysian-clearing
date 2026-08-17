@@ -51,6 +51,31 @@ assert.strictEqual(airEst.stays.length, 1, 'Airbnb Votsala stays stay per unit')
 assert.strictEqual(airEst.stays[0].aptName, 'Votsala 1 Luxury Stay with Patio');
 
 assert.strictEqual(booking.parseBookingHotelId('https://admin.booking.com/x?hotel_id=10980606&invoice=1'), '10980606');
+assert.strictEqual(
+  booking.extractBookingHotelIdFromHtml('<input type="hidden" name="hotel_id" value="13787015">', 'https://www.booking.com/hotel/gr/pixie-studio-athens.html'),
+  '13787015'
+);
+assert.strictEqual(
+  booking.extractBookingHotelIdFromHtml('<input value="8516226" name="hotel_id" type="hidden">'),
+  '8516226'
+);
+assert.strictEqual(
+  booking.extractBookingHotelIdFromHtml('<html></html>', 'https://admin.booking.com/hotel/hoteladmin/?hotel_id=10980606'),
+  '10980606',
+  'hotel_id on the URL wins when the page has no input'
+);
+const harvestedApts = [
+  { id: 'p1', name: 'Pixie Studio Athens', bookingHotelId: '' },
+  { id: 'f1', name: 'Filoxenia Apartment Athens', bookingHotelId: '' },
+];
+const harvestedApply = booking.applyHarvestedBookingHotelIds(harvestedApts, [
+  { aptId: 'p1', bookingHotelId: '13787015' },
+  { id: 'f1', bookingHotelId: '8516226' },
+]);
+assert.strictEqual(harvestedApply.applied, 2);
+assert.strictEqual(harvestedApts[0].bookingHotelId, '13787015');
+assert.strictEqual(harvestedApts[1].bookingHotelId, '8516226');
+assert.strictEqual(harvestedApply.map.mapped, 2);
 assert.strictEqual(booking.parseBookingHotelId('Property ID: 5550001 Invoice number 998877'), '5550001');
 assert.strictEqual(booking.parseBookingHotelId('Booking.com/2026-07/unmapped-3210009/invoice-3210009.pdf'), '3210009');
 
@@ -273,6 +298,11 @@ assert.strictEqual(fe124.baseSha256, fe123.expectedSha256, 'FE 124 continues FE 
 assert(fe124.patches.some((p) => (p.replace || '').includes('id="pi-bdc-id-map"')), 'FE 124 has the Collect id map');
 assert(fe124.patches.some((p) => (p.replace || '').includes('piApplyBookingHotelId')), 'FE 124 applies ids (Votsala share)');
 assert(fe124.patches.some((p) => (p.replace || '').includes('monthly PDF pack')), 'FE 124 says the pack comes next');
+const idHarvester = fs.readFileSync(path.join(root, 'scripts', 'platform-invoice-booking-ids.js'), 'utf8');
+assert(idHarvester.includes("channel: 'chrome'"), 'listing harvest prefers system Chrome');
+assert(idHarvester.includes('HeadlessChrome'), 'listing harvest refuses HeadlessChrome');
+assert(!idHarvester.includes('Chrome/122'), 'listing harvest does not spoof Chrome 122');
+assert(!idHarvester.includes('admin.booking.com'), 'listing harvest does not open the Extranet');
 const feMapJs = fe124.patches
   .find((p) => (p.replace || '').includes('window.piApplyBookingHotelId'))
   .replace.replace(/\s*window\.piPullBooking = async function \(\) \{$/, '');

@@ -51,7 +51,9 @@ No manual pasting of codes. Booking.com pull is the group Finance → Invoices m
 
 ## Booking.com apartment ids
 
-Collect shows a **Booking.com apartment ids** table. Paste the numeric hotel / apartment id printed on the invoice (not the Elysian name). Filing uses this id only — never a name match. **Votsala 1–8 share one id** and one PDF folder. Empty means the unit is not on Booking.com. The table flags the same id on two different folders, and Votsala units that do not all share one id. Map these first; a monthly PDF pack upload (and Excel) comes next.
+Collect shows a **Booking.com apartment ids** table. Paste the numeric hotel / apartment id printed on the invoice (not the Elysian name), or harvest it from each apartment’s existing `bookingUrl` (public listing page `input[name=hotel_id]`) with headed Chrome — not from a name match, and not by password Sign-in on `admin.booking.com`. Filing uses this id only. **Votsala 1–8 share one id** and one PDF folder. Empty means the unit is not on Booking.com. The table flags the same id on two different folders, and Votsala units that do not all share one id. Map these first; a monthly PDF pack upload (and Excel) comes next.
+
+`node scripts/platform-invoice-booking-ids.js --from-json apts.json --out harvested.json` visits those listing URLs in headed Chrome (real UA, no HeadlessChrome).
 
 ## Railway variables
 

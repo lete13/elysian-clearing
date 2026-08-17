@@ -185,6 +185,41 @@ function parseBookingHotelId(text) {
   return '';
 }
 
+function extractBookingHotelIdFromHtml(html, pageUrl) {
+  const fromUrl = parseBookingHotelId(pageUrl || '');
+  if (fromUrl) return fromUrl;
+  const s = String(html || '');
+  const named = s.match(/<input\b[^>]*\bname=["']hotel_id["'][^>]*>/i);
+  if (named) {
+    const v = named[0].match(/\bvalue=["'](\d{5,10})["']/i);
+    if (v) return v[1];
+  }
+  const valued = s.match(/<input\b[^>]*\bvalue=["'](\d{5,10})["'][^>]*\bname=["']hotel_id["'][^>]*>/i);
+  if (valued) return valued[1];
+  return parseBookingHotelId(s);
+}
+
+function applyHarvestedBookingHotelIds(apts, harvested) {
+  const list = Array.isArray(apts) ? apts : [];
+  const byId = {};
+  (harvested || []).forEach(function (h) {
+    if (!h) return;
+    const id = String(h.aptId || h.id || '').trim();
+    const hid = normalizeHotelId(h.bookingHotelId);
+    if (id && hid) byId[id] = hid;
+  });
+  list.forEach(function (a) {
+    if (!a) return;
+    const id = String(a.id || a.aptId || '').trim();
+    if (byId[id]) a.bookingHotelId = byId[id];
+  });
+  return {
+    applied: Object.keys(byId).length,
+    issues: bookingHotelMapIssues(list),
+    map: listBookingHotelMap(list),
+  };
+}
+
 function parseBookingInvoiceNumber(text) {
   const s = String(text || '');
   const patterns = [
@@ -661,6 +696,8 @@ module.exports = {
   estimateBookingInvoices,
   normalizeHotelId,
   parseBookingHotelId,
+  extractBookingHotelIdFromHtml,
+  applyHarvestedBookingHotelIds,
   parseBookingInvoiceNumber,
   parseBookingInvoiceFields,
   pdfExtractText,
