@@ -31,6 +31,8 @@ assert(html.includes('id="pi-view-retrieve"'), 'Retrieve is a submenu');
 assert(html.includes("piSetMenu('retrieve')"), 'Retrieve menu switch');
 assert(html.includes('apartment → platform → year → month'), 'folder copy');
 assert(html.includes('function renderVaultTree'), 'folder tree renderer');
+assert(html.includes('function piVaultBookingHotelId'), 'vault looks up Booking.com hotel id');
+assert(html.includes('function piVaultAptLabel'), 'apartment folder label includes hotel id');
 assert(html.includes('function piStoreYm'), 'year/month helper');
 assert(html.includes('PDFs by apartment — click Open to view'), 'collect vault heading kept');
 assert(html.includes('Guided monthly run'), 'retrieve still has guided run copy');
@@ -60,7 +62,15 @@ const ctx = {
   document,
   window: {},
   PI: { vaultItems: [], vaultQ: '', vaultHideEmpty: true },
-  S: { apts: [{ name: 'Birdhouse Apartment' }, { name: 'Coloneum' }] },
+  S: {
+    apts: [
+      { name: 'Birdhouse Apartment', bookingHotelId: '11820968' },
+      { name: 'Coloneum', bookingHotelId: '12240693' },
+      { name: 'Votsala 1 Luxury Stay with Patio', clearGroup: 'Votsala', bookingHotelId: '13180441' },
+      { name: 'Votsala 2 Luxury Stay with Patio', clearGroup: 'Votsala', bookingHotelId: '13180441' },
+      { name: 'Sunset Nest in Fiskardo', bookingHotelId: '' },
+    ],
+  },
   localStorage: { getItem: function () { return null; }, setItem: function () {} },
 };
 vm.runInNewContext(src, ctx);
@@ -86,10 +96,34 @@ ctx.PI.vaultItems = [
     filename: 'Booking.com/2026-08/Coloneum/invoice-bdc.pdf',
     issueDate: '01/8/2026',
   },
+  {
+    id: '3',
+    month: '2026-07',
+    channel: 'booking',
+    partner: 'Votsala',
+    filename: 'Booking.com/2026-07/Votsala/invoice-13180441.pdf',
+    issueDate: '01/7/2026',
+  },
+  {
+    id: '4',
+    month: '2026-07',
+    channel: 'airbnb',
+    partner: 'Votsala 1 Luxury Stay with Patio',
+    filename: 'Airbnb/2026-07/Votsala 1 Luxury Stay with Patio/invoice-HMVOT1.pdf',
+    invoiceNumber: 'AIUC-V1',
+    issueDate: '10/7/2026',
+  },
 ];
 ctx.renderVaultTree();
 
-assert(tree.innerHTML.indexOf('Birdhouse Apartment') >= 0, 'apartment folder');
+assert(tree.innerHTML.indexOf('Birdhouse Apartment · 11820968') >= 0, 'Birdhouse folder shows Booking.com id');
+assert(tree.innerHTML.indexOf('Coloneum · 12240693') >= 0, 'Coloneum folder shows Booking.com id');
+assert(tree.innerHTML.indexOf('Votsala · 13180441') >= 0, 'shared Votsala Booking folder shows hotel id');
+assert(tree.innerHTML.indexOf('Votsala 1 Luxury Stay with Patio · 13180441') >= 0, 'Votsala unit folder shows shared hotel id');
+assert(tree.innerHTML.indexOf('Booking.com · 11820968') >= 0, 'Birdhouse Booking.com line shows hotel id');
+assert(tree.innerHTML.indexOf('Booking.com · 12240693') >= 0, 'Coloneum Booking.com line shows hotel id');
+assert(tree.innerHTML.indexOf('Booking.com · 13180441') >= 0, 'Votsala Booking.com line shows hotel id');
+assert(tree.innerHTML.indexOf('Airbnb · ') < 0, 'Airbnb platform line stays Airbnb');
 assert(tree.innerHTML.indexOf('class="pi-fold pi-apt"') >= 0, 'apt folder class');
 assert(tree.innerHTML.indexOf('<details open class="pi-fold pi-apt">') < 0, 'apartment folders start closed');
 assert(tree.innerHTML.indexOf('<details class="pi-fold pi-apt" open') < 0, 'apartment folders start closed (attr order)');
@@ -101,6 +135,19 @@ assert(tree.innerHTML.indexOf('July 2026') >= 0, 'month subfolder');
 assert(tree.innerHTML.indexOf('August 2026') >= 0, 'August month subfolder');
 assert(tree.innerHTML.indexOf('invoice-HM9DCDMEXT.pdf') >= 0, 'PDF leaf');
 assert(tree.innerHTML.indexOf('/api/platform-invoices/1/file') >= 0, 'Open href');
-assert(/2 PDF/.test(meta.textContent), 'meta counts PDFs: ' + meta.textContent);
+assert(/4 PDF/.test(meta.textContent), 'meta counts PDFs: ' + meta.textContent);
+
+ctx.PI.vaultHideEmpty = false;
+ctx.renderVaultTree();
+assert(tree.innerHTML.indexOf('Sunset Nest in Fiskardo') >= 0, 'unmapped apartment still listed');
+assert(tree.innerHTML.indexOf('Sunset Nest in Fiskardo ·') < 0, 'no hotel id suffix when unmapped');
+ctx.PI.vaultHideEmpty = true;
+
+ctx.PI.vaultQ = '11820968';
+ctx.renderVaultTree();
+assert(tree.innerHTML.indexOf('Birdhouse Apartment · 11820968') >= 0, 'search by Booking.com id finds Birdhouse');
+assert(tree.innerHTML.indexOf('Coloneum') < 0, 'search by Birdhouse id hides Coloneum');
+ctx.PI.vaultQ = '';
+ctx.renderVaultTree();
 
 console.log('platform-invoice-vault-folders.test.js: ok');

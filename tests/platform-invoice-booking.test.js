@@ -44,6 +44,12 @@ assert.strictEqual(est.apts.length, 2);
 assert(est.apts.some((a) => a.aptName === 'Birdhouse' && a.bookings === 2), 'two June stays → one Birdhouse expect row');
 assert(est.apts.some((a) => a.aptName === 'Votsala' && a.bookings === 2), 'Votsala 1+2 → one Votsala row');
 assert(!est.apts.some((a) => a.aptName === 'Horizon'), 'July stay is not a July invoice');
+assert.strictEqual(est.apts.find((a) => a.aptName === 'Birdhouse').bookingHotelId, '10980606');
+assert.strictEqual(est.apts.find((a) => a.aptName === 'Votsala').bookingHotelId, '5550001');
+assert.strictEqual(booking.lookupBookingHotelId('Birdhouse', apts), '10980606');
+assert.strictEqual(booking.lookupBookingHotelId('Votsala', apts), '5550001', 'folder Votsala uses any unit id');
+assert.strictEqual(booking.bookingVaultLabel('Birdhouse', apts), 'Birdhouse · 10980606');
+assert.strictEqual(booking.bookingVaultLabel('Unknown Place', apts), 'Unknown Place');
 assert.strictEqual(expect.estimateBookingInvoices, booking.estimateBookingInvoices, 'expect.js re-exports booking estimate');
 
 const airEst = expect.estimateAirbnbInvoices('2026-06', [airVotsala, juneV1]);
@@ -298,6 +304,11 @@ assert.strictEqual(fe124.baseSha256, fe123.expectedSha256, 'FE 124 continues FE 
 assert(fe124.patches.some((p) => (p.replace || '').includes('id="pi-bdc-id-map"')), 'FE 124 has the Collect id map');
 assert(fe124.patches.some((p) => (p.replace || '').includes('piApplyBookingHotelId')), 'FE 124 applies ids (Votsala share)');
 assert(fe124.patches.some((p) => (p.replace || '').includes('monthly PDF pack')), 'FE 124 says the pack comes next');
+const fe125 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-125.json'), 'utf8'));
+assert.strictEqual(fe125.baseSha256, fe124.expectedSha256, 'FE 125 continues FE 124');
+assert(fe125.patches.some((p) => (p.replace || '').includes('function piVaultBookingHotelId')), 'FE 125 looks up hotel id for vault folders');
+assert(fe125.patches.some((p) => (p.replace || '').includes('piVaultAptLabel')), 'FE 125 labels apartment folders with hotel id');
+assert(fe125.patches.some((p) => (p.replace || '').includes('Search apartment or Booking.com id')), 'FE 125 search matches hotel id');
 const idHarvester = fs.readFileSync(path.join(root, 'scripts', 'platform-invoice-booking-ids.js'), 'utf8');
 assert(idHarvester.includes("channel: 'chrome'"), 'listing harvest prefers system Chrome');
 assert(idHarvester.includes('HeadlessChrome'), 'listing harvest refuses HeadlessChrome');

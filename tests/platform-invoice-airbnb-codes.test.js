@@ -220,6 +220,9 @@ assert(worker.includes('PI_AIRBNB_HAVE_FILE'), 'worker HAVE file env');
 const fe124 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-124.json'), 'utf8'));
 assert.strictEqual(fe124.baseSha256, fe123.expectedSha256, 'FE 124 continues FE 123');
 assert(fe124.patches.some((p) => (p.replace || '').includes('piRenderBookingIdMap')), 'FE 124 renders the Booking.com id map');
+const fe125 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-125.json'), 'utf8'));
+assert.strictEqual(fe125.baseSha256, fe124.expectedSha256, 'FE 125 continues FE 124');
+assert(fe125.patches.some((p) => (p.replace || '').includes('piVaultBookingHotelId')), 'FE 125 vault labels use Booking.com hotel id');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

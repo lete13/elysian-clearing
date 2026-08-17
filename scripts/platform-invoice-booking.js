@@ -120,6 +120,29 @@ function bookingBillingFolder(apt, fallbackName) {
   return String((apt && (apt.aptName || apt.name)) || fallbackName || 'Apartment').trim() || 'Apartment';
 }
 
+function lookupBookingHotelId(aptName, apts) {
+  const name = String(aptName || '').trim();
+  if (!name) return '';
+  const list = Array.isArray(apts) ? apts : [];
+  if (/^votsala$/i.test(name)) {
+    const hit = list.find(function (a) {
+      return isVotsalaApt(a) && normalizeHotelId(a && a.bookingHotelId);
+    });
+    return hit ? normalizeHotelId(hit.bookingHotelId) : '';
+  }
+  const apt = list.find(function (a) {
+    return a && String(a.aptName || a.name || '').trim() === name;
+  });
+  if (apt) return normalizeHotelId(apt.bookingHotelId);
+  return '';
+}
+
+function bookingVaultLabel(aptName, apts) {
+  const name = String(aptName || '').trim() || 'Apartment';
+  const id = lookupBookingHotelId(name, apts);
+  return id ? name + ' · ' + id : name;
+}
+
 function bookingBillingKey(b, apts) {
   const apt = findApt(b, apts);
   if (isVotsalaApt(apt, b && b.aptName)) return 'Votsala';
@@ -148,7 +171,7 @@ function estimateBookingInvoices(month, bks, apts) {
         aptId: key === 'Votsala' ? '' : String((apt && (apt.aptId || apt.id)) || (b && b.aptId) || '').trim(),
         aptName: folder,
         bookings: 0,
-        bookingHotelId: String((apt && apt.bookingHotelId) || '').trim(),
+        bookingHotelId: normalizeHotelId(apt && apt.bookingHotelId) || lookupBookingHotelId(folder, apts),
       };
     }
     byKey[key].bookings += 1;
@@ -692,6 +715,8 @@ module.exports = {
   findApt,
   isVotsalaApt,
   bookingBillingFolder,
+  lookupBookingHotelId,
+  bookingVaultLabel,
   bookingBillingKey,
   estimateBookingInvoices,
   normalizeHotelId,
