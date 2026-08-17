@@ -44,6 +44,12 @@ assert.strictEqual(est.apts.length, 2);
 assert(est.apts.some((a) => a.aptName === 'Birdhouse' && a.bookings === 2), 'two June stays → one Birdhouse expect row');
 assert(est.apts.some((a) => a.aptName === 'Votsala' && a.bookings === 2), 'Votsala 1+2 → one Votsala row');
 assert(!est.apts.some((a) => a.aptName === 'Horizon'), 'July stay is not a July invoice');
+assert.strictEqual(est.apts.find((a) => a.aptName === 'Birdhouse').bookingHotelId, '10980606');
+assert.strictEqual(est.apts.find((a) => a.aptName === 'Votsala').bookingHotelId, '5550001');
+assert.strictEqual(booking.lookupBookingHotelId('Birdhouse', apts), '10980606');
+assert.strictEqual(booking.lookupBookingHotelId('Votsala', apts), '5550001', 'folder Votsala uses any unit id');
+assert.strictEqual(booking.bookingVaultLabel('Birdhouse', apts), 'Birdhouse · 10980606');
+assert.strictEqual(booking.bookingVaultLabel('Unknown Place', apts), 'Unknown Place');
 assert.strictEqual(expect.estimateBookingInvoices, booking.estimateBookingInvoices, 'expect.js re-exports booking estimate');
 
 const airEst = expect.estimateAirbnbInvoices('2026-06', [airVotsala, juneV1]);
@@ -51,6 +57,31 @@ assert.strictEqual(airEst.stays.length, 1, 'Airbnb Votsala stays stay per unit')
 assert.strictEqual(airEst.stays[0].aptName, 'Votsala 1 Luxury Stay with Patio');
 
 assert.strictEqual(booking.parseBookingHotelId('https://admin.booking.com/x?hotel_id=10980606&invoice=1'), '10980606');
+assert.strictEqual(
+  booking.extractBookingHotelIdFromHtml('<input type="hidden" name="hotel_id" value="13787015">', 'https://www.booking.com/hotel/gr/pixie-studio-athens.html'),
+  '13787015'
+);
+assert.strictEqual(
+  booking.extractBookingHotelIdFromHtml('<input value="8516226" name="hotel_id" type="hidden">'),
+  '8516226'
+);
+assert.strictEqual(
+  booking.extractBookingHotelIdFromHtml('<html></html>', 'https://admin.booking.com/hotel/hoteladmin/?hotel_id=10980606'),
+  '10980606',
+  'hotel_id on the URL wins when the page has no input'
+);
+const harvestedApts = [
+  { id: 'p1', name: 'Pixie Studio Athens', bookingHotelId: '' },
+  { id: 'f1', name: 'Filoxenia Apartment Athens', bookingHotelId: '' },
+];
+const harvestedApply = booking.applyHarvestedBookingHotelIds(harvestedApts, [
+  { aptId: 'p1', bookingHotelId: '13787015' },
+  { id: 'f1', bookingHotelId: '8516226' },
+]);
+assert.strictEqual(harvestedApply.applied, 2);
+assert.strictEqual(harvestedApts[0].bookingHotelId, '13787015');
+assert.strictEqual(harvestedApts[1].bookingHotelId, '8516226');
+assert.strictEqual(harvestedApply.map.mapped, 2);
 assert.strictEqual(booking.parseBookingHotelId('Property ID: 5550001 Invoice number 998877'), '5550001');
 assert.strictEqual(booking.parseBookingHotelId('Booking.com/2026-07/unmapped-3210009/invoice-3210009.pdf'), '3210009');
 
@@ -181,6 +212,54 @@ assert(booking.looksLikePdf(ents[0].buf));
 assert.strictEqual(booking.isBookingStatementBlob('export.xls', ''), true);
 assert.strictEqual(booking.isBookingStatementBlob('invoice.pdf', 'commission invoice'), false);
 
+const share = [
+  { id: 'v1', aptId: 'v1', name: 'Votsala 1 Luxury Stay with Patio', clearGroup: 'Votsala', bookingHotelId: '' },
+  { id: 'v2', aptId: 'v2', name: 'Votsala 2 Luxury Stay with Patio', clearGroup: 'Votsala', bookingHotelId: '' },
+  { id: 'b1', aptId: 'b1', name: 'Birdhouse', bookingHotelId: '' },
+];
+assert.strictEqual(booking.applyBookingHotelId(share, 'v1', 'ID 5550001 extra'), '5550001');
+assert.strictEqual(share[0].bookingHotelId, '5550001');
+assert.strictEqual(share[1].bookingHotelId, '5550001', 'Votsala 1–8 share one Booking.com id');
+assert.strictEqual(share[2].bookingHotelId, '', 'non-Votsala stays unchanged');
+assert.strictEqual(booking.applyBookingHotelId(share, 'b1', '10980606'), '10980606');
+assert.strictEqual(share[2].bookingHotelId, '10980606');
+assert.strictEqual(share[0].bookingHotelId, '5550001');
+assert.strictEqual(booking.applyBookingHotelId(share, 'b1', ''), '');
+assert.strictEqual(share[2].bookingHotelId, '', 'empty clears a single apartment');
+assert.strictEqual(booking.applyBookingHotelId(share, 'missing', '10980606'), '');
+
+const mapOk = booking.listBookingHotelMap(share);
+assert.strictEqual(mapOk.mapped, 2);
+assert.strictEqual(mapOk.total, 3);
+assert.strictEqual(mapOk.folders, 1, 'Votsala units count as one invoice folder');
+assert.strictEqual(mapOk.unmapped.length, 1);
+assert.strictEqual(mapOk.unmapped[0].aptName, 'Birdhouse');
+assert.strictEqual(mapOk.issues.duplicates.length, 0);
+assert.strictEqual(mapOk.issues.votsalaMismatch, false);
+
+const dupApts = [
+  { id: 'a', name: 'Andronikos', bookingHotelId: '1111111' },
+  { id: 'b', name: 'Birdhouse', bookingHotelId: '1111111' },
+  { id: 'v1', name: 'Votsala 1', clearGroup: 'Votsala', bookingHotelId: '5550001' },
+  { id: 'v2', name: 'Votsala 2', clearGroup: 'Votsala', bookingHotelId: '5550001' },
+];
+const dupIssues = booking.bookingHotelMapIssues(dupApts);
+assert.strictEqual(dupIssues.duplicates.length, 1);
+assert.strictEqual(dupIssues.duplicates[0].bookingHotelId, '1111111');
+assert.deepStrictEqual(dupIssues.duplicates[0].folders, ['Andronikos', 'Birdhouse']);
+assert.strictEqual(dupIssues.votsalaMismatch, false, 'shared Votsala id is not a duplicate');
+
+const mismatch = booking.bookingHotelMapIssues([
+  { id: 'v1', name: 'Votsala 1', clearGroup: 'Votsala', bookingHotelId: '5550001' },
+  { id: 'v2', name: 'Votsala 2', clearGroup: 'Votsala', bookingHotelId: '5550002' },
+]);
+assert.strictEqual(mismatch.votsalaMismatch, true);
+assert.deepStrictEqual(mismatch.votsalaIds.sort(), ['5550001', '5550002']);
+
+const messyMap = booking.listBookingHotelMap([{ id: 'h1', name: 'Horizon', bookingHotelId: 'hotel 7770002' }]);
+assert.strictEqual(messyMap.rows[0].bookingHotelId, '7770002');
+assert.strictEqual(messyMap.mapped, 1);
+
 const fe118 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-118.json'), 'utf8'));
 const srv79 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-79.json'), 'utf8'));
 assert(fe118.patches.some((p) => (p.replace || '').includes('piConnectBookingInApp()')), 'FE Connect Booking is in-app');
@@ -220,5 +299,42 @@ const srv87 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-87.json
 assert.strictEqual(srv87.baseSha256, srv86.expectedSha256, 'SRV 87 continues SRV 86');
 assert(srv87.patches.some((p) => (p.replace || '').includes('piWritePullJson')), 'SRV 87 writes pull JSON next to the session dir');
 assert(srv87.patches.some((p) => (p.replace || '').includes('PI_AIRBNB_HAVE_FILE')), 'SRV 87 HAVE file');
+const fe124 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-124.json'), 'utf8'));
+assert.strictEqual(fe124.baseSha256, fe123.expectedSha256, 'FE 124 continues FE 123');
+assert(fe124.patches.some((p) => (p.replace || '').includes('id="pi-bdc-id-map"')), 'FE 124 has the Collect id map');
+assert(fe124.patches.some((p) => (p.replace || '').includes('piApplyBookingHotelId')), 'FE 124 applies ids (Votsala share)');
+assert(fe124.patches.some((p) => (p.replace || '').includes('monthly PDF pack')), 'FE 124 says the pack comes next');
+const fe125 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-125.json'), 'utf8'));
+assert.strictEqual(fe125.baseSha256, fe124.expectedSha256, 'FE 125 continues FE 124');
+assert(fe125.patches.some((p) => (p.replace || '').includes('function piVaultBookingHotelId')), 'FE 125 looks up hotel id for vault folders');
+assert(fe125.patches.some((p) => (p.replace || '').includes('piVaultAptLabel')), 'FE 125 labels apartment folders with hotel id');
+assert(fe125.patches.some((p) => (p.replace || '').includes('Search apartment or Booking.com id')), 'FE 125 search matches hotel id');
+const idHarvester = fs.readFileSync(path.join(root, 'scripts', 'platform-invoice-booking-ids.js'), 'utf8');
+assert(idHarvester.includes("channel: 'chrome'"), 'listing harvest prefers system Chrome');
+assert(idHarvester.includes('HeadlessChrome'), 'listing harvest refuses HeadlessChrome');
+assert(!idHarvester.includes('Chrome/122'), 'listing harvest does not spoof Chrome 122');
+assert(!idHarvester.includes('admin.booking.com'), 'listing harvest does not open the Extranet');
+const feMapJs = fe124.patches
+  .find((p) => (p.replace || '').includes('window.piApplyBookingHotelId'))
+  .replace.replace(/\s*window\.piPullBooking = async function \(\) \{$/, '');
+const feCtx = {
+  S: {
+    apts: [
+      { id: 'v1', name: 'Votsala 1', clearGroup: 'Votsala', bookingHotelId: '' },
+      { id: 'v2', name: 'Votsala 2', clearGroup: 'Votsala', bookingHotelId: '' },
+      { id: 'b1', name: 'Birdhouse', bookingHotelId: '' },
+    ],
+  },
+  window: {},
+  save: function () {},
+  piEsc: function (s) { return String(s == null ? '' : s); },
+  document: { getElementById: function () { return null; } },
+};
+feCtx.window = feCtx;
+vm.runInNewContext(feMapJs, feCtx);
+assert.strictEqual(feCtx.piApplyBookingHotelId('v1', 'ID 5550001'), '5550001');
+assert.strictEqual(feCtx.S.apts[1].bookingHotelId, '5550001', 'FE apply shares Votsala ids');
+assert.strictEqual(feCtx.S.apts[2].bookingHotelId, '');
+assert.strictEqual(feCtx.piListBookingHotelMap().folders, 1);
 
 console.log('platform-invoice-booking.test.js: ok');

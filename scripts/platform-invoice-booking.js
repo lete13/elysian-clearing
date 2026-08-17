@@ -120,6 +120,29 @@ function bookingBillingFolder(apt, fallbackName) {
   return String((apt && (apt.aptName || apt.name)) || fallbackName || 'Apartment').trim() || 'Apartment';
 }
 
+function lookupBookingHotelId(aptName, apts) {
+  const name = String(aptName || '').trim();
+  if (!name) return '';
+  const list = Array.isArray(apts) ? apts : [];
+  if (/^votsala$/i.test(name)) {
+    const hit = list.find(function (a) {
+      return isVotsalaApt(a) && normalizeHotelId(a && a.bookingHotelId);
+    });
+    return hit ? normalizeHotelId(hit.bookingHotelId) : '';
+  }
+  const apt = list.find(function (a) {
+    return a && String(a.aptName || a.name || '').trim() === name;
+  });
+  if (apt) return normalizeHotelId(apt.bookingHotelId);
+  return '';
+}
+
+function bookingVaultLabel(aptName, apts) {
+  const name = String(aptName || '').trim() || 'Apartment';
+  const id = lookupBookingHotelId(name, apts);
+  return id ? name + ' · ' + id : name;
+}
+
 function bookingBillingKey(b, apts) {
   const apt = findApt(b, apts);
   if (isVotsalaApt(apt, b && b.aptName)) return 'Votsala';
@@ -148,7 +171,7 @@ function estimateBookingInvoices(month, bks, apts) {
         aptId: key === 'Votsala' ? '' : String((apt && (apt.aptId || apt.id)) || (b && b.aptId) || '').trim(),
         aptName: folder,
         bookings: 0,
-        bookingHotelId: String((apt && apt.bookingHotelId) || '').trim(),
+        bookingHotelId: normalizeHotelId(apt && apt.bookingHotelId) || lookupBookingHotelId(folder, apts),
       };
     }
     byKey[key].bookings += 1;
@@ -183,6 +206,41 @@ function parseBookingHotelId(text) {
   const file = s.match(/invoice-(\d{5,10})(?:-|\.|$)/i);
   if (file) return file[1];
   return '';
+}
+
+function extractBookingHotelIdFromHtml(html, pageUrl) {
+  const fromUrl = parseBookingHotelId(pageUrl || '');
+  if (fromUrl) return fromUrl;
+  const s = String(html || '');
+  const named = s.match(/<input\b[^>]*\bname=["']hotel_id["'][^>]*>/i);
+  if (named) {
+    const v = named[0].match(/\bvalue=["'](\d{5,10})["']/i);
+    if (v) return v[1];
+  }
+  const valued = s.match(/<input\b[^>]*\bvalue=["'](\d{5,10})["'][^>]*\bname=["']hotel_id["'][^>]*>/i);
+  if (valued) return valued[1];
+  return parseBookingHotelId(s);
+}
+
+function applyHarvestedBookingHotelIds(apts, harvested) {
+  const list = Array.isArray(apts) ? apts : [];
+  const byId = {};
+  (harvested || []).forEach(function (h) {
+    if (!h) return;
+    const id = String(h.aptId || h.id || '').trim();
+    const hid = normalizeHotelId(h.bookingHotelId);
+    if (id && hid) byId[id] = hid;
+  });
+  list.forEach(function (a) {
+    if (!a) return;
+    const id = String(a.id || a.aptId || '').trim();
+    if (byId[id]) a.bookingHotelId = byId[id];
+  });
+  return {
+    applied: Object.keys(byId).length,
+    issues: bookingHotelMapIssues(list),
+    map: listBookingHotelMap(list),
+  };
 }
 
 function parseBookingInvoiceNumber(text) {
@@ -262,6 +320,111 @@ function isBookingStatementBlob(name, text) {
   const blob = (String(name || '') + ' ' + String(text || '')).trim();
   if (/\.xlsx?(\s|$|\?)/i.test(blob) || /\.csv(\s|$|\?)/i.test(blob)) return true;
   return /statement of account|reservation.?statement|finance overview|payout statement/i.test(blob);
+}
+
+function listBookingHotelMap(apts) {
+  const rows = (Array.isArray(apts) ? apts : [])
+    .filter(Boolean)
+    .map(function (a) {
+      const bookingHotelId = normalizeHotelId(a.bookingHotelId);
+      const votsala = isVotsalaApt(a);
+      const folder = bookingBillingFolder(a);
+      return {
+        aptId: String(a.aptId || a.id || '').trim(),
+        aptName: String(a.aptName || a.name || '').trim(),
+        clearGroup: String(a.clearGroup || '').trim(),
+        bookingHotelId: bookingHotelId,
+        votsala: votsala,
+        folder: folder,
+        mapped: !!bookingHotelId,
+      };
+    });
+  rows.sort(function (a, b) {
+    const fc = String(a.folder || '').localeCompare(String(b.folder || ''), 'el', {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (fc) return fc;
+    return String(a.aptName || '').localeCompare(String(b.aptName || ''), 'el', {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  });
+  const issues = bookingHotelMapIssues(rows);
+  let mapped = 0;
+  const folderSet = {};
+  rows.forEach(function (r) {
+    if (!r.mapped) return;
+    mapped += 1;
+    folderSet[r.folder] = true;
+  });
+  return {
+    rows: rows,
+    mapped: mapped,
+    total: rows.length,
+    folders: Object.keys(folderSet).length,
+    unmapped: rows.filter(function (r) {
+      return !r.mapped;
+    }),
+    issues: issues,
+  };
+}
+
+function bookingHotelMapIssues(rowsOrApts) {
+  if (!Array.isArray(rowsOrApts) || !rowsOrApts.length) {
+    return { duplicates: [], votsalaMismatch: false, votsalaIds: [] };
+  }
+  const first = rowsOrApts[0] || {};
+  const looksLikeRows =
+    Object.prototype.hasOwnProperty.call(first, 'mapped') &&
+    Object.prototype.hasOwnProperty.call(first, 'folder');
+  const rows = looksLikeRows ? rowsOrApts : listBookingHotelMap(rowsOrApts).rows;
+  const byId = {};
+  rows.forEach(function (r) {
+    const id = normalizeHotelId(r && r.bookingHotelId);
+    if (!id) return;
+    const folder = String(
+      (r && r.folder) || bookingBillingFolder(r, r && (r.aptName || r.name)) || ''
+    ).trim();
+    if (!byId[id]) byId[id] = new Set();
+    byId[id].add(folder);
+  });
+  const duplicates = Object.keys(byId)
+    .filter(function (id) {
+      return byId[id].size > 1;
+    })
+    .sort()
+    .map(function (id) {
+      return { bookingHotelId: id, folders: Array.from(byId[id]).sort() };
+    });
+  const votsalaIds = [];
+  const seen = {};
+  rows.forEach(function (r) {
+    const votsala =
+      r && Object.prototype.hasOwnProperty.call(r, 'votsala') ? !!r.votsala : isVotsalaApt(r, r && (r.aptName || r.name));
+    const id = normalizeHotelId(r && r.bookingHotelId);
+    if (!votsala || !id || seen[id]) return;
+    seen[id] = true;
+    votsalaIds.push(id);
+  });
+  return { duplicates: duplicates, votsalaMismatch: votsalaIds.length > 1, votsalaIds: votsalaIds };
+}
+
+function applyBookingHotelId(apts, aptId, hotelId) {
+  const list = Array.isArray(apts) ? apts : [];
+  const id = String(aptId || '').trim();
+  const target = list.find(function (a) {
+    return a && (String(a.id || '').trim() === id || String(a.aptId || '').trim() === id);
+  });
+  if (!target) return '';
+  const next = normalizeHotelId(hotelId);
+  const votsala = isVotsalaApt(target);
+  list.forEach(function (a) {
+    if (!a) return;
+    const match = String(a.id || '').trim() === id || String(a.aptId || '').trim() === id;
+    if (votsala ? isVotsalaApt(a) : match) a.bookingHotelId = next;
+  });
+  return next;
 }
 
 function resolveBookingApt(hotelId, apts) {
@@ -552,16 +715,23 @@ module.exports = {
   findApt,
   isVotsalaApt,
   bookingBillingFolder,
+  lookupBookingHotelId,
+  bookingVaultLabel,
   bookingBillingKey,
   estimateBookingInvoices,
   normalizeHotelId,
   parseBookingHotelId,
+  extractBookingHotelIdFromHtml,
+  applyHarvestedBookingHotelIds,
   parseBookingInvoiceNumber,
   parseBookingInvoiceFields,
   pdfExtractText,
   looksLikePdf,
   looksLikeZip,
   isBookingStatementBlob,
+  listBookingHotelMap,
+  bookingHotelMapIssues,
+  applyBookingHotelId,
   resolveBookingApt,
   bookingInvoiceFilename,
   monthTokens,

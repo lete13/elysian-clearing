@@ -1,0 +1,75 @@
+{
+ "baseSha256": "b5ea6bfe62214777f52b30a4ad6a1dace7171df0d38e3e1aedfdbf1007469bcc",
+ "expectedSha256": "ff3c889a08b18adeb9c139c536d0f421abf7780a03d5bb9476054d265bee054e",
+ "builtAt": "2026-08-17 Vault shows Booking.com apartment ids",
+ "patches": [
+  {
+   "note": "Vault search includes Booking.com apartment ids",
+   "find": "placeholder=\"Search apartment…\"",
+   "replace": "placeholder=\"Search apartment or Booking.com id…\"",
+   "count": 1
+  },
+  {
+   "note": "Lookup Booking.com hotel id for a vault apartment folder",
+   "find": "  function piAllAptNames(items) {\n",
+   "replace": "  function piVaultBookingHotelId(aptName) {\n    var name = String(aptName || '').trim();\n    if (!name) return '';\n    var list = [];\n    try { list = (typeof S !== 'undefined' && Array.isArray(S.apts)) ? S.apts : []; } catch (eApts) { list = []; }\n    function hid(a) {\n      var s = String((a && a.bookingHotelId) || '').trim();\n      var m = s.match(/(\\d{5,10})/);\n      return m ? m[1] : '';\n    }\n    function isVotsala(a) {\n      var g = String((a && a.clearGroup) || '').trim();\n      if (/^votsala$/i.test(g)) return true;\n      return /^votsala\\b/i.test(String((a && (a.name || a.aptName)) || ''));\n    }\n    if (/^votsala$/i.test(name)) {\n      for (var i = 0; i < list.length; i++) { var id = isVotsala(list[i]) ? hid(list[i]) : ''; if (id) return id; }\n      return '';\n    }\n    for (var j = 0; j < list.length; j++) {\n      if (String((list[j] && (list[j].name || list[j].aptName)) || '').trim() === name) return hid(list[j]);\n    }\n    return '';\n  }\n  function piVaultAptLabel(aptName) {\n    var name = String(aptName || '').trim() || 'Apartment';\n    var id = piVaultBookingHotelId(name);\n    return id ? (name + ' · ' + id) : name;\n  }\n  function piAllAptNames(items) {\n",
+   "count": 1
+  },
+  {
+   "note": "Vault search matches Booking.com hotel id",
+   "find": "    if (q) names = names.filter(function (n) { return n.toLowerCase().indexOf(q) >= 0; });",
+   "replace": "    if (q) names = names.filter(function (n) {\n      if (n.toLowerCase().indexOf(q) >= 0) return true;\n      var hid = piVaultBookingHotelId(n);\n      return hid && hid.indexOf(q) >= 0;\n    });",
+   "count": 1
+  },
+  {
+   "note": "Booking.com platform folder shows the apartment hotel id",
+   "find": "          '<summary class=\"pi-sum\"><i class=\"ti ti-building-store\"></i> ' + piEsc(plat) +\n          ' <span class=\"pi-n\">' + pfiles.length + '</span></summary>' +",
+   "replace": "          '<summary class=\"pi-sum\"><i class=\"ti ti-building-store\"></i> ' + piEsc(plat === 'Booking.com' ? (function () { var hid = piVaultBookingHotelId(apt); return hid ? (plat + ' · ' + hid) : plat; })() : plat) +\n          ' <span class=\"pi-n\">' + pfiles.length + '</span></summary>' +",
+   "count": 1
+  },
+  {
+   "note": "Apartment vault folder shows Booking.com hotel id",
+   "find": "      return '<details class=\"pi-fold pi-apt\">' +\n        '<summary class=\"pi-sum\"><i class=\"ti ti-home\"></i> ' + piEsc(apt) +\n        ' <span class=\"pi-n\">' + files.length + '</span></summary>' +",
+   "replace": "      return '<details class=\"pi-fold pi-apt\">' +\n        '<summary class=\"pi-sum\"><i class=\"ti ti-home\"></i> ' + piEsc(piVaultAptLabel(apt)) +\n        ' <span class=\"pi-n\">' + files.length + '</span></summary>' +",
+   "count": 1
+  },
+  {
+   "note": "Collect Booking.com expect rows carry hotel id",
+   "find": "          bdcMap[key] = {\n            aptId: folder === 'Votsala' ? '' : String(b.aptId || b.apartmentId || '').trim(),\n            aptName: folder,\n            bookings: 0\n          };",
+   "replace": "          bdcMap[key] = {\n            aptId: folder === 'Votsala' ? '' : String(b.aptId || b.apartmentId || '').trim(),\n            aptName: folder,\n            bookingHotelId: (typeof piVaultBookingHotelId === 'function' ? piVaultBookingHotelId(folder) : ''),\n            bookings: 0\n          };",
+   "count": 1
+  },
+  {
+   "note": "Collect checklist labels each Booking.com apartment with its hotel id",
+   "find": "        var label = (x.aptName || x.aptId || 'Apartment') + (x.aptId && x.aptName ? (' · ' + x.aptId) : '');",
+   "replace": "        var hid = String(x.bookingHotelId || '').trim() || (typeof piVaultBookingHotelId === 'function' ? piVaultBookingHotelId(x.aptName) : '');\n        var label = (x.aptName || x.aptId || 'Apartment') + (hid ? (' · ' + hid) : '');",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function piVaultBookingHotelId",
+   "note": "vault looks up Booking.com hotel id"
+  },
+  {
+   "has": "function piVaultAptLabel",
+   "note": "apartment folder label includes hotel id"
+  },
+  {
+   "has": "Search apartment or Booking.com id",
+   "note": "vault search placeholder"
+  },
+  {
+   "has": "Booking.com · ",
+   "note": "Booking.com folder shows hotel id"
+  },
+  {
+   "has": "x.bookingHotelId",
+   "note": "Collect checklist uses hotel id not internal apt id"
+  },
+  {
+   "hasNot": "x.aptId && x.aptName ? (' · ' + x.aptId)",
+   "note": "checklist no longer shows internal apt id"
+  }
+ ]
+}

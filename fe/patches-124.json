@@ -1,0 +1,79 @@
+{
+ "baseSha256": "bd62b2377e32868104554a2435cba3e95cc65ba3d4260d5e9eea5520f34ffdb8",
+ "expectedSha256": "b5ea6bfe62214777f52b30a4ad6a1dace7171df0d38e3e1aedfdbf1007469bcc",
+ "builtAt": "2026-08-17 Booking.com apartment id map on Collect",
+ "patches": [
+  {
+   "note": "Collect copy: map Booking.com ids first; monthly pack comes next",
+   "find": "<b>Pull Booking.com</b> mass-extracts every apartment invoice for the document month from Finance → Invoices (Votsala = one PDF).",
+   "replace": "Map each apartment's <b>Booking.com id</b> in the table below first — invoices print that id, not the Elysian name (Votsala 1–8 share one id; empty = not on Booking.com). A monthly PDF pack and Excel come next. <b>Pull Booking.com</b> mass-extracts every apartment invoice for the document month from Finance → Invoices (Votsala = one PDF).",
+   "count": 1
+  },
+  {
+   "note": "Collect panel for the Booking.com apartment id map",
+   "find": "      <div id=\"pi-bdc-checklist\" style=\"margin-bottom:12px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>\n      <div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px\">",
+   "replace": "      <div id=\"pi-bdc-checklist\" style=\"margin-bottom:12px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>\n      <div id=\"pi-bdc-id-map\" style=\"margin-bottom:12px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;background:var(--bg)\"></div>\n      <div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px\">",
+   "count": 1
+  },
+  {
+   "note": "Configuration bookingHotelId uses Votsala share + refreshes the Collect map",
+   "find": "function setApt(id,f,v){const a=S.apts.find(x=>x.id===id);if(a){a[f]=v;save();if(f==='ownerEmail'||f==='ownerEmail2'||f==='ownerEmail3'||f==='clearGroup'||f==='businessTaxAmt'||f==='ownerName'||f==='ownerSurname'||f==='ownerPhone')return;renderCfg();}}",
+   "replace": "function setApt(id,f,v){const a=S.apts.find(x=>x.id===id);if(a){if(f==='bookingHotelId'&&typeof piApplyBookingHotelId==='function'){piApplyBookingHotelId(id,v);}else a[f]=v;save();if(typeof piRenderBookingIdMap==='function'&&(f==='bookingHotelId'||f==='clearGroup'))piRenderBookingIdMap();if(f==='ownerEmail'||f==='ownerEmail2'||f==='ownerEmail3'||f==='clearGroup'||f==='businessTaxAmt'||f==='ownerName'||f==='ownerSurname'||f==='ownerPhone'||f==='bookingHotelId')return;renderCfg();}}",
+   "count": 1
+  },
+  {
+   "note": "Unmapped vault hint points at the Collect id map",
+   "find": "Unmapped Booking id(s) — paste bookingHotelId on Configuration: ",
+   "replace": "Unmapped Booking id(s) — paste the Booking.com id in the map below: ",
+   "count": 1
+  },
+  {
+   "note": "Refresh the id map with the Collect checklist (no items)",
+   "find": "piRenderBdcChecklist('pi-bdc-checklist');",
+   "replace": "piRenderBdcChecklist('pi-bdc-checklist');\n      piRenderBookingIdMap();",
+   "count": 3
+  },
+  {
+   "note": "Refresh the id map with the Collect checklist (with items)",
+   "find": "piRenderBdcChecklist('pi-bdc-checklist', items);",
+   "replace": "piRenderBdcChecklist('pi-bdc-checklist', items);\n    piRenderBookingIdMap();",
+   "count": 2
+  },
+  {
+   "note": "Collect JS: Booking.com apartment id map (keep in sync with listBookingHotelMap)",
+   "find": "  window.piPullBooking = async function () {",
+   "replace": "  function piIsVotsalaApt(apt) {\n    var g = String((apt && apt.clearGroup) || '').trim();\n    if (/^votsala$/i.test(g)) return true;\n    return /^votsala\\b/i.test(String((apt && (apt.aptName || apt.name)) || ''));\n  }\n  function piNormalizeHotelId(id) {\n    var s = String(id || '').trim();\n    var m = s.match(/(\\d{5,10})/);\n    return m ? m[1] : '';\n  }\n  function piBookingBillingFolder(apt) {\n    if (piIsVotsalaApt(apt)) return 'Votsala';\n    return String((apt && (apt.aptName || apt.name)) || 'Apartment').trim() || 'Apartment';\n  }\n  window.piApplyBookingHotelId = function (aptId, hotelId) {\n    var list = (typeof S !== 'undefined' && Array.isArray(S.apts)) ? S.apts : [];\n    var id = String(aptId || '').trim();\n    var target = list.find(function (a) { return a && (String(a.id || '') === id || String(a.aptId || '') === id); });\n    if (!target) return '';\n    var next = piNormalizeHotelId(hotelId);\n    var votsala = piIsVotsalaApt(target);\n    list.forEach(function (a) {\n      if (!a) return;\n      if (votsala ? piIsVotsalaApt(a) : (String(a.id || '') === id || String(a.aptId || '') === id)) a.bookingHotelId = next;\n    });\n    return next;\n  };\n  window.piListBookingHotelMap = function () {\n    var list = (typeof S !== 'undefined' && Array.isArray(S.apts)) ? S.apts : [];\n    var rows = list.map(function (a) {\n      var bookingHotelId = piNormalizeHotelId(a && a.bookingHotelId);\n      var votsala = piIsVotsalaApt(a);\n      return {\n        aptId: String((a && (a.id || a.aptId)) || ''),\n        aptName: String((a && (a.name || a.aptName)) || ''),\n        clearGroup: String((a && a.clearGroup) || '').trim(),\n        bookingHotelId: bookingHotelId,\n        votsala: votsala,\n        folder: piBookingBillingFolder(a),\n        mapped: !!bookingHotelId\n      };\n    });\n    rows.sort(function (a, b) {\n      var fc = String(a.folder || '').localeCompare(String(b.folder || ''), 'el', { numeric: true, sensitivity: 'base' });\n      if (fc) return fc;\n      return String(a.aptName || '').localeCompare(String(b.aptName || ''), 'el', { numeric: true, sensitivity: 'base' });\n    });\n    var byId = {};\n    rows.forEach(function (r) {\n      if (!r.bookingHotelId) return;\n      if (!byId[r.bookingHotelId]) byId[r.bookingHotelId] = {};\n      byId[r.bookingHotelId][r.folder] = true;\n    });\n    var duplicates = Object.keys(byId).filter(function (hid) { return Object.keys(byId[hid]).length > 1; }).map(function (hid) {\n      return { bookingHotelId: hid, folders: Object.keys(byId[hid]).sort() };\n    });\n    var votsalaIds = [];\n    rows.forEach(function (r) {\n      if (r.votsala && r.bookingHotelId && votsalaIds.indexOf(r.bookingHotelId) < 0) votsalaIds.push(r.bookingHotelId);\n    });\n    var folders = {};\n    var mapped = 0;\n    rows.forEach(function (r) {\n      if (!r.mapped) return;\n      mapped++;\n      folders[r.folder] = true;\n    });\n    return {\n      rows: rows,\n      mapped: mapped,\n      total: rows.length,\n      folders: Object.keys(folders).length,\n      unmapped: rows.filter(function (r) { return !r.mapped; }),\n      issues: { duplicates: duplicates, votsalaMismatch: votsalaIds.length > 1, votsalaIds: votsalaIds }\n    };\n  };\n  window.piSetBookingHotelId = function (aptId, value) {\n    piApplyBookingHotelId(aptId, value);\n    if (typeof save === 'function') save();\n    piRenderBookingIdMap();\n  };\n  window.piRenderBookingIdMap = function () {\n    var el = document.getElementById('pi-bdc-id-map');\n    if (!el) return;\n    var map = piListBookingHotelMap();\n    var warn = '';\n    if (map.issues.votsalaMismatch) {\n      warn += '<div style=\"margin-top:8px;color:var(--tx-err,#b91c1c)\">Votsala 1–8 must share one Booking.com id — now ' + map.issues.votsalaIds.map(piEsc).join(' · ') + '</div>';\n    }\n    if (map.issues.duplicates.length) {\n      warn += map.issues.duplicates.map(function (d) {\n        return '<div style=\"margin-top:8px;color:var(--tx-err,#b91c1c)\">Id ' + piEsc(d.bookingHotelId) + ' is on more than one invoice folder: ' + d.folders.map(piEsc).join(', ') + '</div>';\n      }).join('');\n    }\n    var rowsHtml = map.rows.map(function (r) {\n      var aid = String(r.aptId || '').replace(/\\\\/g, '').replace(/'/g, '');\n      return '<tr>' +\n        '<td style=\"padding:5px 8px;border-bottom:1px solid var(--bdr)\">' + piEsc(r.aptName || r.aptId) + (r.votsala ? ' <span style=\"color:var(--tx3);font-size:11px\">(shared PDF)</span>' : '') + '</td>' +\n        '<td style=\"padding:5px 8px;border-bottom:1px solid var(--bdr);color:var(--tx3)\">' + piEsc(r.clearGroup || (r.votsala ? 'Votsala' : '')) + '</td>' +\n        '<td style=\"padding:5px 8px;border-bottom:1px solid var(--bdr)\">' +\n        '<input type=\"text\" value=\"' + piEsc(r.bookingHotelId) + '\" placeholder=\"e.g. 10980606\" ' +\n        'onchange=\"piSetBookingHotelId(\\'' + aid + '\\', this.value)\" ' +\n        'style=\"width:100%;max-width:160px;font-size:12px;padding:5px 8px;border-radius:var(--r);border:1px solid var(--bdr);background:var(--bg);color:var(--tx)\">' +\n        '</td></tr>';\n    }).join('');\n    el.innerHTML =\n      '<div style=\"font-weight:600;margin-bottom:6px\">Booking.com apartment ids — <b>' + map.mapped + '</b>/' + map.total + ' mapped · ' + map.folders + ' invoice folder(s)</div>' +\n      '<div style=\"color:var(--tx3);font-size:12.5px;line-height:1.45;margin-bottom:8px\">Invoices print this id, not the Elysian name. Votsala 1–8 share one id. Empty = not on Booking.com. Map these first; a monthly PDF pack and Excel come next.</div>' +\n      (map.rows.length\n        ? ('<div style=\"overflow:auto\"><table style=\"width:100%;border-collapse:collapse;font-size:12.5px\">' +\n          '<thead><tr>' +\n          '<th style=\"text-align:left;padding:5px 8px;border-bottom:1px solid var(--bdr)\">Apartment</th>' +\n          '<th style=\"text-align:left;padding:5px 8px;border-bottom:1px solid var(--bdr)\">Group</th>' +\n          '<th style=\"text-align:left;padding:5px 8px;border-bottom:1px solid var(--bdr)\">Booking.com id</th>' +\n          '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>')\n        : '<div style=\"color:var(--tx3)\">No properties yet. Import Hosthub on the Dashboard first.</div>') +\n      warn;\n  };\n  window.piPullBooking = async function () {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "id=\"pi-bdc-id-map\"",
+   "note": "Collect Booking.com id map panel"
+  },
+  {
+   "has": "piRenderBookingIdMap",
+   "note": "renders the id map"
+  },
+  {
+   "has": "piApplyBookingHotelId",
+   "note": "Votsala share apply"
+  },
+  {
+   "has": "Votsala 1–8 share one id",
+   "note": "shared Votsala id copy"
+  },
+  {
+   "has": "monthly PDF pack",
+   "note": "pack comes after mapping"
+  },
+  {
+   "has": "function piIsVotsalaApt",
+   "note": "client Votsala rule matches filing"
+  },
+  {
+   "hasNot": "paste bookingHotelId on Configuration",
+   "note": "unmapped hint points at the map"
+  }
+ ]
+}
