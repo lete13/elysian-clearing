@@ -1,0 +1,63 @@
+{
+ "baseSha256": "ff754f95b0576cdf0c4fee7d698eaeb9486e2009d67cfb5ebf991b763041bbfa",
+ "expectedSha256": "eb2e539fdb2850529350ea502b24f53464aa0308068f79df4fec8170a854b36f",
+ "builtAt": "2026-08-16 Pull worker JSON via files so spawn is not E2BIG",
+ "patches": [
+  {
+   "note": "Child env omits huge JSON/session blobs; apartments go to a file",
+   "find": "  const env = Object.assign({}, process.env, { PI_SESSION_DIR: sessionDir });\n  if (Array.isArray(b.apartments) && b.apartments.length) {\n    env.PI_APARTMENTS_JSON = JSON.stringify(b.apartments.slice(0, 200));\n  }",
+   "replace": "  const env = {};\n  Object.keys(process.env).forEach(function (k) {\n    if (/STORAGE_STATE|_B64$|^PI_AIRBNB_HAVE_JSON$|^PI_AIRBNB_RESERVATIONS_JSON$|^PI_APARTMENTS_JSON$/.test(k)) return;\n    env[k] = process.env[k];\n  });\n  env.PI_SESSION_DIR = sessionDir;\n  function piWritePullJson(name, value) {\n    const p = pathMod.join(sessionDir, name);\n    fsMod.writeFileSync(p, JSON.stringify(value));\n    return p;\n  }\n  if (Array.isArray(b.apartments) && b.apartments.length) {\n    env.PI_APARTMENTS_FILE = piWritePullJson('apartments.json', b.apartments.slice(0, 200));\n  }",
+   "count": 1
+  },
+  {
+   "note": "Vault HAVE list is a file, not PI_AIRBNB_HAVE_JSON",
+   "find": "    if (haveNames.length) env.PI_AIRBNB_HAVE_JSON = JSON.stringify(haveNames.slice(0, 4000));",
+   "replace": "    if (haveNames.length) env.PI_AIRBNB_HAVE_FILE = piWritePullJson('have.json', haveNames.slice(0, 4000));",
+   "count": 1
+  },
+  {
+   "note": "Reservation queue is a file, not PI_AIRBNB_RESERVATIONS_JSON",
+   "find": "    env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500));",
+   "replace": "    env.PI_AIRBNB_RESERVATIONS_FILE = piWritePullJson('reservations.json', airbnbReservations.slice(0, 500));",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "PI_AIRBNB_HAVE_FILE",
+   "note": "HAVE list file env"
+  },
+  {
+   "has": "PI_AIRBNB_RESERVATIONS_FILE",
+   "note": "reservation queue file env"
+  },
+  {
+   "has": "PI_APARTMENTS_FILE",
+   "note": "apartments file env"
+  },
+  {
+   "has": "piWritePullJson",
+   "note": "JSON blobs written next to the session dir"
+  },
+  {
+   "has": "STORAGE_STATE|_B64$",
+   "note": "child env drops storage-state blobs"
+  },
+  {
+   "hasNot": "env.PI_AIRBNB_HAVE_JSON = JSON.stringify(haveNames.slice(0, 4000))",
+   "note": "HAVE JSON is not stuffed into spawn env"
+  },
+  {
+   "hasNot": "env.PI_AIRBNB_RESERVATIONS_JSON = JSON.stringify(airbnbReservations.slice(0, 500))",
+   "note": "reservation JSON is not stuffed into spawn env"
+  },
+  {
+   "has": "kind: 'both'",
+   "note": "pull kind both kept"
+  },
+  {
+   "has": "expectGaps",
+   "note": "Expect gaps kept"
+  }
+ ]
+}
