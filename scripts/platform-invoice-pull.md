@@ -49,6 +49,12 @@ Airbnb does not expose a labeled download link on the reservation details page �
 
 No manual pasting of codes. Booking.com pull is the group Finance → Invoices mass extract for the document month (`channel=booking`).
 
+## Booking.com apartment ids
+
+Collect shows a **Booking.com apartment ids** table. Paste the numeric hotel / apartment id printed on the invoice (not the Elysian name). Filing uses this id only — never a name match. **Votsala 1–8 share one id** and one PDF folder. Empty means the unit is not on Booking.com. The table flags the same id on two different folders, and Votsala units that do not all share one id. Map these first; a monthly PDF pack upload (and Excel) comes next.
+
+## Railway variables
+
 ## Railway variables
 
 | Variable | Purpose |

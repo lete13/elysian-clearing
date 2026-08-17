@@ -264,6 +264,111 @@ function isBookingStatementBlob(name, text) {
   return /statement of account|reservation.?statement|finance overview|payout statement/i.test(blob);
 }
 
+function listBookingHotelMap(apts) {
+  const rows = (Array.isArray(apts) ? apts : [])
+    .filter(Boolean)
+    .map(function (a) {
+      const bookingHotelId = normalizeHotelId(a.bookingHotelId);
+      const votsala = isVotsalaApt(a);
+      const folder = bookingBillingFolder(a);
+      return {
+        aptId: String(a.aptId || a.id || '').trim(),
+        aptName: String(a.aptName || a.name || '').trim(),
+        clearGroup: String(a.clearGroup || '').trim(),
+        bookingHotelId: bookingHotelId,
+        votsala: votsala,
+        folder: folder,
+        mapped: !!bookingHotelId,
+      };
+    });
+  rows.sort(function (a, b) {
+    const fc = String(a.folder || '').localeCompare(String(b.folder || ''), 'el', {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (fc) return fc;
+    return String(a.aptName || '').localeCompare(String(b.aptName || ''), 'el', {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  });
+  const issues = bookingHotelMapIssues(rows);
+  let mapped = 0;
+  const folderSet = {};
+  rows.forEach(function (r) {
+    if (!r.mapped) return;
+    mapped += 1;
+    folderSet[r.folder] = true;
+  });
+  return {
+    rows: rows,
+    mapped: mapped,
+    total: rows.length,
+    folders: Object.keys(folderSet).length,
+    unmapped: rows.filter(function (r) {
+      return !r.mapped;
+    }),
+    issues: issues,
+  };
+}
+
+function bookingHotelMapIssues(rowsOrApts) {
+  if (!Array.isArray(rowsOrApts) || !rowsOrApts.length) {
+    return { duplicates: [], votsalaMismatch: false, votsalaIds: [] };
+  }
+  const first = rowsOrApts[0] || {};
+  const looksLikeRows =
+    Object.prototype.hasOwnProperty.call(first, 'mapped') &&
+    Object.prototype.hasOwnProperty.call(first, 'folder');
+  const rows = looksLikeRows ? rowsOrApts : listBookingHotelMap(rowsOrApts).rows;
+  const byId = {};
+  rows.forEach(function (r) {
+    const id = normalizeHotelId(r && r.bookingHotelId);
+    if (!id) return;
+    const folder = String(
+      (r && r.folder) || bookingBillingFolder(r, r && (r.aptName || r.name)) || ''
+    ).trim();
+    if (!byId[id]) byId[id] = new Set();
+    byId[id].add(folder);
+  });
+  const duplicates = Object.keys(byId)
+    .filter(function (id) {
+      return byId[id].size > 1;
+    })
+    .sort()
+    .map(function (id) {
+      return { bookingHotelId: id, folders: Array.from(byId[id]).sort() };
+    });
+  const votsalaIds = [];
+  const seen = {};
+  rows.forEach(function (r) {
+    const votsala =
+      r && Object.prototype.hasOwnProperty.call(r, 'votsala') ? !!r.votsala : isVotsalaApt(r, r && (r.aptName || r.name));
+    const id = normalizeHotelId(r && r.bookingHotelId);
+    if (!votsala || !id || seen[id]) return;
+    seen[id] = true;
+    votsalaIds.push(id);
+  });
+  return { duplicates: duplicates, votsalaMismatch: votsalaIds.length > 1, votsalaIds: votsalaIds };
+}
+
+function applyBookingHotelId(apts, aptId, hotelId) {
+  const list = Array.isArray(apts) ? apts : [];
+  const id = String(aptId || '').trim();
+  const target = list.find(function (a) {
+    return a && (String(a.id || '').trim() === id || String(a.aptId || '').trim() === id);
+  });
+  if (!target) return '';
+  const next = normalizeHotelId(hotelId);
+  const votsala = isVotsalaApt(target);
+  list.forEach(function (a) {
+    if (!a) return;
+    const match = String(a.id || '').trim() === id || String(a.aptId || '').trim() === id;
+    if (votsala ? isVotsalaApt(a) : match) a.bookingHotelId = next;
+  });
+  return next;
+}
+
 function resolveBookingApt(hotelId, apts) {
   const id = normalizeHotelId(hotelId);
   if (!id) {
@@ -562,6 +667,9 @@ module.exports = {
   looksLikePdf,
   looksLikeZip,
   isBookingStatementBlob,
+  listBookingHotelMap,
+  bookingHotelMapIssues,
+  applyBookingHotelId,
   resolveBookingApt,
   bookingInvoiceFilename,
   monthTokens,
