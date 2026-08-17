@@ -63,10 +63,12 @@ function extractBetween(source, startName, nextName) {
   return source.slice(start, end);
 }
 const helperSrc =
+  extractBetween(worker, 'loadJsonBlob', 'loadApartments') +
   extractBetween(worker, 'airbnbHaveKey', 'loadAirbnbHaveSet') +
   extractBetween(worker, 'loadAirbnbHaveSet', 'airbnbResvAlreadyHave') +
   extractBetween(worker, 'airbnbResvAlreadyHave', 'requestPullStop');
 const helpers = vm.runInNewContext(helperSrc + '\n({ airbnbHaveKey, loadAirbnbHaveSet, airbnbDocAlreadyHave, airbnbResvAlreadyHave })', {
+  fs: fs,
   process: { env: { PI_AIRBNB_HAVE_JSON: JSON.stringify([
     'Airbnb/2026-07/Birdhouse/invoice-HMALREADY.pdf',
     'Airbnb/2026-07/Loft/credit_note-HMCREDIT1.pdf',
@@ -82,6 +84,16 @@ assert(!helpers.airbnbDocAlreadyHave(have, 'invoice', 'HMKEEP01', 'CN88XYZ'));
 assert(!helpers.airbnbDocAlreadyHave(have, 'invoice', 'HM3TW2MMBX', ''));
 assert(helpers.airbnbDocAlreadyHave(have, 'credit_note', 'HMCREDIT1', ''));
 assert(!helpers.airbnbDocAlreadyHave(have, 'invoice', 'HMCREDIT1', ''));
+
+const haveFile = path.join(os.tmpdir(), 'pi-have-' + Date.now() + '.json');
+fs.writeFileSync(haveFile, JSON.stringify(['Airbnb/2026-07/Nest/invoice-HMFILE01.pdf']));
+const helpersFile = vm.runInNewContext(helperSrc + '\n({ loadAirbnbHaveSet, airbnbDocAlreadyHave })', {
+  fs: fs,
+  process: { env: { PI_AIRBNB_HAVE_FILE: haveFile } },
+});
+const haveFromFile = helpersFile.loadAirbnbHaveSet();
+assert(helpersFile.airbnbDocAlreadyHave(haveFromFile, 'invoice', 'HMFILE01', ''), 'HAVE list from file skips that invoice');
+fs.unlinkSync(haveFile);
 
 function walkPdfs(outDir) {
   const out = [];

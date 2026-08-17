@@ -210,6 +210,13 @@ assert(srv86.patches.some((p) => (p.replace || '').includes('attachPageWatch')),
 assert(worker.includes("require('./platform-invoice-booking-block')"), 'worker shares Connect block detection');
 assert(worker.includes('headless: bookingKind ? false'), 'worker Booking pull is headed');
 assert(worker.includes('Do not password-login from this server IP'), 'worker does not password-login after a block');
+const srv87 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-87.json'), 'utf8'));
+assert.strictEqual(srv87.baseSha256, srv86.expectedSha256, 'SRV 87 continues SRV 86');
+assert(srv87.patches.some((p) => (p.replace || '').includes('PI_AIRBNB_HAVE_FILE')), 'SRV 87 writes HAVE list to a file');
+assert(srv87.patches.some((p) => (p.replace || '').includes('PI_AIRBNB_RESERVATIONS_FILE')), 'SRV 87 writes reservation queue to a file');
+assert(!srv87.patches.some((p) => (p.replace || '').includes('env.PI_AIRBNB_HAVE_JSON = JSON.stringify')), 'SRV 87 does not put HAVE JSON in spawn env');
+assert(worker.includes('function loadJsonBlob'), 'worker reads pull JSON from env or file');
+assert(worker.includes('PI_AIRBNB_HAVE_FILE'), 'worker HAVE file env');
 
 function extractBetween(source, startName, nextName) {
   const start = source.indexOf('function ' + startName + '(');

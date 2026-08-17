@@ -216,5 +216,9 @@ assert.strictEqual(srv86.baseSha256, srv85.expectedSha256, 'SRV 86 continues SRV
 assert(srv86.patches.some((p) => (p.replace || '').includes("require('./scripts/platform-invoice-booking-block')")), 'SRV 86 uses the shared block module');
 assert(srv86.patches.some((p) => (p.replace || '').includes('await piBookingReadBlockedUntil')), 'SRV 86 reads the cooldown from Postgres');
 assert(srv86.patches.some((p) => (p.replace || '').includes('Pull will not password-login from this IP')), 'SRV 86 stops Pull password-login while blocked');
+const srv87 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-87.json'), 'utf8'));
+assert.strictEqual(srv87.baseSha256, srv86.expectedSha256, 'SRV 87 continues SRV 86');
+assert(srv87.patches.some((p) => (p.replace || '').includes('piWritePullJson')), 'SRV 87 writes pull JSON next to the session dir');
+assert(srv87.patches.some((p) => (p.replace || '').includes('PI_AIRBNB_HAVE_FILE')), 'SRV 87 HAVE file');
 
 console.log('platform-invoice-booking.test.js: ok');

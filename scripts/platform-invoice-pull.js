@@ -16,8 +16,9 @@
  *   BOOKING_HOST_EMAIL / BOOKING_HOST_PASSWORD
  *   PLAYWRIGHT_PROXY_SERVER (optional, e.g. http://user:pass@host:port)
  *   AIRBNB_OTP (optional one-shot code if password login hits OTP)
- *   PI_APARTMENTS_JSON (optional JSON array of {aptId,aptName,bookingHotelId,clearGroup})
- *   PI_AIRBNB_RESERVATIONS_JSON — Hosthub-driven Airbnb codes (VAT Invoicer-style):
+ *   PI_APARTMENTS_JSON or PI_APARTMENTS_FILE (JSON array of {aptId,aptName,bookingHotelId,clearGroup})
+ *   PI_AIRBNB_HAVE_JSON or PI_AIRBNB_HAVE_FILE — vault filenames already saved (skip list)
+ *   PI_AIRBNB_RESERVATIONS_JSON or PI_AIRBNB_RESERVATIONS_FILE — Hosthub-driven Airbnb codes (VAT Invoicer-style):
  *     JSON array of {code, kind:'invoice'|'credit_note'|'both', aptId, aptName, guestName, created, createdOnChannel, checkIn, checkOut}
  *     Worker opens /hosting/stay/{CODE} (Airbnb's current reservation page), clicks the
  *     total price (Airbnb Help 438), finds every VAT invoice / credit note ID on that stay,
@@ -64,15 +65,26 @@ function ensureDir(d) {
   fs.mkdirSync(d, { recursive: true });
 }
 
-function loadApartments() {
-  try {
-    const raw = process.env.PI_APARTMENTS_JSON || '';
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch (e) {
-    return [];
+function loadJsonBlob(envKey, fileKey) {
+  const fp = process.env[fileKey];
+  if (fp) {
+    try {
+      return JSON.parse(fs.readFileSync(fp, 'utf8'));
+    } catch (e) {
+      return null;
+    }
   }
+  const raw = process.env[envKey] || '';
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+function loadApartments() {
+  const arr = loadJsonBlob('PI_APARTMENTS_JSON', 'PI_APARTMENTS_FILE');
+  return Array.isArray(arr) ? arr : [];
 }
 
 function loadAirbnbLimit() {
@@ -98,12 +110,8 @@ function airbnbHaveKey(kind, code, vatId) {
   return v ? k + ':' + c + ':' + v : k + ':' + c;
 }
 function loadAirbnbHaveSet() {
-  let arr = [];
-  try {
-    arr = JSON.parse(process.env.PI_AIRBNB_HAVE_JSON || '[]');
-  } catch (e) {
-    arr = [];
-  }
+  const parsed = loadJsonBlob('PI_AIRBNB_HAVE_JSON', 'PI_AIRBNB_HAVE_FILE');
+  const arr = Array.isArray(parsed) ? parsed : [];
   const set = new Set();
   (arr || []).forEach(function (x) {
     if (x && typeof x === 'object' && x.code) {
@@ -247,9 +255,7 @@ function sortAirbnbReservationsLatest(list) {
 /** Hosthub channel reservation codes for Airbnb (confirmation codes). */
 function loadAirbnbReservations() {
   try {
-    const raw = process.env.PI_AIRBNB_RESERVATIONS_JSON || '';
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
+    const arr = loadJsonBlob('PI_AIRBNB_RESERVATIONS_JSON', 'PI_AIRBNB_RESERVATIONS_FILE');
     if (!Array.isArray(arr)) return [];
     let list = arr
       .map((r) => ({
