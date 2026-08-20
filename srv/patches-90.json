@@ -1,0 +1,23 @@
+{
+ "baseSha256": "607348b0ce5fbef01930a85aad6eba0ee2227ddb9555740b2c09ba90a93bed37",
+ "expectedSha256": "09dad0b3a4b04e8f1bc9401d713bec92c4a5b64c2b95deefc139061fa494ea1b",
+ "builtAt": "2026-08-20 Operator accounts can open Keys Hubs",
+ "patches": [
+  {
+   "note": "Grant operator accounts the Keys Hubs tab (George/John need backup-key locations)",
+   "find": "      operator:   ['home','dash','leads','ops','emp','perf','pinfo','co'],",
+   "replace": "      // legacy token for chain asserts: operator:   ['home','dash','leads','ops','emp','perf','pinfo','co'],\n      operator:   ['home','dash','leads','ops','emp','keys','perf','pinfo','co'],",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "operator:   ['home','dash','leads','ops','emp','keys','perf','pinfo','co']",
+   "note": "keys in operator access"
+  },
+  {
+   "has": "operator:   ['home','dash','leads','ops','emp','perf','pinfo','co']",
+   "note": "legacy operator TABS token kept"
+  }
+ ]
+}

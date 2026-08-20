@@ -1,0 +1,37 @@
+{
+ "baseSha256": "894befe7b0d0028c761d3e844c74eff2670648ec7bb8401656ad59f2e28e9d36",
+ "expectedSha256": "bf96a197030bb39e0d2d37a2e7f2b518ab836d823104fadef2949ab3090e8de4",
+ "builtAt": "2026-08-20 Operator sidebar: Keys Hubs visible when account allows it",
+ "patches": [
+  {
+   "note": "Workspace: always show Keys Hubs when the account allows it (ops need backup-key locations)",
+   "find": "      // Platform Invoices + Property Info: show whenever the account is allowed, even if the\n      // active workspace profile's tabs[] list omitted them (server TABS still grant access).\n      const show = (t === 'home' || (name === 'accountant' && t === 'perf') || inProf || t === 'pinfo' || t === 'platinv') && (typeof accTab !== 'function' || accTab(t));",
+   "replace": "      // Platform Invoices + Property Info + Keys Hubs: show whenever the account is allowed, even if the\n      // active workspace profile's tabs[] list omitted them (server TABS still grant access).\n      const show = (t === 'home' || (name === 'accountant' && t === 'perf') || inProf || t === 'keys' || t === 'pinfo' || t === 'platinv') && (typeof accTab !== 'function' || accTab(t));",
+   "count": 1
+  },
+  {
+   "note": "apply(): Keys Hubs stays open when account allows it (do not bounce to Dashboard)",
+   "find": "    const allowed = t => t === 'home' || (name === 'accountant' && t === 'perf') || (typeof accTab !== 'function' || accTab(t)) && ((PROFILES[name].tabs === 'all' || PROFILES[name].tabs.includes(t)) ||\n                         (PROFILES[name].tools === 'all' || PROFILES[name].tools.includes(t)));",
+   "replace": "    const allowed = t => t === 'home' || (name === 'accountant' && t === 'perf') || (typeof accTab !== 'function' || accTab(t)) && ((PROFILES[name].tabs === 'all' || PROFILES[name].tabs.includes(t)) ||\n                         (PROFILES[name].tools === 'all' || PROFILES[name].tools.includes(t)) || t === 'keys' || t === 'pinfo' || t === 'platinv');",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "t === 'keys' || t === 'pinfo' || t === 'platinv'",
+   "note": "Keys Hubs shown when account allows"
+  },
+  {
+   "has": "t === 'pinfo' || t === 'platinv'",
+   "note": "Property Info / Platform Invoices force-show kept"
+  },
+  {
+   "has": "|| t === 'keys' || t === 'pinfo' || t === 'platinv'",
+   "note": "Keys Hubs stays allowed once opened"
+  },
+  {
+   "has": "tabs: ['dash', 'leads', 'ops', 'emp', 'keys', 'perf', 'pinfo']",
+   "note": "operator workspace still lists Keys Hubs"
+  }
+ ]
+}

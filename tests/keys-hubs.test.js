@@ -38,6 +38,20 @@ assert(html.includes('id="nav-keys">Keys Hubs</button>'), 'nav tab shipped');
 assert(html.includes('keyHubs: S.keyHubs || {}'), 'persisted on save');
 assert(!html.includes('window._distKmGlobal'), 'no Daily Ops reach-in');
 assert(srv.includes('ANTI-WIPE KEYS HUBS'), 'server anti-wipe shipped');
+assert(html.includes("t === 'keys' || t === 'pinfo' || t === 'platinv'"), 'Keys Hubs shows when accTab allows it');
+assert(srv.includes("operator:   ['home','dash','leads','ops','emp','keys','perf','pinfo','co']"), 'server TABS.operator includes keys');
+
+const parseStart = srv.indexOf('function parseUsers(raw)');
+const parseEnd = srv.indexOf('const USERS = parseUsers');
+assert(parseStart >= 0 && parseEnd > parseStart, 'parseUsers extractable');
+const authBox = { console, process: { env: {} } };
+vm.runInNewContext(srv.slice(parseStart, parseEnd) + '\nthis.parseUsers = parseUsers;', authBox);
+const george = authBox.parseUsers(JSON.stringify([{ user: 'george', pass: 'x', profile: 'operator' }]))[0];
+assert(Array.isArray(george.access) && george.access.includes('keys'), 'George (operator) can open Keys Hubs');
+const john = authBox.parseUsers(JSON.stringify([{ user: 'john', pass: 'x', profile: 'operator' }]))[0];
+assert(john.access.includes('keys'), 'John (operator + invoices) can open Keys Hubs');
+const popi = authBox.parseUsers(JSON.stringify([{ user: 'popi', pass: 'x', profile: 'accountant' }]))[0];
+assert(!popi.access.includes('keys'), 'accountant does not get Keys Hubs');
 
 const start = html.indexOf('// ── Keys Hubs');
 const end = html.indexOf('function opsManageCleaners() {');
