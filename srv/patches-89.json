@@ -1,0 +1,31 @@
+{
+ "baseSha256": "56b6e464ab08e4ab831de86b4b93bb5e90c88980f9fdb3a956bda65467017557",
+ "expectedSha256": "607348b0ce5fbef01930a85aad6eba0ee2227ddb9555740b2c09ba90a93bed37",
+ "builtAt": "2026-08-20 Keys Hubs anti-wipe",
+ "patches": [
+  {
+   "note": "ANTI-WIPE KEYS HUBS so a stale client cannot blank assignments",
+   "find": "      if (dbPc > 0 && inPc === 0) payload.payChk = existing.payChk;\n\n      // Stale-client last-write-wins:",
+   "replace": "      if (dbPc > 0 && inPc === 0) payload.payChk = existing.payChk;\n\n      // ANTI-WIPE KEYS HUBS (physical key assignments — must survive\n      // \"Clear data\" and stale clients that do not know about these keys)\n      const dbKh = existing.keyHubs && typeof existing.keyHubs === 'object' ? Object.keys(existing.keyHubs).length : 0;\n      const inKh = payload.keyHubs && typeof payload.keyHubs === 'object' ? Object.keys(payload.keyHubs).length : 0;\n      if (dbKh > 0 && inKh === 0) payload.keyHubs = existing.keyHubs;\n      const dbKl = existing.keyLabels && typeof existing.keyLabels === 'object' ? Object.keys(existing.keyLabels).length : 0;\n      const inKl = payload.keyLabels && typeof payload.keyLabels === 'object' ? Object.keys(payload.keyLabels).length : 0;\n      if (dbKl > 0 && inKl === 0) payload.keyLabels = existing.keyLabels;\n      const dbLb = existing.keyLockbox && typeof existing.keyLockbox === 'object' ? Object.keys(existing.keyLockbox).length : 0;\n      const inLb = payload.keyLockbox && typeof payload.keyLockbox === 'object' ? Object.keys(payload.keyLockbox).length : 0;\n      if (dbLb > 0 && inLb === 0) payload.keyLockbox = existing.keyLockbox;\n\n      // Stale-client last-write-wins:",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "ANTI-WIPE KEYS HUBS",
+   "note": "server names the keys anti-wipe"
+  },
+  {
+   "has": "if (dbKh > 0 && inKh === 0) payload.keyHubs = existing.keyHubs;",
+   "note": "empty keyHubs from a stale client is restored"
+  },
+  {
+   "has": "if (dbKl > 0 && inKl === 0) payload.keyLabels = existing.keyLabels;",
+   "note": "empty keyLabels from a stale client is restored"
+  },
+  {
+   "has": "if (dbLb > 0 && inLb === 0) payload.keyLockbox = existing.keyLockbox;",
+   "note": "empty keyLockbox from a stale client is restored"
+  }
+ ]
+}

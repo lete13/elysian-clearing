@@ -1,0 +1,179 @@
+{
+ "baseSha256": "23eb7bf397f77ea541240d289a39f4b8f3771b16743f651f1b60b825695500aa",
+ "expectedSha256": "894befe7b0d0028c761d3e844c74eff2670648ec7bb8401656ad59f2e28e9d36",
+ "builtAt": "2026-08-20 Keys Hubs: where backup keys live, with proximity",
+ "patches": [
+  {
+   "note": "save(): persist key hubs / labels / lockbox in localStorage e_v3",
+   "find": "payChk: S.payChk || {marks:{},cfg:{}}, cleaners: S.cleaners || [], cleanerRoles: S.cleanerRoles || {} }));",
+   "replace": "payChk: S.payChk || {marks:{},cfg:{}}, cleaners: S.cleaners || [], cleanerRoles: S.cleanerRoles || {}, keyHubs: S.keyHubs || {}, keyLabels: S.keyLabels || {}, keyLockbox: S.keyLockbox || {} }));",
+   "count": 1
+  },
+  {
+   "note": "saveToDb payload includes key hubs maps",
+   "find": "      payChk: S.payChk || {marks:{},cfg:{}},\n      cleaners: S.cleaners || [],\n      cleanerRoles: S.cleanerRoles || {}\n    };",
+   "replace": "      payChk: S.payChk || {marks:{},cfg:{}},\n      cleaners: S.cleaners || [],\n      cleanerRoles: S.cleanerRoles || {},\n      keyHubs: S.keyHubs || {},\n      keyLabels: S.keyLabels || {},\n      keyLockbox: S.keyLockbox || {}\n    };",
+   "count": 1
+  },
+  {
+   "note": "loadFromDb: restore key hubs maps from shared state",
+   "find": "S.cleaners = data.cleaners || S.cleaners || [];S.cleanerRoles = data.cleanerRoles || S.cleanerRoles || {};",
+   "replace": "S.cleaners = data.cleaners || S.cleaners || [];S.cleanerRoles = data.cleanerRoles || S.cleanerRoles || {};S.keyHubs = data.keyHubs || S.keyHubs || {};S.keyLabels = data.keyLabels || S.keyLabels || {};S.keyLockbox = data.keyLockbox || S.keyLockbox || {};",
+   "count": 1
+  },
+  {
+   "note": "loadFromDb localStorage rewrite includes key hubs maps",
+   "find": "payChk: S.payChk, cleaners: S.cleaners || [], cleanerRoles: S.cleanerRoles || {} }));",
+   "replace": "payChk: S.payChk, cleaners: S.cleaners || [], cleanerRoles: S.cleanerRoles || {}, keyHubs: S.keyHubs || {}, keyLabels: S.keyLabels || {}, keyLockbox: S.keyLockbox || {} }));",
+   "count": 1
+  },
+  {
+   "note": "load(): restore key hubs maps from localStorage",
+   "find": "      S.cleaners = p.cleaners || S.cleaners || [];\n      S.cleanerRoles = p.cleanerRoles || S.cleanerRoles || {};\n    }\n  } catch(e) {}",
+   "replace": "      S.cleaners = p.cleaners || S.cleaners || [];\n      S.cleanerRoles = p.cleanerRoles || S.cleanerRoles || {};\n      S.keyHubs = p.keyHubs || S.keyHubs || {};\n      S.keyLabels = p.keyLabels || S.keyLabels || {};\n      S.keyLockbox = p.keyLockbox || S.keyLockbox || {};\n    }\n  } catch(e) {}",
+   "count": 1
+  },
+  {
+   "note": "loadFromDb: refresh Keys Hubs when the tab is open",
+   "find": "    if (_activeTab === 'tab-emp' && typeof renderEmployees === 'function') renderEmployees();\n    if (_activeTab === 'tab-rev')  renderRevenue();",
+   "replace": "    if (_activeTab === 'tab-emp' && typeof renderEmployees === 'function') renderEmployees();\n    if (_activeTab === 'tab-keys' && typeof renderKeyHubs === 'function') renderKeyHubs();\n    if (_activeTab === 'tab-rev')  renderRevenue();",
+   "count": 1
+  },
+  {
+   "note": "nav: Keys Hubs tab next to Personnel",
+   "find": "    <button class=\"nav-btn\" data-tab=\"emp\" onclick=\"showTab('emp',this)\" id=\"nav-emp\">Personnel</button>\n    <button class=\"nav-btn\" data-tab=\"perf\" onclick=\"showTab('perf',this)\" id=\"nav-perf\">Performance</button>",
+   "replace": "    <button class=\"nav-btn\" data-tab=\"emp\" onclick=\"showTab('emp',this)\" id=\"nav-emp\">Personnel</button>\n    <button class=\"nav-btn\" data-tab=\"keys\" onclick=\"showTab('keys',this)\" id=\"nav-keys\">Keys Hubs</button>\n    <button class=\"nav-btn\" data-tab=\"perf\" onclick=\"showTab('perf',this)\" id=\"nav-perf\">Performance</button>",
+   "count": 1
+  },
+  {
+   "note": "sidebar icon for Keys Hubs",
+   "find": "    #hdr .nav-btn[data-tab=\"emp\"]::before{content:\"\\eb4d\"}\n    #hdr .nav-btn[data-tab=\"perf\"]::before{content:\"\\ea59\"}",
+   "replace": "    #hdr .nav-btn[data-tab=\"emp\"]::before{content:\"\\eb4d\"}\n    #hdr .nav-btn[data-tab=\"keys\"]::before{content:\"\\eae0\"}\n    #hdr .nav-btn[data-tab=\"perf\"]::before{content:\"\\ea59\"}",
+   "count": 1
+  },
+  {
+   "note": "Keys Hubs tab styles",
+   "find": "    /* ===== Notifications ===== */",
+   "replace": "    /* ── Keys Hubs tab ────────────────────────────────────────────────────── */\n    #tab-keys{ background:var(--bg3); }\n    .kh-wrap{ max-width:1080px; margin:0 auto; padding:22px 22px 60px; }\n    .kh-head{ display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:18px; }\n    .kh-title{ margin:0; font-size:20px; font-weight:700; color:var(--tx); letter-spacing:-.01em; }\n    .kh-sub{ font-size:12.5px; color:var(--tx2); margin-top:3px; max-width:640px; }\n    .kh-search{ font-family:var(--sans); font-size:13px; padding:9px 13px; border:1px solid rgba(0,0,0,.10); border-radius:10px; background:var(--bg); color:var(--tx); outline:none; min-width:220px; }\n    .kh-search:focus{ border-color:var(--tx-ok); }\n    .kh-stats{ display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:12px; margin-bottom:20px; }\n    .kh-stat{ background:var(--bg); border-radius:14px; box-shadow:0 1px 2px rgba(60,50,30,.05),0 4px 18px rgba(60,50,30,.06); padding:14px 16px; }\n    .kh-stat-val{ font-size:24px; font-weight:750; letter-spacing:-.02em; color:var(--tx); }\n    .kh-stat-lbl{ font-size:12.5px; font-weight:600; color:var(--tx); margin-top:2px; }\n    .kh-stat-addr{ font-size:10.5px; color:var(--tx3); margin-top:1px; }\n    .kh-card{ background:var(--bg); border-radius:14px; box-shadow:0 1px 2px rgba(60,50,30,.05),0 4px 18px rgba(60,50,30,.06); overflow:hidden; }\n    .kh-table{ width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }\n    .kh-table thead th{ background:var(--bg2); color:var(--tx3); font-weight:600; font-size:10.5px; letter-spacing:.03em; text-transform:uppercase; text-align:left; padding:9px 14px; border-bottom:1px solid rgba(0,0,0,.06); }\n    .kh-table tbody td{ padding:10px 14px; border-bottom:1px solid rgba(0,0,0,.05); vertical-align:middle; }\n    .kh-table tbody tr:last-child td{ border-bottom:none; }\n    .kh-table tbody tr:hover{ background:var(--bg2); }\n    .kh-inp{ font-family:var(--sans); font-size:12.5px; color:var(--tx); background:var(--bg2); border:1px solid rgba(0,0,0,.08); border-radius:8px; padding:6px 9px; outline:none; width:100%; }\n    .kh-inp:focus{ border-color:var(--tx-ok); }\n    .kh-nokey{ font-size:9.5px; font-weight:700; color:var(--tx-warn); background:var(--bg-warn); border-radius:999px; padding:1px 7px; margin-left:6px; vertical-align:middle; }\n    .kh-chips{ display:flex; flex-wrap:wrap; gap:5px; }\n    .kh-chip{ font-family:var(--sans); font-size:11.5px; font-weight:600; padding:4px 10px; border-radius:999px; cursor:pointer;\n              border:1px dashed rgba(0,0,0,.22); background:transparent; color:var(--tx3); transition:all .12s; }\n    .kh-chip:hover{ border-style:solid; color:var(--tx2); }\n    .kh-chip.on{ border-style:solid; border-color:transparent; color:#fff; }\n    .kh-chip-votsala.on,   .kh-near.kh-chip-votsala{   background:#2257c5; color:#fff; }\n    .kh-chip-verandas.on,  .kh-near.kh-chip-verandas{  background:#1a7a4a; color:#fff; }\n    .kh-chip-cholargos.on, .kh-near.kh-chip-cholargos{ background:#b8860b; color:#fff; }\n    .kh-chip-plynthrio.on, .kh-near.kh-chip-plynthrio{ background:#8b3a62; color:#fff; }\n    .kh-chip-driver.on,    .kh-near.kh-chip-driver{    background:#4b5563; color:#fff; }\n    .kh-chip-lockbox.on{ background:#8b5cf6; border-color:transparent; color:#fff; }\n    .kh-near-lockbox{ background:#ede9fe; color:#6d28d9; }\n    .kh-tag-lockbox{ font-size:9.5px; font-weight:700; color:#6d28d9; background:#ede9fe; border-radius:999px; padding:1px 8px; margin-left:6px; vertical-align:middle; }\n    .kh-stat-val.kh-chip-votsala{ color:#2257c5; } .kh-stat-val.kh-chip-verandas{ color:#1a7a4a; }\n    .kh-stat-val.kh-chip-cholargos{ color:#b8860b; } .kh-stat-val.kh-chip-plynthrio{ color:#8b3a62; }\n    .kh-stat-val.kh-chip-driver{ color:#4b5563; }\n    .kh-near{ display:inline-block; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:999px; }\n    .kh-near-sub{ font-size:10.5px; color:var(--tx3); margin-top:3px; }\n    #hdr .nav-btn[data-tab=\"keys\"]::before{content:\"\\eae0\"}\n    /* ===== Notifications ===== */",
+   "count": 1
+  },
+  {
+   "note": "tab panel for Keys Hubs",
+   "find": "<!-- PERSONNEL TAB -->\n<div id=\"tab-emp\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n\n<!-- ELYSIAN REVENUE TAB -->",
+   "replace": "<!-- PERSONNEL TAB -->\n<div id=\"tab-emp\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n\n<!-- KEYS HUBS TAB -->\n<div id=\"tab-keys\" class=\"tab-panel\" style=\"background:var(--bg)\"></div>\n\n<!-- ELYSIAN REVENUE TAB -->",
+   "count": 1
+  },
+  {
+   "note": "showTab: renderKeyHubs for keys",
+   "find": "    else if(name==='emp'){if(typeof renderEmployees==='function')renderEmployees();}\n    else if(name==='pinfo'){renderPropInfo();}",
+   "replace": "    else if(name==='emp'){if(typeof renderEmployees==='function')renderEmployees();}\n    else if(name==='keys'){if(typeof renderKeyHubs==='function')renderKeyHubs();}\n    else if(name==='pinfo'){renderPropInfo();}",
+   "count": 1
+  },
+  {
+   "note": "operators can open Keys Hubs (George & John need key locations)",
+   "find": "    operator:   { tabs: ['dash', 'leads', 'ops', 'emp', 'perf', 'pinfo'], tools: ['co'] },",
+   "replace": "    operator:   { tabs: ['dash', 'leads', 'ops', 'emp', 'keys', 'perf', 'pinfo'], tools: ['co'] },",
+   "count": 1
+  },
+  {
+   "note": "session import keeps key hubs maps",
+   "find": "      S.apts=d.apts||[];S.bks=d.bks||[];S.exps=d.exps||[];S.meta=d.meta||{};\n      applyDefaults();save();\n      renderDash();renderCfg();renderBk();renderExp();",
+   "replace": "      S.apts=d.apts||[];S.bks=d.bks||[];S.exps=d.exps||[];S.meta=d.meta||{};S.keyHubs=d.keyHubs||S.keyHubs||{};S.keyLabels=d.keyLabels||S.keyLabels||{};S.keyLockbox=d.keyLockbox||S.keyLockbox||{};\n      applyDefaults();save();\n      renderDash();renderCfg();renderBk();renderExp();",
+   "count": 1
+  },
+  {
+   "note": "session pull keeps key hubs maps",
+   "find": "    S.apts=d.apts||[];S.bks=d.bks||[];S.exps=d.exps||[];S.meta=d.meta||{};\n    applyDefaults();save();\n    renderDash();renderCfg();renderBk();renderExp();\n    toast('Session pulled — '+(S.bks.length)+' bookings.','ok');",
+   "replace": "    S.apts=d.apts||[];S.bks=d.bks||[];S.exps=d.exps||[];S.meta=d.meta||{};S.keyHubs=d.keyHubs||S.keyHubs||{};S.keyLabels=d.keyLabels||S.keyLabels||{};S.keyLockbox=d.keyLockbox||S.keyLockbox||{};\n    applyDefaults();save();\n    renderDash();renderCfg();renderBk();renderExp();\n    toast('Session pulled — '+(S.bks.length)+' bookings.','ok');",
+   "count": 1
+  },
+  {
+   "note": "Keys Hubs renderer + assignment helpers",
+   "find": "function opsManageCleaners() {",
+   "replace": "// ── Keys Hubs ───────────────────────────────────────────────────────────────\n// Each hub physically stores backup keys. An apartment can have key sets in\n// MULTIPLE hubs (duplicates). Assignment: S.keyHubs[aptId] = [hubIds].\n// Optional key tag in S.keyLabels[aptId]. On-site spare: S.keyLockbox[aptId].\n// Proximity ranks hubs by distance to the apartment (Driver from its car base).\nconst KEY_HUBS = [\n  { id:'votsala',   name:'Votsala',      addr:'Louka Ralli 59',              lat:37.9585, lng:23.6460 },\n  { id:'verandas',  name:'Verandas',     addr:'Makri 19',                    lat:37.9686, lng:23.7285 },\n  { id:'cholargos', name:'Cholargos',    addr:'17is Noemvriou 19',           lat:38.0030, lng:23.7950 },\n  { id:'plynthrio', name:'Thessaloniki', addr:'Mitoudi 12',                  lat:40.6070, lng:22.9580 },\n  { id:'driver',    name:'Driver',       addr:'Ilioupoli, Athens (car base)', lat:37.9315, lng:23.7678, mobile:true },\n];\nlet _keyHubSearch = '';\nfunction _khEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }\nfunction _khJs(s){ return String(s==null?'':s).replace(/\\\\/g,'\\\\\\\\').replace(/'/g,\"\\\\'\"); }\nfunction _keyHubName(id){ const h=KEY_HUBS.find(function(x){ return x.id===id; }); return h?h.name:''; }\nfunction _keyHubsOf(aptId){\n  const v = (S.keyHubs||{})[aptId];\n  if (Array.isArray(v)) return v.slice();\n  if (typeof v==='string' && v) return [v];\n  return [];\n}\nfunction _keyLockbox(aptId){ return !!((S.keyLockbox||{})[aptId]); }\nfunction _keyHubSave(){ if (typeof save==='function') save(); }\nfunction opsToggleKeyHub(aptId, hubId){\n  if (!S.keyHubs) S.keyHubs={};\n  let arr=_keyHubsOf(aptId);\n  const i=arr.indexOf(hubId);\n  if (i>=0) arr.splice(i,1); else arr.push(hubId);\n  if (arr.length) S.keyHubs[aptId]=arr; else delete S.keyHubs[aptId];\n  _keyHubSave();\n  renderKeyHubs();\n}\nfunction opsSetKeyLabel(aptId, label){\n  if (!S.keyLabels) S.keyLabels={};\n  const v=String(label||'').trim();\n  if (v) S.keyLabels[aptId]=v; else delete S.keyLabels[aptId];\n  _keyHubSave();\n}\nfunction opsToggleLockbox(aptId){\n  if (!S.keyLockbox) S.keyLockbox={};\n  if (_keyLockbox(aptId)) delete S.keyLockbox[aptId]; else S.keyLockbox[aptId]=true;\n  _keyHubSave();\n  renderKeyHubs();\n}\nfunction _keyHubSetSearch(v){\n  _keyHubSearch=String(v||'');\n  renderKeyHubs();\n  const el=document.getElementById('kh-search');\n  if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch(e) {} }\n}\nfunction _keyHubDist(apt, hub){\n  const la=parseFloat(apt&&apt.lat), ln=parseFloat(apt&&apt.lng);\n  if (!isFinite(la)||!isFinite(ln)||!isFinite(hub.lat)||!isFinite(hub.lng)) return null;\n  const R=6371, toRad=function(d){ return d*Math.PI/180; };\n  const dLat=toRad(hub.lat-la), dLng=toRad(hub.lng-ln);\n  const a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(la))*Math.cos(toRad(hub.lat))*Math.sin(dLng/2)*Math.sin(dLng/2);\n  return 2*R*Math.asin(Math.sqrt(a));\n}\nfunction _keyHubDists(apt){\n  return KEY_HUBS.map(function(h){ return { h:h, d:_keyHubDist(apt,h) }; })\n    .filter(function(x){ return x.d!=null; })\n    .sort(function(x,y){ return x.d-y.d; });\n}\nfunction _keyHubMatch(a, q){\n  if (!q) return true;\n  const have=_keyHubsOf(a.id);\n  const bits=[a.name, a.aliases, a.city, (S.keyLabels||{})[a.id]];\n  have.forEach(function(id){ bits.push(_keyHubName(id)); bits.push(id); });\n  if (_keyLockbox(a.id)) bits.push('lockbox');\n  if (!have.length && !_keyLockbox(a.id)) bits.push('no key');\n  return bits.join(' ').toLowerCase().indexOf(q)>=0;\n}\nfunction renderKeyHubs(){\n  const panel=document.getElementById('tab-keys');\n  if (!panel) return;\n  const apts=Array.isArray(S.apts)?S.apts.slice():[];\n  const labels=S.keyLabels||{};\n  const q=_keyHubSearch.trim().toLowerCase();\n  apts.sort(function(a,b){\n    try { return String(a.name||'').localeCompare(String(b.name||''),'el',{numeric:true}); }\n    catch(e){ return String(a.name||'').localeCompare(String(b.name||'')); }\n  });\n  const shown=apts.filter(function(a){ return _keyHubMatch(a,q); });\n  const hubCount={}; KEY_HUBS.forEach(function(h){ hubCount[h.id]=0; });\n  apts.forEach(function(a){ _keyHubsOf(a.id).forEach(function(hid){ if (hubCount[hid]!=null) hubCount[hid]++; }); });\n  const noKeyCount=apts.filter(function(a){ return _keyHubsOf(a.id).length===0 && !_keyLockbox(a.id); }).length;\n  const lockboxCount=apts.filter(function(a){ return _keyLockbox(a.id); }).length;\n  const hubChip=function(aptId, hub, active){\n    const cls=active?'kh-chip on kh-chip-'+hub.id:'kh-chip';\n    const title=active?'Key stored here — click to remove':'Add a key set here';\n    return '<button type=\"button\" class=\"'+cls+'\" onclick=\"opsToggleKeyHub(\\''+_khJs(aptId)+'\\',\\''+hub.id+'\\')\" title=\"'+_khEsc(title)+'\">'+_khEsc(hub.name)+'</button>';\n  };\n  const aptRow=function(a){\n    const have=_keyHubsOf(a.id);\n    const lbl=_khEsc(labels[a.id]||'');\n    const hasLockbox=_keyLockbox(a.id);\n    const dists=_keyHubDists(a);\n    const nearest=dists.length?dists[0]:null;\n    const nearestWithKey=dists.find(function(x){ return have.indexOf(x.h.id)>=0; })||null;\n    const icon=function(h){ return h.mobile?'🚗':'📍'; };\n    let proxCell;\n    if (hasLockbox){\n      proxCell='<span class=\"kh-near kh-near-lockbox\">🔒 On-site lockbox</span>';\n      if (nearestWithKey) proxCell+='<div class=\"kh-near-sub\">also: '+icon(nearestWithKey.h)+' '+_khEsc(nearestWithKey.h.name)+' ('+nearestWithKey.d.toFixed(1)+'km)</div>';\n    } else if (!dists.length){\n      proxCell='<span style=\"color:var(--tx3)\">—</span>';\n    } else {\n      const nk=nearestWithKey\n        ? '<span class=\"kh-near kh-chip-'+nearestWithKey.h.id+'\">'+icon(nearestWithKey.h)+' '+_khEsc(nearestWithKey.h.name)+' · '+nearestWithKey.d.toFixed(1)+'km</span>'\n        : '<span style=\"color:var(--tx-warn);font-size:11.5px\">no key nearby</span>';\n      const closestNote=(nearest && (!nearestWithKey || nearestWithKey.h.id!==nearest.h.id))\n        ? '<div class=\"kh-near-sub\">closest hub: '+icon(nearest.h)+' '+_khEsc(nearest.h.name)+' ('+nearest.d.toFixed(1)+'km)</div>' : '';\n      proxCell=nk+closestNote;\n    }\n    const lockboxTag=hasLockbox?' <span class=\"kh-tag-lockbox\" title=\"A spare key is kept in the property on-site lockbox\">🔒 LOCKBOX</span>':'';\n    const lockChip='<button type=\"button\" class=\"kh-chip kh-chip-lockbox'+(hasLockbox?' on':'')+'\" onclick=\"opsToggleLockbox(\\''+_khJs(a.id)+'\\')\" title=\"'+(hasLockbox?'Spare key in on-site lockbox — click to remove':'Mark that a spare key is in the property lockbox')+'\">🔒 Lockbox</button>';\n    return '<tr>'\n      +'<td style=\"font-weight:600;color:var(--tx)\">'+_khEsc(a.name||'')\n        +(have.length===0 && !hasLockbox?' <span class=\"kh-nokey\">no key</span>':'')+lockboxTag+'</td>'\n      +'<td><input type=\"text\" value=\"'+lbl+'\" placeholder=\"key tag…\" onchange=\"opsSetKeyLabel(\\''+_khJs(a.id)+'\\',this.value)\" class=\"kh-inp\"></td>'\n      +'<td><div class=\"kh-chips\">'+KEY_HUBS.map(function(h){ return hubChip(a.id,h,have.indexOf(h.id)>=0); }).join('')+lockChip+'</div></td>'\n      +'<td style=\"min-width:150px\">'+proxCell+'</td>'\n      +'</tr>';\n  };\n  const rowsHtml=shown.length\n    ? shown.map(aptRow).join('')\n    : '<tr><td colspan=\"4\" style=\"color:var(--tx3);font-style:italic;padding:14px\">'+(apts.length?'No apartments match your search.':'No apartments loaded yet — sync from Hosthub.')+'</td></tr>';\n  panel.innerHTML='<div class=\"kh-wrap\">'\n    +'<div class=\"kh-head\"><div><h2 class=\"kh-title\">Keys Hubs</h2>'\n    +'<div class=\"kh-sub\">Backup keys for '+apts.length+' apartments · click a hub chip to store or remove a key set (an apartment can be in several hubs)</div></div>'\n    +'<input id=\"kh-search\" type=\"text\" placeholder=\"Search apartment, tag, or hub…\" value=\"'+_khEsc(_keyHubSearch)+'\" oninput=\"_keyHubSetSearch(this.value)\" class=\"kh-search\">'\n    +'</div>'\n    +'<div class=\"kh-stats\">'\n    +KEY_HUBS.map(function(h){ return '<div class=\"kh-stat\"><div class=\"kh-stat-val kh-chip-'+h.id+'\" style=\"background:none;padding:0\">'+hubCount[h.id]+'</div><div class=\"kh-stat-lbl\">'+_khEsc(h.name)+(h.mobile?' 🚗':'')+'</div><div class=\"kh-stat-addr\">'+_khEsc(h.addr)+'</div></div>'; }).join('')\n    +'<div class=\"kh-stat\"><div class=\"kh-stat-val\" style=\"color:#8b5cf6\">'+lockboxCount+'</div><div class=\"kh-stat-lbl\">🔒 Lockbox</div></div>'\n    +'<div class=\"kh-stat\"><div class=\"kh-stat-val\" style=\"color:var(--tx-warn)\">'+noKeyCount+'</div><div class=\"kh-stat-lbl\">No key set</div></div>'\n    +'</div>'\n    +'<div class=\"kh-card\"><table class=\"kh-table\"><thead><tr>'\n    +'<th>Apartment</th><th style=\"width:150px\">Key tag</th><th>Key locations</th><th style=\"width:170px\">Nearest key</th>'\n    +'</tr></thead><tbody>'+rowsHtml+'</tbody></table></div></div>';\n}\n\nfunction opsManageCleaners() {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "id=\"nav-keys\">Keys Hubs</button>",
+   "note": "Keys Hubs is a primary nav tab"
+  },
+  {
+   "has": "id=\"tab-keys\"",
+   "note": "Keys Hubs panel exists"
+  },
+  {
+   "has": "name==='keys'",
+   "note": "showTab dispatches Keys Hubs"
+  },
+  {
+   "has": "function renderKeyHubs()",
+   "note": "Keys Hubs renderer exists"
+  },
+  {
+   "has": "const KEY_HUBS = [",
+   "note": "physical hubs are listed"
+  },
+  {
+   "has": "id:'votsala'",
+   "note": "Votsala hub"
+  },
+  {
+   "has": "id:'verandas'",
+   "note": "Verandas hub"
+  },
+  {
+   "has": "id:'cholargos'",
+   "note": "Cholargos hub"
+  },
+  {
+   "has": "id:'plynthrio'",
+   "note": "Thessaloniki hub"
+  },
+  {
+   "has": "id:'driver'",
+   "note": "Driver / car-base hub"
+  },
+  {
+   "has": "function opsToggleKeyHub(",
+   "note": "hub chip toggles an assignment"
+  },
+  {
+   "has": "function opsToggleLockbox(",
+   "note": "on-site lockbox toggle"
+  },
+  {
+   "has": "function opsSetKeyLabel(",
+   "note": "key tag editor"
+  },
+  {
+   "has": "function _keyHubDist(",
+   "note": "proximity uses haversine"
+  },
+  {
+   "has": "keyHubs: S.keyHubs || {}",
+   "note": "key hubs persist"
+  },
+  {
+   "has": "keyLabels: S.keyLabels || {}",
+   "note": "key tags persist"
+  },
+  {
+   "has": "keyLockbox: S.keyLockbox || {}",
+   "note": "lockbox flags persist"
+  },
+  {
+   "has": "tabs: ['dash', 'leads', 'ops', 'emp', 'keys', 'perf', 'pinfo']",
+   "note": "operators can open Keys Hubs"
+  },
+  {
+   "has": "id=\"kh-search\"",
+   "note": "search box keeps an id so focus survives re-render"
+  },
+  {
+   "hasNot": "window._distKmGlobal",
+   "note": "does not reach into Daily Ops internals"
+  }
+ ]
+}
