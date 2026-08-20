@@ -1,0 +1,77 @@
+{
+ "baseSha256": "eb2e539fdb2850529350ea502b24f53464aa0308068f79df4fec8170a854b36f",
+ "expectedSha256": "56b6e464ab08e4ab831de86b4b93bb5e90c88980f9fdb3a956bda65467017557",
+ "builtAt": "2026-08-20 Leads: persist inspection_at / inspection_by for Book a viewing",
+ "patches": [
+  {
+   "note": "Existing leads table gains inspection datetime and who",
+   "find": "  } catch (e) { console.error('[leads] brochure seed skipped:', e.message); }\n  _leadsReady = true;",
+   "replace": "  } catch (e) { console.error('[leads] brochure seed skipped:', e.message); }\n  await pool.query(`\n    ALTER TABLE leads\n      ADD COLUMN IF NOT EXISTS inspection_at TIMESTAMPTZ,\n      ADD COLUMN IF NOT EXISTS inspection_by TEXT;\n  `);\n  _leadsReady = true;",
+   "count": 1
+  },
+  {
+   "note": "Local mode keeps a few open leads so Home and Book a viewing work without Postgres",
+   "find": "let _leadsReady = false;\nasync function ensureLeadTables() {",
+   "replace": "let _leadsReady = false;\nfunction leadLocalRows() {\n  if (!global.__elysianLocalLeads) {\n    const now = new Date().toISOString();\n    global.__elysianLocalLeads = [\n      { id: 101, full_name: 'Nikos Papadopoulos', email: 'nikos.demo@example.com', phone: '6900000001',\n        owner: 'kostas', status: 'open', stage: 'qualified', archived_at: null,\n        property_address: 'Votsala', property_size: '85 sqm', created_time: now, updated_at: now,\n        events: [], fields: {}, inspection_at: null, inspection_by: null, source: 'manual' },\n      { id: 102, full_name: 'Elena Demetriou', email: 'elena.demo@example.com', phone: '6900000002',\n        owner: 'george', status: 'open', stage: 'contacted', archived_at: null,\n        property_address: 'Glyfada', created_time: now, updated_at: now,\n        events: [], fields: {}, inspection_at: null, inspection_by: null, source: 'manual' },\n      { id: 103, full_name: 'Anna Costa', email: 'anna.demo@example.com', phone: '6900000003',\n        owner: 'lefteris', status: 'open', stage: 'to_contact', archived_at: null,\n        property_address: 'Kifisia', created_time: now, updated_at: now,\n        events: [], fields: {}, inspection_at: null, inspection_by: null, source: 'manual' }\n    ];\n  }\n  return global.__elysianLocalLeads;\n}\nfunction leadApplyInspection(row, b) {\n  if (b.stage === 'viewing' && b.inspectionAt === undefined && !row.inspection_at) {\n    return { error: 'Book a viewing with a date and time.', status: 400 };\n  }\n  if (b.inspectionAt !== undefined) {\n    const raw = String(b.inspectionAt || '').trim();\n    if (!raw) return { error: 'A viewing needs a date and time.', status: 400 };\n    const when = new Date(raw);\n    if (isNaN(when.getTime())) return { error: 'Invalid inspection time.', status: 400 };\n    row.inspection_at = when.toISOString();\n    if (b.inspectionBy !== undefined) row.inspection_by = b.inspectionBy || null;\n    return { ok: true, when: row.inspection_at };\n  }\n  if (b.inspectionBy !== undefined) row.inspection_by = b.inspectionBy || null;\n  return { ok: true };\n}\nasync function ensureLeadTables() {",
+   "count": 1
+  },
+  {
+   "note": "GET /api/leads works in local mode from the in-memory open-lead set",
+   "find": "app.get('/api/leads', async (req, res) => {\n  try {\n    if (!pool) return res.status(503).json({ error: 'No database configured.' });\n    await ensureLeadTables();",
+   "replace": "app.get('/api/leads', async (req, res) => {\n  try {\n    if (!pool) {\n      const view = String(req.query.view || 'active');\n      const all = leadLocalRows();\n      const leads = view === 'archived' ? all.filter(function (l) { return l.archived_at; })\n        : view === 'all' ? all\n        : all.filter(function (l) { return !l.archived_at; });\n      return res.json({ ok: true, leads: leads, config: LEAD_CFG_DEFAULT, metaConfigured: false, local: true });\n    }\n    await ensureLeadTables();",
+   "count": 1
+  },
+  {
+   "note": "PATCH /api/leads stores inspectionAt in local mode",
+   "find": "app.patch('/api/leads/:id', async (req, res) => {\n  try {\n    if (!pool) return res.status(503).json({ error: 'No database configured.' });\n    await ensureLeadTables();",
+   "replace": "app.patch('/api/leads/:id', async (req, res) => {\n  try {\n    if (!pool) {\n      const id = parseInt(req.params.id, 10);\n      const b = req.body || {}, by = String(b.by || 'team');\n      const row = leadLocalRows().filter(function (l) { return l.id === id; })[0];\n      if (!row) return res.status(404).json({ error: 'Lead not found.' });\n      if (b.stage && b.stage !== row.stage) {\n        if (LEAD_ALL_STAGES.indexOf(b.stage) === -1) return res.status(400).json({ error: 'Unknown stage.' });\n        const insp = leadApplyInspection(row, b);\n        if (insp.error) return res.status(insp.status || 400).json({ error: insp.error });\n        row.stage = b.stage;\n        row.status = b.stage === 'lost' ? 'lost' : b.stage === 'live' ? 'won' : 'open';\n        row.events = (row.events || []).concat([leadEvent('stage', by, 'local -> ' + b.stage)]);\n      } else {\n        const insp = leadApplyInspection(row, b);\n        if (insp.error) return res.status(insp.status || 400).json({ error: insp.error });\n      }\n      if (b.inspectionAt) row.events = (row.events || []).concat([leadEvent('inspection', by, row.inspection_at + (row.inspection_by ? (' · ' + row.inspection_by) : ''))]);\n      row.updated_at = new Date().toISOString();\n      return res.json({ ok: true, local: true });\n    }\n    await ensureLeadTables();",
+   "count": 1
+  },
+  {
+   "note": "PATCH viewing requires a datetime; inspectionAt / inspectionBy persist",
+   "find": "    if (b.stage && b.stage !== row.stage) {\n      if (LEAD_ALL_STAGES.indexOf(b.stage) === -1) return res.status(400).json({ error: 'Unknown stage.' });\n      put('stage', b.stage); put('stage_changed_at', new Date().toISOString());",
+   "replace": "    if (b.stage && b.stage !== row.stage) {\n      if (LEAD_ALL_STAGES.indexOf(b.stage) === -1) return res.status(400).json({ error: 'Unknown stage.' });\n      if (b.stage === 'viewing' && b.inspectionAt === undefined && !row.inspection_at) {\n        return res.status(400).json({ error: 'Book a viewing with a date and time.' });\n      }\n      put('stage', b.stage); put('stage_changed_at', new Date().toISOString());",
+   "count": 1
+  },
+  {
+   "note": "PATCH accepts inspectionAt / inspectionBy independently of other edits",
+   "find": "    if (b.fields) { put('fields', JSON.stringify(b.fields)); ev.push(leadEvent('edit', by, 'details')); }\n    if (b.note) ev.push(leadEvent('note', by, String(b.note).slice(0, 500)));",
+   "replace": "    if (b.inspectionAt !== undefined) {\n      const raw = String(b.inspectionAt || '').trim();\n      if (!raw) return res.status(400).json({ error: 'A viewing needs a date and time.' });\n      const when = new Date(raw);\n      if (isNaN(when.getTime())) return res.status(400).json({ error: 'Invalid inspection time.' });\n      put('inspection_at', when.toISOString());\n      if (b.inspectionBy !== undefined) put('inspection_by', b.inspectionBy || null);\n      ev.push(leadEvent('inspection', by, when.toISOString() + (b.inspectionBy ? (' · ' + String(b.inspectionBy)) : '')));\n    } else if (b.inspectionBy !== undefined) {\n      put('inspection_by', b.inspectionBy || null);\n      ev.push(leadEvent('inspection', by, 'who · ' + String(b.inspectionBy || 'nobody')));\n    }\n    if (b.fields) { put('fields', JSON.stringify(b.fields)); ev.push(leadEvent('edit', by, 'details')); }\n    if (b.note) ev.push(leadEvent('note', by, String(b.note).slice(0, 500)));",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "ADD COLUMN IF NOT EXISTS inspection_at TIMESTAMPTZ",
+   "note": "inspection datetime column"
+  },
+  {
+   "has": "ADD COLUMN IF NOT EXISTS inspection_by TEXT",
+   "note": "inspection who column"
+  },
+  {
+   "has": "b.inspectionAt",
+   "note": "PATCH reads inspectionAt"
+  },
+  {
+   "has": "Book a viewing with a date and time.",
+   "note": "viewing stage requires a datetime"
+  },
+  {
+   "has": "function leadLocalRows()",
+   "note": "local-mode open leads for Home without Postgres"
+  },
+  {
+   "has": "function leadApplyInspection(",
+   "note": "shared inspection validator"
+  },
+  {
+   "has": "leadEvent('inspection'",
+   "note": "timeline records the booking"
+  },
+  {
+   "hasNot": "env.PI_AIRBNB_HAVE_JSON = JSON.stringify(haveNames.slice(0, 4000))",
+   "note": "pull-file patches from 87 kept"
+  }
+ ]
+}

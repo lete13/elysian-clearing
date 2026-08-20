@@ -8,7 +8,7 @@
    "note": "lead names are title-cased when Meta dumps ALL CAPS"
   },
   {
-   "has": "if (key === 'giannis') return 'John'",
+   "has": "if (key === 'giannis' || key === 'john') return 'John'",
    "note": "Giannis displays as John"
   },
   {

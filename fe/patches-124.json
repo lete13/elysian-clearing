@@ -1,0 +1,169 @@
+{
+ "baseSha256": "bd62b2377e32868104554a2435cba3e95cc65ba3d4260d5e9eea5520f34ffdb8",
+ "expectedSha256": "23eb7bf397f77ea541240d289a39f4b8f3771b16743f651f1b60b825695500aa",
+ "builtAt": "2026-08-20 Home: Open leads reminder chip; Book a viewing writes inspection appointments",
+ "patches": [
+  {
+   "note": "Home CSS for the week viewing strip",
+   "find": "    .home-chip .l{font-size:12px;color:var(--tx2)}\n",
+   "replace": "    .home-chip .l{font-size:12px;color:var(--tx2)}\n    .home-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}\n    .home-week-day{border:.5px solid var(--bdr);border-radius:8px;padding:8px;min-height:78px;background:var(--bg2)}\n    .home-week-day.today{border-color:var(--gold)}\n    .home-week-d{font-size:11px;font-weight:600;color:var(--tx2);margin-bottom:6px}\n    .home-week-item{font-size:11px;color:var(--tx);cursor:pointer;padding:3px 0;border-top:.5px solid var(--bdr)}\n    .home-week-item:hover{color:var(--gold)}\n    .home-week-empty{font-size:11px;color:var(--tx3)}\n    @media (max-width:720px){.home-week{grid-template-columns:repeat(2,minmax(0,1fr))}}\n",
+   "count": 1
+  },
+  {
+   "note": "Book-a-viewing overlay reuses the welcome-email dialog chrome",
+   "find": "#ld-wel-ov{position:fixed;inset:0;background:rgba(15,30,46,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}\n#ld-wel-ov .ld-wel{background:var(--bg,#fff);border:1px solid var(--bdr,#e5e5e5);border-radius:12px;width:min(640px,100%);max-height:92vh;overflow:auto;box-shadow:0 18px 50px rgba(0,0,0,.28)}\n#ld-wel-ov .ld-wel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--bdr,#e5e5e5)}\n#ld-wel-ov .ld-wel-h h3{margin:0;font-size:15px}\n#ld-wel-ov .ld-wel-b{padding:14px 16px;display:flex;flex-direction:column;gap:10px}\n#ld-wel-ov label{font-size:11px;color:var(--tx3,#888);display:block;margin-bottom:3px}\n#ld-wel-ov input,#ld-wel-ov textarea,#ld-wel-ov select{width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--bdr,#ddd);border-radius:8px;background:var(--bg2,#fafafa);color:var(--tx,#1a1a1a)}\n#ld-wel-ov textarea{min-height:170px;resize:vertical;line-height:1.45}\n#ld-wel-ov .ld-wel-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}\n#ld-wel-ov .ld-wel-att{font-size:12px;color:var(--tx2,#555);padding:8px 10px;border:1px dashed var(--bdr,#ddd);border-radius:8px;background:var(--bg2,#fafafa)}\n#ld-wel-ov .ld-wel-f{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--bdr,#e5e5e5)}\n",
+   "replace": "#ld-wel-ov,#ld-view-ov{position:fixed;inset:0;background:rgba(15,30,46,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}\n#ld-wel-ov .ld-wel,#ld-view-ov .ld-wel{background:var(--bg,#fff);border:1px solid var(--bdr,#e5e5e5);border-radius:12px;width:min(640px,100%);max-height:92vh;overflow:auto;box-shadow:0 18px 50px rgba(0,0,0,.28)}\n#ld-wel-ov .ld-wel-h,#ld-view-ov .ld-wel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--bdr,#e5e5e5)}\n#ld-wel-ov .ld-wel-h h3,#ld-view-ov .ld-wel-h h3{margin:0;font-size:15px}\n#ld-wel-ov .ld-wel-b,#ld-view-ov .ld-wel-b{padding:14px 16px;display:flex;flex-direction:column;gap:10px}\n#ld-wel-ov label,#ld-view-ov label{font-size:11px;color:var(--tx3,#888);display:block;margin-bottom:3px}\n#ld-wel-ov input,#ld-wel-ov textarea,#ld-wel-ov select,#ld-view-ov input,#ld-view-ov textarea,#ld-view-ov select{width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--bdr,#ddd);border-radius:8px;background:var(--bg2,#fafafa);color:var(--tx,#1a1a1a)}\n#ld-wel-ov textarea{min-height:170px;resize:vertical;line-height:1.45}\n#ld-wel-ov .ld-wel-row,#ld-view-ov .ld-wel-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}\n#ld-wel-ov .ld-wel-att{font-size:12px;color:var(--tx2,#555);padding:8px 10px;border:1px dashed var(--bdr,#ddd);border-radius:8px;background:var(--bg2,#fafafa)}\n#ld-wel-ov .ld-wel-f,#ld-view-ov .ld-wel-f{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--bdr,#e5e5e5)}\n",
+   "count": 1
+  },
+  {
+   "note": "Home chip is Open leads, not a dump of lead tasks",
+   "find": "<div class=\"l\">Open lead tasks</div>",
+   "replace": "<div class=\"l\">Open leads</div>",
+   "count": 2
+  },
+  {
+   "note": "Leads action card points at the pipeline, not a Home inbox",
+   "find": "cards+=card('ti-target','Leads','Your open lead tasks','leads');",
+   "replace": "cards+=card('ti-target','Leads','Open leads &amp; viewings','leads');",
+   "count": 3
+  },
+  {
+   "note": "Home subtitle is reminders and appointments, not an endless close-list",
+   "find": "Your tasks to close in the coming days.",
+   "replace": "Open items, booked viewings, and tasks for the workday.",
+   "count": 1
+  },
+  {
+   "note": "My tasks slot is for dated inspections, not every assigned lead",
+   "find": "    // Assigned open leads are open tasks for this person — render into the same list.\n    h+='<div id=\"home-lead-tasks-slot\" class=\"home-bucket\" style=\"display:none\"></div>';\n",
+   "replace": "    // Dated property inspections land here; the Open leads chip is the reminder count.\n    h+='<div id=\"home-lead-tasks-slot\" class=\"home-bucket\" style=\"display:none\"></div>';\n",
+   "count": 1
+  },
+  {
+   "note": "Home paints Open leads count plus Property Inspection rows and a week strip",
+   "find": "  window.refreshHomeLeads=function(){\n    var slot=document.getElementById('home-lead-tasks-slot');\n    var empty=document.getElementById('home-tasks-empty');\n    var countEl=document.getElementById('home-lead-count');\n    var NEXT={new:'Send the welcome email',to_contact:'Send the welcome email',contacted:'Qualify the property',qualified:'Book a viewing',viewing:'Send a proposal',proposal:'Send the contract',contract_sent:'Chase the signature',signed:'Start onboarding',onboarding:'Go live'};\n    var LABEL={new:'New',to_contact:'To contact',contacted:'Contacted',qualified:'Qualified',viewing:'Viewing',proposal:'Proposal',contract_sent:'Contract sent',signed:'Signed',onboarding:'Onboarding'};\n    var STEPS=['new','to_contact','contacted','qualified','viewing','proposal','contract_sent','signed','onboarding','live'];\n    function homeLeadsExpanded(){\n      try{\n        var v=localStorage.getItem('home_leads_expanded');\n        // Default: extended (open). Only collapse when the user explicitly minimises.\n        if(v===null||v===undefined||v==='') return true;\n        return v!=='0' && v!=='false';\n      }catch(e){ return true; }\n    }\n    window.toggleHomeLeads=function(ev){\n      if(ev){ ev.preventDefault(); ev.stopPropagation(); }\n      var open=!homeLeadsExpanded();\n      try{ localStorage.setItem('home_leads_expanded', open?'1':'0'); }catch(e){}\n      if(typeof window.refreshHomeLeads==='function') window.refreshHomeLeads();\n    };\n    function paint(pack){\n      var mine=pack.mine||[];\n      if(countEl) countEl.textContent=String(mine.length);\n      if(!slot) return;\n      if(!pack.me || !mine.length){ slot.style.display='none'; return; }\n      if(empty && empty.parentNode) empty.parentNode.removeChild(empty);\n      slot.style.display='';\n      var open=homeLeadsExpanded();\n      var arrow=open?'▾':'▸';\n      var head='<h3 class=\"home-leads-h\" style=\"cursor:pointer;user-select:none\" onclick=\"toggleHomeLeads(event)\" title=\"'+(open?'Minimise open leads':'Show open leads')+'\">' +\n        '<span class=\"dot\" style=\"background:var(--gold)\"></span>Open leads <span class=\"cnt\">'+mine.length+'</span>' +\n        '<span class=\"home-leads-arrow\" style=\"margin-left:auto;color:var(--tx3);font-size:12px;line-height:1\">'+arrow+'</span></h3>';\n      var body='';\n      if(open){\n        // Extended view: full assigned open-lead list (not a truncated preview).\n        body=mine.map(function(l){\n          var act=NEXT[l.stage]||'Open the ticket';\n          var si=STEPS.indexOf(l.stage);\n          var pipe=si>=0?('Step '+(si+1)+' of 10 · '+(LABEL[l.stage]||l.stage)):(LABEL[l.stage]||l.stage);\n          var raw=String(l.full_name||'').trim().replace(/\\s+/g,' ');\n          var name=!raw?'(no name)':(raw===raw.toUpperCase()||raw===raw.toLowerCase())?raw.toLowerCase().replace(/(^|[\\s'\\-])(\\S)/g,function(_,a,b){return a+b.toUpperCase();}):raw;\n          var sub=pipe+(l.property_address?(' · '+l.property_address):'');\n          return '<div class=\"home-row\" style=\"cursor:pointer\" onclick=\"ldGoTask('+l.id+')\"><span class=\"dot\" style=\"background:var(--gold)\"></span><div class=\"rl\"><b>'+esc(name)+'</b><div class=\"meta\">Lead · '+esc(sub)+'</div></div><span class=\"lnk\">'+esc(act)+' →</span></div>';\n        }).join('');\n      }\n      slot.innerHTML=head+body;\n    }\n    if(typeof window.ldFetchMyTasks==='function'){\n      window.ldFetchMyTasks().then(paint).catch(function(){ if(countEl) countEl.textContent='—'; });\n    } else if(countEl){ countEl.textContent='—'; }\n  };",
+   "replace": "  function homeIsOpenLead(l){\n    return !!(l && l.owner && !l.archived_at && l.status === 'open' && l.stage !== 'on_hold');\n  }\n  function homeInspectWhen(l){ return l && (l.inspection_at || l.inspectionAt); }\n  function homeWhoLabel(key, cfg){\n    if (key === 'giannis' || key === 'john') return 'John';\n    if (key === 'kostas') return 'Kostas';\n    if (key === 'michalis') return 'Michalis';\n    var m = ((cfg && cfg.team) || []).filter(function (t) { return t.key === key; })[0];\n    if (m && m.name) return m.name;\n    if (!key) return '';\n    return String(key).charAt(0).toUpperCase() + String(key).slice(1);\n  }\n  function homeInspectionTitle(l, cfg){\n    var iso = homeInspectWhen(l);\n    var d = iso ? new Date(iso) : null;\n    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];\n    var day = (d && !isNaN(d.getTime())) ? (d.getDate() + ' ' + months[d.getMonth()]) : '';\n    var who = homeWhoLabel((l && (l.inspection_by || l.inspectionBy || l.owner)) || '', cfg);\n    return 'Property Inspection · ' + who + ' · ' + day;\n  }\n  window.refreshHomeLeads=function(){\n    var slot=document.getElementById('home-lead-tasks-slot');\n    var empty=document.getElementById('home-tasks-empty');\n    var countEl=document.getElementById('home-lead-count');\n    var weekEl=document.getElementById('home-week-cal');\n    function fmtTime(d){\n      var h=d.getHours(), mi=d.getMinutes();\n      return (h<10?'0':'')+h+':'+(mi<10?'0':'')+mi;\n    }\n    function paint(pack){\n      var cfg=pack.cfg||{};\n      var leads=pack.leads||[];\n      var open=leads.filter(homeIsOpenLead);\n      if(countEl) countEl.textContent=String(open.length);\n      var appts=open.filter(function(l){ return !!homeInspectWhen(l); }).sort(function(a,b){\n        return new Date(homeInspectWhen(a)) - new Date(homeInspectWhen(b));\n      });\n      if(slot){\n        if(empty && empty.parentNode && appts.length) empty.parentNode.removeChild(empty);\n        slot.style.display='';\n        var body;\n        if(!appts.length){\n          body='<div class=\"home-empty\">No viewings booked yet. On a qualified lead, use Book a viewing.</div>';\n        } else {\n          body=appts.map(function(l){\n            var when=new Date(homeInspectWhen(l));\n            var title=homeInspectionTitle(l, cfg);\n            var raw=String(l.full_name||'').trim().replace(/\\s+/g,' ');\n            var name=!raw?'(no name)':(raw===raw.toUpperCase()||raw===raw.toLowerCase())?raw.toLowerCase().replace(/(^|[\\s'\\-])(\\S)/g,function(_,a,b){return a+b.toUpperCase();}):raw;\n            var sub=name+(l.property_address?(' · '+l.property_address):'')+(isNaN(when.getTime())?'':' · '+fmtTime(when));\n            return '<div class=\"home-row\" style=\"cursor:pointer\" onclick=\"ldGoTask('+l.id+')\"><span class=\"dot\" style=\"background:var(--gold)\"></span><div class=\"rl\"><b>'+esc(title)+'</b><div class=\"meta\">'+esc(sub)+'</div></div><span class=\"lnk\">Open →</span></div>';\n          }).join('');\n        }\n        slot.innerHTML='<h3><span class=\"dot\" style=\"background:var(--gold)\"></span>Appointments <span class=\"cnt\">'+appts.length+'</span></h3>'+body;\n      }\n      if(weekEl){\n        var today=new Date(); today=new Date(today.getFullYear(),today.getMonth(),today.getDate());\n        var days=[];\n        for(var i=0;i<7;i++) days.push(new Date(today.getFullYear(),today.getMonth(),today.getDate()+i));\n        var wd=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];\n        weekEl.style.display='';\n        weekEl.innerHTML='<h3><i class=\"ti ti-calendar-event\"></i> Viewings this week</h3><div class=\"home-week\">'+days.map(function(d){\n          var items=appts.filter(function(l){\n            var w=new Date(homeInspectWhen(l));\n            return w.getFullYear()===d.getFullYear() && w.getMonth()===d.getMonth() && w.getDate()===d.getDate();\n          });\n          var cells=items.map(function(l){\n            var w=new Date(homeInspectWhen(l));\n            var who=homeWhoLabel(l.inspection_by||l.inspectionBy||l.owner, cfg);\n            return '<div class=\"home-week-item\" onclick=\"ldGoTask('+l.id+')\">'+esc(fmtTime(w)+' · '+who)+'</div>';\n          }).join('') || '<div class=\"home-week-empty\">—</div>';\n          var isToday=d.getTime()===today.getTime();\n          return '<div class=\"home-week-day'+(isToday?' today':'')+'\"><div class=\"home-week-d\">'+wd[d.getDay()]+' '+d.getDate()+'</div>'+cells+'</div>';\n        }).join('')+'</div>';\n      }\n    }\n    if(typeof window.ldFetchMyTasks==='function'){\n      window.ldFetchMyTasks().then(paint).catch(function(){ if(countEl) countEl.textContent='—'; });\n    } else if(countEl){ countEl.textContent='—'; }\n  };",
+   "count": 1
+  },
+  {
+   "note": "Home week strip of viewings across the team",
+   "find": "    // ----- Action cards -----\n",
+   "replace": "    h+='<div id=\"home-week-cal\" class=\"home-panel\" style=\"display:none\"></div>';\n\n    // ----- Action cards -----\n",
+   "count": 1
+  },
+  {
+   "note": "Qualified next-action button is Book a viewing, not Mark viewing",
+   "find": "    qualified:      { hint: 'Book a property assessment',   done: 'Mark viewing',     stage: 'viewing' },",
+   "replace": "    qualified:      { hint: 'Book a property assessment',   done: 'Book a viewing',   stage: 'viewing' },",
+   "count": 1
+  },
+  {
+   "note": "Display Kostas and Michalis on viewing rows even if they are not on the leads roster",
+   "find": "  function displayName(key) {\n    if (key === 'giannis') return 'John';\n    return teamName(key) || key || '';\n  }",
+   "replace": "  function displayName(key) {\n    if (key === 'giannis' || key === 'john') return 'John';\n    if (key === 'kostas') return 'Kostas';\n    if (key === 'michalis') return 'Michalis';\n    return teamName(key) || key || '';\n  }\n  function inspectWhen(l) { return l && (l.inspection_at || l.inspectionAt); }\n  function fmtInspect(iso) {\n    var d = new Date(iso);\n    if (isNaN(d.getTime())) return '';\n    var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];\n    var pad = function (n) { return (n < 10 ? '0' : '') + n; };\n    return d.getDate() + ' ' + m[d.getMonth()] + ' · ' + pad(d.getHours()) + ':' + pad(d.getMinutes());\n  }",
+   "count": 1
+  },
+  {
+   "note": "Timeline verb for a booked viewing",
+   "find": "  var EVW = { created: 'created the lead —', assigned: 'assigned', stage: 'moved', note: 'noted:',\n              edit: 'edited', email: 'emailed —', archived: 'archived —', restored: 'restored the lead',\n              erased: 'erased the personal data' };",
+   "replace": "  var EVW = { created: 'created the lead —', assigned: 'assigned', stage: 'moved', note: 'noted:',\n              edit: 'edited', email: 'emailed —', archived: 'archived —', restored: 'restored the lead',\n              erased: 'erased the personal data', inspection: 'booked a viewing —' };",
+   "count": 1
+  },
+  {
+   "note": "Task cards show the booked inspection and a Change viewing control",
+   "find": "        '<div class=\"ld-nextline\">Next: <b>' + esc(nx.hint) + '</b></div>' +\n      '</div>' +\n      '<div class=\"ld-task-side\">' +",
+   "replace": "        '<div class=\"ld-nextline\">Next: <b>' + esc(nx.hint) + '</b>' +\n          (inspectWhen(l) ? '<div class=\"ld-appt\">Property Inspection · ' + esc(displayName(l.inspection_by || l.inspectionBy || l.owner)) + ' · ' + esc(fmtInspect(inspectWhen(l))) + '</div>' : '') +\n        '</div>' +\n      '</div>' +\n      '<div class=\"ld-task-side\">' +",
+   "count": 1
+  },
+  {
+   "note": "Task-card primary button for viewing opens the appointment picker",
+   "find": "          (nx.stage ? '<button class=\"btn sm primary\" onclick=\"event.stopPropagation();ldStage(' + l.id + ',\\'' + nx.stage + '\\')\">' + esc(nx.done) + '</button>' : '') +",
+   "replace": "          (inspectWhen(l) ? '<button type=\"button\" class=\"btn sm\" onclick=\"event.stopPropagation();ldBookViewing(' + l.id + ')\">Change viewing</button>' : '') +\n          (nx.stage === 'viewing' ? '<button class=\"btn sm primary\" onclick=\"event.stopPropagation();ldBookViewing(' + l.id + ')\">Book a viewing</button>'\n            : (nx.stage ? '<button class=\"btn sm primary\" onclick=\"event.stopPropagation();ldStage(' + l.id + ',\\'' + nx.stage + '\\')\">' + esc(nx.done) + '</button>' : '')) +",
+   "count": 1
+  },
+  {
+   "note": "Ticket next-action shows the inspection and does not close the lead after the visit",
+   "find": "      (isOpenTask(l) ? (function () {\n        var nx = nextAction(l);\n        var sla = slaLabel(l);\n        return '<div class=\"ld-next\"><div class=\"nl\">' +\n          '<div>Open task for <b>' + esc(l.owner ? displayName(l.owner) : 'nobody') + '</b>' +\n            (meKey() && meKey() === l.owner ? ' (you)' : '') +\n            ' · <b>' + esc(pipelinePos(l)) + '</b></div>' +\n          '<div>Next: ' + esc(nx.hint) + '</div>' +\n          (sla ? '<div class=\"ld-sla ' + slaState(l) + '\">' + esc(sla) + '</div>' : '') +\n          '</div>' +\n          (nx.stage ? '<button class=\"btn sm primary\" onclick=\"ldStage(' + l.id + ',\\'' + nx.stage + '\\')\">' + esc(nx.done) + '</button>' : '') +\n          '</div>';\n      })() : '') +",
+   "replace": "      (isOpenTask(l) ? (function () {\n        var nx = nextAction(l);\n        var sla = slaLabel(l);\n        var whenIso = l.inspection_at || l.inspectionAt;\n        var whenLbl = whenIso ? fmtInspect(whenIso) : '';\n        var whoGoes = displayName(l.inspection_by || l.inspectionBy || l.owner);\n        var appt = whenLbl\n          ? ('<div>Property Inspection · ' + esc(whoGoes) + ' · ' + esc(whenLbl) +\n             ' <button type=\"button\" class=\"btn sm\" onclick=\"ldBookViewing(' + l.id + ')\">Change viewing</button></div>')\n          : (l.stage === 'viewing'\n            ? ('<div>No viewing time yet. <button type=\"button\" class=\"btn sm\" onclick=\"ldBookViewing(' + l.id + ')\">Book a viewing</button></div>')\n            : '');\n        return '<div class=\"ld-next\"><div class=\"nl\">' +\n          '<div>Open task for <b>' + esc(l.owner ? displayName(l.owner) : 'nobody') + '</b>' +\n            (meKey() && meKey() === l.owner ? ' (you)' : '') +\n            ' · <b>' + esc(pipelinePos(l)) + '</b></div>' +\n          appt +\n          '<div>Next: ' + esc(nx.hint) + '</div>' +\n          (sla ? '<div class=\"ld-sla ' + slaState(l) + '\">' + esc(sla) + '</div>' : '') +\n          '</div>' +\n          '<div style=\"display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end\">' +\n          (nx.stage === 'viewing'\n            ? '<button class=\"btn sm primary\" onclick=\"ldBookViewing(' + l.id + ')\">Book a viewing</button>'\n            : (nx.stage ? '<button class=\"btn sm primary\" onclick=\"ldStage(' + l.id + ',\\'' + nx.stage + '\\')\">' + esc(nx.done) + '</button>' : '')) +\n          '</div></div>';\n      })() : '') +",
+   "count": 1
+  },
+  {
+   "note": "Book a viewing collects date, time and who, then PATCHes inspectionAt",
+   "find": "  window.ldStage = function (id, stage) {\n    var l = lead(id); if (!l || l.stage === stage) return;\n    var body = { stage: stage, by: who() };\n    if (stage === 'lost') {\n      var why = prompt('Why was this lead lost?');\n      if (why === null) return;\n      if (!String(why).trim()) { toast('A lost lead needs a reason.', 'err'); return; }\n      body.lostReason = String(why).trim();\n    }\n    jsend('/api/leads/' + id, 'PATCH', body).then(function (r) { after(r, 'Moved to ' + (LABEL[stage] || stage) + '.'); });\n  };",
+   "replace": "  window.ldStage = function (id, stage) {\n    var l = lead(id); if (!l || l.stage === stage) return;\n    if (stage === 'viewing') { window.ldBookViewing(id); return; }\n    var body = { stage: stage, by: who() };\n    if (stage === 'lost') {\n      var why = prompt('Why was this lead lost?');\n      if (why === null) return;\n      if (!String(why).trim()) { toast('A lost lead needs a reason.', 'err'); return; }\n      body.lostReason = String(why).trim();\n    }\n    jsend('/api/leads/' + id, 'PATCH', body).then(function (r) { after(r, 'Moved to ' + (LABEL[stage] || stage) + '.'); });\n  };\n  window.ldBookViewingClose = function () {\n    var ov = document.getElementById('ld-view-ov');\n    if (ov && ov.parentNode) ov.parentNode.removeChild(ov);\n  };\n  function viewingTeam() {\n    var list = (cfg.team || []).slice();\n    var have = {};\n    list.forEach(function (t) { if (t && t.key) have[t.key] = 1; });\n    [{ key: 'kostas', name: 'Kostas' }, { key: 'michalis', name: 'Michalis' }].forEach(function (t) {\n      if (!have[t.key]) list.push(t);\n    });\n    return list;\n  }\n  function viewingLocalParts(iso) {\n    var pad = function (n) { return (n < 10 ? '0' : '') + n; };\n    var d = iso ? new Date(iso) : new Date();\n    if (isNaN(d.getTime())) d = new Date();\n    if (!iso) d.setHours(10, 0, 0, 0);\n    return {\n      date: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()),\n      time: pad(d.getHours()) + ':' + pad(d.getMinutes())\n    };\n  }\n  window.ldBookViewing = function (id) {\n    var l = lead(id); if (!l) return;\n    window.ldBookViewingClose();\n    var parts = viewingLocalParts(l.inspection_at || l.inspectionAt);\n    var whoKey = l.inspection_by || l.inspectionBy || l.owner || meKey() || '';\n    var opts = viewingTeam().map(function (t) {\n      return '<option value=\"' + esc(t.key) + '\"' + (t.key === whoKey ? ' selected' : '') + '>' + esc(displayName(t.key) || t.name) + '</option>';\n    }).join('');\n    var ov = document.createElement('div');\n    ov.id = 'ld-view-ov';\n    ov.innerHTML = ''\n      + '<div class=\"ld-wel\" role=\"dialog\" aria-label=\"Book a viewing\">'\n      + '<div class=\"ld-wel-h\"><div><h3>Book a viewing</h3>'\n      + '<div style=\"font-size:12px;color:var(--tx3);margin-top:2px\">' + esc(prettyPerson(l.full_name) || '(no name)') + (l.property_address ? (' · ' + esc(l.property_address)) : '') + '</div>'\n      + '</div><button type=\"button\" class=\"btn sm\" onclick=\"ldBookViewingClose()\">✕</button></div>'\n      + '<div class=\"ld-wel-b\">'\n      + '<div class=\"ld-wel-row\">'\n      + '<div style=\"flex:1;min-width:140px\"><label>Date</label><input id=\"ld-view-date\" type=\"date\" value=\"' + esc(parts.date) + '\"/></div>'\n      + '<div style=\"width:120px\"><label>Time</label><input id=\"ld-view-time\" type=\"time\" value=\"' + esc(parts.time) + '\"/></div>'\n      + '</div>'\n      + '<div><label>Who goes</label><select id=\"ld-view-who\">' + opts + '</select></div>'\n      + '<div style=\"font-size:12px;color:var(--tx3)\">This books a Property Inspection on Home. Completing the visit does not close the lead — proposal is the next step.</div>'\n      + '</div>'\n      + '<div class=\"ld-wel-f\">'\n      + '<button type=\"button\" class=\"btn sm\" onclick=\"ldBookViewingClose()\">Cancel</button>'\n      + '<button type=\"button\" class=\"btn sm primary\" id=\"ld-view-save\" onclick=\"ldBookViewingSave(' + id + ')\">Save viewing</button>'\n      + '</div></div>';\n    ov.addEventListener('click', function (ev) { if (ev.target === ov) ldBookViewingClose(); });\n    document.body.appendChild(ov);\n  };\n  window.ldBookViewingSave = function (id) {\n    var dateEl = document.getElementById('ld-view-date');\n    var timeEl = document.getElementById('ld-view-time');\n    var whoEl = document.getElementById('ld-view-who');\n    var date = dateEl ? String(dateEl.value || '').trim() : '';\n    var time = timeEl ? String(timeEl.value || '').trim() : '10:00';\n    var whoBy = whoEl ? String(whoEl.value || '').trim() : '';\n    if (!date) { toast('Pick a viewing date.', 'err'); return; }\n    if (!time) time = '10:00';\n    var when = new Date(date + 'T' + time + ':00');\n    if (isNaN(when.getTime())) { toast('That date and time is not valid.', 'err'); return; }\n    var l = lead(id);\n    var body = {\n      stage: 'viewing',\n      inspectionAt: when.toISOString(),\n      inspectionBy: whoBy || (l && l.owner) || '',\n      by: who()\n    };\n    var btn = document.getElementById('ld-view-save');\n    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }\n    jsend('/api/leads/' + id, 'PATCH', body).then(function (r) {\n      window.ldBookViewingClose();\n      after(r, 'Viewing booked for ' + date + ' at ' + time + '.');\n      try { if (typeof window.refreshHomeLeads === 'function') window.refreshHomeLeads(); } catch (e) {}\n    });\n  };",
+   "count": 1
+  },
+  {
+   "note": "Saving a lead also refreshes Home appointments",
+   "find": "    if (msg) toast(msg);\n    reload(true);\n    return true;",
+   "replace": "    if (msg) toast(msg);\n    reload(true);\n    try { if (typeof window.refreshHomeLeads === 'function') window.refreshHomeLeads(); } catch (e) {}\n    return true;",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "Open items, booked viewings, and tasks for the workday.",
+   "note": "Home is a workday reminder, not an inbox"
+  },
+  {
+   "has": "<div class=\"l\">Open leads</div>",
+   "note": "chip label is Open leads"
+  },
+  {
+   "has": "function homeInspectionTitle(l, cfg)",
+   "note": "inspection row title helper"
+  },
+  {
+   "has": "Property Inspection · ",
+   "note": "Home row format Property Inspection · who · date"
+  },
+  {
+   "has": "window.ldBookViewing",
+   "note": "Book a viewing opener"
+  },
+  {
+   "has": "inspectionAt: when.toISOString()",
+   "note": "viewing PATCH sends inspectionAt"
+  },
+  {
+   "has": "id=\"ld-view-date\"",
+   "note": "viewing date picker"
+  },
+  {
+   "has": "id=\"ld-view-who\"",
+   "note": "viewing who picker"
+  },
+  {
+   "has": "Viewings this week",
+   "note": "week strip of appointments"
+  },
+  {
+   "has": "done: 'Book a viewing'",
+   "note": "qualified button books a viewing"
+  },
+  {
+   "has": "if (stage === 'viewing') { window.ldBookViewing(id); return; }",
+   "note": "stage viewing opens the picker"
+  },
+  {
+   "hasNot": "Extended view: full assigned open-lead list",
+   "note": "Home no longer dumps every assigned lead"
+  },
+  {
+   "hasNot": "<div class=\"l\">Open lead tasks</div>",
+   "note": "Home chip is not Open lead tasks"
+  },
+  {
+   "hasNot": "done: 'Mark viewing'",
+   "note": "Mark viewing is gone"
+  },
+  {
+   "hasNot": "Minimise open leads",
+   "note": "expand-all Open leads control is gone"
+  },
+  {
+   "hasNot": "Your open lead tasks",
+   "note": "action card is not a second Leads inbox"
+  }
+ ]
+}

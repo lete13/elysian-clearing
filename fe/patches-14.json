@@ -32,8 +32,8 @@
    "note": "Home paints open leads into My tasks"
   },
   {
-   "has": "Open lead tasks",
-   "note": "Home chip for open lead tasks"
+   "has": "home-lead-count",
+   "note": "Home chip counts open leads"
   },
   {
    "has": "home-lead-tasks-slot",
@@ -52,8 +52,8 @@
    "note": "John and Giannis resolve to the same team key"
   },
   {
-   "has": "Your open lead tasks",
-   "note": "Leads action card copy"
+   "has": "Open leads &amp; viewings",
+   "note": "Leads action card is the pipeline, not a Home inbox"
   },
   {
    "hasNot": "['board', 'list', 'archive'].map",

@@ -12,24 +12,8 @@
   ],
   "assertions": [
     {
-      "has": "toggleHomeLeads",
-      "note": "minimise/expand toggle for Open leads"
-    },
-    {
-      "has": "home_leads_expanded",
-      "note": "persists Open leads expand state"
-    },
-    {
-      "has": "home-leads-arrow",
-      "note": "arrow control on Open leads header"
-    },
-    {
-      "has": "Minimise open leads",
-      "note": "default extended title when open"
-    },
-    {
       "hasNot": "mine.slice(0,10)",
-      "note": "extended view lists all open leads"
+      "note": "Home must not use a truncated 10-lead preview (124: chip + dated inspections)"
     }
   ]
 }
