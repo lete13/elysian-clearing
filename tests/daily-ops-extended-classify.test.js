@@ -1,7 +1,9 @@
 'use strict';
 /**
  * Daily Ops EXTENDED must mean "same guest continuing today", not a Hosthub
- * checkout labelled "extend Name" when a different guest arrives.
+ * checkout labelled "extend Name", including when the next guest looks like
+ * the same person. Only the ARRIVAL being an extend/παράταση (with a normal
+ * checkout name) still means skip-clean.
  * Live false-positive: Elysian Lycabettus Resilience, 21/8/2026
  *   out: Hosthub calendar title "extend <first name>" (extra nights of the departing stay)
  *   in:  a different Booking.com guest — needs a turnover clean.
@@ -92,17 +94,27 @@ assert.strictEqual(
 );
 assert.strictEqual(
   ext('extend Maria ', 'Maria'),
-  true,
-  'same person after stripping the Hosthub extend label'
+  false,
+  'currently hosting "extend Maria" does not skip-clean even if the arrival is Maria'
 );
-assert.strictEqual(ext('extend Maria ', 'extend Maria '), true, 'both sides labelled extend');
+assert.strictEqual(
+  ext('extend Maria ', 'extend Maria '),
+  false,
+  'currently hosting "extend …" does not skip-clean the upcoming arrival'
+);
 assert.strictEqual(ext('John Smith', 'John Smith'), true, 'identical guest names');
 assert.strictEqual(ext('Anna', 'Anna-Maria'), false, 'short names never auto-match');
 assert.strictEqual(ext('', 'extend Maria '), true, 'check-in-only extend block is not a fresh arrival');
 assert.strictEqual(ext('extend Maria ', ''), false, 'departing extend into a gap is still a checkout');
 assert.strictEqual(ext('Elysian Lycabettus Resilience', ''), false, 'listing name Resilience is not EXTENDED');
 assert.strictEqual(ext('παράταση Μαρία', 'Γιάννης'), false, 'departing παράταση + different guest is a turnover');
+assert.strictEqual(ext('παράταση Μαρία', 'Μαρία'), false, 'currently hosting παράταση does not skip-clean the arrival');
 assert.strictEqual(ext('Μαρία', 'παράταση Μαρία'), true, 'incoming παράταση still means no turnover');
+assert.strictEqual(
+  html.includes('if (outExt) return flags;'),
+  true,
+  'outgoing extend keyword bails before marking the arrival EXTENDED'
+);
 
 const prep = sandbox._opsClassify('preparation block', 'Nikos Ioannou');
 assert.strictEqual(prep.isPreparation, true, 'PREPARATION still detects from either name');
