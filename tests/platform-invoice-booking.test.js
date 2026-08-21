@@ -478,9 +478,11 @@ booking
     assert(scraped.some((r) => r.hotelId === '4440004' && /monograph/i.test(r.name)), 'scrape json intercept');
     const fe129 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-129.json'), 'utf8'));
     const fe130 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-130.json'), 'utf8'));
+    const fe131 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-131.json'), 'utf8'));
     const srv93 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-93.json'), 'utf8'));
     assert.strictEqual(fe129.baseSha256, fe128.expectedSha256, 'FE 129 continues FE 128');
     assert.strictEqual(fe130.baseSha256, fe129.expectedSha256, 'FE 130 continues FE 129');
+    assert.strictEqual(fe131.baseSha256, fe130.expectedSha256, 'FE 131 continues FE 130');
     assert.strictEqual(srv93.baseSha256, srv92.expectedSha256, 'SRV 93 continues SRV 92');
     assert(fe129.patches.some((p) => (p.replace || '').includes('piMapBookingIds')), 'FE Map Booking.com IDs handler');
     assert(fe129.patches.some((p) => (p.replace || '').includes('id="pi-map-bdc-btn"')), 'FE Map button');
@@ -501,8 +503,9 @@ booking
     assert.strictEqual(liveIds['Filoxenia Apartment Athens'], '8519226', 'Filoxenia live id');
     assert.strictEqual(liveIds['Filonexia Apartment Athens'], '8519226', 'Filonexia spelling maps to the same id');
     assert.strictEqual(liveIds['Sunset Nest in Fiskardo'], undefined, 'Sunset Nest has no Booking.com listing URL');
-    assert.strictEqual(liveIds['Villa Liberty'], undefined, 'Villa Liberty has no Booking.com listing URL');
+    assert.strictEqual(liveIds['Villa Liberty'], undefined, 'Villa Liberty was unset in the first map');
     assert(fe130.patches.some((p) => (p.replace || '').includes('bookingHotelIdForName')), 'FE 130 applyDefaults fills blank bookingHotelId');
+    assert(fe131.patches.some((p) => (p.replace || '').includes('"Villa Liberty": "3575720"')), 'FE 131 sets Villa Liberty to 3575720');
     console.log('platform-invoice-booking.test.js: ok');
   })
   .catch(function (e) {

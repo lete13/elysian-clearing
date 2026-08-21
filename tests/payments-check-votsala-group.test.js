@@ -53,7 +53,7 @@ function extractFn(source, name) {
 
 const fe = applyKind('fe');
 const srv = applyKind('srv');
-assert.strictEqual(fe.last, 'patches-130.json', 'FE 130 is the tip of the chain');
+assert.strictEqual(fe.last, 'patches-131.json', 'FE 131 is the tip of the chain');
 assert.strictEqual(srv.last, 'patches-93.json', 'SRV 93 is the tip of the chain');
 assert(fe.src.includes("if (g && !/^votsala$/i.test(g)) g = '';"), 'client ignores non-Votsala groups');
 assert(srv.src.includes('function pcvPayGroup'), 'server pay-group helper shipped');

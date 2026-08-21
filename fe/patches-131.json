@@ -1,0 +1,19 @@
+{
+ "patches": [
+  {
+   "note": "Villa Liberty Booking.com hotel id 3575720",
+   "find": "  \"Elysian Mary\": \"17003916\"\n};\nfunction bookingHotelIdForName(name) {\n",
+   "replace": "  \"Elysian Mary\": \"17003916\",\n  \"Villa Liberty\": \"3575720\"\n};\nfunction bookingHotelIdForName(name) {\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "\"Villa Liberty\": \"3575720\"",
+   "note": "Villa Liberty hotel id"
+  }
+ ],
+ "baseSha256": "b5b487b953410fb690ce57ad136da866566b5ea59925fa89273c3385a740425f",
+ "expectedSha256": "a439ba3b89764007daff8eed7c0e7a84d5955ecc36bacdc26630228c7e72faf8",
+ "builtAt": "2026-08-21 Villa Liberty bookingHotelId 3575720"
+}
