@@ -1,0 +1,15 @@
+'use strict';
+const fs = require('fs');
+const c = require('crypto');
+const sha = (s) => c.createHash('sha256').update(s.replace(/\r\n/g, '\n')).digest('hex');
+const f = JSON.parse(fs.readFileSync('fe/patches.json', 'utf8'));
+const p = JSON.parse(fs.readFileSync('srv/patches.json', 'utf8'));
+let idx = fs.readFileSync('index.html', 'utf8').replace(/\r\n/g, '\n');
+let srv = fs.readFileSync('server.js', 'utf8').replace(/\r\n/g, '\n');
+fs.writeFileSync('index.html', idx);
+fs.writeFileSync('server.js', srv);
+const worker = fs.readFileSync('scripts/platform-invoice-pull.js', 'utf8');
+console.log('fe', sha(idx) === f.baseSha256);
+console.log('srv', sha(srv) === p.baseSha256);
+console.log('already_have', worker.includes("event: 'already_have'"));
+console.log('alreadyHaveOk', worker.includes('alreadyHaveOk'));

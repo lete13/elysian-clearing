@@ -259,7 +259,7 @@ for (let n = 2; n <= 100; n++) {
   if (!fs.existsSync(path.join(root, 'srv', `patches-${n}.json`))) break;
   srvChain.push(`patches-${n}.json`);
 }
-let srv = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+let srv = fs.readFileSync(path.join(root, 'server.js'), 'utf8').replace(/\r\n/g, '\n');
 let srvSha = crypto.createHash('sha256').update(srv).digest('hex');
 let srvCount = 0;
 for (const file of srvChain) {

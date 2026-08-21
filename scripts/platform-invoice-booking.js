@@ -541,6 +541,86 @@ function bookingCompleteness(expectApts, files) {
   };
 }
 
+/**
+ * Document month M covers Booking.com stays in M−1.
+ * Include a vault PDF only when Hosthub has matching stays for that property.
+ * Error when PDF exists without stays, or stays exist without a PDF.
+ */
+function reconcileBookingMonth(month, bks, apts, vaultRows) {
+  const est = estimateBookingInvoices(month, bks, apts);
+  const expectByFolder = {};
+  (est.apts || []).forEach(function (a) {
+    const name = String((a && a.aptName) || '').trim();
+    if (!name) return;
+    expectByFolder[name] = a;
+  });
+
+  const filesByFolder = {};
+  (vaultRows || []).forEach(function (row) {
+    const ch = String((row && row.channel) || '').toLowerCase();
+    if (ch !== 'booking' && ch !== 'bdc') return;
+    if (month && row.month && String(row.month) !== String(month)) return;
+    const folder = String((row && (row.aptName || row.partner)) || '').trim();
+    if (!folder) return;
+    if (!filesByFolder[folder]) filesByFolder[folder] = [];
+    filesByFolder[folder].push(row);
+  });
+
+  const included = [];
+  const errors = [];
+  const seenFolders = {};
+
+  Object.keys(expectByFolder).forEach(function (folder) {
+    seenFolders[folder] = true;
+    const rows = filesByFolder[folder] || [];
+    if (!rows.length) {
+      errors.push({
+        type: 'stays_without_invoice',
+        channel: 'booking',
+        aptName: folder,
+        bookingHotelId: String((expectByFolder[folder] && expectByFolder[folder].bookingHotelId) || ''),
+        bookings: Number((expectByFolder[folder] && expectByFolder[folder].bookings) || 0),
+        message:
+          'Booking.com stays in ' +
+          (est.bookMonth || '') +
+          ' for ' +
+          folder +
+          ' but no invoice PDF in vault for ' +
+          month,
+      });
+      return;
+    }
+    rows.forEach(function (row) {
+      included.push(row);
+    });
+  });
+
+  Object.keys(filesByFolder).forEach(function (folder) {
+    if (seenFolders[folder]) return;
+    errors.push({
+      type: 'invoice_without_stays',
+      channel: 'booking',
+      aptName: folder,
+      message:
+        'Booking.com invoice for ' +
+        folder +
+        ' in ' +
+        month +
+        ' but no Hosthub stays in ' +
+        (est.bookMonth || ''),
+    });
+  });
+
+  return {
+    ok: errors.length === 0,
+    month: month,
+    bookMonth: est.bookMonth,
+    expect: est,
+    included: included,
+    errors: errors,
+  };
+}
+
 module.exports = {
   MONTH_NAMES_EN,
   MONTH_NAMES_EL,
@@ -572,4 +652,5 @@ module.exports = {
   unzipPdfEntries,
   bookingTooEarly,
   bookingCompleteness,
+  reconcileBookingMonth,
 };

@@ -14,8 +14,7 @@ const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 function applyKind(kind) {
   const baseName = kind === 'fe' ? 'index.html' : 'server.js';
-  let src = fs.readFileSync(path.join(root, baseName), 'utf8');
-  if (kind === 'fe') src = src.replace(/\r\n/g, '\n');
+  let src = fs.readFileSync(path.join(root, baseName), 'utf8').replace(/\r\n/g, '\n');
   let sha = sha256(src);
   let last = 'base';
   for (let n = 1; ; n++) {
@@ -53,8 +52,12 @@ function extractFn(source, name) {
 
 const fe = applyKind('fe');
 const srv = applyKind('srv');
-assert.strictEqual(fe.last, 'patches-127.json', 'FE 127 is the tip of the chain');
-assert.strictEqual(srv.last, 'patches-91.json', 'SRV 91 is the tip of the chain');
+assert.strictEqual(fe.last, 'patches-128.json', 'FE 128 is the tip of the chain');
+assert.strictEqual(srv.last, 'patches-93.json', 'SRV 93 is the tip of the chain');
+assert(fe.src.includes('piRunAgent'), 'FE tip includes Platform Invoices agent');
+assert(srv.src.includes("app.post('/api/platform-invoices/agent'"), 'SRV tip includes Platform Invoices agent');
+assert(srv.src.includes("j.event === 'already_have'"), 'SRV tip tracks already_have');
+assert(srv.src.includes('return await new Promise(function (resolvePull)'), 'SRV tip awaits pull worker');
 assert(fe.src.includes("if (g && !/^votsala$/i.test(g)) g = '';"), 'client ignores non-Votsala groups');
 assert(srv.src.includes('function pcvPayGroup'), 'server pay-group helper shipped');
 

@@ -60,12 +60,12 @@
    "note": "Excel download route"
   },
   {
-   "has": "buildAccountantXls(rows, bks)",
+   "has": "piLoadDbBookings",
    "note": "Excel download joins bookings"
   },
   {
-   "has": "buildAccountantXls(rows, xlsBks)",
-   "note": "Excel ship joins bookings"
+   "has": "piAgent.buildMonthPack",
+   "note": "Excel ship uses reconciled month pack"
   },
   {
    "has": "estimateAirbnbInvoices",

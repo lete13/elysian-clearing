@@ -26,7 +26,7 @@ function fallback(reason) {
 }
 
 let src;
-try { src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf-8'); }
+try { src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf-8').replace(/\r\n/g, '\n'); }
 catch (e) { return fallback('cannot read server.js: ' + e.message); }
 
 const chain = [];
