@@ -5,6 +5,8 @@
  * Document month M = invoices issued in M covering reservations in M−1.
  * One PDF per Booking property. Votsala 1–8 share one property / one PDF.
  * Filing key is bookingHotelId only — never apartment-name fuzzy match.
+ * Mapping IDs onto Configuration (matchBookingProperties) may use names;
+ * invoice filing still keys only on bookingHotelId.
  */
 
 const zlib = require('zlib');
@@ -49,6 +51,15 @@ const BOOKING_INVOICE_URLS = [
   'https://admin.booking.com/hotel/hoteladmin/finance/invoices.html',
   'https://admin.booking.com/hotel/hoteladmin/finance_invoices.html',
   'https://admin.booking.com/partner/finance/invoices',
+  'https://admin.booking.com/',
+];
+
+const BOOKING_PROPERTY_URLS = [
+  'https://admin.booking.com/hotel/hoteladmin/groups/home/index.html',
+  'https://admin.booking.com/hotel/hoteladmin/groups/home/properties.html',
+  'https://admin.booking.com/hotel/hoteladmin/groups/home.html',
+  'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/home.html',
+  'https://admin.booking.com/hotel/hoteladmin/groups/finance/invoices.html',
   'https://admin.booking.com/',
 ];
 
@@ -795,10 +806,412 @@ function reconcileBookingMonth(month, bks, apts, vaultRows) {
   };
 }
 
+function normBookingName(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function bookingUnitNumber(norm) {
+  const n = String(norm || '');
+  const named = n.match(/\b(?:votsala|veranda)\s+(\d)\b/);
+  if (named) return named[1];
+  const trail = n.match(/\b(\d)\s*$/);
+  return trail ? trail[1] : '';
+}
+
+function isVotsalaPropertyName(name) {
+  const n = normBookingName(name);
+  if (!n || !/^votsala\b/.test(n)) return false;
+  return !/\bvotsala\s+\d\b/.test(n);
+}
+
+function bookingNameTokens(norm) {
+  const skip = {
+    apartment: 1, apartments: 1, luxury: 1, stay: 1, with: 1, patio: 1, deluxe: 1,
+    modern: 1, elegant: 1, studio: 1, balcony: 1, the: 1, and: 1, near: 1, city: 1,
+    center: 1, centre: 1, athens: 1, piraeus: 1, urban: 1, escape: 1, retreat: 1,
+    house: 1, home: 1, small: 1, family: 1, apt: 1, in: 1, of: 1, elysian: 1,
+  };
+  return String(norm || '')
+    .split(' ')
+    .filter(function (t) {
+      return t.length >= 3 && !skip[t];
+    });
+}
+
+function bookingNameScore(propName, aptName) {
+  const p = normBookingName(propName);
+  const a = normBookingName(aptName);
+  if (!p || !a) return 0;
+  const pn = bookingUnitNumber(p);
+  const an = bookingUnitNumber(a);
+  if (pn && an && pn !== an) return 0;
+  if (p === a) return 100;
+  if (a.indexOf(p) === 0) {
+    const suffix = a.slice(p.length).trim();
+    if (/^\d/.test(suffix)) return 0;
+    if (p.length >= 6) return 80;
+  }
+  if (p.indexOf(a) === 0) {
+    const suffix = p.slice(a.length).trim();
+    if (/^\d/.test(suffix)) return 0;
+    if (a.length >= 6) return 80;
+  }
+  const pt = bookingNameTokens(p);
+  const at = bookingNameTokens(a);
+  if (!pt.length || !at.length) return 0;
+  const overlap = pt.filter(function (t) {
+    return at.indexOf(t) >= 0;
+  });
+  if (!overlap.length) return 0;
+  if (overlap.length === pt.length || overlap.length === at.length) {
+    if (pt.length === 1 && overlap[0].length >= 5) return 70;
+    if (overlap.length >= 2) return 65;
+    if (overlap[0].length >= 7) return 60;
+  }
+  if (overlap.length >= 2) return 50;
+  return 0;
+}
+
+function propertyNameFromObj(obj) {
+  if (!obj || typeof obj !== 'object') return '';
+  return String(
+    obj.name ||
+      obj.hotel_name ||
+      obj.hotelName ||
+      obj.property_name ||
+      obj.propertyName ||
+      obj.title ||
+      obj.label ||
+      obj.hotel_name_en ||
+      ''
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function harvestBookingProperties(obj, out, depth) {
+  const sink = out || [];
+  if ((depth || 0) > 16 || obj == null) return sink;
+  if (Array.isArray(obj)) {
+    obj.forEach(function (x) {
+      harvestBookingProperties(x, sink, (depth || 0) + 1);
+    });
+    return sink;
+  }
+  if (typeof obj !== 'object') return sink;
+  const hotelId = normalizeHotelId(
+    obj.hotel_id || obj.hotelId || obj.property_id || obj.propertyId || obj.hotelid
+  );
+  const name = propertyNameFromObj(obj);
+  if (hotelId) sink.push({ hotelId: hotelId, name: name });
+  Object.keys(obj).forEach(function (k) {
+    const v = obj[k];
+    if (v && typeof v === 'object') harvestBookingProperties(v, sink, (depth || 0) + 1);
+  });
+  return sink;
+}
+
+function listBookingPropertiesFromDom() {
+  var out = [];
+  function push(id, name) {
+    var hid = String(id || '').match(/(\d{5,10})/);
+    if (!hid) return;
+    var n = String(name || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 160);
+    if (/^https?:/i.test(n) || n.length < 2) n = '';
+    out.push({ hotelId: hid[1], name: n });
+  }
+  var nodes = document.querySelectorAll(
+    'option[value], a[href], [data-hotel-id], [data-hotelid], [data-property-id], input[name="hotel_id"], input[name="hotelId"]'
+  );
+  for (var i = 0; i < nodes.length; i++) {
+    var el = nodes[i];
+    var href = el.getAttribute('href') || el.getAttribute('data-href') || '';
+    var val = el.value || '';
+    var hid =
+      el.getAttribute('data-hotel-id') ||
+      el.getAttribute('data-hotelid') ||
+      el.getAttribute('data-property-id') ||
+      '';
+    var text = (el.textContent || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+    var tag = String(el.tagName || '').toUpperCase();
+    if (tag === 'OPTION' || tag === 'INPUT') push(val || hid, text || el.getAttribute('aria-label') || '');
+    else if (hid) push(hid, text);
+    else {
+      var blob = href + ' ' + val;
+      var m = blob.match(/hotel[_-]?id=(\d{5,10})/i) || blob.match(/property[_-]?id=(\d{5,10})/i);
+      if (m) push(m[1], text);
+    }
+  }
+  return out;
+}
+
+function collectBookingPropertyRows(parts) {
+  const rows = [];
+  function add(list) {
+    (list || []).forEach(function (row) {
+      rows.push(row);
+    });
+  }
+  if (parts && parts.html) add(listBookingPropertiesFromHtml(parts.html));
+  if (parts && parts.json != null) add(harvestBookingProperties(parts.json));
+  add(parts && parts.dom);
+  add(parts && parts.rows);
+  return dedupeBookingProperties(rows);
+}
+
+async function scrapeBookingProperties(page, opts) {
+  const urls = (opts && opts.urls) || BOOKING_PROPERTY_URLS;
+  const waitMs = opts && opts.waitMs != null ? opts.waitMs : 1800;
+  const harvested = [];
+  const onResp = function (res) {
+    Promise.resolve()
+      .then(async function () {
+        try {
+          const headers = (res && res.headers && res.headers()) || {};
+          const ct = String(headers['content-type'] || headers['Content-Type'] || '').toLowerCase();
+          const url = String((res && res.url && res.url()) || '');
+          if (ct.indexOf('json') < 0 && !/\.json(\?|$)/i.test(url)) return;
+          if (url && !/booking\.com/i.test(url)) return;
+          const text = await res.text();
+          if (text && text.length > 8 && text.length < 8e6) {
+            harvestBookingProperties(JSON.parse(text), harvested);
+          }
+        } catch (eTap) {}
+      })
+      .catch(function () {});
+  };
+  if (page && typeof page.on === 'function') page.on('response', onResp);
+  try {
+    for (let i = 0; i < urls.length; i++) {
+      if (page && typeof page.goto === 'function') {
+        await page.goto(urls[i], { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(function () {
+          return null;
+        });
+      }
+      if (page && typeof page.waitForTimeout === 'function' && waitMs) await page.waitForTimeout(waitMs);
+      if (opts && typeof opts.afterGoto === 'function') {
+        const stop = await opts.afterGoto(page, urls[i]);
+        if (stop) break;
+      }
+      const html =
+        page && typeof page.content === 'function'
+          ? await page.content().catch(function () {
+              return '';
+            })
+          : '';
+      if (html) listBookingPropertiesFromHtml(html).forEach(function (row) { harvested.push(row); });
+      if (page && typeof page.evaluate === 'function') {
+        const fromDom = await page.evaluate(listBookingPropertiesFromDom).catch(function () {
+          return [];
+        });
+        (fromDom || []).forEach(function (row) {
+          harvested.push(row);
+        });
+      }
+    }
+  } finally {
+    try {
+      if (page && typeof page.off === 'function') page.off('response', onResp);
+      else if (page && typeof page.removeListener === 'function') page.removeListener('response', onResp);
+    } catch (eOff) {}
+  }
+  return dedupeBookingProperties(harvested);
+}
+
+function listBookingPropertiesFromHtml(html) {
+  const src = String(html || '');
+  const out = [];
+  function push(id, name) {
+    const hotelId = normalizeHotelId(id);
+    if (!hotelId) return;
+    const n = String(name || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 160);
+    out.push({ hotelId: hotelId, name: n });
+  }
+  const optRe = /<option\b([^>]*)>([\s\S]*?)<\/option>/gi;
+  let m;
+  while ((m = optRe.exec(src))) {
+    const attrs = m[1] || '';
+    const val = (attrs.match(/value\s*=\s*["']([^"']+)["']/i) || [])[1] || '';
+    push(val, m[2]);
+  }
+  const aRe = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  while ((m = aRe.exec(src))) {
+    const attrs = m[1] || '';
+    const href = (attrs.match(/href\s*=\s*["']([^"']+)["']/i) || [])[1] || '';
+    const hid = parseBookingHotelId(attrs + ' ' + href);
+    if (hid) push(hid, m[2]);
+  }
+  const dataRe = /data-hotel-?id\s*=\s*["'](\d{5,10})["']/gi;
+  while ((m = dataRe.exec(src))) {
+    const slice = src.slice(m.index, Math.min(src.length, m.index + 240));
+    const inner = (slice.match(/>([^<]{2,80})</) || [])[1] || '';
+    push(m[1], inner);
+  }
+  return out;
+}
+
+function dedupeBookingProperties(rows) {
+  const byId = {};
+  (rows || []).forEach(function (row) {
+    const hotelId = normalizeHotelId(row && (row.hotelId || row.hotel_id || row.id));
+    if (!hotelId) return;
+    const name = String((row && (row.name || row.hotelName || row.propertyName || row.text)) || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const prev = byId[hotelId];
+    if (!prev) {
+      byId[hotelId] = { hotelId: hotelId, name: name };
+      return;
+    }
+    if (name && name.length > String(prev.name || '').length) prev.name = name;
+  });
+  return Object.keys(byId)
+    .sort()
+    .map(function (k) {
+      return byId[k];
+    });
+}
+
+function aptRow(apt) {
+  return {
+    aptId: String((apt && (apt.aptId || apt.id)) || ''),
+    aptName: String((apt && (apt.aptName || apt.name)) || ''),
+    clearGroup: String((apt && apt.clearGroup) || ''),
+  };
+}
+
+function matchBookingProperties(props, apts) {
+  const list = Array.isArray(apts) ? apts : [];
+  const properties = dedupeBookingProperties(props);
+  const linked = [];
+  const unmatched = [];
+  const skipped = [];
+  const already = [];
+
+  function pushLink(apt, hotelId, propertyName, how) {
+    const rec = Object.assign(aptRow(apt), {
+      bookingHotelId: hotelId,
+      propertyName: propertyName,
+      how: how,
+    });
+    const cur = normalizeHotelId(apt && apt.bookingHotelId);
+    if (cur && cur === hotelId) {
+      already.push(rec);
+      return;
+    }
+    if (cur && cur !== hotelId) {
+      skipped.push(Object.assign({}, rec, { reason: 'conflict', existing: cur }));
+      return;
+    }
+    linked.push(rec);
+  }
+
+  properties.forEach(function (prop) {
+    const hotelId = normalizeHotelId(prop && prop.hotelId);
+    const name = String((prop && prop.name) || '').trim();
+    if (!hotelId) return;
+    if (isVotsalaPropertyName(name)) {
+      const vots = list.filter(function (a) {
+        return isVotsalaApt(a);
+      });
+      if (!vots.length) {
+        unmatched.push({ hotelId: hotelId, name: name, reason: 'no-votsala-apartments' });
+        return;
+      }
+      vots.forEach(function (a) {
+        pushLink(a, hotelId, name, 'votsala-group');
+      });
+      return;
+    }
+    const scored = [];
+    list.forEach(function (a) {
+      let score = bookingNameScore(name, (a && (a.aptName || a.name)) || '');
+      (a && a.aliases ? a.aliases : []).forEach(function (al) {
+        const s2 = bookingNameScore(name, al);
+        if (s2 > score) score = s2;
+      });
+      if (score > 0) scored.push({ apt: a, score: score });
+    });
+    scored.sort(function (x, y) {
+      return y.score - x.score;
+    });
+    if (!scored.length || scored[0].score < 50) {
+      unmatched.push({ hotelId: hotelId, name: name, reason: 'no-name-match' });
+      return;
+    }
+    const top = scored[0].score;
+    const ties = scored.filter(function (x) {
+      return x.score === top;
+    });
+    if (ties.length > 1) {
+      unmatched.push({
+        hotelId: hotelId,
+        name: name,
+        reason: 'ambiguous',
+        candidates: ties.map(function (t) {
+          return aptRow(t.apt).aptName;
+        }),
+      });
+      return;
+    }
+    pushLink(ties[0].apt, hotelId, name, 'name');
+  });
+
+  return {
+    properties: properties,
+    linked: linked,
+    unmatched: unmatched,
+    skipped: skipped,
+    already: already,
+  };
+}
+
+function applyBookingHotelIds(apts, linked) {
+  const list = (apts || []).map(function (a) {
+    return Object.assign({}, a);
+  });
+  const byId = {};
+  const byName = {};
+  list.forEach(function (a) {
+    if (a && (a.id || a.aptId)) byId[String(a.id || a.aptId)] = a;
+    const n = String((a && (a.name || a.aptName)) || '')
+      .trim()
+      .toLowerCase();
+    if (n) byName[n] = a;
+  });
+  let updated = 0;
+  (linked || []).forEach(function (row) {
+    const apt =
+      (row.aptId && byId[String(row.aptId)]) ||
+      (row.aptName && byName[String(row.aptName).trim().toLowerCase()]);
+    if (!apt) return;
+    const next = normalizeHotelId(row.bookingHotelId);
+    if (!next) return;
+    const cur = normalizeHotelId(apt.bookingHotelId);
+    if (cur && cur !== next) return;
+    if (cur === next) return;
+    apt.bookingHotelId = next;
+    updated += 1;
+  });
+  return { apts: list, updated: updated };
+}
+
 module.exports = {
   MONTH_NAMES_EN,
   MONTH_NAMES_EL,
   BOOKING_INVOICE_URLS,
+  BOOKING_PROPERTY_URLS,
   prevMonth,
   ymFromDmy,
   isBookingStay,
@@ -832,4 +1245,16 @@ module.exports = {
   bookingTooEarly,
   bookingCompleteness,
   reconcileBookingMonth,
+  normBookingName,
+  bookingUnitNumber,
+  isVotsalaPropertyName,
+  bookingNameScore,
+  harvestBookingProperties,
+  listBookingPropertiesFromHtml,
+  listBookingPropertiesFromDom,
+  collectBookingPropertyRows,
+  scrapeBookingProperties,
+  dedupeBookingProperties,
+  matchBookingProperties,
+  applyBookingHotelIds,
 };

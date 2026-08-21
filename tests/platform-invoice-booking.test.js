@@ -361,4 +361,134 @@ assert(srv92.patches.some((p) => (p.replace || '').includes('categorizeBookingZi
 assert(srv92.patches.some((p) => (p.replace || '').includes('PLATFORM_INV_ZIP_MAX_B64')), 'SRV zip size cap');
 assert(srv92.patches.some((p) => /source:\s*'upload'/.test(p.replace || '')), 'zip ingest source=upload');
 
-console.log('platform-invoice-booking.test.js: ok');
+const fleet = [
+  { id: 'b1', name: 'Birdhouse Apartment', aptName: 'Birdhouse Apartment' },
+  { id: 'c1', name: 'Coloneum', aptName: 'Coloneum' },
+  { id: 'h1', name: 'Elysian Lycabettus - Horizon', aptName: 'Elysian Lycabettus - Horizon' },
+  { id: 'p1', name: 'Elysian Lycabettus - Panorama', aptName: 'Elysian Lycabettus - Panorama' },
+  { id: 'va', name: 'The Athenian Veranda', aptName: 'The Athenian Veranda' },
+  { id: 'va2', name: 'The Athenian Veranda 2', aptName: 'The Athenian Veranda 2' },
+  { id: 'v1', name: 'Votsala 1 Luxury Stay with Patio', aptName: 'Votsala 1 Luxury Stay with Patio', clearGroup: 'Votsala' },
+  { id: 'v2', name: 'Votsala 2 Luxury Stay with Patio', aptName: 'Votsala 2 Luxury Stay with Patio', clearGroup: 'Votsala' },
+  { id: 'v3', name: 'Votsala 3 Deluxe & Modern Apartment in Piraeus', aptName: 'Votsala 3 Deluxe & Modern Apartment in Piraeus', clearGroup: 'Votsala' },
+];
+assert.strictEqual(booking.isVotsalaPropertyName('Votsala Apartments Piraeus'), true);
+assert.strictEqual(booking.isVotsalaPropertyName('Votsala 1 Luxury Stay with Patio'), false);
+
+const htmlProps = booking.listBookingPropertiesFromHtml(`
+  <select>
+    <option value="10980606">Birdhouse Apartment</option>
+    <option value="5550001">Votsala</option>
+    <option value="7770002">Horizon</option>
+  </select>
+  <a href="/hotel/hoteladmin/extranet_ng/manage/home.html?hotel_id=8881112">Coloneum</a>
+`);
+const jsonProps = booking.harvestBookingProperties({
+  hotels: [
+    { hotel_id: '10980606', name: 'Birdhouse Apartment' },
+    { hotelId: '5550001', hotelName: 'Votsala' },
+    { property_id: '7770002', property_name: 'Horizon' },
+  ],
+});
+const idMap = booking.matchBookingProperties(htmlProps.concat(jsonProps), fleet);
+assert(idMap.linked.some((r) => r.aptId === 'b1' && r.bookingHotelId === '10980606'), 'Birdhouse id linked');
+assert(idMap.linked.filter((r) => r.how === 'votsala-group' && r.bookingHotelId === '5550001').length === 3, 'one Votsala id on all Votsala units');
+assert(idMap.linked.some((r) => r.aptId === 'h1' && r.bookingHotelId === '7770002'), 'Horizon token links Lycabettus Horizon');
+assert(!idMap.linked.some((r) => r.aptId === 'p1'), 'Panorama is not Horizon');
+assert(idMap.linked.some((r) => r.aptId === 'c1' && r.bookingHotelId === '8881112'), 'Coloneum from href');
+
+const verandaMap = booking.matchBookingProperties(
+  [
+    { hotelId: '2010001', name: 'The Athenian Veranda' },
+    { hotelId: '2020002', name: 'The Athenian Veranda 2' },
+    { hotelId: '2030003', name: 'The Athenian Veranda 3' },
+    { hotelId: '2040004', name: 'The Athenian Veranda 4' },
+  ],
+  fleet.concat([
+    { id: 'va3', name: 'The Athenian Veranda 3', aptName: 'The Athenian Veranda 3' },
+    { id: 'va4', name: 'The Athenian Veranda 4', aptName: 'The Athenian Veranda 4' },
+  ])
+);
+assert.strictEqual(verandaMap.linked.find((r) => r.aptId === 'va').bookingHotelId, '2010001');
+assert.strictEqual(verandaMap.linked.find((r) => r.aptId === 'va2').bookingHotelId, '2020002');
+assert.strictEqual(verandaMap.linked.find((r) => r.aptId === 'va3').bookingHotelId, '2030003');
+assert.strictEqual(verandaMap.linked.find((r) => r.aptId === 'va4').bookingHotelId, '2040004');
+
+const conflictFleet = fleet.map(function (a) {
+  return Object.assign({}, a, a.id === 'b1' ? { bookingHotelId: '9999999' } : {});
+});
+const conflicted = booking.matchBookingProperties([{ hotelId: '10980606', name: 'Birdhouse Apartment' }], conflictFleet);
+assert(conflicted.skipped.some((s) => s.aptId === 'b1' && s.reason === 'conflict'), 'does not overwrite a different saved id');
+
+const applied = booking.applyBookingHotelIds(fleet, idMap.linked);
+assert.strictEqual(applied.apts.find((a) => a.id === 'b1').bookingHotelId, '10980606');
+assert.strictEqual(applied.apts.find((a) => a.id === 'v1').bookingHotelId, '5550001');
+assert.strictEqual(applied.apts.find((a) => a.id === 'v3').bookingHotelId, '5550001');
+
+const amb = booking.matchBookingProperties([{ hotelId: '1110001', name: 'Lycabettus' }], fleet);
+assert(amb.unmatched.some((u) => u.reason === 'ambiguous'), 'shared Lycabettus token stays unmatched');
+
+const collected = booking.collectBookingPropertyRows({
+  html: '<a href="/hotel/hoteladmin/extranet_ng/manage/home.html?hotel_id=3330003">Art House</a>',
+  json: { hotels: [{ hotel_id: '10980606', name: 'Birdhouse Apartment' }] },
+  dom: [{ hotelId: '8881112', name: 'Coloneum' }],
+});
+assert(collected.some((r) => r.hotelId === '10980606' && /birdhouse/i.test(r.name)), 'collect json');
+assert(collected.some((r) => r.hotelId === '8881112'), 'collect dom');
+assert(collected.some((r) => r.hotelId === '3330003' && /art house/i.test(r.name)), 'collect html');
+
+booking
+  .scrapeBookingProperties(
+    {
+      _fns: [],
+      on(ev, fn) {
+        if (ev === 'response') this._fns.push(fn);
+      },
+      off(ev, fn) {
+        this._fns = this._fns.filter((f) => f !== fn);
+      },
+      async goto(url) {
+        this._fns.forEach((fn) =>
+          fn({
+            headers() {
+              return { 'content-type': 'application/json' };
+            },
+            url() {
+              return String(url) + '/partner/api/hotels.json';
+            },
+            async text() {
+              return JSON.stringify({ hotels: [{ hotelId: '4440004', hotelName: 'The Monograph' }] });
+            },
+          })
+        );
+      },
+      async waitForTimeout() {},
+      async content() {
+        return '<option value="10980606">Birdhouse Apartment</option>';
+      },
+      async evaluate() {
+        return [{ hotelId: '8881112', name: 'Coloneum' }];
+      },
+    },
+    { urls: ['https://admin.booking.com/'], waitMs: 0 }
+  )
+  .then(function (scraped) {
+    assert(scraped.some((r) => r.hotelId === '10980606'), 'scrape html options');
+    assert(scraped.some((r) => r.hotelId === '8881112'), 'scrape evaluate rows');
+    assert(scraped.some((r) => r.hotelId === '4440004' && /monograph/i.test(r.name)), 'scrape json intercept');
+    const fe129 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-129.json'), 'utf8'));
+    const srv93 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-93.json'), 'utf8'));
+    assert.strictEqual(fe129.baseSha256, fe128.expectedSha256, 'FE 129 continues FE 128');
+    assert.strictEqual(srv93.baseSha256, srv92.expectedSha256, 'SRV 93 continues SRV 92');
+    assert(fe129.patches.some((p) => (p.replace || '').includes('piMapBookingIds')), 'FE Map Booking.com IDs handler');
+    assert(fe129.patches.some((p) => (p.replace || '').includes('id="pi-map-bdc-btn"')), 'FE Map button');
+    assert(srv93.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/booking-map'")), 'SRV booking-map route');
+    assert(srv93.patches.some((p) => (p.replace || '').includes('scrapeBookingProperties')), 'SRV scrapes from the Connect session');
+    assert(srv93.patches.some((p) => (p.replace || '').includes('applyBookingHotelIds')), 'SRV writes bookingHotelId onto apartments');
+    assert(!/BOOKING_HOST_PASSWORD/.test(JSON.stringify(srv93.patches)), 'mapping does not password-login');
+    console.log('platform-invoice-booking.test.js: ok');
+  })
+  .catch(function (e) {
+    console.error(e);
+    process.exit(1);
+  });

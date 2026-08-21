@@ -53,7 +53,11 @@ Airbnb does not expose a labeled download link on the reservation details page �
 No manual pasting of codes. **Booking.com:** download the month’s invoice PDFs as a zip from
 group Finance → Invoices, then **Upload Booking.com zip** on Collect. Each PDF is filed by
 `bookingHotelId` and issue month (`Booking.com/{YYYY-MM}/{apartment}/`). Votsala 1–8 share
-one id / one PDF. Unmapped ids land in `unmapped-{id}` until you paste the id on Configuration.
+one id / one PDF. **Map Booking.com IDs** on Collect reads the property list from the
+saved Connect Booking session (live in-app browser if still open, otherwise the
+session vault) and writes `bookingHotelId` onto Configuration apartments by name
+(Votsala group = one id). It does not password-login. Unmapped ids land in
+`unmapped-{id}` until that map (or a paste on Configuration) fills the id.
 Pull Booking.com (`channel=booking`) remains under Emergency only.
 
 ## Railway variables
@@ -75,7 +79,7 @@ Pull Booking.com (`channel=booking`) remains under Emergency only.
 
 1. Reuses Airbnb / Booking session vault (or password login). **Booking Pull will not password-login while the server-IP cooldown is active** — Connect and Pull share the same Postgres row. A missing/expired Booking session fails closed instead of filling `BOOKING_HOST_PASSWORD` from the Railway IP.
 2. **Airbnb:** for each Hosthub confirmation code → reservation page → **every** VAT invoice / credit note HTML → PDF stored as `Airbnb/{issue-month}/{apartment}/{kind}-{code}-{vatId}.pdf`.
-3. **Booking.com:** **Upload Booking.com zip** (Finance → Invoices mass-download). One PDF per Booking property; **Votsala 1–8 share one PDF** filed under `Votsala`. Filing key is `bookingHotelId` (unmapped → `unmapped-{id}`). Month comes from the PDF issue date (filename as fallback; Collect month last). Pull Booking.com / Connect Booking are emergency-only. No Booking.com Excel from Pull.
+3. **Booking.com:** **Map Booking.com IDs** (Connect session → Configuration `bookingHotelId`) then **Upload Booking.com zip** (Finance → Invoices mass-download). One PDF per Booking property; **Votsala 1–8 share one PDF** filed under `Votsala`. Filing key is `bookingHotelId` (unmapped → `unmapped-{id}`). Month comes from the PDF issue date (filename as fallback; Collect month last). Pull Booking.com / Connect Booking are emergency-only. Mapping is `POST /api/platform-invoices/booking-map` (no password login). No Booking.com Excel from Pull.
 4. Zip ingest is `POST /api/platform-invoices/booking-zip` (`source=upload`). Airbnb Pull is still `POST /api/platform-invoices/pull` (`source=portal`).
 
 CLI with codes:
@@ -117,18 +121,23 @@ AIRBNB_HOST_EMAIL='…' AIRBNB_HOST_PASSWORD='…' \
    If Airlock/bot checks keep blocking login, set optional `PLAYWRIGHT_PROXY_SERVER`
    (residential proxy).
 
-3. **Upload Booking.com zip** — on admin.booking.com go to Finance → Invoices, download
+3. **Map Booking.com IDs** once — Collect uses the saved Connect Booking
+   session (or the live in-app browser) to list Extranet properties and write
+   `bookingHotelId` onto Configuration. Votsala 1–8 share one id. It does not
+   password-login; if the session expired, Connect Booking again under Emergency.
+
+4. **Upload Booking.com zip** — on admin.booking.com go to Finance → Invoices, download
    the month’s PDFs as a zip, then **Upload Booking.com zip** on Collect. The server
    reads each PDF’s hotel id and issue month, maps via Configuration
    **Booking.com hotel / apartment id**, and files under
    `Booking.com/{YYYY-MM}/{apartment}/`. Votsala 1–8 share one id / one PDF.
-   Unmapped ids land in `unmapped-{id}` until you paste the id and upload again
+   Unmapped ids land in `unmapped-{id}` until you Map (or paste the id) and upload again
    (delete the unmapped row first if the same invoice number is already in the vault).
 
-4. **Pull Airbnb** for the selected month (incomplete stays first; already-saved
+5. **Pull Airbnb** for the selected month (incomplete stays first; already-saved
    invoices skipped).
 
-5. Review → Ship.
+6. Review → Ship.
 
 If Airbnb Pull returns 0 PDFs with “session expired”, Connect Airbnb again (sessions
 expire). Do not paste Airbnb invoices by hand.

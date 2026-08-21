@@ -1,0 +1,43 @@
+{
+ "patches": [
+  {
+   "note": "Collect copy: Map Booking.com IDs then zip",
+   "find": "        <b>Upload Booking.com zip</b> of invoice PDFs from admin.booking.com Finance → Invoices. Files are sorted by hotel id and issue month (Votsala = one PDF). Pull Booking.com is under Emergency only.",
+   "replace": "        <b>Map Booking.com IDs</b> reads the Extranet property list from the saved Connect Booking session (no password login) and writes hotel ids onto Configuration (Votsala = one id). Then <b>Upload Booking.com zip</b> of invoice PDFs from admin.booking.com Finance → Invoices. Files are sorted by hotel id and issue month. Pull Booking.com is under Emergency only.",
+   "count": 1
+  },
+  {
+   "note": "Collect Map Booking.com IDs next to zip upload",
+   "find": "        <label class=\"btn sm gold\" id=\"pi-bdc-zip-label\">Upload Booking.com zip<input id=\"pi-bdc-zip\" type=\"file\" accept=\".zip,application/zip\" hidden onchange=\"piUploadBookingZip(this)\"/></label>",
+   "replace": "        <button class=\"btn sm gold\" id=\"pi-map-bdc-btn\" onclick=\"piMapBookingIds()\">Map Booking.com IDs</button>\n        <label class=\"btn sm gold\" id=\"pi-bdc-zip-label\">Upload Booking.com zip<input id=\"pi-bdc-zip\" type=\"file\" accept=\".zip,application/zip\" hidden onchange=\"piUploadBookingZip(this)\"/></label>",
+   "count": 1
+  },
+  {
+   "note": "piMapBookingIds posts apartments and writes bookingHotelId",
+   "find": "    reader.readAsDataURL(file);\n  };\n  window.piSend = async function (scope) {",
+   "replace": "    reader.readAsDataURL(file);\n  };\n  window.piMapBookingIds = async function () {\n    var btn = document.getElementById('pi-map-bdc-btn');\n    if (btn) btn.disabled = true;\n    msg('Reading Booking.com property IDs from the Connect session…', true);\n    try {\n      var apts = (typeof S !== 'undefined' && Array.isArray(S.apts))\n        ? S.apts.map(function (a) {\n            return {\n              aptId: a.id || a.aptId || '',\n              aptName: a.name || a.aptName || '',\n              bookingHotelId: String(a.bookingHotelId || '').trim(),\n              clearGroup: String(a.clearGroup || '').trim(),\n              aliases: Array.isArray(a.aliases) ? a.aliases : []\n            };\n          })\n        : [];\n      var res = await fetch('/api/platform-invoices/booking-map', {\n        method: 'POST', headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ apartments: apts })\n      });\n      var j = await res.json();\n      if (!res.ok || !j || !j.ok) throw new Error((j && (j.error || j.hint)) || 'map failed');\n      (j.linked || []).forEach(function (r) {\n        if (!r || !r.bookingHotelId) return;\n        var a = (typeof S !== 'undefined' && Array.isArray(S.apts))\n          ? S.apts.find(function (x) { return String(x.id || x.aptId || '') === String(r.aptId || ''); })\n          : null;\n        if (a) a.bookingHotelId = r.bookingHotelId;\n      });\n      if (typeof save === 'function') save();\n      if (typeof renderCfg === 'function') renderCfg();\n      var n = (j.linked || []).length;\n      var bits = ['Linked ' + n + ' apartment(s) to Booking.com IDs'];\n      if ((j.already || []).length) bits.push((j.already || []).length + ' already set');\n      if ((j.unmatched || []).length) bits.push((j.unmatched || []).length + ' unmatched');\n      if ((j.skipped || []).length) bits.push((j.skipped || []).length + ' conflict (kept existing id)');\n      var names = (j.unmatched || []).map(function (u) { return u.name || u.hotelId; }).filter(Boolean).slice(0, 8);\n      if (names.length) bits.push(names.join(', '));\n      msg(bits.join(' · ') + ((j.unmatched || []).length ? ' — remaining ids on Configuration' : ''), !(j.unmatched || []).length);\n    } catch (e) {\n      msg((e && e.message) ? e.message : String(e), false);\n    } finally {\n      if (btn) btn.disabled = false;\n    }\n  };\n  window.piSend = async function (scope) {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piMapBookingIds",
+   "note": "map handler"
+  },
+  {
+   "has": "id=\"pi-map-bdc-btn\"",
+   "note": "map button"
+  },
+  {
+   "has": "Map Booking.com IDs",
+   "note": "map CTA"
+  },
+  {
+   "has": "/api/platform-invoices/booking-map",
+   "note": "map endpoint"
+  }
+ ],
+ "baseSha256": "fd729fc9a9bf515c39431b88692a815df719e08cc323d4f5940f792b7a6d3ee5",
+ "expectedSha256": "e337b2c12b52f7f179722dad98c29931cd3a0d94c9522ac2a34f19df969cc954",
+ "builtAt": "2026-08-21 Map Booking.com hotel ids from Connect session"
+}
