@@ -77,7 +77,10 @@ const helpers = vm.runInNewContext(helperSrc + '\n({ airbnbHaveKey, loadAirbnbHa
 });
 assert.strictEqual(helpers.airbnbHaveKey('invoice', 'hm3tw2mmbx'), 'invoice:HM3TW2MMBX');
 const have = helpers.loadAirbnbHaveSet();
-assert(!helpers.airbnbResvAlreadyHave({ code: 'HMALREADY', kind: 'invoice' }, have), 'one saved PDF does not skip the stay');
+assert(helpers.airbnbResvAlreadyHave({ code: 'HMALREADY', kind: 'invoice' }, have), 'a vaulted invoice PDF skips that stay on retry');
+assert(helpers.airbnbResvAlreadyHave({ code: 'HMCREDIT1', kind: 'credit_note' }, have), 'a vaulted credit-note PDF skips that stay on retry');
+assert(helpers.airbnbResvAlreadyHave({ code: 'HMKEEP01', kind: 'invoice' }, have), 'invoice PDF with VAT id still skips the stay');
+assert(!helpers.airbnbResvAlreadyHave({ code: 'HM3TW2MMBX', kind: 'invoice' }, have), 'unknown code is not skipped');
 assert(helpers.airbnbDocAlreadyHave(have, 'invoice', 'HMALREADY', ''));
 assert(helpers.airbnbDocAlreadyHave(have, 'invoice', 'HMKEEP01', 'INV99ABC'));
 assert(!helpers.airbnbDocAlreadyHave(have, 'invoice', 'HMKEEP01', 'CN88XYZ'));
