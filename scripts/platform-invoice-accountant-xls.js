@@ -104,6 +104,46 @@ function hotelIdFromBookingRow(row) {
   return u ? u[1] : '';
 }
 
+function codeFromFilename(row) {
+  const leaf = String((row && row.filename) || '')
+    .split('/')
+    .pop() || '';
+  const m = leaf.toUpperCase().match(/(?:INVOICE|CREDIT_NOTE)-([A-Z0-9]{6,20})/);
+  return m ? m[1] : '';
+}
+
+function listingFromFilename(row) {
+  const parts = String((row && row.filename) || '').split('/').filter(Boolean);
+  // Airbnb/2026-07/Birdhouse/invoice-CODE-vat.pdf
+  if (parts.length >= 4) return parts[2];
+  return '';
+}
+
+function dmyKey(s) {
+  const m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return 0;
+  return Date.UTC(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+}
+
+function airCode(b) {
+  return String((b && (b.reservationId || b.reservation_id || b.confirmationCode || b.code)) || '')
+    .trim()
+    .toUpperCase();
+}
+
+function indexBookings(bks) {
+  const map = {};
+  (bks || []).forEach(function (b) {
+    const plat = String((b && (b.platform || b.channel)) || '').toLowerCase();
+    if (plat && plat.indexOf('air') < 0 && plat.indexOf('booking') < 0) return;
+    const c = airCode(b);
+    if (!c) return;
+    const prev = map[c];
+    if (!prev || dmyKey(b.checkOut) >= dmyKey(prev.checkOut)) map[c] = b;
+  });
+  return map;
+}
+
 function accountantRow(row, byCode) {
   const meta = parseMeta(row);
   const ch = String((row && row.channel) || '').toLowerCase();

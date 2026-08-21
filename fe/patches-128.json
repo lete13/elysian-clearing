@@ -14,8 +14,8 @@
   },
   {
    "note": "Emergency tools keep Pull/Connect Booking and single PDF upload",
-   "find": "          <select id=\"pi-bdc-apt\" style=\"min-width:200px;font-size:12px;padding:6px 8px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg)\"></select>\n          <label class=\"btn sm\">Upload PDF<input id=\"pi-files\" type=\"file\" accept=\".pdf,application/pdf\" multiple hidden onchange=\"piUploadMany(this,'leased')\"/></label>",
-   "replace": "          <select id=\"pi-bdc-apt\" style=\"min-width:200px;font-size:12px;padding:6px 8px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg)\"></select>\n          <label class=\"btn sm\">Upload PDF<input id=\"pi-files\" type=\"file\" accept=\".pdf,application/pdf\" multiple hidden onchange=\"piUploadMany(this,'leased')\"/></label>\n          <button class=\"btn sm\" id=\"pi-pull-bdc-btn\" onclick=\"piPullBooking()\">Pull Booking.com</button>\n          <button class=\"btn sm\" id=\"pi-connect-booking-btn\" onclick=\"piConnectBookingInApp()\">Connect Booking</button>",
+   "find": "          <select id=\"pi-bdc-apt\" style=\"min-width:200px;font-size:12px;padding:6px 8px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg)\"></select>\n          <label class=\"btn sm\">Upload PDF<input id=\"pi-files\" type=\"file\" accept=\".pdf,application/pdf\" multiple hidden onchange=\"piUploadMany(this,'leased')\"/></label>\n        </div>",
+   "replace": "          <select id=\"pi-bdc-apt\" style=\"min-width:200px;font-size:12px;padding:6px 8px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg)\"></select>\n          <label class=\"btn sm\">Upload PDF<input id=\"pi-files\" type=\"file\" accept=\".pdf,application/pdf\" multiple hidden onchange=\"piUploadMany(this,'leased')\"/></label>\n          <button class=\"btn sm\" id=\"pi-pull-bdc-btn\" onclick=\"piPullBooking()\">Pull Booking.com</button>\n          <button class=\"btn sm\" id=\"pi-connect-booking-btn\" onclick=\"piConnectBookingInApp()\">Connect Booking</button>\n        </div>\n        <div style=\"font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.4\">Connect Booking: click the username field in the screenshot or type it in the box (it is filled for you), wait for the password field, then continue.</div>",
    "count": 1
   },
   {
@@ -44,6 +44,6 @@
   }
  ],
  "baseSha256": "0eb9c8b5dd37a2065e4f73a27dbb1c9230526758150f7732b75697bcb02fbdc4",
- "expectedSha256": "4179efd3af37f4517eca013767e17dee95ac18cbb9e31b9b386ad09408270755",
+ "expectedSha256": "fd729fc9a9bf515c39431b88692a815df719e08cc323d4f5940f792b7a6d3ee5",
  "builtAt": "2026-08-21 Booking.com zip ingest by hotel id and month"
 }
