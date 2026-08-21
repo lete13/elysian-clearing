@@ -477,8 +477,10 @@ booking
     assert(scraped.some((r) => r.hotelId === '8881112'), 'scrape evaluate rows');
     assert(scraped.some((r) => r.hotelId === '4440004' && /monograph/i.test(r.name)), 'scrape json intercept');
     const fe129 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-129.json'), 'utf8'));
+    const fe130 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-130.json'), 'utf8'));
     const srv93 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-93.json'), 'utf8'));
     assert.strictEqual(fe129.baseSha256, fe128.expectedSha256, 'FE 129 continues FE 128');
+    assert.strictEqual(fe130.baseSha256, fe129.expectedSha256, 'FE 130 continues FE 129');
     assert.strictEqual(srv93.baseSha256, srv92.expectedSha256, 'SRV 93 continues SRV 92');
     assert(fe129.patches.some((p) => (p.replace || '').includes('piMapBookingIds')), 'FE Map Booking.com IDs handler');
     assert(fe129.patches.some((p) => (p.replace || '').includes('id="pi-map-bdc-btn"')), 'FE Map button');
@@ -486,6 +488,21 @@ booking
     assert(srv93.patches.some((p) => (p.replace || '').includes('scrapeBookingProperties')), 'SRV scrapes from the Connect session');
     assert(srv93.patches.some((p) => (p.replace || '').includes('applyBookingHotelIds')), 'SRV writes bookingHotelId onto apartments');
     assert(!/BOOKING_HOST_PASSWORD/.test(JSON.stringify(srv93.patches)), 'mapping does not password-login');
+    const mapPatch = fe130.patches.find((p) => (p.replace || '').includes('BOOKING_HOTEL_IDS'));
+    assert(mapPatch, 'FE 130 stores Booking.com hotel ids');
+    const mapMatch = String(mapPatch.replace).match(/const BOOKING_HOTEL_IDS = (\{[\s\S]*?\});/);
+    assert(mapMatch, 'FE 130 hotel id object is extractable');
+    const liveIds = Function('return ' + mapMatch[1])();
+    assert.strictEqual(liveIds['Birdhouse Apartment'], '11820968', 'Birdhouse live id');
+    assert.strictEqual(liveIds['Votsala 1 Luxury Stay with Patio'], '13180441', 'Votsala live id');
+    assert.strictEqual(liveIds['The Athenian Veranda 4'], '13870170', 'Veranda 4 live id');
+    assert.strictEqual(liveIds['Elysian Lycabettus - Horizon'], '15109307', 'Horizon live id');
+    assert.strictEqual(liveIds['Elysian Lycabettus - Panorama'], '15139682', 'Panorama live id');
+    assert.strictEqual(liveIds['Filoxenia Apartment Athens'], '8519226', 'Filoxenia live id');
+    assert.strictEqual(liveIds['Filonexia Apartment Athens'], '8519226', 'Filonexia spelling maps to the same id');
+    assert.strictEqual(liveIds['Sunset Nest in Fiskardo'], undefined, 'Sunset Nest has no Booking.com listing URL');
+    assert.strictEqual(liveIds['Villa Liberty'], undefined, 'Villa Liberty has no Booking.com listing URL');
+    assert(fe130.patches.some((p) => (p.replace || '').includes('bookingHotelIdForName')), 'FE 130 applyDefaults fills blank bookingHotelId');
     console.log('platform-invoice-booking.test.js: ok');
   })
   .catch(function (e) {

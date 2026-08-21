@@ -1,0 +1,45 @@
+{
+ "patches": [
+  {
+   "note": "Booking.com hotel ids for platform-invoice filing",
+   "find": "function applyDefaults(){\n  // Apply Excel defaults to existing properties (fill blanks only) or add new ones\n",
+   "replace": "const BOOKING_HOTEL_IDS = {\n  \"Pixie Studio Athens\": \"13787615\",\n  \"ARITI 7\": \"16179987\",\n  \"City Nexus Family apt, Kolonos\": \"11697418\",\n  \"Votsala 5 Luxury Studio with Balcony in Piraeus\": \"13180441\",\n  \"Le Grace, Urban Retreat Near CityCenter & Sea\": \"15616835\",\n  \"The Athenian Veranda 2\": \"13870030\",\n  \"Art Island Apartment\": \"3691249\",\n  \"Filoxenia Apartment Athens\": \"8519226\",\n  \"Filonexia Apartment Athens\": \"8519226\",\n  \"Elysian Cornerstone\": \"16142352\",\n  \"The Tauros Metro Residence\": \"16147899\",\n  \"Coloneum\": \"12240693\",\n  \"The Brightline Apartment Athens\": \"14678384\",\n  \"Athens Riviera Escape\": \"16095913\",\n  \"Cozy Acropolis backyard haven\": \"14526412\",\n  \"Elysian Lycabettus - Horizon\": \"15109307\",\n  \"Svorex Apartment 1\": \"16037747\",\n  \"Acropolis Skyline Sunset\": \"13530943\",\n  \"The Athenian Veranda 3\": \"13870130\",\n  \"Votsala 3 Deluxe & Modern Apartment in Piraeus\": \"13180441\",\n  \"Athens Unity Apartment\": \"15446308\",\n  \"Le Plaza, Modern Escape near Thessaloniki Center\": \"8856583\",\n  \"Birdhouse Apartment\": \"11820968\",\n  \"Stylish Downtown Apartment\": \"12088477\",\n  \"Elysian Lycabettus Resilience\": \"15863661\",\n  \"Elysian Ithaki\": \"16681558\",\n  \"The Monograph\": \"14511943\",\n  \"Eclectic Apartment with Stunning Seaview\": \"8061808\",\n  \"The Olive & Cedar Apartment\": \"16413046\",\n  \"Urban Cedar Apartment\": \"16418733\",\n  \"Cozy Corner Zografou\": \"16563803\",\n  \"The Athenian Veranda 4\": \"13870170\",\n  \"Le Floor, Urban Escape near Thessaloniki center\": \"10301287\",\n  \"Votsala 8 Elegant & Modern Apartment in Piraeus\": \"13180441\",\n  \"Elysian Hightower\": \"16264920\",\n  \"Votsala 6 Deluxe & Modern Apartment in Piraeus\": \"13180441\",\n  \"Elysian Lycabettus - Panorama\": \"15139682\",\n  \"Votsala 1 Luxury Stay with Patio\": \"13180441\",\n  \"The Athenian Veranda\": \"13869983\",\n  \"Votsala 2 Luxury Stay with Patio\": \"13180441\",\n  \"The Athenian Cedar\": \"16401227\",\n  \"Votsala 7 Small & Elegant Apartment in Piraeus\": \"13180441\",\n  \"Elysian Smyrni | Marble Elegance Retreat\": \"15244054\",\n  \"The Athenian Atelier | Kolonaki Sqr\": \"16042781\",\n  \"Le Alex, Bright & Modern Escape near CityCenter\": \"9889560\",\n  \"Navarino Athenian Nest\": \"15253339\",\n  \"Votsala 4 Small & Elegant Apartment in Piraeus\": \"13180441\",\n  \"Avenue of Gods: Irakli's Retreat\": \"14229780\",\n  \"Art House\": \"2694511\",\n  \"The Athenian Vintage\": \"14519003\",\n  \"Seaside Lavrio Beach House\": \"12589775\",\n  \"P & G Apartment\": \"3576367\",\n  \"The Skarlatos residence\": \"16752461\",\n  \"The Skarlatos Residence\": \"16752461\",\n  \"Vista Acropolis\": \"16750800\",\n  \"Elysian Agon\": \"16782880\",\n  \"A modern & Peaceful apartment • Near metro station\": \"16790678\",\n  \"Pallantides Residence\": \"16965040\",\n  \"Amarysia Residence\": \"16970823\",\n  \"Elysian Ariadne\": \"17003695\",\n  \"Elysian Mary\": \"17003916\"\n};\nfunction bookingHotelIdForName(name) {\n  return BOOKING_HOTEL_IDS[String(name || '').trim()] || '';\n}\nfunction applyDefaults(){\n  // Apply Excel defaults to existing properties (fill blanks only) or add new ones\n",
+   "count": 1
+  },
+  {
+   "note": "applyDefaults fills blank bookingHotelId from the Booking.com id map",
+   "find": "      if(!apt.profile){\n        if(!apt.municipalityTax && def.municipalityTax) apt.municipalityTax = def.municipalityTax;\n        if(!apt.businessTax    && def.businessTax)     apt.businessTax     = def.businessTax;\n      }\n    }\n  });",
+   "replace": "      if(!apt.profile){\n        if(!apt.municipalityTax && def.municipalityTax) apt.municipalityTax = def.municipalityTax;\n        if(!apt.businessTax    && def.businessTax)     apt.businessTax     = def.businessTax;\n      }\n    }\n    if (!String(apt.bookingHotelId || '').trim()) {\n      apt.bookingHotelId = String(def.bookingHotelId || bookingHotelIdForName(apt.name) || bookingHotelIdForName(def.name) || '').trim();\n    }\n  });\n  (S.apts || []).forEach(function (a) {\n    if (!a || String(a.bookingHotelId || '').trim()) return;\n    var hid = bookingHotelIdForName(a.name);\n    if (hid) a.bookingHotelId = hid;\n  });",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "BOOKING_HOTEL_IDS",
+   "note": "hotel id map"
+  },
+  {
+   "has": "bookingHotelIdForName",
+   "note": "lookup helper"
+  },
+  {
+   "has": "\"Birdhouse Apartment\": \"11820968\"",
+   "note": "Birdhouse id"
+  },
+  {
+   "has": "\"13180441\"",
+   "note": "shared Votsala id"
+  },
+  {
+   "has": "apt.bookingHotelId = String(def.bookingHotelId || bookingHotelIdForName(apt.name)",
+   "note": "applyDefaults writes blank bookingHotelId"
+  },
+  {
+   "has": "\"Filoxenia Apartment Athens\": \"8519226\"",
+   "note": "production Filoxenia spelling"
+  }
+ ],
+ "baseSha256": "e337b2c12b52f7f179722dad98c29931cd3a0d94c9522ac2a34f19df969cc954",
+ "expectedSha256": "b5b487b953410fb690ce57ad136da866566b5ea59925fa89273c3385a740425f",
+ "builtAt": "2026-08-21 Store Booking.com hotel ids on all apartments"
+}
