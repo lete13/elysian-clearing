@@ -80,69 +80,53 @@ function fallbackInvoiceNumber(row) {
   const leaf = String((row && row.filename) || '')
     .split('/')
     .pop() || '';
+  const ch = String((row && row.channel) || '').toLowerCase();
+  if (ch === 'booking' || ch === 'bdc') {
+    const bdc = leaf.match(/invoice-(\d{5,10})(?:-([A-Za-z0-9._-]+))?(?:\.pdf)?$/i);
+    if (bdc && bdc[2]) return bdc[2];
+    if (bdc) return bdc[1];
+  }
   const m = leaf.toUpperCase().match(/(?:INVOICE|CREDIT_NOTE)-[A-Z0-9]{6,20}(?:-([A-Z0-9._-]+?))?(?:\.PDF)?$/);
   if (m && m[1]) return m[1];
   return '';
 }
 
-function codeFromFilename(row) {
+function hotelIdFromBookingRow(row) {
+  const meta = parseMeta(row);
+  if (meta.hotelId || meta.bookingHotelId) return String(meta.hotelId || meta.bookingHotelId).trim();
   const leaf = String((row && row.filename) || '')
     .split('/')
     .pop() || '';
-  const m = leaf.toUpperCase().match(/(?:INVOICE|CREDIT_NOTE)-([A-Z0-9]{6,20})/);
-  return m ? m[1] : '';
-}
-
-function listingFromFilename(row) {
-  const parts = String((row && row.filename) || '').split('/').filter(Boolean);
-  // Airbnb/2026-07/Birdhouse/invoice-CODE-vat.pdf
-  if (parts.length >= 4) return parts[2];
-  return '';
-}
-
-function dmyKey(s) {
-  const m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!m) return 0;
-  return Date.UTC(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
-}
-
-function airCode(b) {
-  return String((b && (b.reservationId || b.reservation_id || b.confirmationCode || b.code)) || '')
-    .trim()
-    .toUpperCase();
-}
-
-function indexBookings(bks) {
-  const map = {};
-  (bks || []).forEach(function (b) {
-    const plat = String((b && (b.platform || b.channel)) || '').toLowerCase();
-    if (plat && plat.indexOf('air') < 0 && plat.indexOf('booking') < 0) return;
-    const c = airCode(b);
-    if (!c) return;
-    const prev = map[c];
-    if (!prev || dmyKey(b.checkOut) >= dmyKey(prev.checkOut)) map[c] = b;
-  });
-  return map;
+  const m = leaf.match(/invoice-(\d{5,10})/i);
+  if (m) return m[1];
+  const folder = String((row && (row.aptName || row.partner)) || '');
+  const u = folder.match(/^unmapped-(\d{5,10})$/i);
+  return u ? u[1] : '';
 }
 
 function accountantRow(row, byCode) {
   const meta = parseMeta(row);
+  const ch = String((row && row.channel) || '').toLowerCase();
+  const isBooking = ch === 'booking' || ch === 'bdc';
   const invoiceNumber = String(meta.invoiceNumber || fallbackInvoiceNumber(row) || '').trim();
   const issueDate = String(meta.issueDate || '').trim();
   let total = meta.total;
   if (total === '' || total == null) total = '';
   else {
     const n = Number(total);
-    total = isFinite(n) ? (Math.round(n * 100) / 100) : total;
+    total = isFinite(n) ? Math.round(n * 100) / 100 : total;
   }
   const sign = meta.sign === '-' || (typeof total === 'number' && total < 0) ? '-' : '';
   if (typeof total === 'number') total = Math.abs(total);
   const creditFile = /credit/i.test(String((row && row.filename) || '')) || String((row && row.kind) || '') === 'credit_note';
   const outSign = sign || (creditFile ? '-' : '');
-  const code = String(meta.reservationId || row.reservationId || codeFromFilename(row) || '')
+  let code = String(meta.reservationId || row.reservationId || codeFromFilename(row) || '')
     .trim()
     .toUpperCase();
-  const bk = (byCode && code && byCode[code]) || null;
+  if (isBooking) {
+    code = String(meta.reservationId || row.reservationId || hotelIdFromBookingRow(row) || '').trim();
+  }
+  const bk = !isBooking && byCode && code ? byCode[code] : null;
   const listingName = String(
     meta.listingName ||
       (bk && bk.aptName) ||
@@ -151,8 +135,8 @@ function accountantRow(row, byCode) {
       listingFromFilename(row) ||
       ''
   ).trim();
-  const checkIn = String((meta.checkIn || (bk && bk.checkIn) || row.checkIn || '')).trim();
-  const checkOut = String((meta.checkOut || (bk && bk.checkOut) || row.checkOut || '')).trim();
+  const checkIn = isBooking ? '' : String(meta.checkIn || (bk && bk.checkIn) || row.checkIn || '').trim();
+  const checkOut = String(meta.checkOut || (bk && bk.checkOut) || row.checkOut || '').trim();
   return {
     issueDate: issueDate,
     invoiceNumber: invoiceNumber,
@@ -160,8 +144,9 @@ function accountantRow(row, byCode) {
     sign: outSign,
     reservationId: code,
     listingName: listingName,
-    checkIn: checkIn,
-    checkOut: checkOut,
+    checkIn: isBooking ? '' : checkIn,
+    checkOut: isBooking ? '' : checkOut,
+    channel: isBooking ? 'booking' : 'airbnb',
   };
 }
 
