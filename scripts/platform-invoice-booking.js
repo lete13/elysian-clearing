@@ -744,10 +744,7 @@ function reconcileBookingMonth(month, bks, apts, vaultRows) {
   (vaultRows || []).forEach(function (row) {
     const ch = String((row && row.channel) || '').toLowerCase();
     if (ch !== 'booking' && ch !== 'bdc') return;
-    if (row.month && String(row.month) !== String(month) && String(month || '')) {
-      // Prefer explicit month match when provided; still allow unscoped vault rows.
-      if (String(row.month) !== String(month)) return;
-    }
+    if (month && row.month && String(row.month) !== String(month)) return;
     const folder = String((row && (row.aptName || row.partner)) || '').trim();
     if (!folder) return;
     if (!filesByFolder[folder]) filesByFolder[folder] = [];

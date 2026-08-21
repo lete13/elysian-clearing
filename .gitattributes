@@ -1,0 +1,5 @@
+# Force LF for files whose sha256 gates the patch chains.
+server.js text eol=lf
+index.html text eol=lf
+srv/*.json text eol=lf
+fe/*.json text eol=lf

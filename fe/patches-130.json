@@ -1,45 +1,43 @@
 {
  "patches": [
   {
-   "note": "Booking.com hotel ids for platform-invoice filing",
-   "find": "function applyDefaults(){\n  // Apply Excel defaults to existing properties (fill blanks only) or add new ones\n",
-   "replace": "const BOOKING_HOTEL_IDS = {\n  \"Pixie Studio Athens\": \"13787615\",\n  \"ARITI 7\": \"16179987\",\n  \"City Nexus Family apt, Kolonos\": \"11697418\",\n  \"Votsala 5 Luxury Studio with Balcony in Piraeus\": \"13180441\",\n  \"Le Grace, Urban Retreat Near CityCenter & Sea\": \"15616835\",\n  \"The Athenian Veranda 2\": \"13870030\",\n  \"Art Island Apartment\": \"3691249\",\n  \"Filoxenia Apartment Athens\": \"8519226\",\n  \"Filonexia Apartment Athens\": \"8519226\",\n  \"Elysian Cornerstone\": \"16142352\",\n  \"The Tauros Metro Residence\": \"16147899\",\n  \"Coloneum\": \"12240693\",\n  \"The Brightline Apartment Athens\": \"14678384\",\n  \"Athens Riviera Escape\": \"16095913\",\n  \"Cozy Acropolis backyard haven\": \"14526412\",\n  \"Elysian Lycabettus - Horizon\": \"15109307\",\n  \"Svorex Apartment 1\": \"16037747\",\n  \"Acropolis Skyline Sunset\": \"13530943\",\n  \"The Athenian Veranda 3\": \"13870130\",\n  \"Votsala 3 Deluxe & Modern Apartment in Piraeus\": \"13180441\",\n  \"Athens Unity Apartment\": \"15446308\",\n  \"Le Plaza, Modern Escape near Thessaloniki Center\": \"8856583\",\n  \"Birdhouse Apartment\": \"11820968\",\n  \"Stylish Downtown Apartment\": \"12088477\",\n  \"Elysian Lycabettus Resilience\": \"15863661\",\n  \"Elysian Ithaki\": \"16681558\",\n  \"The Monograph\": \"14511943\",\n  \"Eclectic Apartment with Stunning Seaview\": \"8061808\",\n  \"The Olive & Cedar Apartment\": \"16413046\",\n  \"Urban Cedar Apartment\": \"16418733\",\n  \"Cozy Corner Zografou\": \"16563803\",\n  \"The Athenian Veranda 4\": \"13870170\",\n  \"Le Floor, Urban Escape near Thessaloniki center\": \"10301287\",\n  \"Votsala 8 Elegant & Modern Apartment in Piraeus\": \"13180441\",\n  \"Elysian Hightower\": \"16264920\",\n  \"Votsala 6 Deluxe & Modern Apartment in Piraeus\": \"13180441\",\n  \"Elysian Lycabettus - Panorama\": \"15139682\",\n  \"Votsala 1 Luxury Stay with Patio\": \"13180441\",\n  \"The Athenian Veranda\": \"13869983\",\n  \"Votsala 2 Luxury Stay with Patio\": \"13180441\",\n  \"The Athenian Cedar\": \"16401227\",\n  \"Votsala 7 Small & Elegant Apartment in Piraeus\": \"13180441\",\n  \"Elysian Smyrni | Marble Elegance Retreat\": \"15244054\",\n  \"The Athenian Atelier | Kolonaki Sqr\": \"16042781\",\n  \"Le Alex, Bright & Modern Escape near CityCenter\": \"9889560\",\n  \"Navarino Athenian Nest\": \"15253339\",\n  \"Votsala 4 Small & Elegant Apartment in Piraeus\": \"13180441\",\n  \"Avenue of Gods: Irakli's Retreat\": \"14229780\",\n  \"Art House\": \"2694511\",\n  \"The Athenian Vintage\": \"14519003\",\n  \"Seaside Lavrio Beach House\": \"12589775\",\n  \"P & G Apartment\": \"3576367\",\n  \"The Skarlatos residence\": \"16752461\",\n  \"The Skarlatos Residence\": \"16752461\",\n  \"Vista Acropolis\": \"16750800\",\n  \"Elysian Agon\": \"16782880\",\n  \"A modern & Peaceful apartment • Near metro station\": \"16790678\",\n  \"Pallantides Residence\": \"16965040\",\n  \"Amarysia Residence\": \"16970823\",\n  \"Elysian Ariadne\": \"17003695\",\n  \"Elysian Mary\": \"17003916\"\n};\nfunction bookingHotelIdForName(name) {\n  return BOOKING_HOTEL_IDS[String(name || '').trim()] || '';\n}\nfunction applyDefaults(){\n  // Apply Excel defaults to existing properties (fill blanks only) or add new ones\n",
+   "note": "Collect copy: Map Booking.com IDs then zip",
+   "find": "        <b>Upload Booking.com zip</b> of invoice PDFs from admin.booking.com Finance → Invoices. Files are sorted by hotel id and issue month (Votsala = one PDF). Pull Booking.com is under Emergency only.",
+   "replace": "        <b>Map Booking.com IDs</b> reads the Extranet property list from the saved Connect Booking session (no password login) and writes hotel ids onto Configuration (Votsala = one id). Then <b>Upload Booking.com zip</b> of invoice PDFs from admin.booking.com Finance → Invoices. Files are sorted by hotel id and issue month. Pull Booking.com is under Emergency only.",
    "count": 1
   },
   {
-   "note": "applyDefaults fills blank bookingHotelId from the Booking.com id map",
-   "find": "      if(!apt.profile){\n        if(!apt.municipalityTax && def.municipalityTax) apt.municipalityTax = def.municipalityTax;\n        if(!apt.businessTax    && def.businessTax)     apt.businessTax     = def.businessTax;\n      }\n    }\n  });",
-   "replace": "      if(!apt.profile){\n        if(!apt.municipalityTax && def.municipalityTax) apt.municipalityTax = def.municipalityTax;\n        if(!apt.businessTax    && def.businessTax)     apt.businessTax     = def.businessTax;\n      }\n    }\n    if (!String(apt.bookingHotelId || '').trim()) {\n      apt.bookingHotelId = String(def.bookingHotelId || bookingHotelIdForName(apt.name) || bookingHotelIdForName(def.name) || '').trim();\n    }\n  });\n  (S.apts || []).forEach(function (a) {\n    if (!a || String(a.bookingHotelId || '').trim()) return;\n    var hid = bookingHotelIdForName(a.name);\n    if (hid) a.bookingHotelId = hid;\n  });",
+   "note": "Collect Map Booking.com IDs next to zip upload",
+   "find": "        <label class=\"btn sm gold\" id=\"pi-bdc-zip-label\">Upload Booking.com zip<input id=\"pi-bdc-zip\" type=\"file\" accept=\".zip,application/zip\" hidden onchange=\"piUploadBookingZip(this)\"/></label>",
+   "replace": "        <button class=\"btn sm gold\" id=\"pi-map-bdc-btn\" onclick=\"piMapBookingIds()\">Map Booking.com IDs</button>\n        <label class=\"btn sm gold\" id=\"pi-bdc-zip-label\">Upload Booking.com zip<input id=\"pi-bdc-zip\" type=\"file\" accept=\".zip,application/zip\" hidden onchange=\"piUploadBookingZip(this)\"/></label>",
+   "count": 1
+  },
+  {
+   "note": "piMapBookingIds posts apartments and writes bookingHotelId",
+   "find": "    reader.readAsDataURL(file);\n  };\n  window.piSend = async function (scope) {",
+   "replace": "    reader.readAsDataURL(file);\n  };\n  window.piMapBookingIds = async function () {\n    var btn = document.getElementById('pi-map-bdc-btn');\n    if (btn) btn.disabled = true;\n    msg('Reading Booking.com property IDs from the Connect session…', true);\n    try {\n      var apts = (typeof S !== 'undefined' && Array.isArray(S.apts))\n        ? S.apts.map(function (a) {\n            return {\n              aptId: a.id || a.aptId || '',\n              aptName: a.name || a.aptName || '',\n              bookingHotelId: String(a.bookingHotelId || '').trim(),\n              clearGroup: String(a.clearGroup || '').trim(),\n              aliases: Array.isArray(a.aliases) ? a.aliases : []\n            };\n          })\n        : [];\n      var res = await fetch('/api/platform-invoices/booking-map', {\n        method: 'POST', headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ apartments: apts })\n      });\n      var j = await res.json();\n      if (!res.ok || !j || !j.ok) throw new Error((j && (j.error || j.hint)) || 'map failed');\n      (j.linked || []).forEach(function (r) {\n        if (!r || !r.bookingHotelId) return;\n        var a = (typeof S !== 'undefined' && Array.isArray(S.apts))\n          ? S.apts.find(function (x) { return String(x.id || x.aptId || '') === String(r.aptId || ''); })\n          : null;\n        if (a) a.bookingHotelId = r.bookingHotelId;\n      });\n      if (typeof save === 'function') save();\n      if (typeof renderCfg === 'function') renderCfg();\n      var n = (j.linked || []).length;\n      var bits = ['Linked ' + n + ' apartment(s) to Booking.com IDs'];\n      if ((j.already || []).length) bits.push((j.already || []).length + ' already set');\n      if ((j.unmatched || []).length) bits.push((j.unmatched || []).length + ' unmatched');\n      if ((j.skipped || []).length) bits.push((j.skipped || []).length + ' conflict (kept existing id)');\n      var names = (j.unmatched || []).map(function (u) { return u.name || u.hotelId; }).filter(Boolean).slice(0, 8);\n      if (names.length) bits.push(names.join(', '));\n      msg(bits.join(' · ') + ((j.unmatched || []).length ? ' — remaining ids on Configuration' : ''), !(j.unmatched || []).length);\n    } catch (e) {\n      msg((e && e.message) ? e.message : String(e), false);\n    } finally {\n      if (btn) btn.disabled = false;\n    }\n  };\n  window.piSend = async function (scope) {",
    "count": 1
   }
  ],
  "assertions": [
   {
-   "has": "BOOKING_HOTEL_IDS",
-   "note": "hotel id map"
+   "has": "piMapBookingIds",
+   "note": "map handler"
   },
   {
-   "has": "bookingHotelIdForName",
-   "note": "lookup helper"
+   "has": "id=\"pi-map-bdc-btn\"",
+   "note": "map button"
   },
   {
-   "has": "\"Birdhouse Apartment\": \"11820968\"",
-   "note": "Birdhouse id"
+   "has": "Map Booking.com IDs",
+   "note": "map CTA"
   },
   {
-   "has": "\"13180441\"",
-   "note": "shared Votsala id"
-  },
-  {
-   "has": "apt.bookingHotelId = String(def.bookingHotelId || bookingHotelIdForName(apt.name)",
-   "note": "applyDefaults writes blank bookingHotelId"
-  },
-  {
-   "has": "\"Filoxenia Apartment Athens\": \"8519226\"",
-   "note": "production Filoxenia spelling"
+   "has": "/api/platform-invoices/booking-map",
+   "note": "map endpoint"
   }
  ],
- "baseSha256": "e337b2c12b52f7f179722dad98c29931cd3a0d94c9522ac2a34f19df969cc954",
- "expectedSha256": "b5b487b953410fb690ce57ad136da866566b5ea59925fa89273c3385a740425f",
- "builtAt": "2026-08-21 Store Booking.com hotel ids on all apartments"
+ "baseSha256": "2ebc3d7edda7382f6da2ad5054601efd98114be5cf8ded281e8a1261b2a07dc1",
+ "expectedSha256": "4238b021077fbb50c46626996463389bcd37cd84fa3b7ef38aed088f8e56759e",
+ "builtAt": "2026-08-21 Map Booking.com hotel ids from Connect session"
 }

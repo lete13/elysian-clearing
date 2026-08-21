@@ -1,0 +1,37 @@
+{
+ "patches": [
+  {
+   "note": "Booking Connect context can reuse a saved storageState",
+   "find": "async function piBookingNewContext(browser) {\n  const context = await browser.newContext({\n    acceptDownloads: true,\n    viewport: { width: 1440, height: 900 },\n    locale: 'en-GB',\n    timezoneId: process.env.PI_AIRBNB_TZ || 'Europe/Athens',\n    geolocation: { latitude: 37.9838, longitude: 23.7275 },\n    permissions: ['geolocation'],\n    extraHTTPHeaders: { 'Accept-Language': 'en-GB,en;q=0.9,el;q=0.8' }\n  });",
+   "replace": "async function piBookingNewContext(browser, storageState) {\n  const ctxOpts = {\n    acceptDownloads: true,\n    viewport: { width: 1440, height: 900 },\n    locale: 'en-GB',\n    timezoneId: process.env.PI_AIRBNB_TZ || 'Europe/Athens',\n    geolocation: { latitude: 37.9838, longitude: 23.7275 },\n    permissions: ['geolocation'],\n    extraHTTPHeaders: { 'Accept-Language': 'en-GB,en;q=0.9,el;q=0.8' }\n  };\n  if (storageState) ctxOpts.storageState = storageState;\n  const context = await browser.newContext(ctxOpts);",
+   "count": 1
+  },
+  {
+   "note": "POST /api/platform-invoices/booking-map scrapes Extranet property ids",
+   "find": "app.post('/api/platform-invoices/booking-zip', async (req, res) => {",
+   "replace": "async function piPersistBookingHotelIds(linked) {\n  if (!pool || !linked || !linked.length) return 0;\n  try {\n    const r = await pool.query(\"SELECT data FROM app_data WHERE key='main'\");\n    if (!r.rows.length) return 0;\n    const data = r.rows[0].data || {};\n    const applied = piBooking.applyBookingHotelIds(data.apts || [], linked);\n    if (!applied.updated) return 0;\n    data.apts = applied.apts;\n    await pool.query(\"UPDATE app_data SET data=$1, updated_at=NOW() WHERE key='main'\", [data]);\n    return applied.updated;\n  } catch (ePersist) {\n    console.error('[platform-invoices] persist bookingHotelId', ePersist.message);\n    return 0;\n  }\n}\nfunction piBookingLiveMapJob() {\n  for (const job of _piLoginJobs.values()) {\n    if (!job || String(job.channel || '') !== 'booking') continue;\n    if (!job.context) continue;\n    if (job.status === 'error' || job.status === 'starting') continue;\n    return job;\n  }\n  return null;\n}\nasync function piBookingStorageStateForMap() {\n  const row = await piLoadPortalSession('booking');\n  if (row && row.storageState) return row.storageState;\n  const raw = process.env.BOOKING_STORAGE_STATE_B64 || process.env.BOOKING_STORAGE_STATE || '';\n  if (!raw) return null;\n  try {\n    if (String(raw).trim().charAt(0) === '{') return JSON.parse(raw);\n    return JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));\n  } catch (eState) { return null; }\n}\napp.post('/api/platform-invoices/booking-map', async (req, res) => {\n  const b = req.body || {};\n  let playwrightOk = false;\n  try { require.resolve('playwright'); playwrightOk = true; } catch (ePw) {}\n  if (!playwrightOk) return res.status(503).json({ error: 'playwright is not installed on this deploy' });\n  let apts = Array.isArray(b.apartments) ? b.apartments : [];\n  if (!apts.length && pool) {\n    try {\n      const rMain = await pool.query(\"SELECT data FROM app_data WHERE key='main'\");\n      apts = ((rMain.rows[0] && rMain.rows[0].data) || {}).apts || [];\n    } catch (eMain) {}\n  }\n  const noSession = {\n    error: 'No Booking.com Connect session',\n    hint: 'Open Emergency → Connect Booking, sign in on admin.booking.com, Save session, then Map Booking.com IDs. Mapping reuses that browser session and does not password-login.'\n  };\n  let page = null;\n  let browser = null;\n  let ownPage = false;\n  let usedLive = false;\n  let liveJob = null;\n  async function closeMap() {\n    if (ownPage && page) { try { await page.close(); } catch (eClose) {} }\n    if (browser) { try { await browser.close(); } catch (eBr) {} }\n  }\n  try {\n    liveJob = piBookingLiveMapJob();\n    if (liveJob && liveJob.context) {\n      try {\n        page = await liveJob.context.newPage();\n        ownPage = true;\n        usedLive = true;\n        try { piBookingBlock.attachPageWatch(page); } catch (eWatch) {}\n      } catch (eLive) {\n        page = null;\n        usedLive = false;\n        liveJob = null;\n      }\n    }\n    if (!page) {\n      const state = await piBookingStorageStateForMap();\n      if (!state) return res.status(503).json(noSession);\n      const pw = require('playwright');\n      browser = await piBookingLaunchBrowser(pw);\n      const context = await piBookingNewContext(browser, state);\n      page = await context.newPage();\n      ownPage = true;\n      try { piBookingBlock.attachPageWatch(page); } catch (eWatch2) {}\n    }\n    let blocked = false;\n    let loggedOut = false;\n    const run = async function (fn) {\n      if (liveJob) return piAirbnbRunBrowserAction(liveJob, fn);\n      return fn();\n    };\n    const properties = await run(async function () {\n      return piBooking.scrapeBookingProperties(page, {\n        waitMs: 1500,\n        afterGoto: async function (p) {\n          try {\n            const accept = p.locator('#onetrust-accept-btn-handler, button:has-text(\"Accept\")').first();\n            if (await accept.count()) await accept.click({ timeout: 1500 }).catch(function () {});\n          } catch (eCk) {}\n          if (await piBookingLooksBlocked(p)) { blocked = true; return true; }\n          if (!(await piBookingPageLooksLoggedIn(p))) { loggedOut = true; return true; }\n          return false;\n        }\n      });\n    });\n    if (blocked) {\n      await closeMap();\n      return res.status(429).json({ error: 'Booking.com blocked this server network', hint: piBookingBlockedHint() });\n    }\n    if (loggedOut && !(properties && properties.length)) {\n      await closeMap();\n      return res.status(401).json({\n        error: 'Booking.com session expired',\n        hint: 'Open Emergency → Connect Booking, sign in, Save session, then Map Booking.com IDs again. Mapping does not password-login.'\n      });\n    }\n    const mapped = piBooking.matchBookingProperties(properties, apts);\n    let persisted = 0;\n    if (mapped.linked && mapped.linked.length) persisted = await piPersistBookingHotelIds(mapped.linked);\n    await closeMap();\n    return res.json({\n      ok: true,\n      usedLive: usedLive,\n      persisted: persisted,\n      properties: mapped.properties,\n      linked: mapped.linked,\n      unmatched: mapped.unmatched,\n      skipped: mapped.skipped,\n      already: mapped.already\n    });\n  } catch (eMap) {\n    try { await closeMap(); } catch (eC2) {}\n    return res.status(500).json({ error: eMap.message || String(eMap) });\n  }\n});\napp.post('/api/platform-invoices/booking-zip', async (req, res) => {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "app.post('/api/platform-invoices/booking-map'",
+   "note": "Booking map route"
+  },
+  {
+   "has": "scrapeBookingProperties",
+   "note": "scrapes property list"
+  },
+  {
+   "has": "applyBookingHotelIds",
+   "note": "writes bookingHotelId"
+  },
+  {
+   "has": "piBookingStorageStateForMap",
+   "note": "reuses Connect session"
+  }
+ ],
+ "baseSha256": "cb1f6f5884fee73b66acdcb77e0e2a28d34e0b6844b726ce0affe78f005c970b",
+ "expectedSha256": "59991828a48455f4dc9ad3bf85c3cc69ca90ded127417777b1184214974dbf54",
+ "builtAt": "2026-08-21 Map Booking.com hotel ids from Connect session"
+}

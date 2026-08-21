@@ -74,8 +74,8 @@
    "note": "pull posts check-in"
   },
   {
-   "has": "reservation id / listing",
-   "note": "Excel stay columns in Review copy"
+   "has": "piDownloadAccountantXls",
+   "note": "accountant Excel download kept"
   },
   {
    "has": "Expect is which stays to open",

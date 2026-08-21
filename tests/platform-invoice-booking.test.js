@@ -147,7 +147,8 @@ const xls = buildAccountantXls(
   []
 ).toString('utf8');
 assert(xls.includes('AIUC-1'));
-assert(!xls.includes('BDC-1'), 'Excel still skips Booking.com');
+assert(xls.includes('BDC-1'), 'Excel includes matched Booking.com rows when provided');
+assert(xls.includes('Platform invoices') || xls.includes('Worksheet'), 'Excel worksheet present');
 
 assert.strictEqual(booking.bookingTooEarly('2026-07', new Date('2026-08-16T12:00:00Z')), false);
 assert.strictEqual(booking.bookingTooEarly('2026-08', new Date('2026-08-03T12:00:00Z')), true);
@@ -346,20 +347,25 @@ assert.strictEqual(
 );
 
 const fe128 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-128.json'), 'utf8'));
+const fe129 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-129.json'), 'utf8'));
 const srv92 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-92.json'), 'utf8'));
+const srv94 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-94.json'), 'utf8'));
 assert.strictEqual(fe128.baseSha256, JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-127.json'), 'utf8')).expectedSha256, 'FE 128 continues FE 127');
+assert.strictEqual(fe129.baseSha256, fe128.expectedSha256, 'FE 129 continues FE 128');
 assert.strictEqual(srv92.baseSha256, JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-91.json'), 'utf8')).expectedSha256, 'SRV 92 continues SRV 91');
-assert(fe128.patches.some((p) => (p.replace || '').includes('piUploadBookingZip')), 'FE zip upload handler');
-assert(fe128.patches.some((p) => (p.replace || '').includes('id="pi-bdc-zip"')), 'FE zip input');
-assert(fe128.patches.some((p) => (p.replace || '').includes('accept=".zip,application/zip"')), 'FE zip accept');
-const emergency = fe128.patches.find((p) => (p.note || '').indexOf('Emergency') >= 0);
+assert.strictEqual(srv94.baseSha256, JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-93.json'), 'utf8')).expectedSha256, 'SRV 94 continues SRV 93');
+assert(fe128.patches.some((p) => (p.replace || '').includes('piRunAgent')), 'FE 128 Run Agent');
+assert(fe129.patches.some((p) => (p.replace || '').includes('piUploadBookingZip')), 'FE zip upload handler');
+assert(fe129.patches.some((p) => (p.replace || '').includes('id="pi-bdc-zip"')), 'FE zip input');
+assert(fe129.patches.some((p) => (p.replace || '').includes('accept=".zip,application/zip"')), 'FE zip accept');
+const emergency = fe129.patches.find((p) => (p.note || '').indexOf('Emergency') >= 0);
 assert(emergency && /pi-pull-bdc-btn/.test(emergency.replace) && /pi-connect-booking-btn/.test(emergency.replace), 'Pull/Connect Booking moved to emergency tools');
-const primary = fe128.patches.find((p) => (p.replace || '').includes('id="pi-bdc-zip"'));
+const primary = fe129.patches.find((p) => (p.replace || '').includes('id="pi-bdc-zip"'));
 assert(primary && !/pi-pull-bdc-btn/.test(primary.replace), 'primary Collect row is the zip, not Pull Booking');
-assert(srv92.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/booking-zip'")), 'SRV booking-zip route');
-assert(srv92.patches.some((p) => (p.replace || '').includes('categorizeBookingZip')), 'SRV uses categorizeBookingZip');
-assert(srv92.patches.some((p) => (p.replace || '').includes('PLATFORM_INV_ZIP_MAX_B64')), 'SRV zip size cap');
-assert(srv92.patches.some((p) => /source:\s*'upload'/.test(p.replace || '')), 'zip ingest source=upload');
+assert(srv94.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/booking-zip'")), 'SRV booking-zip route');
+assert(srv94.patches.some((p) => (p.replace || '').includes('categorizeBookingZip')), 'SRV uses categorizeBookingZip');
+assert(srv94.patches.some((p) => (p.replace || '').includes('PLATFORM_INV_ZIP_MAX_B64')), 'SRV zip size cap');
+assert(srv94.patches.some((p) => /source:\s*'upload'/.test(p.replace || '')), 'zip ingest source=upload');
 
 const fleet = [
   { id: 'b1', name: 'Birdhouse Apartment', aptName: 'Birdhouse Apartment' },
@@ -476,24 +482,26 @@ booking
     assert(scraped.some((r) => r.hotelId === '10980606'), 'scrape html options');
     assert(scraped.some((r) => r.hotelId === '8881112'), 'scrape evaluate rows');
     assert(scraped.some((r) => r.hotelId === '4440004' && /monograph/i.test(r.name)), 'scrape json intercept');
-    const fe129 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-129.json'), 'utf8'));
     const fe130 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-130.json'), 'utf8'));
     const fe131 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-131.json'), 'utf8'));
+    const fe132 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-132.json'), 'utf8'));
     const srv93 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-93.json'), 'utf8'));
-    assert.strictEqual(fe129.baseSha256, fe128.expectedSha256, 'FE 129 continues FE 128');
+    const srv95 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-95.json'), 'utf8'));
     assert.strictEqual(fe130.baseSha256, fe129.expectedSha256, 'FE 130 continues FE 129');
     assert.strictEqual(fe131.baseSha256, fe130.expectedSha256, 'FE 131 continues FE 130');
+    assert.strictEqual(fe132.baseSha256, fe131.expectedSha256, 'FE 132 continues FE 131');
     assert.strictEqual(srv93.baseSha256, srv92.expectedSha256, 'SRV 93 continues SRV 92');
-    assert(fe129.patches.some((p) => (p.replace || '').includes('piMapBookingIds')), 'FE Map Booking.com IDs handler');
-    assert(fe129.patches.some((p) => (p.replace || '').includes('id="pi-map-bdc-btn"')), 'FE Map button');
-    assert(srv93.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/booking-map'")), 'SRV booking-map route');
-    assert(srv93.patches.some((p) => (p.replace || '').includes('scrapeBookingProperties')), 'SRV scrapes from the Connect session');
-    assert(srv93.patches.some((p) => (p.replace || '').includes('applyBookingHotelIds')), 'SRV writes bookingHotelId onto apartments');
-    assert(!/BOOKING_HOST_PASSWORD/.test(JSON.stringify(srv93.patches)), 'mapping does not password-login');
-    const mapPatch = fe130.patches.find((p) => (p.replace || '').includes('BOOKING_HOTEL_IDS'));
-    assert(mapPatch, 'FE 130 stores Booking.com hotel ids');
+    assert.strictEqual(srv95.baseSha256, srv94.expectedSha256, 'SRV 95 continues SRV 94');
+    assert(fe130.patches.some((p) => (p.replace || '').includes('piMapBookingIds')), 'FE Map Booking.com IDs handler');
+    assert(fe130.patches.some((p) => (p.replace || '').includes('id="pi-map-bdc-btn"')), 'FE Map button');
+    assert(srv95.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/booking-map'")), 'SRV booking-map route');
+    assert(srv95.patches.some((p) => (p.replace || '').includes('scrapeBookingProperties')), 'SRV scrapes from the Connect session');
+    assert(srv95.patches.some((p) => (p.replace || '').includes('applyBookingHotelIds')), 'SRV writes bookingHotelId onto apartments');
+    assert(!/BOOKING_HOST_PASSWORD/.test(JSON.stringify(srv95.patches)), 'mapping does not password-login');
+    const mapPatch = fe131.patches.find((p) => (p.replace || '').includes('BOOKING_HOTEL_IDS'));
+    assert(mapPatch, 'FE 131 stores Booking.com hotel ids');
     const mapMatch = String(mapPatch.replace).match(/const BOOKING_HOTEL_IDS = (\{[\s\S]*?\});/);
-    assert(mapMatch, 'FE 130 hotel id object is extractable');
+    assert(mapMatch, 'FE 131 hotel id object is extractable');
     const liveIds = Function('return ' + mapMatch[1])();
     assert.strictEqual(liveIds['Birdhouse Apartment'], '11820968', 'Birdhouse live id');
     assert.strictEqual(liveIds['Votsala 1 Luxury Stay with Patio'], '13180441', 'Votsala live id');
@@ -504,8 +512,8 @@ booking
     assert.strictEqual(liveIds['Filonexia Apartment Athens'], '8519226', 'Filonexia spelling maps to the same id');
     assert.strictEqual(liveIds['Sunset Nest in Fiskardo'], undefined, 'Sunset Nest has no Booking.com listing URL');
     assert.strictEqual(liveIds['Villa Liberty'], undefined, 'Villa Liberty was unset in the first map');
-    assert(fe130.patches.some((p) => (p.replace || '').includes('bookingHotelIdForName')), 'FE 130 applyDefaults fills blank bookingHotelId');
-    assert(fe131.patches.some((p) => (p.replace || '').includes('"Villa Liberty": "3575720"')), 'FE 131 sets Villa Liberty to 3575720');
+    assert(fe131.patches.some((p) => (p.replace || '').includes('bookingHotelIdForName')), 'FE 131 applyDefaults fills blank bookingHotelId');
+    assert(fe132.patches.some((p) => (p.replace || '').includes('"Villa Liberty": "3575720"')), 'FE 132 sets Villa Liberty to 3575720');
     console.log('platform-invoice-booking.test.js: ok');
   })
   .catch(function (e) {

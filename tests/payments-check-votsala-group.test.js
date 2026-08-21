@@ -14,8 +14,7 @@ const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 function applyKind(kind) {
   const baseName = kind === 'fe' ? 'index.html' : 'server.js';
-  let src = fs.readFileSync(path.join(root, baseName), 'utf8');
-  if (kind === 'fe') src = src.replace(/\r\n/g, '\n');
+  let src = fs.readFileSync(path.join(root, baseName), 'utf8').replace(/\r\n/g, '\n');
   let sha = sha256(src);
   let last = 'base';
   for (let n = 1; ; n++) {
@@ -53,8 +52,16 @@ function extractFn(source, name) {
 
 const fe = applyKind('fe');
 const srv = applyKind('srv');
-assert.strictEqual(fe.last, 'patches-131.json', 'FE 131 is the tip of the chain');
-assert.strictEqual(srv.last, 'patches-93.json', 'SRV 93 is the tip of the chain');
+assert.strictEqual(fe.last, 'patches-132.json', 'FE 132 is the tip of the chain');
+assert.strictEqual(srv.last, 'patches-95.json', 'SRV 95 is the tip of the chain');
+assert(fe.src.includes('piRunAgent'), 'FE includes Platform Invoices agent');
+assert(srv.src.includes("app.post('/api/platform-invoices/agent'"), 'SRV includes Platform Invoices agent');
+assert(srv.src.includes("j.event === 'already_have'"), 'SRV tracks already_have');
+assert(srv.src.includes('return await new Promise(function (resolvePull)'), 'SRV awaits pull worker');
+assert(fe.src.includes('piUploadBookingZip'), 'FE includes Booking.com zip upload');
+assert(fe.src.includes('"Villa Liberty": "3575720"'), 'FE includes Villa Liberty hotel id');
+assert(srv.src.includes("app.post('/api/platform-invoices/booking-zip'"), 'SRV includes Booking zip ingest');
+assert(srv.src.includes("app.post('/api/platform-invoices/booking-map'"), 'SRV includes Booking id map');
 assert(fe.src.includes("if (g && !/^votsala$/i.test(g)) g = '';"), 'client ignores non-Votsala groups');
 assert(srv.src.includes('function pcvPayGroup'), 'server pay-group helper shipped');
 
