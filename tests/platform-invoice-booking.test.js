@@ -367,6 +367,122 @@ assert(srv94.patches.some((p) => (p.replace || '').includes('categorizeBookingZi
 assert(srv94.patches.some((p) => (p.replace || '').includes('PLATFORM_INV_ZIP_MAX_B64')), 'SRV zip size cap');
 assert(srv94.patches.some((p) => /source:\s*'upload'/.test(p.replace || '')), 'zip ingest source=upload');
 
+assert.strictEqual(
+  booking.parseBookingHotelId('Accommodation number: 15253339 Invoice number 1659850126'),
+  '15253339',
+  'Accommodation number is the Booking.com hotel id'
+);
+assert.strictEqual(booking.isPortalChromeLabel('Today'), true);
+assert.strictEqual(booking.isPortalChromeLabel('Upcoming'), true);
+assert.strictEqual(booking.isPortalChromeLabel('Requests'), true);
+assert.strictEqual(booking.isPortalChromeLabel('Navarino Athenian Nest'), false);
+
+function flatePdf(content) {
+  const compressed = zlib.deflateSync(Buffer.from(content));
+  return Buffer.concat([
+    Buffer.from('%PDF-1.4\n1 0 obj << /Length ' + compressed.length + ' /Filter /FlateDecode >> stream\n'),
+    compressed,
+    Buffer.from('\nendstream\nendobj\n%%EOF\n'),
+  ]);
+}
+const flateNav = flatePdf(
+  'BT (Accommodation number: 15253339) Tj (Invoice number: 1659850126) Tj (Date: 03/08/2026) Tj (Total amount due EUR 35.43) Tj ET'
+);
+const flateFields = booking.parseBookingInvoiceFields(booking.pdfExtractText(flateNav));
+assert.strictEqual(flateFields.hotelId, '15253339', 'FlateDecode CID-less stream still yields hotel id');
+assert.strictEqual(flateFields.invoiceNumber, '1659850126');
+assert.strictEqual(flateFields.issueDate, '03/08/2026');
+
+function utf16bePdfString(s) {
+  let out = '';
+  String(s || '').split('').forEach(function (ch) {
+    const c = ch.charCodeAt(0);
+    out += String.fromCharCode((c >> 8) & 0xff, c & 0xff);
+  });
+  return out;
+}
+const cidNav = flatePdf(
+  'BT (' +
+    utf16bePdfString('Accommodation number: 15253339') +
+    ') Tj (' +
+    utf16bePdfString('Invoice number: 1659850126') +
+    ') Tj (' +
+    utf16bePdfString('Date: 03/08/2026') +
+    ') Tj (' +
+    utf16bePdfString('Total amount due EUR 35.43') +
+    ') Tj ET'
+);
+const cidFields = booking.parseBookingInvoiceFields(booking.pdfExtractText(cidNav));
+assert.strictEqual(cidFields.hotelId, '15253339', 'UTF-16BE CID Tj (openhtmltopdf) yields Accommodation number');
+assert.strictEqual(cidFields.invoiceNumber, '1659850126');
+assert.strictEqual(cidFields.issueDate, '03/08/2026');
+
+const navApts = [{ name: 'Navarino Athenian Nest', aptName: 'Navarino Athenian Nest', bookingHotelId: '15253339' }];
+const cidZip = booking.categorizeBookingZip(
+  zipEntries([{ name: 'invoices/invoice.pdf', body: cidNav }]),
+  navApts,
+  '2026-06'
+);
+assert.strictEqual(cidZip.files.length, 1, 'CID invoice is not skipped');
+assert.strictEqual(cidZip.files[0].mapped, true);
+assert.strictEqual(cidZip.files[0].partner, 'Navarino Athenian Nest');
+assert.strictEqual(cidZip.files[0].month, '2026-08');
+assert.strictEqual(cidZip.files[0].filename, 'Booking.com/2026-08/Navarino Athenian Nest/invoice-15253339-1659850126.pdf');
+assert.strictEqual(cidZip.unmapped.length, 0);
+
+const refile = require(path.join(root, 'scripts', 'platform-invoice-vault-refile'));
+const navPlan = refile.planBookingPdfRefile(
+  {
+    channel: 'booking',
+    partner: 'unmapped-unknown',
+    filename: 'Booking.com/2026-06/unmapped-unknown/invoice-unknown.pdf',
+    month: '2026-06',
+  },
+  flateNav,
+  [{ name: 'Navarino Athenian Nest', aptName: 'Navarino Athenian Nest', bookingHotelId: '15253339' }]
+);
+assert(navPlan, 'unmapped PDF is refiled');
+assert.strictEqual(navPlan.partner, 'Navarino Athenian Nest');
+assert.strictEqual(navPlan.month, '2026-08', 'issue date month wins over zip fallback');
+assert.strictEqual(navPlan.bookingHotelId, '15253339');
+assert(navPlan.filename.indexOf('Navarino') >= 0, 'store path uses apartment name');
+
+const todayPlan = refile.planAirbnbChromeRefile(
+  {
+    channel: 'airbnb',
+    partner: 'Today',
+    filename: 'Airbnb/2026-02/Today/invoice-HMT93XPRZX.pdf',
+    meta: { reservationId: 'HMT93XPRZX' },
+  },
+  [{ reservationId: 'HMT93XPRZX', aptName: 'The Monograph' }],
+  []
+);
+assert.strictEqual(todayPlan.partner, 'The Monograph');
+assert(todayPlan.filename.indexOf('The Monograph') >= 0);
+
+const unkA = invoicePdf('Commission invoice Issue date 01/07/2026 Total EUR 1.00 body-a');
+const unkB = invoicePdf('Commission invoice Issue date 02/07/2026 Total EUR 2.00 body-b');
+const unkZip = zipEntries([
+  { name: 'invoice.pdf', body: unkA },
+  { name: 'folder/invoice.pdf', body: unkB },
+]);
+const unkCat = booking.categorizeBookingZip(unkZip, apts, '2026-07');
+assert.strictEqual(unkCat.files.length, 2, 'blank hotel ids still ingest every PDF');
+assert.notStrictEqual(
+  unkCat.files[0].filename,
+  unkCat.files[1].filename,
+  'unmapped PDFs must not collapse onto one invoice-unknown.pdf'
+);
+assert.notStrictEqual(
+  booking.bookingZipDupKey(unkCat.files[0]),
+  booking.bookingZipDupKey(unkCat.files[1]),
+  'dup key uses zip path when hotel id is missing'
+);
+assert(unkCat.files.every((f) => f.partner === 'unmapped-unknown'));
+
+const workerPull = fs.readFileSync(path.join(root, 'scripts', 'platform-invoice-pull.js'), 'utf8');
+assert(workerPull.includes('isPortalChromeLabel'), 'Airbnb pull ignores Today/Upcoming chrome labels');
+
 const fleet = [
   { id: 'b1', name: 'Birdhouse Apartment', aptName: 'Birdhouse Apartment' },
   { id: 'c1', name: 'Coloneum', aptName: 'Coloneum' },
@@ -485,13 +601,21 @@ booking
     const fe130 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-130.json'), 'utf8'));
     const fe131 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-131.json'), 'utf8'));
     const fe132 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-132.json'), 'utf8'));
+    const fe133 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-133.json'), 'utf8'));
     const srv93 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-93.json'), 'utf8'));
     const srv95 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-95.json'), 'utf8'));
+    const srv96 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-96.json'), 'utf8'));
     assert.strictEqual(fe130.baseSha256, fe129.expectedSha256, 'FE 130 continues FE 129');
     assert.strictEqual(fe131.baseSha256, fe130.expectedSha256, 'FE 131 continues FE 130');
     assert.strictEqual(fe132.baseSha256, fe131.expectedSha256, 'FE 132 continues FE 131');
+    assert.strictEqual(fe133.baseSha256, fe132.expectedSha256, 'FE 133 continues FE 132');
     assert.strictEqual(srv93.baseSha256, srv92.expectedSha256, 'SRV 93 continues SRV 92');
     assert.strictEqual(srv95.baseSha256, srv94.expectedSha256, 'SRV 95 continues SRV 94');
+    assert.strictEqual(srv96.baseSha256, srv95.expectedSha256, 'SRV 96 continues SRV 95');
+    assert(fe133.patches.some((p) => (p.replace || '').includes('piChromeFolder')), 'FE skips Today/Upcoming chrome folders');
+    assert(fe133.patches.some((p) => (p.replace || '').includes('could not read a Booking.com hotel id')), 'FE zip copy does not ask to paste unmapped-unknown');
+    assert(srv96.patches.some((p) => (p.replace || '').includes('piRefileVaultApartments')), 'SRV refiles unmapped/chrome vault rows');
+    assert(srv96.patches.some((p) => (p.replace || '').includes("require('./scripts/platform-invoice-vault-refile')")), 'SRV loads vault refile helper');
     assert(fe130.patches.some((p) => (p.replace || '').includes('piMapBookingIds')), 'FE Map Booking.com IDs handler');
     assert(fe130.patches.some((p) => (p.replace || '').includes('id="pi-map-bdc-btn"')), 'FE Map button');
     assert(srv95.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/booking-map'")), 'SRV booking-map route');
