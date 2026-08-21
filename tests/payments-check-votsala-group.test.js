@@ -60,7 +60,7 @@ assert(srv.src.includes('function pcvPayGroup'), 'server pay-group helper shippe
 
 const parseD = extractFn(fe.src, 'parseD');
 const normAptName = extractFn(fe.src, 'normAptName');
-const pcStart = fe.src.indexOf('const pcDay0');
+const pcStart = fe.src.indexOf('function pcState()');
 const pcCompute = extractFn(fe.src, 'pcCompute');
 const pcEnd = fe.src.indexOf(pcCompute) + pcCompute.length;
 assert(pcStart >= 0 && pcEnd > pcStart, 'Payments Check engine extractable');
@@ -127,7 +127,7 @@ assert.strictEqual(vivaBox.pcvPayGroup('Votsala'), 'Votsala');
 assert.strictEqual(vivaBox.pcvPayGroup('Michalakopoulou'), '');
 assert.strictEqual(vivaBox.pcvAptKey({ aptId: 'h1', aptName: 'Horizon Test Apt' }, apts), 'horizon test apt');
 assert.strictEqual(vivaBox.pcvAptLabel({ aptId: 'v1' }, apts), 'Votsala');
-assert.strictEqual(vivaBox.pcvAptLabel({ aptId: 'h1' }, apts), 'Horizon Test Apt');
+assert.strictEqual(vivaBox.pcvAptLabel({ aptId: 'h1', aptName: 'Horizon Test Apt' }, apts), 'Horizon Test Apt');
 
 const today = new Date(2026, 6, 25);
 const vUnits = vivaBox.vivaExpectedUnits({
