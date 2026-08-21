@@ -1,0 +1,41 @@
+{
+ "baseSha256": "0eb9c8b5dd37a2065e4f73a27dbb1c9230526758150f7732b75697bcb02fbdc4",
+ "expectedSha256": "5e80d8ecb14bf907c78a5c28e0fb6c2fdb0bbf9d75370bda13017adcffd43b31",
+ "builtAt": "2026-08-21 Platform Invoices agent + accountant cards",
+ "patches": [
+  {
+   "note": "Review: accountant cards + Run Agent",
+   "find": "'<div style=\"margin-top:10px\">Shipping will email the Elysian pack to accountants as the finished product for this month, including the accountant Excel (issue date, invoice number, amount, − on credits, then reservation id / listing / check-in / check-out).</div>' +\n      '<div style=\"margin-top:8px\"><button class=\"btn sm\" onclick=\"piDownloadAccountantXls()\">Download accountant Excel</button></div>' +\n      '<div style=\"margin-top:8px;color:var(--tx3)\">Open each PDF under PDFs by apartment below.</div>';",
+   "replace": "'<div style=\"margin-top:10px\">Run Agent: leftover Airbnb pull → Booking reconcile → Excel → email each accountant card (PDF and/or Excel). Booking stays without invoice (or invoice without stays) block the send.</div>' +\n      '<div id=\"pi-accountant-cards\" style=\"margin-top:10px\"></div>' +\n      '<div style=\"margin-top:8px;display:flex;gap:8px;flex-wrap:wrap\">' +\n      '<button class=\"btn sm\" onclick=\"piDownloadAccountantXls()\">Download Excel</button>' +\n      '<button class=\"btn sm\" id=\"pi-agent-btn\" onclick=\"piRunAgent()\">Run Agent</button>' +\n      '</div>' +\n      '<div id=\"pi-agent-report\" style=\"margin-top:8px;font-size:12px;color:var(--tx2)\"></div>' +\n      '<div style=\"margin-top:8px;color:var(--tx3)\">Open each PDF under PDFs by apartment below.</div>';\n    try { piRenderAccountantCards(); piLoadAgentLatest(); } catch (eCards) {}",
+   "count": 1
+  },
+  {
+   "note": "FE accountant cards + agent client",
+   "find": "  window.piDownloadAccountantXls = function () {\n    var month = monthVal();\n    window.open('/api/platform-invoices/accountant-xls?month=' + encodeURIComponent(month), '_blank');\n  };",
+   "replace": "  window.piDownloadAccountantXls = function () {\n    var month = monthVal();\n    window.open('/api/platform-invoices/accountant-xls?month=' + encodeURIComponent(month), '_blank');\n  };\n  window.piRenderAccountantCards = async function () {\n    var box = document.getElementById('pi-accountant-cards');\n    if (!box) return;\n    try {\n      var j = await fetch('/api/platform-invoices/accountants').then(function (r) { return r.json(); });\n      var cards = (j && j.accountants) || [];\n      if (!cards.length) { box.innerHTML = '<div style=\"color:var(--tx3)\">No accountant cards yet.</div>'; return; }\n      box.innerHTML = cards.map(function (c, i) {\n        return '<div class=\"pi-acct-card\" data-i=\"' + i + '\" style=\"border:1px solid var(--bdr);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--bg)\">' +\n          '<div style=\"font-weight:600;margin-bottom:6px\">' + (c.name || c.email) + '</div>' +\n          '<label style=\"display:block;font-size:12px;margin-bottom:4px\">Email <input data-f=\"email\" value=\"' + String(c.email || '').replace(/\"/g, '&quot;') + '\" style=\"width:100%;margin-top:2px\"></label>' +\n          '<label style=\"margin-right:12px;font-size:12px\"><input type=\"checkbox\" data-f=\"receivePdfs\"' + (c.receivePdfs ? ' checked' : '') + '> PDFs</label>' +\n          '<label style=\"font-size:12px\"><input type=\"checkbox\" data-f=\"receiveExcel\"' + (c.receiveExcel ? ' checked' : '') + '> Excel</label>' +\n          '<input type=\"hidden\" data-f=\"id\" value=\"' + String(c.id || '') + '\">' +\n          '<input type=\"hidden\" data-f=\"name\" value=\"' + String(c.name || '').replace(/\"/g, '&quot;') + '\">' +\n        '</div>';\n      }).join('') + '<button class=\"btn sm\" onclick=\"piSaveAccountantCards()\">Save accountant cards</button>';\n    } catch (e) { box.innerHTML = '<div style=\"color:#b00\">' + (e.message || e) + '</div>'; }\n  };\n  window.piSaveAccountantCards = async function () {\n    var box = document.getElementById('pi-accountant-cards');\n    if (!box) return;\n    var cards = [];\n    box.querySelectorAll('.pi-acct-card').forEach(function (el) {\n      var get = function (f) { var n = el.querySelector('[data-f=\"' + f + '\"]'); return n ? n.value : ''; };\n      var chk = function (f) { var n = el.querySelector('[data-f=\"' + f + '\"]'); return !!(n && n.checked); };\n      cards.push({ id: get('id'), name: get('name') || get('email'), email: get('email'), receivePdfs: chk('receivePdfs'), receiveExcel: chk('receiveExcel') });\n    });\n    msg('Saving accountant cards…', true);\n    try {\n      var res = await fetch('/api/platform-invoices/accountants', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountants: cards }) });\n      var j = await res.json();\n      if (!res.ok) throw new Error((j && j.error) || 'save failed');\n      msg('Accountant cards saved', true);\n      await piRenderAccountantCards();\n    } catch (e) { msg(e.message || String(e), false); }\n  };\n  window.piLoadAgentLatest = async function () {\n    var box = document.getElementById('pi-agent-report');\n    if (!box) return;\n    try {\n      var j = await fetch('/api/platform-invoices/agent/latest').then(function (r) { return r.json(); });\n      var r = j && j.report;\n      if (!r) { box.textContent = ''; return; }\n      box.innerHTML = '<b>Last agent</b> ' + (r.month || '') + ' · ' + (r.status || '') +\n        ' · Excel ' + ((r.excel && r.excel.totalRows) || 0) + ' rows' +\n        ' · emailed ' + ((r.emailed && r.emailed.length) || 0) +\n        ((r.booking && r.booking.errors && r.booking.errors.length) ? (' · Booking errors ' + r.booking.errors.length) : '');\n    } catch (e) {}\n  };\n  window.piRunAgent = async function () {\n    var month = monthVal();\n    var btn = document.getElementById('pi-agent-btn');\n    if (btn) btn.disabled = true;\n    msg('Running Platform Invoices agent for ' + month + '…', true);\n    try {\n      var res = await fetch('/api/platform-invoices/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month: month, send: true }) });\n      var j = await res.json();\n      if (!res.ok) throw new Error((j && j.error) || 'agent failed');\n      var id = j.job && j.job.id;\n      var deadline = Date.now() + 95 * 60 * 1000;\n      while (id && Date.now() < deadline) {\n        await new Promise(function (r) { setTimeout(r, 1500); });\n        var st = await fetch('/api/platform-invoices/agent/' + encodeURIComponent(id)).then(function (r) { return r.json(); });\n        var job = st && st.job;\n        if (!job) break;\n        if (job.hint) msg(job.hint, true);\n        if (job.status === 'done' || job.status === 'error') {\n          if (job.error) throw new Error(job.error);\n          var rep = job.report || {};\n          msg('Agent ' + (rep.status || 'done') + ' · Excel rows ' + ((rep.excel && rep.excel.totalRows) || 0) +\n            ((rep.booking && rep.booking.errors && rep.booking.errors.length) ? (' · blocked: ' + rep.booking.errors.length + ' Booking error(s)') : ''),\n            rep.status !== 'blocked' && rep.status !== 'error');\n          await piLoadAgentLatest();\n          break;\n        }\n      }\n    } catch (e) { msg(e.message || String(e), false); }\n    if (btn) btn.disabled = false;\n  };",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piRenderAccountantCards",
+   "note": "accountant cards renderer"
+  },
+  {
+   "has": "piRunAgent",
+   "note": "run agent client"
+  },
+  {
+   "has": "pi-accountant-cards",
+   "note": "cards container"
+  },
+  {
+   "has": "/api/platform-invoices/agent",
+   "note": "agent API used"
+  },
+  {
+   "has": "Save accountant cards",
+   "note": "save button"
+  }
+ ]
+}

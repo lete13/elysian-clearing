@@ -608,7 +608,8 @@ assert(xls.includes('HMTEST1'), 'Excel has reservation id');
 assert(xls.includes('Birdhouse'), 'Excel has listing name from Hosthub');
 assert(xls.includes('1/7/2026'), 'Excel has check-in');
 assert(xls.includes('5/7/2026'), 'Excel has check-out');
-assert(!xls.includes('BDC-1'), 'Excel skips Booking.com');
+assert(xls.includes('BDC-1'), 'Excel includes Booking.com when row is supplied');
+assert(xls.includes('Platform invoices'), 'Excel sheet is channel-neutral');
 assert(!xls.includes('ΥΠ10'), 'txn column is empty, not ΥΠ10');
 const rowsXml = xls.split('<Row>').slice(2); // skip workbook noise / header
 assert(rowsXml.some((r) => r.includes('AIUC-AAA-CN-1') && r.includes('>-</Data>')), 'credit Πρόσημο is minus');

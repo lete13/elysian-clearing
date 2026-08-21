@@ -1378,11 +1378,24 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
   const savedKeys = new Set();
 
   let savedCount = 0;
+  let alreadyListedCount = 0;
   let lastLanded = page.url();
   let lastLookedLikeInvoice = false;
   let lastBody = '';
   let lastFetchNote = '';
   const reservationUrl = page.url();
+
+  function noteAlreadyListed(kind, idHint, href) {
+    alreadyListedCount += 1;
+    emitJson({
+      event: 'already_have',
+      channel: 'airbnb',
+      code,
+      kind: kind || 'invoice',
+      vatId: String(idHint || vatIdFromAirbnbUrl(href) || ''),
+      href: String(href || '').slice(0, 180),
+    });
+  }
 
   async function saveIfInvoice(targetPage, kind, how, idHint) {
     const waited = await waitForAirbnbInvoiceHtml(targetPage);
@@ -1395,9 +1408,15 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     const fields = parseAirbnbVatFields(body, kind, vatIdFromAirbnbUrl(urlNow) || idHint);
     let vatId = String(idHint || vatIdFromAirbnbUrl(urlNow) || fields.invoiceNumber || '').replace(/[^\w.-]+/g, '').slice(0, 40);
     if (vatId && vatId.toUpperCase() === String(code).toUpperCase()) vatId = '';
-    if (airbnbDocAlreadyHave(alreadyHave, kind, code, vatId)) return 'have';
+    if (airbnbDocAlreadyHave(alreadyHave, kind, code, vatId)) {
+      noteAlreadyListed(kind, vatId, urlNow);
+      return 'have';
+    }
     const storeKey = airbnbHaveKey(kind, code, vatId);
-    if (savedKeys.has(storeKey)) return 'have';
+    if (savedKeys.has(storeKey)) {
+      noteAlreadyListed(kind, vatId, urlNow);
+      return 'have';
+    }
     const archiveMonth = issueDateToMonth(fields.issueDate) || month;
     const rel = piInvoiceStoreRel({
       channel: 'airbnb',
@@ -1468,9 +1487,15 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     lastBody = 'application/pdf ' + ((buf && buf.length) || 0);
     let vatId = String(idHint || vatIdFromAirbnbUrl(srcUrl) || '').replace(/[^\w.-]+/g, '').slice(0, 40);
     if (vatId && vatId.toUpperCase() === String(code).toUpperCase()) vatId = '';
-    if (airbnbDocAlreadyHave(alreadyHave, kind, code, vatId)) return 'have';
+    if (airbnbDocAlreadyHave(alreadyHave, kind, code, vatId)) {
+      noteAlreadyListed(kind, vatId, srcUrl);
+      return 'have';
+    }
     const storeKey = airbnbHaveKey(kind, code, vatId);
-    if (savedKeys.has(storeKey)) return 'have';
+    if (savedKeys.has(storeKey)) {
+      noteAlreadyListed(kind, vatId, srcUrl);
+      return 'have';
+    }
     if (isTinyPdf(buf)) return false;
     const archiveMonth = month;
     const rel = piInvoiceStoreRel({
@@ -1651,7 +1676,10 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
 
   for (let i = 0; i < candidates.length && i < 24; i++) {
     const cand = candidates[i];
-    if (airbnbDocAlreadyHave(alreadyHave, cand.kind, code, cand.id)) continue;
+    if (airbnbDocAlreadyHave(alreadyHave, cand.kind, code, cand.id)) {
+      noteAlreadyListed(cand.kind, cand.id, cand.href);
+      continue;
+    }
     let savedThis = false;
     await goStay();
     await clickAirbnbStayTotalPrice(page);
@@ -1726,7 +1754,10 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     for (const hit of usefulAirbnbInvoiceHits(bag.hits, code)) {
       const kind = hit.kind === 'credit_note' ? 'credit_note' : 'invoice';
       const cand = { kind: kind, href: hit.href, id: hit.id || vatIdFromAirbnbUrl(hit.href) };
-      if (airbnbDocAlreadyHave(alreadyHave, kind, code, cand.id)) continue;
+      if (airbnbDocAlreadyHave(alreadyHave, kind, code, cand.id)) {
+        noteAlreadyListed(kind, cand.id, cand.href);
+        continue;
+      }
       await goStay();
       await clickAirbnbStayTotalPrice(page);
       let clicked = { clicked: false, popup: null };
@@ -1766,6 +1797,18 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
       .filter(Boolean)
       .slice(0, 4)
       .join(' | ');
+    // Airbnb only listed invoice URL(s) already in the vault — nothing new to pull.
+    if (alreadyListedCount > 0) {
+      emitJson({
+        event: 'already_have',
+        channel: 'airbnb',
+        code,
+        listed: alreadyListedCount,
+        ids: idSample || 'none',
+        wanted: [...kindsWanted].join(','),
+      });
+      return -1;
+    }
     errors.push({
       channel: 'airbnb',
       code,
@@ -1841,6 +1884,7 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
     }
 
     let pulled = 0;
+    let alreadyHaveOk = 0;
     let idx = 0;
     const total = queue.length;
     const alreadyHave = loadAirbnbHaveSet();
@@ -1856,15 +1900,18 @@ async function pullAirbnb(page, context, month, outDir, files, errors) {
           code: resv.code,
           skipped: true,
         });
+        alreadyHaveOk += 1;
         continue;
       }
       emitJson({ event: 'progress', done: idx, total: total, saved: files.length, code: resv.code });
-      pulled += await pullAirbnbDocsForCode(page, context, month, dir, files, errors, resv, apts);
+      const n = await pullAirbnbDocsForCode(page, context, month, dir, files, errors, resv, apts);
+      if (n < 0) alreadyHaveOk += 1;
+      else pulled += n;
     }
     if (pullStopRequested()) {
       errors.push({ channel: 'airbnb', error: 'Pull stopped' });
     }
-    if (!pulled) {
+    if (!pulled && !alreadyHaveOk) {
       errors.push({
         channel: 'airbnb',
         error: 'Hosthub listed ' + queue.length + ' Airbnb code(s) but 0 PDFs were captured.',

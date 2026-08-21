@@ -4,6 +4,7 @@
  * Uses in-memory store (no Postgres). Does not hit Airbnb.
  */
 const assert = require('assert');
+const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -11,6 +12,9 @@ const { spawn } = require('child_process');
 const root = path.join(__dirname, '..');
 const PORT = parseInt(process.env.PI_VAULT_TEST_PORT || '18777', 10);
 const pdf = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
+const indexPath = path.join(root, 'index.html');
+const indexBackup = path.join(root, 'index.html.pi-vault-bak');
+
 
 function req(method, urlPath, body, headers) {
   return new Promise((resolve, reject) => {
@@ -46,6 +50,12 @@ async function waitHealth() {
 
 (async function main() {
   let started = false;
+  let backedUp = false;
+  try {
+    if (!fs.existsSync(indexBackup)) {
+      fs.copyFileSync(indexPath, indexBackup);
+      backedUp = true;
+    }
   try {
     const h = await req('GET', '/health');
     if (h.status === 200) started = false;
@@ -135,7 +145,19 @@ async function waitHealth() {
   assert(/pdf/i.test(String(file.headers['content-type'] || '')), 'content-type is PDF');
   assert.strictEqual(file.body.slice(0, 5).toString(), '%PDF-');
   console.log('platform-invoice-vault-view.test.js: ok' + (started ? ' (started local server)' : ' (reused server)'));
+  } finally {
+    if (backedUp && fs.existsSync(indexBackup)) {
+      fs.copyFileSync(indexBackup, indexPath);
+      fs.unlinkSync(indexBackup);
+    }
+  }
 })().catch((e) => {
+  try {
+    if (fs.existsSync(indexBackup)) {
+      fs.copyFileSync(indexBackup, indexPath);
+      fs.unlinkSync(indexBackup);
+    }
+  } catch (e2) {}
   console.error(e);
   process.exit(1);
 });

@@ -1,0 +1,49 @@
+{
+ "baseSha256": "cc2b33d660445e69e41002d2bbd1be1173318b567a6736b930fe32b386a9614a",
+ "expectedSha256": "e468b12d5148067b70671e8e9bf4abec6d92a71ebd5e6fbf650b3605f8f50425",
+ "builtAt": "2026-08-21 Pull already_have + await worker close",
+ "patches": [
+  {
+   "note": "Expose alreadyHave on pull job",
+   "find": "    saved: job.saved || [],\n    errors: job.errors || [],\n    progress: job.progress || null,\n",
+   "replace": "    saved: job.saved || [],\n    alreadyHave: job.alreadyHave || [],\n    errors: job.errors || [],\n    progress: job.progress || null,\n",
+   "count": 1
+  },
+  {
+   "note": "Track already_have worker events",
+   "find": "function piPullConsumeStdoutLine(job, line) {\n  try {\n    const j = JSON.parse(line);\n    if (j && j.event === 'progress') {\n      job.progress = { done: j.done || 0, total: j.total || 0, saved: j.saved || 0, code: j.code || '', skipped: !!j.skipped };\n      job.hint = (String(job.channel || '').toLowerCase() === 'booking' ? 'Pulling Booking.com ' : 'Pulling Airbnb ') + (j.done || 0) + '/' + (j.total || 0) +\n        (j.code ? (' · ' + j.code) : '') +\n        (j.skipped ? ' · already in vault' : '') +\n        (j.saved ? (' · ' + j.saved + ' PDF(s) so far') : '') + '…';\n      job.updatedAt = Date.now();\n    } else if (j && j.event === 'saved' && j.path) {\n      job.updatedAt = Date.now();\n",
+   "replace": "function piPullConsumeStdoutLine(job, line) {\n  try {\n    const j = JSON.parse(line);\n    if (j && j.event === 'progress') {\n      job.progress = { done: j.done || 0, total: j.total || 0, saved: j.saved || 0, code: j.code || '', skipped: !!j.skipped };\n      job.hint = (String(job.channel || '').toLowerCase() === 'booking' ? 'Pulling Booking.com ' : 'Pulling Airbnb ') + (j.done || 0) + '/' + (j.total || 0) +\n        (j.code ? (' · ' + j.code) : '') +\n        (j.skipped ? ' · already in vault' : '') +\n        (j.saved ? (' · ' + j.saved + ' PDF(s) so far') : '') + '…';\n      job.updatedAt = Date.now();\n    } else if (j && j.event === 'already_have' && j.code) {\n      if (!Array.isArray(job.alreadyHave)) job.alreadyHave = [];\n      if (job.alreadyHave.indexOf(j.code) < 0) job.alreadyHave.push(j.code);\n      job.updatedAt = Date.now();\n    } else if (j && j.event === 'saved' && j.path) {\n      job.updatedAt = Date.now();\n",
+   "count": 1
+  },
+  {
+   "note": "piExecutePullJob awaits child close",
+   "find": "  const { spawn } = require('child_process');\n  const child = spawn(process.execPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });\n  job.child = child;\n  let stdout = '', stderr = '', carry = '';\n  const timer = setTimeout(function () {\n    try { child.kill('SIGTERM'); } catch (e) {}\n",
+   "replace": "  const { spawn } = require('child_process');\n  return await new Promise(function (resolvePull) {\n  const child = spawn(process.execPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });\n  job.child = child;\n  let stdout = '', stderr = '', carry = '';\n  const timer = setTimeout(function () {\n    try { child.kill('SIGTERM'); } catch (e) {}\n",
+   "count": 1
+  },
+  {
+   "note": "Resolve pull promise after harvest",
+   "find": "      job.updatedAt = Date.now();\n    } catch (eClose) {\n      job.status = 'error';\n      job.error = eClose.message || String(eClose);\n      job.updatedAt = Date.now();\n    }\n  });\n}\n\napp.post('/api/platform-invoices/pull', async (req, res) => {\n",
+   "replace": "      job.updatedAt = Date.now();\n    } catch (eClose) {\n      job.status = 'error';\n      job.error = eClose.message || String(eClose);\n      job.updatedAt = Date.now();\n    }\n    resolvePull();\n  });\n  });\n}\n\napp.post('/api/platform-invoices/pull', async (req, res) => {\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "j.event === 'already_have'",
+   "note": "already_have tracked"
+  },
+  {
+   "has": "alreadyHave: job.alreadyHave || []",
+   "note": "public alreadyHave"
+  },
+  {
+   "has": "return await new Promise(function (resolvePull)",
+   "note": "await worker"
+  },
+  {
+   "has": "resolvePull();",
+   "note": "resolve after close"
+  }
+ ]
+}

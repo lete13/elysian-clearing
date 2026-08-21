@@ -9,7 +9,7 @@
     "test": "node tests/monthly-close-patches.test.js && node tests/home-viewing-appointments.test.js && node tests/airbnb-auth-flow.test.js && node tests/daily-ops-checkin-schedule.test.js && node tests/platform-invoice-booking-block.test.js && node tests/keys-hubs.test.js && node tests/payments-check-votsala-group.test.js",
     "pull:platform-invoices": "node scripts/platform-invoice-pull.js",
     "postinstall": "test \"$PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD\" = \"1\" || npx playwright install chromium || true",
-    "test:platform-invoices": "node tests/platform-invoice-airbnb-codes.test.js && node tests/platform-invoice-stay-click.test.js && node tests/platform-invoice-vault-folders.test.js && node tests/platform-invoice-pull-midfail.test.js && node tests/platform-invoice-booking.test.js && node tests/platform-invoice-vault-view.test.js && node tests/platform-invoice-booking-block.test.js"
+    "test:platform-invoices": "node tests/platform-invoice-airbnb-codes.test.js && node tests/platform-invoice-stay-click.test.js && node tests/platform-invoice-vault-folders.test.js && node tests/platform-invoice-pull-midfail.test.js && node tests/platform-invoice-booking.test.js && node tests/platform-invoice-vault-view.test.js && node tests/platform-invoice-booking-block.test.js && node tests/platform-invoice-agent.test.js"
   },
   "engines": {
     "node": ">=18.0.0",

@@ -31,9 +31,11 @@ Same confirmation code is one stay; cancel wins over extend over normal. Extra H
 
 **Vault vs Expect:** `/api/platform-invoices/airbnb-codes` returns `gaps` (complete stays, incomplete codes, missing doc count). Blank Chromium prints under 2 KB do not count as saved. **Pull Airbnb (Hosthub codes)** is the month pull: incomplete stays run first; already-saved invoices are skipped. Hosthub sync **keeps cancelled Airbnb reservations that still have an `HM…` confirmation code**, even when `guest_paid = 0` (Payments Check still ignores `cancelled: true`). Invoices with no reservation id cannot be queued from Hosthub — those stay on VAT Invoicer / Airbnb finance.
 
-Ship emails every accountant group the PDFs **plus** an Excel (`Airbnb-VAT-YYYY-MM.xls`) in the import layout: Ημερομηνία = issue date, Αιτιολογία = invoice number (`AIUC-…`), Κατάστημα empty, Τοκισμός από = issue date, Αρ. συναλλαγής empty, Ποσό = total €, Πρόσημο ποσού = empty if positive / `-` if credit. After those columns: Reservation id, Listing name, Check-in, Check-out (from Hosthub / pull meta). Collect/Review can download the same file.
+Ship / **Run Agent** emails each accountant card (PDF and/or Excel toggles). Excel is `Platform-invoices-YYYY-MM.xls` in the import layout: Ημερομηνία = issue date, Αιτιολογία = invoice number (`AIUC-…` or Booking invoice number), Κατάστημα empty, Τοκισμός από = issue date, Αρ. συναλλαγής empty, Ποσό = total €, Πρόσημο ποσού = empty if positive / `-` if credit. After those columns: Reservation id, Listing name, Check-in, Check-out (from Hosthub / pull meta; Booking check-in/out blank). Booking.com rows are included **only** when Hosthub has Booking stays for the covered stay month (document month M → stays in M−1) **and** a vault PDF; otherwise the agent records an error and does **not** email that month.
 
-Default Elysian-tax recipients: `info@e-newgeneration.gr`, `info@elysianproperties.eu`.
+Accountant cards live in Postgres `app_data` (`pi_accountants`). Defaults: `info@e-newgeneration.gr`, `info@elysianproperties.eu` (both PDF + Excel on). Env `PLATFORM_INVOICE_ACCOUNTANT_EMAIL` is seed-only.
+
+When Airbnb only lists a VAT URL already in the vault, the leftover pull records `already_have` and does not keep failing with “No VAT invoice HTML”.
 
 ## Airbnb = Hosthub reservation codes (VAT Invoicer workflow)
 
