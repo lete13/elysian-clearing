@@ -1,0 +1,37 @@
+{
+ "baseSha256": "bf96a197030bb39e0d2d37a2e7f2b518ab836d823104fadef2949ab3090e8de4",
+ "expectedSha256": "0eb9c8b5dd37a2065e4f73a27dbb1c9230526758150f7732b75697bcb02fbdc4",
+ "builtAt": "2026-08-21 Payments Check: only Votsala uses clearGroup",
+ "patches": [
+  {
+   "note": "Payments Check: only Votsala uses clearGroup; report groups stay per-apartment",
+   "find": "  // Apartments sharing a clearing group (e.g. all Votsala units) are paid as\n  // one Viva credit — key them by clearGroup so Booking.com batches match.\n  function pcClearGroup(b) {\n    try {\n      var a = null;\n      if (b && b.aptId && typeof aptById === 'function') a = aptById(b.aptId);\n      if (!a && b && b.aptName && typeof S !== 'undefined' && Array.isArray(S.apts))\n        a = S.apts.find(function (x) { return x && x.name === b.aptName; }) || null;\n      var g = a && a.clearGroup ? String(a.clearGroup).trim() : '';\n      return g || '';\n    } catch (e) { return ''; }\n  }\n",
+   "replace": "  // Only Votsala is paid as one Viva/Booking.com credit (one property). Other\n  // clearGroups are for owner clearing reports — those apartments arrive one by one.\n  function pcClearGroup(b) {\n    try {\n      var a = null;\n      if (b && b.aptId && typeof aptById === 'function') a = aptById(b.aptId);\n      if (!a && b && b.aptName && typeof S !== 'undefined' && Array.isArray(S.apts))\n        a = S.apts.find(function (x) { return x && x.name === b.aptName; }) || null;\n      var g = a && a.clearGroup ? String(a.clearGroup).trim() : '';\n      if (g && !/^votsala$/i.test(g)) g = '';\n      return g || '';\n    } catch (e) { return ''; }\n  }\n",
+   "count": 1
+  },
+  {
+   "note": "Tests: Pc17 report-only clearGroups stay per-apartment in Payments Check",
+   "find": "      assertEq('Pc16 Votsala clearGroup = one BDC line (summed)', _v16.length === 1 && Math.abs(_v16[0].exp - 150) < 0.011 && _v16[0].items.length === 2, true);\n      S.apts = _sa16; S.bks = _sb16;\n",
+   "replace": "      assertEq('Pc16 Votsala clearGroup = one BDC line (summed)', _v16.length === 1 && Math.abs(_v16[0].exp - 150) < 0.011 && _v16[0].items.length === 2, true);\n      // Pc17: report-only groups (Michalakopoulou etc.) stay per-apartment — paid one by one\n      S.apts = [\n        { id:'h1', name:'Horizon Test Apt', clearGroup:'Michalakopoulou' },\n        { id:'h2', name:'Lycabettus Test Apt', clearGroup:'Michalakopoulou' }\n      ];\n      S.bks = [\n        { platform:'Booking.com', aptId:'h1', aptName:'Horizon Test Apt', guestName:'C', checkIn:'14/7/2026', checkOut:'15/7/2026', payout:100 },\n        { platform:'Booking.com', aptId:'h2', aptName:'Lycabettus Test Apt', guestName:'D', checkIn:'14/7/2026', checkOut:'15/7/2026', payout:50 }\n      ];\n      const _c17 = pcCompute(new Date(2026,6,24));\n      const _v17 = (_c17.batches || []).flatMap(function (g) { return g.lines || []; })\n        .filter(function (l) { return /horizon test apt|lycabettus test apt/i.test(String(l.name || l.aptKey || '')); });\n      assertEq('Pc17 report clearGroup stays per-apartment', _v17.length === 2 && Math.abs((_v17[0].exp + _v17[1].exp) - 150) < 0.011 && _v17[0].aptKey !== _v17[1].aptKey, true);\n      S.apts = _sa16; S.bks = _sb16;\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "if (g && !/^votsala$/i.test(g)) g = '';",
+   "note": "Payments Check ignores non-Votsala clearGroups"
+  },
+  {
+   "has": "Pc17 report clearGroup stays per-apartment",
+   "note": "Pc17 regression: report groups stay per-apartment"
+  },
+  {
+   "has": "Pc16 Votsala clearGroup = one BDC line",
+   "note": "Pc16 Votsala batching kept"
+  },
+  {
+   "hasNot": "e.g. all Votsala units",
+   "note": "old all-groups Payments Check comment removed"
+  }
+ ]
+}

@@ -1,0 +1,41 @@
+{
+ "baseSha256": "09dad0b3a4b04e8f1bc9401d713bec92c4a5b64c2b95deefc139061fa494ea1b",
+ "expectedSha256": "4ee90bfe317c27719e81ae2feaf05fe3e47c5028f0ddaa79fe7214489bfddb59",
+ "builtAt": "2026-08-21 Viva: only Votsala clearGroup shares a mark key",
+ "patches": [
+  {
+   "note": "Viva expected units: only Votsala clearGroup shares a mark key",
+   "find": "// Mirror client pcAptKey: apartments sharing clearGroup (Votsala) share one mark key.\nfunction pcvAptKey(b, apts) {\n  let group = '';\n  try {\n    const list = Array.isArray(apts) ? apts : [];\n    let a = null;\n    if (b && b.aptId != null && b.aptId !== '') a = list.find(x => x && String(x.id) === String(b.aptId)) || null;\n    if (!a && b && b.aptName) a = list.find(x => x && x.name === b.aptName) || null;\n    if (a && a.clearGroup) group = String(a.clearGroup).trim();\n  } catch (e) {}\n  const raw = group || (b && b.aptName) || '';\n  return pcvNormApt(raw) || (b && b.aptId) || '?';\n}\nfunction pcvAptLabel(b, apts) {\n  try {\n    const list = Array.isArray(apts) ? apts : [];\n    let a = null;\n    if (b && b.aptId != null && b.aptId !== '') a = list.find(x => x && String(x.id) === String(b.aptId)) || null;\n    if (!a && b && b.aptName) a = list.find(x => x && x.name === b.aptName) || null;\n    if (a && a.clearGroup && String(a.clearGroup).trim()) return String(a.clearGroup).trim();\n  } catch (e) {}\n  return (b && b.aptName) || '?';\n}\n",
+   "replace": "// Mirror client pcAptKey: only Votsala shares a mark key. Other clearGroups are\n// for owner reports; those apartments are paid one by one on Viva.\nfunction pcvPayGroup(g) {\n  const s = String(g || '').trim();\n  return /^votsala$/i.test(s) ? s : '';\n}\nfunction pcvAptKey(b, apts) {\n  let group = '';\n  try {\n    const list = Array.isArray(apts) ? apts : [];\n    let a = null;\n    if (b && b.aptId != null && b.aptId !== '') a = list.find(x => x && String(x.id) === String(b.aptId)) || null;\n    if (!a && b && b.aptName) a = list.find(x => x && x.name === b.aptName) || null;\n    if (a && a.clearGroup) group = pcvPayGroup(a.clearGroup);\n  } catch (e) {}\n  const raw = group || (b && b.aptName) || '';\n  return pcvNormApt(raw) || (b && b.aptId) || '?';\n}\nfunction pcvAptLabel(b, apts) {\n  try {\n    const list = Array.isArray(apts) ? apts : [];\n    let a = null;\n    if (b && b.aptId != null && b.aptId !== '') a = list.find(x => x && String(x.id) === String(b.aptId)) || null;\n    if (!a && b && b.aptName) a = list.find(x => x && x.name === b.aptName) || null;\n    const g = a && a.clearGroup ? pcvPayGroup(a.clearGroup) : '';\n    if (g) return g;\n  } catch (e) {}\n  return (b && b.aptName) || '?';\n}\n",
+   "count": 1
+  },
+  {
+   "note": "viva-selftest: report-only clearGroup stays per-apartment",
+   "find": "  ok('Votsala mark key uses group name', !!vLine && vLine.key === 'bdc|2026-07-16|votsala');\n\n  const credits = [\n",
+   "replace": "  ok('Votsala mark key uses group name', !!vLine && vLine.key === 'bdc|2026-07-16|votsala');\n\n  // Report-only groups (Michalakopoulou etc.) stay per-apartment — paid one by one\n  const reportData = {\n    payChk: { marks: {}, cfg: { from: '2026-07-01', tol: 1 } },\n    apts: [\n      { id: 'h1', name: 'Horizon Test Apt', clearGroup: 'Michalakopoulou' },\n      { id: 'h2', name: 'Lycabettus Test Apt', clearGroup: 'Michalakopoulou' },\n    ],\n    bks: [\n      { platform: 'Booking.com', aptId: 'h1', aptName: 'Horizon Test Apt', guestName: 'C', checkIn: '14/7/2026', checkOut: '15/7/2026', payout: 100 },\n      { platform: 'Booking.com', aptId: 'h2', aptName: 'Lycabettus Test Apt', guestName: 'D', checkIn: '14/7/2026', checkOut: '15/7/2026', payout: 50 },\n    ],\n  };\n  const rUnits = vivaExpectedUnits(reportData, today);\n  const rBdc = rUnits.filter(u => u.chan === 'bdc');\n  ok('report clearGroup stays per-apartment in Payments Check', rBdc.length === 2);\n  ok('Horizon key uses apt name not group', rBdc.some(u => u.key === 'bdc|2026-07-16|horizon test apt'));\n  ok('Lycabettus key uses apt name not group', rBdc.some(u => u.key === 'bdc|2026-07-16|lycabettus test apt'));\n\n  const credits = [\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function pcvPayGroup",
+   "note": "Viva pay-group helper"
+  },
+  {
+   "has": "group = pcvPayGroup(a.clearGroup)",
+   "note": "pcvAptKey only batches Votsala"
+  },
+  {
+   "has": "report clearGroup stays per-apartment in Payments Check",
+   "note": "selftest: report groups stay per-apartment"
+  },
+  {
+   "has": "Votsala clearGroup → one BDC unit",
+   "note": "Votsala batching selftest kept"
+  },
+  {
+   "hasNot": "if (a && a.clearGroup) group = String(a.clearGroup).trim();",
+   "note": "unrestricted clearGroup keying removed"
+  }
+ ]
+}
