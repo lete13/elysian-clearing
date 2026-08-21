@@ -1,0 +1,160 @@
+{
+ "baseSha256": "0eb9c8b5dd37a2065e4f73a27dbb1c9230526758150f7732b75697bcb02fbdc4",
+ "expectedSha256": "fb230ce4da3ee1e95788f6f9b421730be18078776eff15a3349dbb10b1b6f140",
+ "builtAt": "2026-08-21 Private/B2B send and Monthly Close require an issued ΑΠΥ/ΤΠΥ",
+ "patches": [
+  {
+   "note": "Send: know before Oxygen runs whether this report needs an ΑΠΥ (private) or ΤΠΥ (B2B) — grouped packets included",
+   "find": "    let _oxyDoc = null, _oxyNote = '', _abortSend = false;\n    const _atts = [{ filename: st.pdf.fname, contentType: 'application/pdf', contentBase64: st.pdf.base64 }];\n    try {\n      const _apt = st.d.apt || {};\n      const _k = window._rptLockKey;\n      const _attPer = (function () { const d0 = st.d.dates.from; return d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0'); })();\n      const _prev = (_k && S.rptLocks && S.rptLocks[_k] && S.rptLocks[_k].oxygen) || null;\n      const _label = _apt.profile === 'b2b' ? 'ΤΠΥ (Invoice)' : 'ΑΠΥ (Receipt)';\n      if (_apt.profile && _apt.profile !== 'leased') {",
+   "replace": "    let _oxyDoc = null, _oxyNote = '', _abortSend = false;\n    const _pk0 = ((st.d && st.d.packets) || []).map(function (p) { return p && p.a && p.a.profile; }).filter(Boolean);\n    const _ap0 = (st.d && st.d.apt) || {};\n    const _oxyNeed = _pk0.some(function (p) { return p === 'private' || p === 'b2b'; }) || (_ap0.profile === 'private' || _ap0.profile === 'b2b');\n    const _oxyLabel = (_pk0.indexOf('b2b') >= 0 || _ap0.profile === 'b2b') ? 'ΤΠΥ (Invoice)' : 'ΑΠΥ (Receipt)';\n    const _atts = [{ filename: st.pdf.fname, contentType: 'application/pdf', contentBase64: st.pdf.base64 }];\n    try {\n      const _apt = st.d.apt || {};\n      const _k = window._rptLockKey;\n      const _attPer = (function () { const d0 = st.d.dates.from; return d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0'); })();\n      const _prev = (_k && S.rptLocks && S.rptLocks[_k] && S.rptLocks[_k].oxygen) || null;\n      if (_oxyNeed) {"
+  },
+  {
+   "note": "Send: Oxygen copy uses the packet-aware document label",
+   "find": "Link a Fiscal contact (Oxygen) in Config to issue the ' + _label + '.",
+   "replace": "Link a Fiscal contact (Oxygen) in Config to issue the ' + _oxyLabel + '."
+  },
+  {
+   "note": "Send: preview/issue dialogs use the packet-aware document label",
+   "find": "(_pv.document || _label)",
+   "replace": "(_pv.document || _oxyLabel)",
+   "count": 2
+  },
+  {
+   "note": "Send: private/B2B cannot send the owner email unless an ΑΠΥ/ΤΠΥ was actually issued (Cedar July 2026: email went out with no ΤΠΥ)",
+   "find": "    } catch (_e) { _oxyNote = 'Oxygen step skipped: ' + _e.message; }\n    if (_abortSend) {\n      if (status) status.textContent = 'Send cancelled - the invoice was not issued, so the email was not sent either. Click Send email when ready.';\n      if (btn) { btn.disabled = false; btn.textContent = '📨 Send email'; }\n      return;\n    }",
+   "replace": "    } catch (_e) { _oxyNote = 'Oxygen step skipped: ' + _e.message; }\n    if (_oxyNeed && !(_oxyDoc && _oxyDoc.invoiceId)) {\n      if (!_abortSend) {\n        alert('Cannot send: no ' + _oxyLabel + ' was created.\\n\\n' + (_oxyNote || ('No ' + _oxyLabel + ' was created.')) + '\\n\\nThe email was NOT sent.');\n      }\n      _abortSend = true;\n    }\n    if (_abortSend) {\n      if (status) status.textContent = 'Send cancelled - no receipt/invoice was created, so the email was not sent. Click Send email when ready.';\n      if (btn) { btn.disabled = false; btn.textContent = '📨 Send email'; }\n      return;\n    }"
+  },
+  {
+   "note": "Send: stamp the issued Oxygen document onto every apartment lock in the report, same as the email stamp",
+   "find": "          S.rptLocks[ik] = Object.assign({}, S.rptLocks[ik] || {}, { email: _em });",
+   "replace": "          var _extra = { email: _em };\n          if (_oxyDoc && _oxyDoc.invoiceId) _extra.oxygen = _oxyDoc;\n          S.rptLocks[ik] = Object.assign({}, S.rptLocks[ik] || {}, _extra);"
+  },
+  {
+   "note": "Monthly Close: helpers — private/B2B (incl. mixed groups) need an Oxygen document; detect email-without-doc",
+   "find": "  function takkProofs(stage, aptId) {\n    var st = (S.monthlyTasks && S.monthlyTasks[mcMonth]) || {};\n    var e = st[stage + '|' + aptId];\n    return (e && e.proofs) ? e.proofs.length : 0;\n  }\n  function isDone(a, key) {",
+   "replace": "  function takkProofs(stage, aptId) {\n    var st = (S.monthlyTasks && S.monthlyTasks[mcMonth]) || {};\n    var e = st[stage + '|' + aptId];\n    return (e && e.proofs) ? e.proofs.length : 0;\n  }\n  function mcNeedsOxyDoc(a) {\n    if (a && (a.type === 'private' || a.type === 'b2b')) return true;\n    var ids = (a && a.members && a.members.length) ? a.members : (a && a.id ? [a.id] : []);\n    for (var i = 0; i < ids.length; i++) {\n      var apt = null;\n      (S.apts || []).forEach(function (x) { if (String(x.id) === String(ids[i])) apt = x; });\n      if (apt && (apt.profile === 'private' || apt.profile === 'b2b')) return true;\n    }\n    return false;\n  }\n  function mcOxyIssued(a) {\n    var lk = a && lockFor(a.id);\n    return !!(lk && lk.oxygen && lk.oxygen.invoiceId);\n  }\n  function mcEmailedNoOxy(a) {\n    if (!mcNeedsOxyDoc(a) || mcOxyIssued(a)) return false;\n    var r = mcRec(a.id), lk = lockFor(a.id);\n    var em = (r && r.emailed) || (lk && lk.email);\n    return !!(em && r && r.remit && (em.at || 0) >= (r.remit.at_ms || 0));\n  }\n  function isDone(a, key) {"
+  },
+  {
+   "note": "Monthly Close: a manual Email tick is not done for private/B2B until the ΑΠΥ/ΤΠΥ exists",
+   "find": "    if (r && r.done && r.done[key]) return true;",
+   "replace": "    if (r && r.done && r.done[key]) {\n      if (key === 'email' && mcNeedsOxyDoc(a) && !mcOxyIssued(a)) return false;\n      return true;\n    }"
+  },
+  {
+   "note": "Monthly Close: Email is complete for private/B2B only when this close was emailed AND the Oxygen document exists",
+   "find": "    if (key === 'email') {\n      var em = (r && r.emailed) || (lk && lk.email);\n      return !!(em && r && r.remit && (em.at || 0) >= (r.remit.at_ms || 0));\n    }",
+   "replace": "    if (key === 'email') {\n      var em = (r && r.emailed) || (lk && lk.email);\n      if (!(em && r && r.remit && (em.at || 0) >= (r.remit.at_ms || 0))) return false;\n      if (mcNeedsOxyDoc(a) && !mcOxyIssued(a)) return false;\n      return true;\n    }"
+  },
+  {
+   "note": "Monthly Close: batch cannot tick Email — send (and the ΑΠΥ/ΤΠΥ) have to happen in the app",
+   "find": "    var manual = list.filter(function (a) { return !!PROOF_STAGE[batchStage]; });\n    if (manual.length) { toast('TAKK lines need a proof each - open them individually.', 'warn'); return; }",
+   "replace": "    var manual = list.filter(function (a) { return !!PROOF_STAGE[batchStage]; });\n    if (manual.length) { toast('TAKK lines need a proof each - open them individually.', 'warn'); return; }\n    if (batchStage === 'email') { toast('Email completes only when the owner email is sent. Private/B2B also need the ΑΠΥ/ΤΠΥ.', 'warn'); return; }"
+  },
+  {
+   "note": "Monthly Close: count apartments whose email went out without a receipt/invoice",
+   "find": "    var done = 0, doing = 0, tot = 0;\n    var skipN = 0;\n    all.forEach(function (a) {\n      var n = (a.members || [a.id]).length; tot += n;\n      if (mcSkipped(a.id)) { skipN += n; return; }   // not needed this month\n      if (complete(a)) done += n; else if (started(a)) doing += n;\n    });",
+   "replace": "    var done = 0, doing = 0, tot = 0;\n    var skipN = 0;\n    var oxyMissN = 0;\n    all.forEach(function (a) {\n      var n = (a.members || [a.id]).length; tot += n;\n      if (mcSkipped(a.id)) { skipN += n; return; }   // not needed this month\n      if (mcEmailedNoOxy(a)) oxyMissN += n;\n      if (complete(a)) done += n; else if (started(a)) doing += n;\n    });"
+  },
+  {
+   "note": "Monthly Close: header legend flags missing ΑΠΥ/ΤΠΥ",
+   "find": "(skipN ? '<span><i class=\"mcd todo\" style=\"background:#94A3B8\"></i>' + skipN + ' not needed</span>' : '') + _pace + '</div></div>'",
+   "replace": "(skipN ? '<span><i class=\"mcd todo\" style=\"background:#94A3B8\"></i>' + skipN + ' not needed</span>' : '') + (oxyMissN ? '<span><i class=\"mcd todo\" style=\"background:#DC2626\"></i>' + oxyMissN + ' no receipt/invoice</span>' : '') + _pace + '</div></div>'"
+  },
+  {
+   "note": "Monthly Close: CSS for the missing-document banner and list badge",
+   "find": "#tab-mt .mc-sent{font-size:11px;color:#059669;font-weight:600}\n#tab-mt .mc-empty{padding:22px;text-align:center;color:var(--tx3);font-size:12px}",
+   "replace": "#tab-mt .mc-sent{font-size:11px;color:#059669;font-weight:600}\n#tab-mt .mc-oxy-alert{margin:0 0 12px;padding:9px 12px;background:#FEF2F2;border:1px solid #DC2626;border-radius:var(--r);color:#991B1B;font-size:12px;font-weight:600;line-height:1.45}\n#tab-mt .mc-oxy-badge{background:#FEF2F2;border:1px solid #DC2626;color:#991B1B;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap}\n#tab-mt .mc-lrow.nooxy{border-left:3px solid #DC2626}\n#tab-mt .mc-empty{padding:22px;text-align:center;color:var(--tx3);font-size:12px}"
+  },
+  {
+   "note": "Monthly Close focus card: banner when this close was emailed without an ΑΠΥ/ΤΠΥ",
+   "find": "          }).join('') + '</div>'\n          + '<div class=\"mc-act\"><div class=\"mc-actlbl\"><span class=\"mc-step\">Step ' + (i + 1) + ' of ' + f.length + '</span>'",
+   "replace": "          }).join('') + '</div>'\n          + (mcEmailedNoOxy(cur) ? '<div class=\"mc-oxy-alert\">Email went out without a ' + (cur.type === 'b2b' ? 'ΤΠΥ (invoice)' : 'ΑΠΥ (receipt)') + '. The close is not complete - open the report and Send again so the document is issued.</div>' : '')\n          + '<div class=\"mc-act\"><div class=\"mc-actlbl\"><span class=\"mc-step\">Step ' + (i + 1) + ' of ' + f.length + '</span>'"
+  },
+  {
+   "note": "Monthly Close list: badge + row highlight when emailed without an ΑΠΥ/ΤΠΥ",
+   "find": "        return '<div class=\"mc-lrow' + (cp ? ' done' : '') + (r && r.flag ? ' flagged' : '') + (a.id === focusId ? ' jump' : '') + '\">'\n          + '<span class=\"mcbadge sm ' + a.type + '\">' + TYPE_SHORT[a.type] + '</span>'\n          + '<span class=\"mc-lname\">' + esc(a.name) + '</span>'",
+   "replace": "        return '<div class=\"mc-lrow' + (cp ? ' done' : '') + (r && r.flag ? ' flagged' : '') + (mcEmailedNoOxy(a) ? ' nooxy' : '') + (a.id === focusId ? ' jump' : '') + '\">'\n          + '<span class=\"mcbadge sm ' + a.type + '\">' + TYPE_SHORT[a.type] + '</span>'\n          + '<span class=\"mc-lname\">' + esc(a.name) + '</span>'\n          + (mcEmailedNoOxy(a) ? '<span class=\"mc-oxy-badge\" title=\"Email sent without a fiscal document\">No ' + (a.type === 'b2b' ? 'ΤΠΥ' : 'ΑΠΥ') + '</span>' : '')"
+  }
+ ],
+ "assertions": [
+  {
+   "has": "const _oxyNeed = _pk0.some",
+   "note": "send computes whether any packet needs a fiscal document"
+  },
+  {
+   "has": "p === 'private' || p === 'b2b'",
+   "note": "grouped private/B2B packets require Oxygen even if the primary apt is leased"
+  },
+  {
+   "has": "if (_oxyNeed) {",
+   "note": "Oxygen issue path runs whenever a private/B2B packet is on the report"
+  },
+  {
+   "hasNot": "if (_apt.profile && _apt.profile !== 'leased') {",
+   "note": "old primary-apt-only Oxygen skip is gone"
+  },
+  {
+   "has": "_oxyNeed && !(_oxyDoc && _oxyDoc.invoiceId)",
+   "note": "send aborts when private/B2B has no issued document"
+  },
+  {
+   "has": "alert('Cannot send: no ' + _oxyLabel",
+   "note": "hard alert when the receipt/invoice was not created"
+  },
+  {
+   "has": "The email was NOT sent.",
+   "note": "alert copy says the email did not go out"
+  },
+  {
+   "has": "no receipt/invoice was created, so the email was not sent",
+   "note": "status line after abort is generic (receipt or invoice)"
+  },
+  {
+   "has": "_extra.oxygen = _oxyDoc",
+   "note": "Oxygen stamp copied onto each apartment lock"
+  },
+  {
+   "has": "function mcNeedsOxyDoc(a)",
+   "note": "Monthly Close helper: private/B2B need a fiscal document"
+  },
+  {
+   "has": "function mcOxyIssued(a)",
+   "note": "Monthly Close helper: Oxygen invoiceId on the lock"
+  },
+  {
+   "has": "function mcEmailedNoOxy(a)",
+   "note": "Monthly Close helper: emailed this close with no document"
+  },
+  {
+   "has": "if (mcNeedsOxyDoc(a) && !mcOxyIssued(a)) return false;",
+   "note": "Email stage stays open without ΑΠΥ/ΤΠΥ"
+  },
+  {
+   "has": "if (batchStage === 'email')",
+   "note": "batch cannot tick Email"
+  },
+  {
+   "has": "oxyMissN",
+   "note": "header counts missing documents"
+  },
+  {
+   "has": "no receipt/invoice",
+   "note": "header legend labels the missing-document count"
+  },
+  {
+   "has": "class=\"mc-oxy-alert\"",
+   "note": "focus card missing-document banner"
+  },
+  {
+   "has": "class=\"mc-oxy-badge\"",
+   "note": "list-row missing-document badge"
+  },
+  {
+   "has": "mcEmailedNoOxy(a) ? ' nooxy'",
+   "note": "list row highlighted when emailed without a document"
+  },
+  {
+   "hasNot": "if (key === 'email') {\n      var em = (r && r.emailed) || (lk && lk.email);\n      return !!(em && r && r.remit && (em.at || 0) >= (r.remit.at_ms || 0));",
+   "note": "email isDone no longer completes on the email stamp alone"
+  }
+ ]
+}
