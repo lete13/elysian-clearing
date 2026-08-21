@@ -1,0 +1,41 @@
+{
+ "baseSha256": "59991828a48455f4dc9ad3bf85c3cc69ca90ded127417777b1184214974dbf54",
+ "expectedSha256": "099f9bfddb5e671d4a99142e3afc8a8be6b4f3237107e1e116993a6d6b98174e",
+ "builtAt": "2026-08-21 Refile unmapped Booking PDFs and Airbnb chrome vault folders",
+ "patches": [
+  {
+   "note": "Load vault refile helper next to Booking.com helpers",
+   "find": "const piBooking = require('./scripts/platform-invoice-booking');\nconst { reconcileBookingMonth } = piBooking;\n",
+   "replace": "const piBooking = require('./scripts/platform-invoice-booking');\nconst { reconcileBookingMonth } = piBooking;\nconst piVaultRefile = require('./scripts/platform-invoice-vault-refile');\n",
+   "count": 1
+  },
+  {
+   "note": "Refile unmapped Booking PDFs and Airbnb chrome folders",
+   "find": "    n++;\n  }\n  return n;\n}\nlet _platInvReady = false;\n",
+   "replace": "    n++;\n  }\n  return n;\n}\nasync function piRefileVaultApartments() {\n  let rows = [];\n  if (pool) {\n    await ensurePlatInvTable();\n    const q = await pool.query(\n      `SELECT id, month, channel, partner, filename, meta, data\n       FROM platform_invoices\n       WHERE partner ~* '^(today|upcoming|requests?)$'\n          OR partner ILIKE 'unmapped-%'\n          OR COALESCE(filename,'') ILIKE '%unmapped-%'`\n    );\n    rows = q.rows || [];\n  } else {\n    rows = [..._memPlatInv.values()].filter(function (x) {\n      const p = String(x.partner || '');\n      const f = String(x.filename || '');\n      return /^(today|upcoming|requests?)$/i.test(p) || /unmapped-/i.test(p + ' ' + f);\n    });\n  }\n  if (!rows.length) return 0;\n  const apts = await piLoadDbApts();\n  const bks = await piLoadDbBookings();\n  let n = 0;\n  for (const r of rows) {\n    let plan = null;\n    const ch = String(r.channel || '').toLowerCase();\n    if (ch === 'airbnb') plan = piVaultRefile.planAirbnbChromeRefile(r, bks, apts);\n    else if (ch === 'booking' || ch === 'bdc') plan = piVaultRefile.planBookingPdfRefile(r, platInvPdfBuffer(r), apts);\n    if (!plan) continue;\n    if (pool) {\n      await pool.query(\n        'UPDATE platform_invoices SET month=$1, partner=$2, filename=$3, meta=$4 WHERE id=$5',\n        [plan.month, plan.partner, plan.filename, plan.metaJson, r.id]\n      );\n    } else {\n      r.month = plan.month; r.partner = plan.partner; r.filename = plan.filename; r.meta = plan.metaJson;\n      _memPlatInv.set(r.id, r);\n    }\n    n++;\n  }\n  return n;\n}\nlet _platInvReady = false;\n",
+   "count": 1
+  },
+  {
+   "note": "Run apartment refile with issue-date refile",
+   "find": "try { await piRefileAirbnbByIssueDate(); } catch (eRefile) {}",
+   "replace": "try { await piRefileAirbnbByIssueDate(); } catch (eRefile) {}\n  try { await piRefileVaultApartments(); } catch (eVault) {}",
+   "count": 6
+  },
+  {
+   "note": "Booking zip refiles existing unmapped rows before ingest",
+   "find": "app.post('/api/platform-invoices/booking-zip', async (req, res) => {\n  const b = req.body || {};\n",
+   "replace": "app.post('/api/platform-invoices/booking-zip', async (req, res) => {\n  try { await piRefileAirbnbByIssueDate(); } catch (eRefile) {}\n  try { await piRefileVaultApartments(); } catch (eVault) {}\n  const b = req.body || {};\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "require('./scripts/platform-invoice-vault-refile')",
+   "note": "vault refile helper"
+  },
+  {
+   "has": "piRefileVaultApartments",
+   "note": "refile function"
+  }
+ ]
+}

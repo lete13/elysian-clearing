@@ -11,6 +11,7 @@
 
 const zlib = require('zlib');
 const path = require('path');
+const crypto = require('crypto');
 
 const MONTH_NAMES_EN = [
   '',
@@ -181,6 +182,7 @@ function normalizeHotelId(id) {
 function parseBookingHotelId(text) {
   const s = String(text || '');
   const patterns = [
+    /accommodation\s*(?:number|no\.?|#|id)\s*[:.]?\s*(\d{5,10})/i,
     /hotel[_-]?id["'=\s:/]+(\d{5,10})/i,
     /property[_-]?id["'=\s:/]+(\d{5,10})/i,
     /(?:hotel|property)\s*id\s*[:#]?\s*(\d{5,10})/i,
@@ -229,23 +231,210 @@ function parseBookingTotal(text) {
   return isFinite(n) ? n : '';
 }
 
+function pdfUnescapeLiteral(inner) {
+  return String(inner || '')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\([0-7]{1,3})/g, function (_, oct) {
+      return String.fromCharCode(parseInt(oct, 8));
+    })
+    .replace(/\\(.)/g, '$1');
+}
+
+function pdfLooksLikeText(s) {
+  const t = String(s || '');
+  if (t.length < 2) return false;
+  let ok = 0;
+  for (let i = 0; i < t.length; i++) {
+    const c = t.charCodeAt(i);
+    if ((c >= 32 && c <= 126) || c === 10 || c === 13 || (c >= 160 && c < 0xd800)) ok += 1;
+  }
+  return ok / t.length >= 0.8;
+}
+
+function pdfHexToStr(hex) {
+  const h = String(hex || '').replace(/[^0-9A-Fa-f]/g, '');
+  let out = '';
+  if (h.length % 4 === 0 && h.length >= 4) {
+    for (let i = 0; i < h.length; i += 4) out += String.fromCharCode(parseInt(h.slice(i, i + 4), 16));
+    return out;
+  }
+  if (h.length % 2 === 0 && h.length >= 2) {
+    for (let i = 0; i < h.length; i += 2) out += String.fromCharCode(parseInt(h.slice(i, i + 2), 16));
+    return out;
+  }
+  return h ? String.fromCharCode(parseInt(h, 16)) : '';
+}
+
+function pdfParseToUnicode(src) {
+  const map = {};
+  function eatBlock(kind) {
+    const re = new RegExp('begin' + kind + '([\\s\\S]*?)end' + kind, 'gi');
+    let block;
+    while ((block = re.exec(src))) {
+      const body = block[1];
+      if (kind === 'bfrange') {
+        const triple = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g;
+        let m;
+        while ((m = triple.exec(body))) {
+          const start = parseInt(m[1], 16);
+          const end = parseInt(m[2], 16);
+          const first = pdfHexToStr(m[3]);
+          const base = first ? first.charCodeAt(0) : parseInt(m[3], 16);
+          for (let cid = start; cid <= end; cid++) {
+            map[cid] = String.fromCharCode(base + (cid - start));
+          }
+        }
+      } else {
+        const pair = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g;
+        let m;
+        while ((m = pair.exec(body))) {
+          map[parseInt(m[1], 16)] = pdfHexToStr(m[2]);
+        }
+      }
+    }
+  }
+  eatBlock('bfrange');
+  eatBlock('bfchar');
+  return map;
+}
+
+function pdfMergeCmaps(maps) {
+  const out = {};
+  (maps || []).forEach(function (m) {
+    Object.keys(m || {}).forEach(function (k) {
+      if (m[k]) out[k] = m[k];
+    });
+  });
+  return out;
+}
+
+function pdfInflateBytes(buf) {
+  if (!buf || !buf.length) return null;
+  try {
+    return zlib.inflateSync(buf);
+  } catch (e1) {}
+  try {
+    return zlib.inflateRawSync(buf);
+  } catch (e2) {}
+  return null;
+}
+
+function pdfInflatedStreams(raw) {
+  const s = Buffer.isBuffer(raw) ? raw.toString('latin1') : String(raw || '');
+  const out = [];
+  const re = /stream\r?\n/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const start = m.index + m[0].length;
+    const end = s.indexOf('endstream', start);
+    if (end < 0) break;
+    let data = Buffer.from(s.slice(start, end), 'latin1');
+    if (data.length && data[data.length - 1] === 0x0a) {
+      data = data.slice(0, data[data.length - 2] === 0x0d ? -2 : -1);
+    }
+    const inflated = pdfInflateBytes(data);
+    if (inflated) out.push(inflated);
+  }
+  return out;
+}
+
+function pdfMapCidBytes(latin1, cmap) {
+  const buf = Buffer.from(String(latin1 || ''), 'latin1');
+  const hasMap = cmap && Object.keys(cmap).length;
+  if (hasMap) {
+    let out = '';
+    if (buf.length >= 2 && buf.length % 2 === 0) {
+      for (let i = 0; i < buf.length; i += 2) {
+        const cid = (buf[i] << 8) | buf[i + 1];
+        if (Object.prototype.hasOwnProperty.call(cmap, cid)) out += cmap[cid];
+        else if (Object.prototype.hasOwnProperty.call(cmap, buf[i + 1])) out += cmap[buf[i + 1]];
+      }
+      if (out.replace(/\s+/g, '').length) return out;
+    }
+    out = '';
+    for (let i = 0; i < buf.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(cmap, buf[i])) out += cmap[buf[i]];
+    }
+    if (out.replace(/\s+/g, '').length) return out;
+  }
+  if (buf.length >= 4 && buf.length % 2 === 0) {
+    let be = true;
+    for (let i = 0; i < buf.length; i += 2) {
+      if (buf[i] !== 0) {
+        be = false;
+        break;
+      }
+    }
+    if (be) {
+      let t = '';
+      for (let i = 1; i < buf.length; i += 2) t += String.fromCharCode(buf[i]);
+      return t;
+    }
+  }
+  return buf.toString('latin1');
+}
+
+function pdfPushDecoded(chunks, text) {
+  const t = String(text || '').replace(/\0/g, ' ').replace(/\s+/g, ' ').trim();
+  if (t && pdfLooksLikeText(t)) chunks.push(t);
+}
+
+function pdfCollectTj(content, cmap, chunks) {
+  const s = String(content || '');
+  const litRe = /\((?:\\.|[^\\)])*\)\s*Tj/g;
+  let m;
+  while ((m = litRe.exec(s))) {
+    const inner = m[0].replace(/\)\s*Tj$/i, '').slice(1);
+    pdfPushDecoded(chunks, pdfMapCidBytes(pdfUnescapeLiteral(inner), cmap));
+  }
+  const hexRe = /<([0-9A-Fa-f\s]+)>\s*Tj/g;
+  while ((m = hexRe.exec(s))) {
+    const hex = String(m[1] || '').replace(/\s+/g, '');
+    const bytes = hex.replace(/[^0-9A-Fa-f]/g, '');
+    let raw = '';
+    for (let i = 0; i + 1 < bytes.length; i += 2) raw += String.fromCharCode(parseInt(bytes.slice(i, i + 2), 16));
+    pdfPushDecoded(chunks, pdfMapCidBytes(raw, cmap));
+  }
+  const tjRe = /\[([\s\S]*?)\]\s*TJ/g;
+  while ((m = tjRe.exec(s))) {
+    const body = m[1] || '';
+    const parts = body.match(/\((?:\\.|[^\\)])*\)|<([0-9A-Fa-f\s]+)>/g) || [];
+    parts.forEach(function (p) {
+      if (p.charAt(0) === '(') {
+        pdfPushDecoded(chunks, pdfMapCidBytes(pdfUnescapeLiteral(p.slice(1, -1)), cmap));
+        return;
+      }
+      const bytes = String(p).replace(/[<>\s]/g, '');
+      let raw = '';
+      for (let i = 0; i + 1 < bytes.length; i += 2) raw += String.fromCharCode(parseInt(bytes.slice(i, i + 2), 16));
+      pdfPushDecoded(chunks, pdfMapCidBytes(raw, cmap));
+    });
+  }
+}
+
 function pdfExtractText(buf) {
   const raw = Buffer.isBuffer(buf) ? buf : Buffer.from(String(buf || ''), 'binary');
   const s = raw.toString('latin1');
   const chunks = [];
-  const re = /\((?:\\.|[^\\)]){2,160}\)/g;
+  const streams = pdfInflatedStreams(raw);
+  const cmaps = [];
+  streams.forEach(function (st) {
+    const t = st.toString('latin1');
+    if (/beginbfchar|beginbfrange/i.test(t)) cmaps.push(pdfParseToUnicode(t));
+  });
+  const cmap = pdfMergeCmaps(cmaps);
+  streams.forEach(function (st) {
+    pdfCollectTj(st.toString('latin1'), cmap, chunks);
+  });
+  const litRe = /\((?:\\.|[^\\)]){2,500}\)/g;
   let m;
-  while ((m = re.exec(s))) {
-    chunks.push(
-      m[0]
-        .slice(1, -1)
-        .replace(/\\n/g, ' ')
-        .replace(/\\r/g, ' ')
-        .replace(/\\(.)/g, '$1')
-    );
+  while ((m = litRe.exec(s))) {
+    const inner = pdfUnescapeLiteral(m[0].slice(1, -1));
+    if (pdfLooksLikeText(inner)) pdfPushDecoded(chunks, inner);
   }
-  const compact = s.replace(/[^\x20-\x7E\u00A0-\u024F]/g, ' ').replace(/\s+/g, ' ');
-  return (chunks.join(' ') + ' ' + compact).slice(0, 200000);
+  return chunks.join(' ').replace(/\s+/g, ' ').slice(0, 200000);
 }
 
 function parseBookingInvoiceFields(text) {
@@ -273,6 +462,16 @@ function isBookingStatementBlob(name, text) {
   const blob = (String(name || '') + ' ' + String(text || '')).trim();
   if (/\.xlsx?(\s|$|\?)/i.test(blob) || /\.csv(\s|$|\?)/i.test(blob)) return true;
   return /statement of account|reservation.?statement|finance overview|payout statement/i.test(blob);
+}
+
+function isPortalChromeLabel(name) {
+  const n = String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  return /^(today|upcoming|requests?|reservations?|inbox|calendar|listings?|hosting|search|messages?|performance|insights|earnings|checking out|currently hosting|arriving soon)$/.test(
+    n
+  );
 }
 
 function resolveBookingApt(hotelId, apts) {
@@ -318,13 +517,41 @@ function resolveBookingApt(hotelId, apts) {
   };
 }
 
-function bookingInvoiceFilename(hotelId, invoiceNo) {
+function pdfShortHash(buf) {
+  return crypto
+    .createHash('sha1')
+    .update(Buffer.isBuffer(buf) ? buf : Buffer.from(buf || ''))
+    .digest('hex')
+    .slice(0, 10);
+}
+
+function zipLeafToken(zipName) {
+  const s = String(zipName || '').replace(/\\/g, '/');
+  return path
+    .basename(s)
+    .replace(/\.pdf$/i, '')
+    .replace(/[^\w.-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+}
+
+function bookingInvoiceFilename(hotelId, invoiceNo, zipName, contentKey) {
   const id = normalizeHotelId(hotelId) || 'unknown';
   const inv = String(invoiceNo || '')
     .replace(/[^\w.-]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 40);
-  return inv ? 'invoice-' + id + '-' + inv + '.pdf' : 'invoice-' + id + '.pdf';
+  if (inv) return 'invoice-' + id + '-' + inv + '.pdf';
+  if (id !== 'unknown') return 'invoice-' + id + '.pdf';
+  const leaf = zipLeafToken(zipName);
+  const extra = String(contentKey || '')
+    .replace(/[^\w]+/g, '')
+    .slice(0, 10);
+  if (leaf && extra && /^invoice$/i.test(leaf)) return 'invoice-unknown-' + extra + '.pdf';
+  if (leaf && extra) return 'invoice-unknown-' + leaf + '-' + extra + '.pdf';
+  if (leaf) return 'invoice-unknown-' + leaf + '.pdf';
+  if (extra) return 'invoice-unknown-' + extra + '.pdf';
+  return 'invoice-unknown.pdf';
 }
 
 function monthTokens(month) {
@@ -528,7 +755,7 @@ function unzipFromCentralDirectory(zip) {
     const data = zip.slice(dataStart, dataStart + compSize);
     const raw = zipInflate(method, data);
     if (!raw || !looksLikePdf(raw)) continue;
-    out.push({ name: path.basename(name), buf: raw });
+    out.push({ name: path.basename(name), zipPath: String(name).replace(/\\/g, '/'), buf: raw });
   }
   return out;
 }
@@ -559,7 +786,7 @@ function unzipFromLocalHeaders(zip) {
     if (zipSkipEntry(name)) continue;
     const raw = zipInflate(method, data);
     if (!raw || !looksLikePdf(raw)) continue;
-    out.push({ name: path.basename(name), buf: raw });
+    out.push({ name: path.basename(name), zipPath: String(name).replace(/\\/g, '/'), buf: raw });
   }
   return out;
 }
@@ -582,9 +809,16 @@ function aptStoreFolder(name) {
   return (s || 'Apartment').slice(0, 60);
 }
 
-function bookingStoreRel(month, folder, hotelId, invoiceNo) {
+function bookingStoreRel(month, folder, hotelId, invoiceNo, zipName, contentKey) {
   const ym = /^\d{4}-\d{2}$/.test(String(month || '')) ? String(month) : 'unknown';
-  return 'Booking.com/' + ym + '/' + aptStoreFolder(folder) + '/' + bookingInvoiceFilename(hotelId, invoiceNo);
+  return (
+    'Booking.com/' +
+    ym +
+    '/' +
+    aptStoreFolder(folder) +
+    '/' +
+    bookingInvoiceFilename(hotelId, invoiceNo, zipName, contentKey)
+  );
 }
 
 function monthFromFilenameBlob(name) {
@@ -609,6 +843,8 @@ function bookingZipDupKey(file) {
   const hotel = normalizeHotelId(file && (file.bookingHotelId || file.hotelId));
   const inv = String((file && file.invoiceNumber) || '').trim();
   if (hotel && inv) return 'inv:' + hotel + '|' + inv;
+  const zip = String((file && file.zipName) || '').replace(/\\/g, '/').trim();
+  if (zip) return 'zip:' + zip;
   return 'file:' + String((file && file.filename) || '').replace(/\\/g, '/');
 }
 
@@ -643,10 +879,18 @@ function categorizeBookingZip(buf, apts, fallbackMonth) {
     }
     const resolved = resolveBookingApt(hotelId, apts);
     const invoiceNo = fields.invoiceNumber || '';
-    const filename = bookingStoreRel(month, resolved.folder, resolved.bookingHotelId || hotelId, invoiceNo);
+    const zipName = ent.zipPath || ent.name;
+    const filename = bookingStoreRel(
+      month,
+      resolved.folder,
+      resolved.bookingHotelId || hotelId,
+      invoiceNo,
+      zipName,
+      pdfShortHash(ent.buf)
+    );
     monthSet[month] = true;
     files.push({
-      zipName: ent.name,
+      zipName: zipName,
       buf: ent.buf,
       bytes: ent.buf.length,
       channel: 'booking',
@@ -1223,6 +1467,8 @@ module.exports = {
   parseBookingInvoiceNumber,
   parseBookingInvoiceFields,
   pdfExtractText,
+  pdfShortHash,
+  isPortalChromeLabel,
   looksLikePdf,
   looksLikeZip,
   isBookingStatementBlob,

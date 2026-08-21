@@ -1,0 +1,29 @@
+{
+ "baseSha256": "4fcc76142dc57d3642a85c26251c12dbf9792d60f0838d7d916a53ec23597d65",
+ "expectedSha256": "625bf43ed2a6d7f0b7b71141f4a50eb9c09d15a248687be09b406d33bc62c792",
+ "builtAt": "2026-08-21 File Booking.com zip PDFs by hotel id; hide chrome vault folders",
+ "patches": [
+  {
+   "note": "Vault folders ignore Airbnb chrome labels Today/Upcoming/Requests",
+   "find": "  function piStoreApt(it) {\n    var p = String((it && it.partner) || '').trim();\n    if (p && !/^credit_note\\b/i.test(p)) return p;\n    var listing = String((it && it.listingName) || '').trim();\n    if (listing) return listing;\n    var parts = String((it && it.filename) || '').replace(/\\\\/g, '/').split('/');\n    if (parts.length >= 3) {\n      var folder = parts[parts.length - 2];\n      if (folder && !/^\\d{4}-\\d{2}$/.test(folder) && !/^Airbnb$|^Booking/i.test(folder)) return folder;\n    }\n    return 'Untagged';\n  }",
+   "replace": "  function piStoreApt(it) {\n    function piChromeFolder(n) {\n      return /^(today|upcoming|requests?|reservations?|inbox|calendar|listings?|hosting|search|messages?|performance|insights|earnings|checking out|currently hosting|arriving soon)$/i.test(String(n || '').trim());\n    }\n    var p = String((it && it.partner) || '').trim();\n    if (p && !/^credit_note\\b/i.test(p) && !piChromeFolder(p)) return p;\n    var listing = String((it && it.listingName) || '').trim();\n    if (listing && !piChromeFolder(listing) && !/^credit_note\\b/i.test(listing)) return listing;\n    var parts = String((it && it.filename) || '').replace(/\\\\/g, '/').split('/');\n    if (parts.length >= 3) {\n      var folder = parts[parts.length - 2];\n      if (folder && !/^\\d{4}-\\d{2}$/.test(folder) && !/^Airbnb$|^Booking/i.test(folder) && !piChromeFolder(folder)) return folder;\n    }\n    return 'Untagged';\n  }",
+   "count": 1
+  },
+  {
+   "note": "Zip result distinguishes unreadable PDFs from missing hotel ids",
+   "find": "        var un = (x.j.unmapped || []).filter(Boolean);\n        var bits = ['Saved ' + n + ' Booking.com PDF(s)'];\n        if (skip) bits.push(skip + ' skipped');\n        if (un.length) bits.push('unmapped id(s): ' + un.join(', ') + ' — paste bookingHotelId on Configuration');\n        msg(bits.join(' · '), !un.length);",
+   "replace": "        var un = (x.j.unmapped || []).filter(Boolean);\n        var bits = ['Saved ' + n + ' Booking.com PDF(s)'];\n        if (skip) {\n          var reasons = {};\n          (x.j.skipped || []).forEach(function (s) {\n            var r = (s && s.reason) || 'other';\n            reasons[r] = (reasons[r] || 0) + 1;\n          });\n          var why = Object.keys(reasons).map(function (k) { return reasons[k] + ' ' + k; }).join(', ');\n          bits.push(skip + ' skipped' + (why ? ' (' + why + ')' : ''));\n        }\n        if (un.length) {\n          var real = un.filter(function (u) { return /\\d{5,10}/.test(String(u)) && !/unknown/i.test(String(u)); });\n          var unk = un.filter(function (u) { return /unknown/i.test(String(u)); });\n          if (real.length) bits.push('unmapped id(s): ' + real.join(', ') + ' — paste bookingHotelId on Configuration');\n          if (unk.length) bits.push('could not read a Booking.com hotel id from ' + unk.length + ' PDF(s)');\n        }\n        msg(bits.join(' · '), !un.length);",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function piChromeFolder",
+   "note": "chrome folder helper"
+  },
+  {
+   "has": "could not read a Booking.com hotel id",
+   "note": "zip unreadable copy"
+  }
+ ]
+}

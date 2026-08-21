@@ -292,6 +292,7 @@ function norm(s) {
 }
 
 function matchApartment(label, apts) {
+  if (booking.isPortalChromeLabel(label)) return { aptId: '', aptName: '' };
   const n = norm(label);
   if (!n || !apts.length) return { aptId: '', aptName: String(label || '').trim() };
   let best = null;
@@ -1366,11 +1367,19 @@ async function pullAirbnbDocsForCode(page, context, month, dir, files, errors, r
     return 0;
   }
 
-  const listingGuess =
-    (await page.locator('h1, h2, [data-testid*="listing"]').first().innerText().catch(() => '')) || resv.aptName || '';
+  const listingGuessRaw =
+    (await page.locator('h1, h2, [data-testid*="listing"]').first().innerText().catch(() => '')) || '';
+  const listingGuess = booking.isPortalChromeLabel(listingGuessRaw) ? '' : listingGuessRaw;
   const apt = matchApartment(listingGuess || resv.aptName, apts);
   const aptId = resv.aptId || apt.aptId || '';
-  const aptName = resv.aptName || apt.aptName || listingGuess || '';
+  let aptName = '';
+  if (resv.aptName && !booking.isPortalChromeLabel(resv.aptName)) aptName = resv.aptName;
+  else if (apt.aptName && !booking.isPortalChromeLabel(apt.aptName)) aptName = apt.aptName;
+  else if (listingGuess) aptName = listingGuess;
+  else if (aptId) {
+    const hit = (apts || []).find((a) => a && String(a.aptId || a.id || '') === String(aptId));
+    aptName = String((hit && (hit.aptName || hit.name)) || '').trim();
+  }
 
   // Always collect every VAT debit + credit on the stay (cancel / extend sets).
   const kindsWanted = new Set(['invoice', 'credit_note']);

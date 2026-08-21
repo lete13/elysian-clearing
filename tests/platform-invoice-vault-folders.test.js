@@ -107,4 +107,23 @@ assert(tree.innerHTML.indexOf('invoice-HM9DCDMEXT.pdf') >= 0, 'PDF leaf');
 assert(tree.innerHTML.indexOf('/api/platform-invoices/1/file') >= 0, 'Open href');
 assert(/2 PDF/.test(meta.textContent), 'meta counts PDFs: ' + meta.textContent);
 
+ctx.PI.vaultItems = ctx.PI.vaultItems.concat([
+  {
+    id: '3',
+    month: '2026-02',
+    channel: 'airbnb',
+    partner: 'Today',
+    listingName: 'Today',
+    filename: 'Airbnb/2026-02/Today/invoice-HMCHROME.pdf',
+  },
+]);
+ctx.renderVaultTree();
+assert(tree.innerHTML.indexOf('pi-apt') >= 0, 'vault still has apartment folders');
+assert(
+  !/<summary[^>]*>Today</.test(tree.innerHTML),
+  'Airbnb chrome label Today is not a vault apartment folder'
+);
+assert(tree.innerHTML.indexOf('Untagged') >= 0, 'chrome-labeled PDFs fall through to Untagged until refile');
+assert(tree.innerHTML.indexOf('invoice-HMCHROME.pdf') >= 0, 'chrome PDF leaf still listed');
+
 console.log('platform-invoice-vault-folders.test.js: ok');
