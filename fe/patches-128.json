@@ -1,0 +1,49 @@
+{
+ "patches": [
+  {
+   "note": "Collect copy: Booking.com zip is the normal path",
+   "find": "        Then <b>Pull Airbnb (Hosthub codes)</b> for the full month (incomplete stays first; already-saved invoices skipped). Connect Airbnb once if OTP blocks login.\n        <b>Connect Booking</b> opens admin.booking.com in this page (log in, then Save session). Click the username field in the screenshot or type it in the box (it is filled for you), wait for the password field, then continue. If Booking.com asks if you are human, click that check in the screenshot. If it says <b>Sign-in failed / Try again later</b>, Booking.com blocked this server network — do not retry now; wait several hours. <b>Pull Booking.com</b> mass-extracts every apartment invoice for the document month from Finance → Invoices (Votsala = one PDF).",
+   "replace": "        Then <b>Pull Airbnb (Hosthub codes)</b> for the full month (incomplete stays first; already-saved invoices skipped). Connect Airbnb once if OTP blocks login.\n        <b>Upload Booking.com zip</b> of invoice PDFs from admin.booking.com Finance → Invoices. Files are sorted by hotel id and issue month (Votsala = one PDF). Pull Booking.com is under Emergency only.",
+   "count": 1
+  },
+  {
+   "note": "Collect primary action is Upload Booking.com zip",
+   "find": "        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <button class=\"btn sm\" id=\"pi-pull-bdc-btn\" onclick=\"piPullBooking()\">Pull Booking.com</button>\n        <button class=\"btn sm\" id=\"pi-stop-pull-btn\" onclick=\"piStopPull()\">Stop pull</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>\n        <button class=\"btn sm\" id=\"pi-connect-booking-btn\" onclick=\"piConnectBookingInApp()\">Connect Booking</button>",
+   "replace": "        <button class=\"btn sm\" id=\"pi-pull-all-btn\" onclick=\"piPull()\">Pull Airbnb (Hosthub codes)</button>\n        <label class=\"btn sm gold\" id=\"pi-bdc-zip-label\">Upload Booking.com zip<input id=\"pi-bdc-zip\" type=\"file\" accept=\".zip,application/zip\" hidden onchange=\"piUploadBookingZip(this)\"/></label>\n        <button class=\"btn sm\" id=\"pi-stop-pull-btn\" onclick=\"piStopPull()\">Stop pull</button>\n        <button class=\"btn sm\" id=\"pi-connect-airbnb-btn\" onclick=\"piConnectAirbnbInApp()\">Connect Airbnb</button>",
+   "count": 1
+  },
+  {
+   "note": "Emergency tools keep Pull/Connect Booking and single PDF upload",
+   "find": "          <select id=\"pi-bdc-apt\" style=\"min-width:200px;font-size:12px;padding:6px 8px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg)\"></select>\n          <label class=\"btn sm\">Upload PDF<input id=\"pi-files\" type=\"file\" accept=\".pdf,application/pdf\" multiple hidden onchange=\"piUploadMany(this,'leased')\"/></label>",
+   "replace": "          <select id=\"pi-bdc-apt\" style=\"min-width:200px;font-size:12px;padding:6px 8px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg)\"></select>\n          <label class=\"btn sm\">Upload PDF<input id=\"pi-files\" type=\"file\" accept=\".pdf,application/pdf\" multiple hidden onchange=\"piUploadMany(this,'leased')\"/></label>\n          <button class=\"btn sm\" id=\"pi-pull-bdc-btn\" onclick=\"piPullBooking()\">Pull Booking.com</button>\n          <button class=\"btn sm\" id=\"pi-connect-booking-btn\" onclick=\"piConnectBookingInApp()\">Connect Booking</button>",
+   "count": 1
+  },
+  {
+   "note": "piUploadBookingZip posts the zip and apartment hotel-id map",
+   "find": "    } finally {\n      if (btn) btn.disabled = false;\n      if (btnAir) btnAir.disabled = false;\n      if (btnTest) btnTest.disabled = false;\n    }\n  };\n  window.piSend = async function (scope) {",
+   "replace": "    } finally {\n      if (btn) btn.disabled = false;\n      if (btnAir) btnAir.disabled = false;\n      if (btnTest) btnTest.disabled = false;\n    }\n  };\n  window.piUploadBookingZip = function (input) {\n    var file = input && input.files && input.files[0];\n    if (input) input.value = '';\n    if (!file) return;\n    var month = monthVal();\n    msg('Uploading Booking.com zip…', true);\n    var reader = new FileReader();\n    reader.onload = function () {\n      var dataB64 = String(reader.result || '').split(',')[1] || '';\n      var apts = (typeof S !== 'undefined' && Array.isArray(S.apts))\n        ? S.apts.map(function (a) {\n            return {\n              aptId: a.id || a.aptId || '',\n              aptName: a.name || a.aptName || '',\n              bookingHotelId: String(a.bookingHotelId || '').trim(),\n              clearGroup: String(a.clearGroup || '').trim()\n            };\n          })\n        : [];\n      fetch('/api/platform-invoices/booking-zip', {\n        method: 'POST', headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ month: month, name: file.name, dataB64: dataB64, apartments: apts })\n      }).then(function (res) {\n        return res.json().then(function (j) { return { res: res, j: j }; });\n      }).then(function (x) {\n        if (!x.res.ok || !x.j || !x.j.ok) throw new Error((x.j && (x.j.error || x.j.hint)) || 'zip upload failed');\n        var n = (x.j.saved || []).length;\n        var skip = (x.j.skipped || []).length;\n        var un = (x.j.unmapped || []).filter(Boolean);\n        var bits = ['Saved ' + n + ' Booking.com PDF(s)'];\n        if (skip) bits.push(skip + ' skipped');\n        if (un.length) bits.push('unmapped id(s): ' + un.join(', ') + ' — paste bookingHotelId on Configuration');\n        msg(bits.join(' · '), !un.length);\n        return piHealth().then(function () { return piReload(); });\n      }).catch(function (e) { msg(e && e.message ? e.message : String(e), false); });\n    };\n    reader.readAsDataURL(file);\n  };\n  window.piSend = async function (scope) {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piUploadBookingZip",
+   "note": "zip upload handler"
+  },
+  {
+   "has": "id=\"pi-bdc-zip\"",
+   "note": "zip file input"
+  },
+  {
+   "has": "Upload Booking.com zip",
+   "note": "primary Collect CTA"
+  },
+  {
+   "has": "Pull Booking.com is under Emergency only",
+   "note": "Pull demoted in copy"
+  }
+ ],
+ "baseSha256": "0eb9c8b5dd37a2065e4f73a27dbb1c9230526758150f7732b75697bcb02fbdc4",
+ "expectedSha256": "4179efd3af37f4517eca013767e17dee95ac18cbb9e31b9b386ad09408270755",
+ "builtAt": "2026-08-21 Booking.com zip ingest by hotel id and month"
+}

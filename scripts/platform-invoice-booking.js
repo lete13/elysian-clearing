@@ -465,8 +465,64 @@ function dedupeInvoiceTargets(rows, month) {
   return out;
 }
 
-function unzipPdfEntries(buf) {
-  const zip = Buffer.isBuffer(buf) ? buf : Buffer.from(buf || '');
+function zipSkipEntry(name) {
+  const n = String(name || '').replace(/\\/g, '/');
+  if (!n || n.charAt(n.length - 1) === '/') return true;
+  if (!/\.pdf$/i.test(n)) return true;
+  if (n.charAt(0) === '_' || /(^|\/)__MACOSX\//i.test(n)) return true;
+  return false;
+}
+
+function zipInflate(method, data) {
+  if (!data) return null;
+  try {
+    if (method === 0) return data;
+    if (method === 8) return zlib.inflateRawSync(data);
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
+function unzipFromCentralDirectory(zip) {
+  let eocd = -1;
+  const min = Math.max(0, zip.length - 22 - 65535);
+  for (let i = zip.length - 22; i >= min; i--) {
+    if (zip[i] === 0x50 && zip[i + 1] === 0x4b && zip[i + 2] === 0x05 && zip[i + 3] === 0x06) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0 || eocd + 22 > zip.length) return null;
+  const nEntries = zip.readUInt16LE(eocd + 10);
+  const cdOff = zip.readUInt32LE(eocd + 16);
+  if (!nEntries || cdOff + 46 > zip.length) return [];
+  const out = [];
+  let p = cdOff;
+  for (let n = 0; n < nEntries && p + 46 <= zip.length; n++) {
+    if (zip[p] !== 0x50 || zip[p + 1] !== 0x4b || zip[p + 2] !== 0x01 || zip[p + 3] !== 0x02) break;
+    const method = zip.readUInt16LE(p + 10);
+    const compSize = zip.readUInt32LE(p + 20);
+    const nameLen = zip.readUInt16LE(p + 28);
+    const extraLen = zip.readUInt16LE(p + 30);
+    const commentLen = zip.readUInt16LE(p + 32);
+    const localOff = zip.readUInt32LE(p + 42);
+    const name = zip.slice(p + 46, p + 46 + nameLen).toString('utf8');
+    p = p + 46 + nameLen + extraLen + commentLen;
+    if (zipSkipEntry(name) || !compSize) continue;
+    if (localOff + 30 > zip.length) continue;
+    const locNameLen = zip.readUInt16LE(localOff + 26);
+    const locExtraLen = zip.readUInt16LE(localOff + 28);
+    const dataStart = localOff + 30 + locNameLen + locExtraLen;
+    const data = zip.slice(dataStart, dataStart + compSize);
+    const raw = zipInflate(method, data);
+    if (!raw || !looksLikePdf(raw)) continue;
+    out.push({ name: path.basename(name), buf: raw });
+  }
+  return out;
+}
+
+function unzipFromLocalHeaders(zip) {
   const out = [];
   let i = 0;
   while (i < zip.length - 30) {
@@ -478,27 +534,145 @@ function unzipPdfEntries(buf) {
     }
     const method = zip.readUInt16LE(i + 8);
     const flags = zip.readUInt16LE(i + 6);
-    if (flags & 0x08) break;
     const compSize = zip.readUInt32LE(i + 18);
     const nameLen = zip.readUInt16LE(i + 26);
     const extraLen = zip.readUInt16LE(i + 28);
     const name = zip.slice(i + 30, i + 30 + nameLen).toString('utf8');
     const dataStart = i + 30 + nameLen + extraLen;
-    const data = zip.slice(dataStart, dataStart + compSize);
-    i = dataStart + compSize;
-    if (!/\.pdf$/i.test(name) || name.charAt(0) === '_' || /\/__MACOSX\//i.test(name)) continue;
-    let raw;
-    try {
-      if (method === 0) raw = data;
-      else if (method === 8) raw = zlib.inflateRawSync(data);
-      else continue;
-    } catch (e) {
+    if (flags & 0x08 || !compSize) {
+      i = dataStart;
       continue;
     }
-    if (!looksLikePdf(raw)) continue;
+    const data = zip.slice(dataStart, dataStart + compSize);
+    i = dataStart + compSize;
+    if (zipSkipEntry(name)) continue;
+    const raw = zipInflate(method, data);
+    if (!raw || !looksLikePdf(raw)) continue;
     out.push({ name: path.basename(name), buf: raw });
   }
   return out;
+}
+
+function unzipPdfEntries(buf) {
+  const zip = Buffer.isBuffer(buf) ? buf : Buffer.from(buf || '');
+  const fromCd = unzipFromCentralDirectory(zip);
+  if (fromCd && fromCd.length) return fromCd;
+  const fromLocal = unzipFromLocalHeaders(zip);
+  if (fromLocal.length) return fromLocal;
+  return fromCd || fromLocal;
+}
+
+function aptStoreFolder(name) {
+  const s = String(name || 'Apartment')
+    .replace(/[\\/]+/g, ' ')
+    .replace(/[^\w.\-\u00C0-\u024F\u0370-\u03FF ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (s || 'Apartment').slice(0, 60);
+}
+
+function bookingStoreRel(month, folder, hotelId, invoiceNo) {
+  const ym = /^\d{4}-\d{2}$/.test(String(month || '')) ? String(month) : 'unknown';
+  return 'Booking.com/' + ym + '/' + aptStoreFolder(folder) + '/' + bookingInvoiceFilename(hotelId, invoiceNo);
+}
+
+function monthFromFilenameBlob(name) {
+  const s = String(name || '');
+  const iso = s.match(/(20\d{2})-(\d{2})/);
+  if (iso) {
+    const m = parseInt(iso[2], 10);
+    if (m >= 1 && m <= 12) return iso[1] + '-' + iso[2];
+  }
+  for (let m = 1; m <= 12; m++) {
+    const en = MONTH_NAMES_EN[m];
+    const el = MONTH_NAMES_EL[m];
+    if (!en) continue;
+    const re = new RegExp('(?:' + en + (el ? '|' + el : '') + ')[\\s._-]+(20\\d{2})', 'i');
+    const hit = s.match(re);
+    if (hit) return hit[1] + '-' + String(m).padStart(2, '0');
+  }
+  return '';
+}
+
+function bookingZipDupKey(file) {
+  const hotel = normalizeHotelId(file && (file.bookingHotelId || file.hotelId));
+  const inv = String((file && file.invoiceNumber) || '').trim();
+  if (hotel && inv) return 'inv:' + hotel + '|' + inv;
+  return 'file:' + String((file && file.filename) || '').replace(/\\/g, '/');
+}
+
+function categorizeBookingZip(buf, apts, fallbackMonth) {
+  const zip = Buffer.isBuffer(buf) ? buf : Buffer.from(buf || '');
+  if (!looksLikeZip(zip)) {
+    return { ok: false, error: 'Not a zip file', files: [], skipped: [], unmapped: [], months: [] };
+  }
+  const entries = unzipPdfEntries(zip);
+  const files = [];
+  const skipped = [];
+  const monthSet = {};
+  entries.forEach(function (ent) {
+    const text = pdfExtractText(ent.buf);
+    if (isBookingStatementBlob(ent.name, text)) {
+      skipped.push({ name: ent.name, reason: 'statement' });
+      return;
+    }
+    const fields = parseBookingInvoiceFields(text + ' ' + ent.name);
+    const hotelId = fields.hotelId || parseBookingHotelId(ent.name) || '';
+    const fromIssue = ymFromDmy(fields.issueDate);
+    const fromName = monthFromFilenameBlob(ent.name);
+    let month = fromIssue || fromName;
+    let usedFallbackMonth = false;
+    if (!/^\d{4}-\d{2}$/.test(month) && /^\d{4}-\d{2}$/.test(String(fallbackMonth || ''))) {
+      month = String(fallbackMonth);
+      usedFallbackMonth = true;
+    }
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      skipped.push({ name: ent.name, reason: 'no-month', hotelId: hotelId });
+      return;
+    }
+    const resolved = resolveBookingApt(hotelId, apts);
+    const invoiceNo = fields.invoiceNumber || '';
+    const filename = bookingStoreRel(month, resolved.folder, resolved.bookingHotelId || hotelId, invoiceNo);
+    monthSet[month] = true;
+    files.push({
+      zipName: ent.name,
+      buf: ent.buf,
+      bytes: ent.buf.length,
+      channel: 'booking',
+      kind: 'invoice',
+      scope: 'leased',
+      partner: resolved.folder,
+      aptName: resolved.folder,
+      aptId: resolved.aptId,
+      bookingHotelId: resolved.bookingHotelId || hotelId,
+      mapped: !!resolved.mapped,
+      invoiceNumber: invoiceNo,
+      issueDate: fields.issueDate || '',
+      total: fields.total,
+      reservationId: resolved.bookingHotelId || hotelId,
+      listingName: resolved.folder,
+      month: month,
+      usedFallbackMonth: usedFallbackMonth,
+      filename: filename,
+      source: 'upload',
+    });
+  });
+  const unmapped = [];
+  const seenUn = {};
+  files.forEach(function (f) {
+    if (f.mapped) return;
+    const id = f.bookingHotelId || f.partner;
+    if (!id || seenUn[id]) return;
+    seenUn[id] = true;
+    unmapped.push(id);
+  });
+  return {
+    ok: true,
+    files: files,
+    skipped: skipped,
+    unmapped: unmapped,
+    months: Object.keys(monthSet).sort(),
+  };
 }
 
 function bookingTooEarly(month, now) {
@@ -650,6 +824,11 @@ module.exports = {
   harvestBookingInvoicePayloads,
   dedupeInvoiceTargets,
   unzipPdfEntries,
+  aptStoreFolder,
+  bookingStoreRel,
+  monthFromFilenameBlob,
+  bookingZipDupKey,
+  categorizeBookingZip,
   bookingTooEarly,
   bookingCompleteness,
   reconcileBookingMonth,

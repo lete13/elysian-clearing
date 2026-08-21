@@ -621,7 +621,7 @@ async function main() {
   assert(server.includes("ignoreDefaultArgs: ['--enable-automation']"), 'Booking Chrome launch drops --enable-automation');
   assert(server.includes("if (process.env.BOOKING_CONNECT_AUTOFILL === '1') await piBookingTryFillLogin(page);"), 'Connect does not auto-submit Booking.com login');
   assert(frontend.includes('Booking.com blocked this attempt'), 'Collect shows a banner when Booking.com blocks sign-in');
-  assert(frontend.includes('wait for the password field'), 'Collect says wait after username');
+  assert(/wait for the password field/i.test(frontend), 'Collect says wait after username');
   assert(frontend.includes('it is filled for you') || frontend.includes('it goes into the username field'), 'Collect says Type fills username');
   assert(frontend.includes('Server browser:'), 'Collect shows which Chrome launched');
   assert(frontend.includes('Do not retry now'), 'Collect tells the host not to retry a Booking.com network block');

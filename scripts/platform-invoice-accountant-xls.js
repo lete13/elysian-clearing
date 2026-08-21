@@ -241,6 +241,7 @@ function fileMetaJson(f) {
     checkOut: f && f.checkOut ? String(f.checkOut) : '',
     vatId: f && f.vatId ? String(f.vatId) : '',
     kind: f && f.kind ? String(f.kind) : '',
+    bookingHotelId: f && f.bookingHotelId ? String(f.bookingHotelId) : '',
   });
 }
 

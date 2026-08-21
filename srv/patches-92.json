@@ -1,0 +1,43 @@
+{
+ "patches": [
+  {
+   "note": "Allow a full-property Booking.com zip (Express JSON is 50mb)",
+   "find": "const PLATFORM_INV_MAX_B64 = 20 * 1024 * 1024; // ~15 MB binary\nconst PLATFORM_INV_ACCOUNTANT = process.env.PLATFORM_INVOICE_ACCOUNTANT_EMAIL || 'info@e-newgeneration.gr, info@elysianproperties.eu';",
+   "replace": "const PLATFORM_INV_MAX_B64 = 20 * 1024 * 1024; // ~15 MB binary\nconst PLATFORM_INV_ZIP_MAX_B64 = 50 * 1024 * 1024;\nconst PLATFORM_INV_ACCOUNTANT = process.env.PLATFORM_INVOICE_ACCOUNTANT_EMAIL || 'info@e-newgeneration.gr, info@elysianproperties.eu';",
+   "count": 1
+  },
+  {
+   "note": "Load Booking.com zip helpers",
+   "find": "const { buildAccountantXls, fileMetaJson, parseMeta, archiveMonthOf, plannedRefile } = require('./scripts/platform-invoice-accountant-xls');\nconst { estimateAirbnbInvoices, expectGaps, TINY_PDF_BYTES } = require('./scripts/platform-invoice-expect');",
+   "replace": "const { buildAccountantXls, fileMetaJson, parseMeta, archiveMonthOf, plannedRefile } = require('./scripts/platform-invoice-accountant-xls');\nconst { estimateAirbnbInvoices, expectGaps, TINY_PDF_BYTES } = require('./scripts/platform-invoice-expect');\nconst piBooking = require('./scripts/platform-invoice-booking');",
+   "count": 1
+  },
+  {
+   "note": "POST /api/platform-invoices/booking-zip categorizes PDFs by hotel id and month",
+   "find": "app.post('/api/platform-invoices', async (req, res) => {\n  const b = req.body || {};\n  if (!/^\\d{4}-\\d{2}$/.test(b.month || '')) return res.status(400).json({ error: 'Invalid month' });",
+   "replace": "app.post('/api/platform-invoices/booking-zip', async (req, res) => {\n  const b = req.body || {};\n  const fallbackMonth = String(b.month || '');\n  if (fallbackMonth && !/^\\d{4}-\\d{2}$/.test(fallbackMonth)) return res.status(400).json({ error: 'Invalid month' });\n  if (!b.dataB64 || typeof b.dataB64 !== 'string') return res.status(400).json({ error: 'Missing zip data' });\n  if (b.dataB64.length > PLATFORM_INV_ZIP_MAX_B64) return res.status(413).json({ error: 'Zip too large' });\n  let buf;\n  try { buf = Buffer.from(String(b.dataB64).replace(/^data:[^;]+;base64,/, ''), 'base64'); }\n  catch (eB64) { return res.status(400).json({ error: 'Invalid zip data' }); }\n  if (!piBooking.looksLikeZip(buf)) return res.status(400).json({ error: 'Not a zip file' });\n  const apts = Array.isArray(b.apartments) ? b.apartments : [];\n  const cat = piBooking.categorizeBookingZip(buf, apts, fallbackMonth);\n  if (!cat.ok) return res.status(400).json({ error: cat.error || 'Could not read zip' });\n  if (!cat.files.length) {\n    return res.status(400).json({ error: 'No invoice PDFs in zip', skipped: cat.skipped || [], unmapped: [] });\n  }\n  let existing = [];\n  try {\n    if (pool) {\n      await ensurePlatInvTable();\n      const q = await pool.query(\"SELECT id, filename, meta, month, channel FROM platform_invoices WHERE channel IN ('booking','bdc')\");\n      existing = q.rows || [];\n    } else {\n      existing = [..._memPlatInv.values()].filter(function (x) {\n        const ch = String(x.channel || '').toLowerCase();\n        return ch === 'booking' || ch === 'bdc';\n      });\n    }\n  } catch (eExist) { return res.status(500).json({ error: eExist.message }); }\n  const seen = {};\n  existing.forEach(function (row) {\n    const meta = parseMeta(row);\n    seen[piBooking.bookingZipDupKey({\n      bookingHotelId: meta.bookingHotelId || meta.reservationId,\n      invoiceNumber: meta.invoiceNumber,\n      filename: row.filename\n    })] = true;\n    seen['file:' + String(row.filename || '').replace(/\\\\/g, '/')] = true;\n  });\n  const saved = [];\n  const skipped = (cat.skipped || []).slice();\n  const by = b.by || req.acctUser || '';\n  for (const f of cat.files) {\n    const dup = piBooking.bookingZipDupKey(f);\n    const fileKey = 'file:' + String(f.filename || '').replace(/\\\\/g, '/');\n    if (seen[dup] || seen[fileKey]) {\n      skipped.push({ name: f.zipName || f.filename, reason: 'duplicate', filename: f.filename, month: f.month });\n      continue;\n    }\n    const dataB64 = f.buf.toString('base64');\n    const row = {\n      month: f.month, channel: 'booking', scope: 'leased', partner: f.partner,\n      filename: f.filename, mime: 'application/pdf', size: f.buf.length, source: 'upload',\n      uploaded_by: by, data: dataB64, meta: fileMetaJson(f)\n    };\n    try {\n      if (pool) {\n        const r = await pool.query(\n          `INSERT INTO platform_invoices (month, channel, scope, partner, filename, mime, size, source, uploaded_by, data, meta)\n           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,\n          [row.month, row.channel, row.scope, row.partner, row.filename, row.mime, row.size, row.source, row.uploaded_by, row.data, row.meta]);\n        saved.push({\n          id: r.rows[0].id, filename: row.filename, channel: 'booking', partner: row.partner,\n          month: row.month, mapped: !!f.mapped, bookingHotelId: f.bookingHotelId,\n          invoiceNumber: f.invoiceNumber || '', usedFallbackMonth: !!f.usedFallbackMonth\n        });\n      } else {\n        const id = 'p' + (_memPlatInvSeq++);\n        _memPlatInv.set(id, Object.assign({}, row, { id: id, created_at: new Date().toISOString() }));\n        saved.push({\n          id: id, filename: row.filename, channel: 'booking', partner: row.partner,\n          month: row.month, mapped: !!f.mapped, bookingHotelId: f.bookingHotelId,\n          invoiceNumber: f.invoiceNumber || '', usedFallbackMonth: !!f.usedFallbackMonth\n        });\n      }\n      seen[dup] = true;\n      seen[fileKey] = true;\n    } catch (eIns) {\n      skipped.push({ name: f.zipName || f.filename, reason: 'error', error: eIns.message });\n    }\n  }\n  res.json({\n    ok: true,\n    saved: saved,\n    skipped: skipped,\n    unmapped: cat.unmapped || [],\n    months: cat.months || []\n  });\n});\napp.post('/api/platform-invoices', async (req, res) => {\n  const b = req.body || {};\n  if (!/^\\d{4}-\\d{2}$/.test(b.month || '')) return res.status(400).json({ error: 'Invalid month' });",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "app.post('/api/platform-invoices/booking-zip'",
+   "note": "Booking zip ingest route"
+  },
+  {
+   "has": "PLATFORM_INV_ZIP_MAX_B64",
+   "note": "zip size cap"
+  },
+  {
+   "has": "require('./scripts/platform-invoice-booking')",
+   "note": "zip helpers loaded"
+  },
+  {
+   "has": "categorizeBookingZip",
+   "note": "categorizes PDFs"
+  }
+ ],
+ "baseSha256": "4ee90bfe317c27719e81ae2feaf05fe3e47c5028f0ddaa79fe7214489bfddb59",
+ "expectedSha256": "a00d2a447f0fe63b8882babe413a89fc3dc23945059d2968d2881ef138216e94",
+ "builtAt": "2026-08-21 Booking.com zip ingest by hotel id and month"
+}

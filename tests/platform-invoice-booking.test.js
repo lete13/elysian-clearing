@@ -221,4 +221,144 @@ assert.strictEqual(srv87.baseSha256, srv86.expectedSha256, 'SRV 87 continues SRV
 assert(srv87.patches.some((p) => (p.replace || '').includes('piWritePullJson')), 'SRV 87 writes pull JSON next to the session dir');
 assert(srv87.patches.some((p) => (p.replace || '').includes('PI_AIRBNB_HAVE_FILE')), 'SRV 87 HAVE file');
 
+function invoicePdf(text) {
+  return '%PDF-1.4\n(' + text + ')\n%%EOF';
+}
+function zipEntries(files, opts) {
+  const dd = !!(opts && opts.dataDescriptor);
+  const locals = [];
+  const cds = [];
+  let offset = 0;
+  files.forEach(function (f) {
+    const nameBuf = Buffer.from(f.name);
+    const raw = Buffer.isBuffer(f.body) ? f.body : Buffer.from(f.body);
+    const deflated = zlib.deflateRawSync(raw);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(dd ? 0x08 : 0, 6);
+    local.writeUInt16LE(8, 8);
+    if (!dd) {
+      local.writeUInt32LE(deflated.length, 18);
+      local.writeUInt32LE(raw.length, 22);
+    }
+    local.writeUInt16LE(nameBuf.length, 26);
+    const parts = [local, nameBuf, deflated];
+    if (dd) {
+      const desc = Buffer.alloc(16);
+      desc.writeUInt32LE(0x08074b50, 0);
+      desc.writeUInt32LE(0, 4);
+      desc.writeUInt32LE(deflated.length, 8);
+      desc.writeUInt32LE(raw.length, 12);
+      parts.push(desc);
+    }
+    const blob = Buffer.concat(parts);
+    locals.push(blob);
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt16LE(20, 4);
+    cd.writeUInt16LE(20, 6);
+    cd.writeUInt16LE(dd ? 0x08 : 0, 8);
+    cd.writeUInt16LE(8, 10);
+    cd.writeUInt32LE(deflated.length, 20);
+    cd.writeUInt32LE(raw.length, 24);
+    cd.writeUInt16LE(nameBuf.length, 28);
+    cd.writeUInt32LE(offset, 42);
+    cds.push(Buffer.concat([cd, nameBuf]));
+    offset += blob.length;
+  });
+  const cdBlob = Buffer.concat(cds);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(cdBlob.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat(locals.concat([cdBlob, eocd]));
+}
+
+const birdPdf = invoicePdf('Property ID 10980606 Invoice number 1234567890 Issue date 01/07/2026 Total EUR 12.34');
+const votsPdf = invoicePdf('Property ID 5550001 Invoice number 555000199 Issue date 02/07/2026 Total EUR 80.00');
+const unkPdf = invoicePdf('Property ID 3210009 Invoice number 99 Issue date 03/07/2026 Total EUR 1.00');
+const stmtPdf = invoicePdf('Statement of account payout');
+const nameMonthPdf = invoicePdf('Property ID 7770002 Invoice number 7771');
+const fallbackPdf = invoicePdf('Property ID 10980606 Invoice number 888');
+
+const catZip = zipEntries([
+  { name: 'invoice-10980606.pdf', body: birdPdf },
+  { name: 'invoices/votsala.pdf', body: votsPdf },
+  { name: 'invoice-3210009.pdf', body: unkPdf },
+  { name: 'statement.pdf', body: stmtPdf },
+  { name: 'Horizon_July_2026.pdf', body: nameMonthPdf },
+]);
+const cat = booking.categorizeBookingZip(catZip, apts, '2026-08');
+assert(cat.ok, 'zip categorize ok');
+assert.strictEqual(cat.skipped.filter((s) => s.reason === 'statement').length, 1, 'statement skipped');
+const bird = cat.files.find((f) => f.bookingHotelId === '10980606' && f.invoiceNumber === '1234567890');
+assert(bird, 'Birdhouse invoice categorized');
+assert.strictEqual(bird.mapped, true);
+assert.strictEqual(bird.channel, 'booking');
+assert.strictEqual(bird.source, 'upload');
+assert.strictEqual(bird.usedFallbackMonth, false);
+assert.strictEqual(bird.partner, 'Birdhouse');
+assert.strictEqual(bird.month, '2026-07');
+assert.strictEqual(bird.filename, 'Booking.com/2026-07/Birdhouse/invoice-10980606-1234567890.pdf');
+const votsFile = cat.files.find((f) => f.bookingHotelId === '5550001');
+assert.strictEqual(votsFile.partner, 'Votsala');
+assert.strictEqual(votsFile.month, '2026-07');
+const unkFile = cat.files.find((f) => f.bookingHotelId === '3210009');
+assert.strictEqual(unkFile.mapped, false);
+assert.strictEqual(unkFile.partner, 'unmapped-3210009');
+assert(cat.unmapped.indexOf('3210009') >= 0, 'unmapped id listed');
+const horizon = cat.files.find((f) => f.bookingHotelId === '7770002');
+assert.strictEqual(horizon.month, '2026-07', 'month from July 2026 filename');
+assert.strictEqual(horizon.partner, 'Horizon');
+
+const fb = booking.categorizeBookingZip(zipEntries([{ name: 'plain.pdf', body: fallbackPdf }]), apts, '2026-08');
+assert.strictEqual(fb.files[0].month, '2026-08');
+assert.strictEqual(fb.files[0].usedFallbackMonth, true);
+
+const ddZip = zipEntries([{ name: 'invoice-10980606.pdf', body: birdPdf }], { dataDescriptor: true });
+const ddEnts = booking.unzipPdfEntries(ddZip);
+assert.strictEqual(ddEnts.length, 1, 'data-descriptor zip still extracts');
+assert(booking.looksLikePdf(ddEnts[0].buf));
+
+const skipZip = zipEntries([
+  { name: '__MACOSX/._invoice-10980606.pdf', body: birdPdf },
+  { name: 'notes.csv', body: 'a,b\n1,2\n' },
+  { name: 'keep.pdf', body: birdPdf },
+]);
+const skipEnts = booking.unzipPdfEntries(skipZip);
+assert.strictEqual(skipEnts.length, 1, 'skips __MACOSX and non-PDF');
+assert.strictEqual(skipEnts[0].name, 'keep.pdf');
+
+const noMonth = booking.categorizeBookingZip(
+  zipEntries([{ name: 'plain.pdf', body: fallbackPdf }]),
+  apts,
+  ''
+);
+assert.strictEqual(noMonth.files.length, 0, 'no month and no fallback → skip');
+assert(noMonth.skipped.some((s) => s.reason === 'no-month'));
+
+assert.strictEqual(
+  booking.bookingZipDupKey({ bookingHotelId: '10980606', invoiceNumber: '1234567890', filename: 'x.pdf' }),
+  'inv:10980606|1234567890'
+);
+
+const fe128 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-128.json'), 'utf8'));
+const srv92 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-92.json'), 'utf8'));
+assert.strictEqual(fe128.baseSha256, JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-127.json'), 'utf8')).expectedSha256, 'FE 128 continues FE 127');
+assert.strictEqual(srv92.baseSha256, JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-91.json'), 'utf8')).expectedSha256, 'SRV 92 continues SRV 91');
+assert(fe128.patches.some((p) => (p.replace || '').includes('piUploadBookingZip')), 'FE zip upload handler');
+assert(fe128.patches.some((p) => (p.replace || '').includes('id="pi-bdc-zip"')), 'FE zip input');
+assert(fe128.patches.some((p) => (p.replace || '').includes('accept=".zip,application/zip"')), 'FE zip accept');
+const emergency = fe128.patches.find((p) => (p.note || '').indexOf('Emergency') >= 0);
+assert(emergency && /pi-pull-bdc-btn/.test(emergency.replace) && /pi-connect-booking-btn/.test(emergency.replace), 'Pull/Connect Booking moved to emergency tools');
+const primary = fe128.patches.find((p) => (p.replace || '').includes('id="pi-bdc-zip"'));
+assert(primary && !/pi-pull-bdc-btn/.test(primary.replace), 'primary Collect row is the zip, not Pull Booking');
+assert(srv92.patches.some((p) => (p.replace || '').includes("app.post('/api/platform-invoices/booking-zip'")), 'SRV booking-zip route');
+assert(srv92.patches.some((p) => (p.replace || '').includes('categorizeBookingZip')), 'SRV uses categorizeBookingZip');
+assert(srv92.patches.some((p) => (p.replace || '').includes('PLATFORM_INV_ZIP_MAX_B64')), 'SRV zip size cap');
+assert(srv92.patches.some((p) => /source:\s*'upload'/.test(p.replace || '')), 'zip ingest source=upload');
+
 console.log('platform-invoice-booking.test.js: ok');

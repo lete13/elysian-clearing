@@ -36,6 +36,8 @@ assert(html.includes('PDFs by apartment — click Open to view'), 'collect vault
 assert(html.includes('Guided monthly run'), 'retrieve still has guided run copy');
 assert(html.includes('Pull Airbnb (Hosthub codes)'), 'full pull kept');
 assert(html.includes('piPullBooking()'), 'Booking.com pull');
+assert(html.includes('id="pi-bdc-zip"'), 'Collect uploads a Booking.com zip');
+assert(html.includes('Upload Booking.com zip'), 'zip is the Booking Collect CTA');
 assert(html.includes("piPull({ codes: ['HM9DCDMEXT','HMWRNAWHBA'] })"), 'test pull kept');
 assert(html.includes('Vault vs Expect'), 'Expect vs vault copy');
 assert(html.includes('incomplete stays first'), 'month pull opens incomplete stays first');

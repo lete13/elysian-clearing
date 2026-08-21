@@ -6,7 +6,10 @@ Monthly **Airbnb** and **Booking.com** invoices are PDFs the platforms issue **t
 (ενδοκοινοτικά / intra-EU). They do **not** appear in Greek expense or myDATA imports.
 They are **not** Oxygen ΑΠΥ/ΤΠΥ documents (those are what Elysian issues to owners).
 
-The app **pulls** them automatically from the host portals (Platform Invoices), then packs and emails. Manual PDF upload is emergency-only.
+The app **pulls Airbnb** invoices automatically from the host portal, then packs and emails.
+**Booking.com** invoices are collected by uploading a **zip of PDFs** from admin.booking.com
+Finance → Invoices. The server files each PDF by hotel id and issue month.
+Portal Pull Booking.com is emergency-only (Railway IPs are often blocked).
 
 ## Dating rules (ASAP — do not wait for the 20th/25th)
 
@@ -47,7 +50,11 @@ Same idea as [VAT Invoicer](https://vatinvoicer.com/privacy/): while logged into
 
 Airbnb does not expose a labeled download link on the reservation details page — that is why looking only for `a[href]` with the word “invoice” saved 0 PDFs.
 
-No manual pasting of codes. Booking.com pull is the group Finance → Invoices mass extract for the document month (`channel=booking`).
+No manual pasting of codes. **Booking.com:** download the month’s invoice PDFs as a zip from
+group Finance → Invoices, then **Upload Booking.com zip** on Collect. Each PDF is filed by
+`bookingHotelId` and issue month (`Booking.com/{YYYY-MM}/{apartment}/`). Votsala 1–8 share
+one id / one PDF. Unmapped ids land in `unmapped-{id}` until you paste the id on Configuration.
+Pull Booking.com (`channel=booking`) remains under Emergency only.
 
 ## Railway variables
 
@@ -68,8 +75,8 @@ No manual pasting of codes. Booking.com pull is the group Finance → Invoices m
 
 1. Reuses Airbnb / Booking session vault (or password login). **Booking Pull will not password-login while the server-IP cooldown is active** — Connect and Pull share the same Postgres row. A missing/expired Booking session fails closed instead of filling `BOOKING_HOST_PASSWORD` from the Railway IP.
 2. **Airbnb:** for each Hosthub confirmation code → reservation page → **every** VAT invoice / credit note HTML → PDF stored as `Airbnb/{issue-month}/{apartment}/{kind}-{code}-{vatId}.pdf`.
-3. **Booking.com:** headed Chrome (Xvfb; real user-agent, not Mac Chrome/122). Group **Finance → Invoices** mass extract for document month M (June stays → July invoice). One PDF per Booking property; **Votsala 1–8 share one PDF** filed under `Votsala`. Filing key is `bookingHotelId` (unmapped → `unmapped-{id}`). No per-property homepage walk. No Booking.com Excel. HeadlessChrome is refused.
-4. `POST /api/platform-invoices/pull` stores them in `platform_invoices` with `source=portal`.
+3. **Booking.com:** **Upload Booking.com zip** (Finance → Invoices mass-download). One PDF per Booking property; **Votsala 1–8 share one PDF** filed under `Votsala`. Filing key is `bookingHotelId` (unmapped → `unmapped-{id}`). Month comes from the PDF issue date (filename as fallback; Collect month last). Pull Booking.com / Connect Booking are emergency-only. No Booking.com Excel from Pull.
+4. Zip ingest is `POST /api/platform-invoices/booking-zip` (`source=upload`). Airbnb Pull is still `POST /api/platform-invoices/pull` (`source=portal`).
 
 CLI with codes:
 
@@ -110,14 +117,27 @@ AIRBNB_HOST_EMAIL='…' AIRBNB_HOST_PASSWORD='…' \
    If Airlock/bot checks keep blocking login, set optional `PLAYWRIGHT_PROXY_SERVER`
    (residential proxy).
 
-   **Connect Booking** opens headed Chrome on the server (`admin.booking.com`). If the
-   page says **Sign-in failed / Try again later**, or Booking.com returns **403/429**,
-   that is Booking.com blocking the Railway IP — not a wrong password. Do not retry;
-   waiting a minute makes the block last longer. The cooldown is stored in Postgres
-   (`pi_booking_block`) so a redeploy does not forget it. **Pull Booking** uses the
-   same cooldown and will not run a password login while it is active. Leave Collect
-   closed for several hours, or set `PLAYWRIGHT_PROXY_SERVER` to a residential proxy.
+3. **Upload Booking.com zip** — on admin.booking.com go to Finance → Invoices, download
+   the month’s PDFs as a zip, then **Upload Booking.com zip** on Collect. The server
+   reads each PDF’s hotel id and issue month, maps via Configuration
+   **Booking.com hotel / apartment id**, and files under
+   `Booking.com/{YYYY-MM}/{apartment}/`. Votsala 1–8 share one id / one PDF.
+   Unmapped ids land in `unmapped-{id}` until you paste the id and upload again
+   (delete the unmapped row first if the same invoice number is already in the vault).
 
-3. Review → Ship.
+4. **Pull Airbnb** for the selected month (incomplete stays first; already-saved
+   invoices skipped).
 
-If Pull returns 0 PDFs with “session expired”, Connect Airbnb again (sessions expire) — do not fall back to monthly manual PDF upload.
+5. Review → Ship.
+
+If Airbnb Pull returns 0 PDFs with “session expired”, Connect Airbnb again (sessions
+expire). Do not paste Airbnb invoices by hand.
+
+**Pull Booking.com** and **Connect Booking** stay under **Emergency manual tools**.
+Connect Booking opens headed Chrome on the server (`admin.booking.com`). If the
+page says **Sign-in failed / Try again later**, or Booking.com returns **403/429**,
+that is Booking.com blocking the Railway IP — not a wrong password. Do not retry;
+waiting a minute makes the block last longer. The cooldown is stored in Postgres
+(`pi_booking_block`) so a redeploy does not forget it. **Pull Booking** uses the
+same cooldown and will not run a password login while it is active. Leave Collect
+closed for several hours, or set `PLAYWRIGHT_PROXY_SERVER` to a residential proxy.
