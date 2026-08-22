@@ -30,7 +30,7 @@ try { src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf-8').replace(/\r\n
 catch (e) { return fallback('cannot read server.js: ' + e.message); }
 
 const chain = [];
-for (let n = 1; n <= 100; n++) {
+for (let n = 1; n <= 140; n++) { /* legacy note: n <= 100 */
   const name = n === 1 ? 'patches.json' : 'patches-' + n + '.json';
   const file = path.join(ROOT, 'srv', name);
   if (!fs.existsSync(file)) {
