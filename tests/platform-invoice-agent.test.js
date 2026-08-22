@@ -146,6 +146,17 @@ const votsalaRows = agent.packRowsForCard(
 );
 assert.strictEqual(votsalaRows.length, 1, 'Votsala unit matches the shared Votsala Booking folder');
 
+// Attachment chunking: big packs split into several emails.
+const mb = (n) => ({ filename: n + '.pdf', content: Buffer.alloc(5 * 1024 * 1024) });
+const chunks = agent.chunkAttachments([mb('a'), mb('b'), mb('c'), mb('d'), mb('e')], 12 * 1024 * 1024);
+assert.strictEqual(chunks.length, 3, '25MB in 5MB files → 3 emails at 12MB budget');
+assert.strictEqual(chunks[0].length, 2);
+assert.strictEqual(chunks[2].length, 1);
+const oversize = agent.chunkAttachments([{ filename: 'big.pdf', content: Buffer.alloc(20 * 1024 * 1024) }, mb('x')], 12 * 1024 * 1024);
+assert.strictEqual(oversize.length, 2, 'single oversize attachment gets its own email');
+assert.strictEqual(agent.chunkAttachments([], 1000).length, 0);
+assert.strictEqual(agent.chunkAttachments([mb('one')]).length, 1, 'small pack stays one email');
+
 const cards = accountants.seedFromEnv('');
 assert.strictEqual(cards.length, 2);
 assert(cards.every((c) => c.receivePdfs && c.receiveExcel));
@@ -225,6 +236,9 @@ const fe139 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-139.json
 assert(fe139.patches.some((p) => (p.replace || '').includes('piToggleFold')), 'FE collapsible sections');
 assert(fe139.patches.some((p) => (p.replace || '').includes('piFoldAll')), 'FE collapse/expand all');
 assert(fe139.patches.some((p) => (p.replace || '').includes('piShipAnyway')), 'FE ship-anyway override');
+const srv103 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-103.json'), 'utf8'));
+assert(srv103.patches.some((p) => (p.replace || '').includes('piAgent.chunkAttachments(mailAtts)')), 'SRV chunks oversized packs');
+assert(srv103.patches.every((p) => !(p.replace || '').includes('Pack too large')), 'SRV 413 removed');
 const fe128 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-128.json'), 'utf8'));
 assert(fe128.patches.some((p) => (p.replace || '').includes('piRunAgent')), 'FE run agent');
 assert(fe128.patches.some((p) => (p.replace || '').includes('pi-accountant-cards')), 'FE cards UI');

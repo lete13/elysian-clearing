@@ -1,0 +1,35 @@
+{
+ "baseSha256": "765c8ec645d9ab561c5c72770cc023204f590c433688a8b777d595bfe918faf3",
+ "expectedSha256": "89579f51e63ba42bdc2f583a2b22393adadec9213318753decdec39dbd4a96c6",
+ "builtAt": "2026-08-22 Split oversized packs into part 1/N emails",
+ "patches": [
+  {
+   "note": "Card sends split into part emails instead of 413 Pack too large",
+   "find": "        if (!mailAtts.length) { skipped.push({ email: c.email, reason: 'no attachments' }); continue; }\n        if (bytes > EMAIL_MAX_BYTES) return res.status(413).json({ error: 'Pack too large for one email' });\n        const info = await piSendAccountantMail(c.email, b.subject || label, b.text || ('Attached platform invoices for ' + month + '\\n'), mailAtts);\n        emailed.push({ email: c.email, pdfs: !!c.attachPdfs, excel: !!c.attachExcel, messageId: info.messageId });",
+   "replace": "        if (!mailAtts.length) { skipped.push({ email: c.email, reason: 'no attachments' }); continue; }\n        const chunks = piAgent.chunkAttachments(mailAtts);\n        let lastId = '';\n        for (let ci = 0; ci < chunks.length; ci++) {\n          const part = chunks.length > 1 ? (' (part ' + (ci + 1) + '/' + chunks.length + ')') : '';\n          const info = await piSendAccountantMail(c.email, (b.subject || label) + part, b.text || ('Attached platform invoices for ' + month + part + '\\n'), chunks[ci]);\n          lastId = info.messageId;\n        }\n        emailed.push({ email: c.email, pdfs: !!c.attachPdfs, excel: !!c.attachExcel, messageId: lastId, emails: chunks.length });",
+   "count": 1
+  },
+  {
+   "note": "Direct send splits into part emails instead of 413",
+   "find": "    if (bytes > EMAIL_MAX_BYTES) return res.status(413).json({ error: 'Pack too large for one email' });\n    const info = await piSendAccountantMail(to.join(', '), b.subject || label, b.text || ('Attached: ' + pack.pdfRows.length + ' platform invoice(s) for ' + month + ' (' + scope + ').\\n'), mailAtts);\n    console.log('[platform-invoices] sent', month, scope, pack.pdfRows.length, '→', to.join(','));\n    res.json({ ok: true, count: pack.pdfRows.length, messageId: info.messageId, to });",
+   "replace": "    const dChunks = piAgent.chunkAttachments(mailAtts);\n    let dLastId = '';\n    for (let di = 0; di < dChunks.length; di++) {\n      const dPart = dChunks.length > 1 ? (' (part ' + (di + 1) + '/' + dChunks.length + ')') : '';\n      const dInfo = await piSendAccountantMail(to.join(', '), (b.subject || label) + dPart, b.text || ('Attached: ' + pack.pdfRows.length + ' platform invoice(s) for ' + month + ' (' + scope + ').\\n'), dChunks[di]);\n      dLastId = dInfo.messageId;\n    }\n    console.log('[platform-invoices] sent', month, scope, pack.pdfRows.length, 'in', dChunks.length, 'email(s) →', to.join(','));\n    res.json({ ok: true, count: pack.pdfRows.length, messageId: dLastId, emails: dChunks.length, to });",
+   "count": 1
+  },
+  {
+   "note": "Agent sends split into part emails too",
+   "find": "          if (!mailAtts.length) continue;\n          await piSendAccountantMail(c.email, 'PLATFORM INVOICES ' + month, 'Platform invoice pack for ' + month + '.\\n', mailAtts);\n          emailed.push({ email: c.email, pdfs: !!c.attachPdfs, excel: !!c.attachExcel, rows: sub.pdfRows.length });",
+   "replace": "          if (!mailAtts.length) continue;\n          const aChunks = piAgent.chunkAttachments(mailAtts);\n          for (let ai = 0; ai < aChunks.length; ai++) {\n            const aPart = aChunks.length > 1 ? (' (part ' + (ai + 1) + '/' + aChunks.length + ')') : '';\n            await piSendAccountantMail(c.email, 'PLATFORM INVOICES ' + month + aPart, 'Platform invoice pack for ' + month + aPart + '.\\n', aChunks[ai]);\n          }\n          emailed.push({ email: c.email, pdfs: !!c.attachPdfs, excel: !!c.attachExcel, rows: sub.pdfRows.length, emails: aChunks.length });",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piAgent.chunkAttachments(mailAtts)",
+   "note": "card and agent sends chunk attachments"
+  },
+  {
+   "hasNot": "Pack too large for one email",
+   "note": "413 replaced by multi-part emails"
+  }
+ ]
+}
