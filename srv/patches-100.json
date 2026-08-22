@@ -1,0 +1,19 @@
+{
+ "baseSha256": "d1107c50221ad2c713f684c9d220a141e705074fa703151bd924012add3ece9b",
+ "expectedSha256": "6fe450d19f437e411a2025b7d19e54d384eaf18af99626f5937aea997a1643c2",
+ "builtAt": "2026-08-22 Booking reconcile status endpoint for the Accountants tab",
+ "patches": [
+  {
+   "note": "GET /api/platform-invoices/reconcile for Accountants-tab alerts",
+   "find": "app.get('/api/platform-invoices/accountants', async (req, res) => {",
+   "replace": "app.get('/api/platform-invoices/reconcile', async (req, res) => {\n  const month = String(req.query.month || '');\n  if (!/^\\d{4}-\\d{2}$/.test(month)) return res.status(400).json({ error: 'month=YYYY-MM required' });\n  try {\n    const rows = await piLoadVaultRows(month);\n    const bks = await piLoadDbBookings();\n    const apts = await piLoadDbApts();\n    const recon = reconcileBookingMonth(month, bks, apts, rows);\n    res.json({\n      ok: true,\n      month: month,\n      bookMonth: recon.bookMonth || '',\n      match: !!recon.ok,\n      included: (recon.included || []).length,\n      expected: (recon.expect && recon.expect.docs) || 0,\n      errors: recon.errors || []\n    });\n  } catch (e) { res.status(500).json({ error: e.message }); }\n});\napp.get('/api/platform-invoices/accountants', async (req, res) => {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "app.get('/api/platform-invoices/reconcile', async (req, res) => {",
+   "note": "reconcile status route"
+  }
+ ]
+}

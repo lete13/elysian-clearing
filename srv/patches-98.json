@@ -1,0 +1,23 @@
+{
+ "baseSha256": "7a37e49c21619e31d7001e2a338cfe408f63c842c0dcfc7832e58586d3fffdf8",
+ "expectedSha256": "633fbcc5bf3c600a6042caa77d25cf5ddfa7b4663b6f914f3b2e1d51a1602918",
+ "builtAt": "2026-08-22 Excel includes vault Booking.com invoices",
+ "patches": [
+  {
+   "note": "accountant-xls includes every vault Booking invoice for the month",
+   "find": "    const bks = await piLoadDbBookings();\n    const apts = await piLoadDbApts();\n    const recon = reconcileBookingMonth(month, bks, apts, rows);\n    const packRows = rows.filter(function (r) {\n      const ch = String((r && r.channel) || '').toLowerCase();\n      return ch !== 'booking' && ch !== 'bdc';\n    }).concat(recon.included || []);\n    const buf = buildAccountantXls(packRows, bks, { includeBooking: true });",
+   "replace": "    const bks = await piLoadDbBookings();\n    const buf = buildAccountantXls(rows, bks, { includeBooking: true });",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "const buf = buildAccountantXls(rows, bks, { includeBooking: true });",
+   "note": "Download Excel uses vault rows"
+  },
+  {
+   "hasNot": "}).concat(recon.included || []);",
+   "note": "Download Excel no longer drops unmatched Booking invoices"
+  }
+ ]
+}

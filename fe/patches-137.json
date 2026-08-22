@@ -1,0 +1,65 @@
+{
+ "baseSha256": "58878bd434518133f21ee924317e21f9ec8fa9ef4fa997a43c059dcf3505b46f",
+ "expectedSha256": "b374de7e075d6780cafc971f0d6a210f606f29e1c4d4424d7c284cad5e598725",
+ "builtAt": "2026-08-22 Booking expect by departure month + Accountants-tab alerts",
+ "patches": [
+  {
+   "note": "Client Booking expect uses departure month like Booking.com invoicing",
+   "find": "    function piBdcStayMonth(b) {\n      var ym = piYmFromDmy(b && (b.checkIn || b.check_in));\n      if (ym) return ym;\n      return piYmFromTs(b && (b.createdOnChannel != null ? b.createdOnChannel : b.created));\n    }",
+   "replace": "    function piBdcStayMonth(b) {\n      var ym = piYmFromDmy(b && (b.checkOut || b.check_out));\n      if (!ym) ym = piYmFromDmy(b && (b.checkIn || b.check_in));\n      if (ym) return ym;\n      return piYmFromTs(b && (b.createdOnChannel != null ? b.createdOnChannel : b.created));\n    }",
+   "count": 1
+  },
+  {
+   "note": "Health line says check-outs, matching the billing rule",
+   "find": "      '<div style=\"margin-top:6px\"><b>Booking.com</b> (stays in <code>' + bdcBookMonth + '</code>): <b>' + bdcExpect + '</b> invoice PDF(s) — one per apartment; Votsala 1–8 = one PDF</div>';",
+   "replace": "      '<div style=\"margin-top:6px\"><b>Booking.com</b> (check-outs in <code>' + bdcBookMonth + '</code>): <b>' + bdcExpect + '</b> invoice PDF(s) — one per apartment; Votsala 1–8 = one PDF</div>';",
+   "count": 2
+  },
+  {
+   "note": "Expect copy: June check-outs → July folder",
+   "find": "<b>Booking.com</b> = one invoice per apartment (June stays → July folder). Votsala 1–8 share one BDC PDF.",
+   "replace": "<b>Booking.com</b> = one invoice per apartment (June check-outs → July folder). Votsala 1–8 share one BDC PDF.",
+   "count": 1
+  },
+  {
+   "note": "Alerts box above the accountant cards",
+   "find": "      <div id=\"pi-accountant-cards\"></div>",
+   "replace": "      <div id=\"pi-acct-alerts\" style=\"margin-bottom:10px\"></div>\n      <div id=\"pi-accountant-cards\"></div>",
+   "count": 1
+  },
+  {
+   "note": "Accountants sub-menu renders reconcile alerts",
+   "find": "    if (PI.menu === 'accountants') piRenderAccountantCards();",
+   "replace": "    if (PI.menu === 'accountants') { piRenderAccountantCards(); piRenderAcctAlerts(); }",
+   "count": 1
+  },
+  {
+   "note": "piRenderAcctAlerts fetches the reconcile status",
+   "find": "  window.piLoadAgentLatest = async function () {",
+   "replace": "  window.piRenderAcctAlerts = async function () {\n    var box = document.getElementById('pi-acct-alerts');\n    if (!box) return;\n    var month = monthVal();\n    box.innerHTML = '<div style=\"color:var(--tx3);font-size:12px\">Checking Booking.com invoices vs Hosthub departures for ' + month + '…</div>';\n    try {\n      var j = await fetch('/api/platform-invoices/reconcile?month=' + encodeURIComponent(month)).then(function (r) { return r.json(); });\n      if (j && j.error) throw new Error(j.error);\n      if (j.match) {\n        box.innerHTML = '<div style=\"border:1px solid rgba(26,127,55,.35);border-radius:10px;padding:10px 12px;font-size:12.5px;background:rgba(26,127,55,.07)\"><b>' + month + '</b> — Booking.com invoices match Hosthub departures in <b>' + (j.bookMonth || '') + '</b> · ' + (j.included || 0) + ' PDF(s) across ' + (j.expected || 0) + ' expected folder(s).</div>';\n        return;\n      }\n      var errs = j.errors || [];\n      box.innerHTML = '<div style=\"border:1px solid rgba(185,28,28,.4);border-radius:10px;padding:10px 12px;font-size:12.5px;background:rgba(185,28,28,.06)\">' +\n        '<div style=\"font-weight:650;color:#b91c1c;margin-bottom:6px\">' + month + ' — ' + errs.length + ' Booking.com reconcile alert(s). The agent will not email until these are resolved.</div>' +\n        errs.map(function (e) {\n          var kind = e.type === 'stays_without_invoice' ? 'Departures but no invoice' : 'Invoice but no departures';\n          return '<div style=\"margin-top:3px\">· <b>' + piAcctEsc(e.aptName || '') + '</b> — ' + kind + '. ' + piAcctEsc(e.message || '') + '</div>';\n        }).join('') +\n        '</div>';\n    } catch (e) { box.innerHTML = '<div style=\"color:#b00;font-size:12px\">Reconcile check failed: ' + piAcctEsc(e.message || String(e)) + '</div>'; }\n  };\n  window.piLoadAgentLatest = async function () {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piYmFromDmy(b && (b.checkOut || b.check_out));",
+   "note": "client expect by check-out"
+  },
+  {
+   "has": "id=\"pi-acct-alerts\"",
+   "note": "alerts box on Accountants tab"
+  },
+  {
+   "has": "piRenderAcctAlerts",
+   "note": "alerts renderer"
+  },
+  {
+   "has": "/api/platform-invoices/reconcile?month=",
+   "note": "alerts use the reconcile endpoint"
+  },
+  {
+   "hasNot": "(June stays → July folder)",
+   "note": "copy says check-outs"
+  }
+ ]
+}

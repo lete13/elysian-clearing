@@ -1,6 +1,7 @@
 'use strict';
 /**
- * Platform Invoices accountant cards (email + PDF/Excel toggles).
+ * Platform Invoices accountant cards (emails + PDF/Excel toggles + apartments).
+ * An empty apartments list means the card receives every apartment.
  * Stored in Postgres app_data key pi_accountants.
  */
 
@@ -13,6 +14,7 @@ const DEFAULT_ACCOUNTANTS = [
     email: 'info@e-newgeneration.gr',
     receivePdfs: true,
     receiveExcel: true,
+    apartments: [],
   },
   {
     id: 'elysianproperties',
@@ -20,6 +22,7 @@ const DEFAULT_ACCOUNTANTS = [
     email: 'info@elysianproperties.eu',
     receivePdfs: true,
     receiveExcel: true,
+    apartments: [],
   },
 ];
 
@@ -38,6 +41,22 @@ function makeId(email, fallback) {
   return base || 'accountant';
 }
 
+function normalizeApartments(raw) {
+  let list = raw;
+  if (typeof list === 'string') list = list.split(/[\n,;]+/);
+  if (!Array.isArray(list)) return [];
+  const seen = {};
+  const out = [];
+  list.forEach(function (a) {
+    const name = String(a || '').trim().slice(0, 120);
+    const key = name.toLowerCase();
+    if (!name || seen[key]) return;
+    seen[key] = true;
+    out.push(name);
+  });
+  return out.slice(0, 200);
+}
+
 function normalizeCard(raw, idx) {
   const email = normalizeEmail(raw && (raw.email || raw.to));
   if (!email || email.indexOf('@') < 0) return null;
@@ -47,6 +66,7 @@ function normalizeCard(raw, idx) {
     email: email,
     receivePdfs: !(raw && (raw.receivePdfs === false || raw.pdfs === false || raw.receivePdf === false)),
     receiveExcel: !(raw && (raw.receiveExcel === false || raw.xls === false || raw.excel === false)),
+    apartments: normalizeApartments(raw && raw.apartments),
   };
 }
 
@@ -98,6 +118,7 @@ function recipientsForSend(cards) {
         email: c.email,
         receivePdfs: !!c.receivePdfs,
         receiveExcel: !!c.receiveExcel,
+        apartments: c.apartments || [],
         skip: !c.receivePdfs && !c.receiveExcel,
       };
     });
@@ -107,6 +128,7 @@ module.exports = {
   ACCOUNTANTS_KEY,
   DEFAULT_ACCOUNTANTS,
   normalizeEmail,
+  normalizeApartments,
   normalizeCard,
   seedFromEnv,
   parseAccountantsData,

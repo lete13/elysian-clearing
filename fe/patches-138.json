@@ -1,0 +1,133 @@
+{
+ "baseSha256": "b374de7e075d6780cafc971f0d6a210f606f29e1c4d4424d7c284cad5e598725",
+ "expectedSha256": "5e665c62f198a3a124f0e575478670f02f44bffdaf665fc215ccd07827588d7e",
+ "builtAt": "2026-08-22 Retrieve pipeline: one self-updating page",
+ "patches": [
+  {
+   "note": "Retrieve intro: one page, auto-refreshing",
+   "find": "      <div style=\"font-size:12.5px;color:var(--tx3);margin-bottom:10px\">Guided monthly run: Hosthub expect → <b>automated portal pull</b> → review → email accountants. <b>Booking.com = one invoice per apartment</b>. Connect portals once. Do this <b>as soon as possible</b>.</div>",
+   "replace": "      <div style=\"font-size:12.5px;color:var(--tx3);margin-bottom:10px\">Guided monthly run, all on one page: <b>Expect → Collect → Review → Ship</b>. Counts and reconcile status refresh automatically when you open this tab or change the month. <b>Booking.com = one invoice per apartment</b>. Connect portals once. Do this <b>as soon as possible</b> each month.</div>",
+   "count": 1
+  },
+  {
+   "note": "Status strip replaces the step chips",
+   "find": "      <div id=\"pi-steps\" style=\"display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px\"></div>",
+   "replace": "      <div id=\"pi-flow-status\" style=\"display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px\"></div>\n      <div id=\"pi-steps\" style=\"display:none\"></div>",
+   "count": 1
+  },
+  {
+   "note": "Section 1 · Expect",
+   "find": "<div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">2 · What we expect (Hosthub)</div>",
+   "replace": "<div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">1 · Expect — what the month should contain (Hosthub)</div>",
+   "count": 1
+  },
+  {
+   "note": "Section 2 · Collect",
+   "find": "<div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">3 · Collect documents</div>",
+   "replace": "<div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">2 · Collect documents</div>",
+   "count": 1
+  },
+  {
+   "note": "Section 3 · Review",
+   "find": "<div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">4 · Review before shipping</div>",
+   "replace": "<div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">3 · Review</div>",
+   "count": 1
+  },
+  {
+   "note": "Section 4 · Ship",
+   "find": "<div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">5 · Ship finished product</div>",
+   "replace": "<div style=\"font-weight:650;font-size:15px;margin-bottom:6px\">4 · Ship to accountants</div>",
+   "count": 1
+  },
+  {
+   "note": "Expect section: no wizard navigation",
+   "find": "      <div style=\"margin-top:12px;display:flex;gap:8px;flex-wrap:wrap\">\n        <button class=\"btn sm\" onclick=\"piHealth()\">Refresh expect</button>\n        <button class=\"btn gold\" onclick=\"piGo(3)\">Continue to collect →</button>\n      </div>",
+   "replace": "      <div style=\"margin-top:12px;display:flex;gap:8px;flex-wrap:wrap\">\n        <button class=\"btn sm\" onclick=\"piHealth()\">Refresh expect</button>\n      </div>",
+   "count": 1
+  },
+  {
+   "note": "Collect section: no wizard navigation",
+   "find": "      <div style=\"margin-top:12px;display:flex;gap:8px;flex-wrap:wrap\">\n        <button class=\"btn sm\" onclick=\"piGo(2)\">← Back</button>\n        <button class=\"btn gold\" onclick=\"piCollectContinue()\">Continue to review →</button>\n      </div>\n",
+   "replace": "",
+   "count": 1
+  },
+  {
+   "note": "Review section: no wizard navigation",
+   "find": "      <div style=\"margin-top:12px;display:flex;gap:8px;flex-wrap:wrap\">\n        <button class=\"btn sm\" onclick=\"piGo(3)\">← Back to collect</button>\n        <button class=\"btn gold\" onclick=\"piReviewContinue()\">Looks good — ship →</button>\n      </div>\n",
+   "replace": "",
+   "count": 1
+  },
+  {
+   "note": "Ship section: no back button",
+   "find": "      <div style=\"margin-top:12px\"><button class=\"btn sm\" onclick=\"piGo(4)\">← Back</button></div>\n",
+   "replace": "",
+   "count": 1
+  },
+  {
+   "note": "renderSteps shows every section, hides the start panel",
+   "find": "  function renderSteps() {\n    var labels = ['Start', 'Expect', 'Collect', 'Review', 'Ship'];\n    var box = document.getElementById('pi-steps');\n    if (!box) return;\n    box.innerHTML = labels.map(function (lab, i) {\n      var n = i + 1;\n      var on = PI.step === n;\n      var done = PI.step > n;\n      return '<button type=\"button\" class=\"btn sm\" onclick=\"piGo(' + n + ')\" style=\"' +\n        (on ? 'background:var(--gold,#C9A84C);color:#111;border-color:transparent;font-weight:650' :\n          done ? 'opacity:.9' : 'opacity:.65') + '\">' + n + ' · ' + lab + '</button>';\n    }).join('');\n    for (var s = 1; s <= 5; s++) {\n      var p = document.getElementById('pi-panel-' + s);\n      if (p) p.style.display = (s === PI.step) ? 'block' : 'none';\n    }\n  }",
+   "replace": "  function renderSteps() {\n    var box = document.getElementById('pi-steps');\n    if (box) box.innerHTML = '';\n    var p1 = document.getElementById('pi-panel-1');\n    if (p1) p1.style.display = 'none';\n    for (var s = 2; s <= 5; s++) {\n      var p = document.getElementById('pi-panel-' + s);\n      if (p) { p.style.display = 'block'; p.style.marginBottom = '14px'; }\n    }\n  }",
+   "count": 1
+  },
+  {
+   "note": "piGo loads a section and scrolls to it",
+   "find": "  window.piGo = function (step) {\n    try { piSetMenu('retrieve'); } catch (eGo) {}\n    PI.step = Math.max(1, Math.min(5, step | 0));\n    try { localStorage.setItem('pi_step_' + monthVal(), String(PI.step)); } catch (e) {}\n    renderSteps();\n    if (PI.step === 2) piHealth();\n    if (PI.step === 3) {\n      piReload().then(function () {\n        piRenderSessions();\n        return piHealth();\n      }).then(function () {\n        var h = PI.health || {};\n        var need = (h.airInvList || []).concat(h.airCreditList || []).filter(function (x) {\n          return x.code && !piVaultHasAirCode(PI.items || [], x.code, x.kind || 'invoice');\n        });\n        var needPull = (PI.status && PI.status.pullAvailable) && need.length;\n        if (needPull && !window._piAutoPullOnce) {\n          window._piAutoPullOnce = monthVal();\n          // Do not auto-run Pull — Test pull (5 codes) first.\n        }\n      });\n    }\n    if (PI.step === 4) piReload().then(reviewHtml);\n    if (PI.step === 5) {\n      var st = PI.status || {};\n      var el = document.getElementById('pi-ship-to');\n      if (el) el.innerHTML = 'To: <b>' + (st.accountantEmail || 'info@e-newgeneration.gr, info@elysianproperties.eu') + '</b>';\n    }\n  };",
+   "replace": "  window.piGo = function (step) {\n    try { piSetMenu('retrieve'); } catch (eGo) {}\n    PI.step = Math.max(1, Math.min(5, step | 0));\n    renderSteps();\n    if (PI.step === 2) piHealth();\n    if (PI.step === 3) piReload();\n    if (PI.step === 4) piReload().then(reviewHtml);\n    if (PI.step === 5) {\n      var st = PI.status || {};\n      var el = document.getElementById('pi-ship-to');\n      if (el) el.innerHTML = 'To: <b>' + (st.accountantEmail || 'info@e-newgeneration.gr, info@elysianproperties.eu') + '</b>';\n    }\n    var p = document.getElementById('pi-panel-' + Math.max(2, PI.step));\n    if (p && p.scrollIntoView) { try { p.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (eScroll) {} }\n  };",
+   "count": 1
+  },
+  {
+   "note": "Start pipeline just refreshes the flow",
+   "find": "  window.piPipelineStart = function () {\n    var inp = document.getElementById('pi-month');\n    if (inp && !inp.value) inp.value = monthDefault();\n    msg('Running Hosthub expect…', true);\n    Promise.resolve(piHealth()).then(function () { piGo(2); msg('', true); });\n  };",
+   "replace": "  window.piPipelineStart = function () {\n    var inp = document.getElementById('pi-month');\n    if (inp && !inp.value) inp.value = monthDefault();\n    piFlowRefresh();\n  };",
+   "count": 1
+  },
+  {
+   "note": "Month change refreshes the whole flow",
+   "find": "  window.piOnMonthChange = function () {\n    PI.health = null;\n    window._piAutoPullOnce = null;\n    try { localStorage.setItem('pi_month', monthVal()); } catch (e) {}\n    if (PI.step >= 2) piHealth();\n    piReload();\n  };",
+   "replace": "  window.piOnMonthChange = function () {\n    PI.health = null;\n    window._piAutoPullOnce = null;\n    try { localStorage.setItem('pi_month', monthVal()); } catch (e) {}\n    piFlowRefresh();\n  };",
+   "count": 1
+  },
+  {
+   "note": "Opening Retrieve refreshes the whole flow",
+   "find": "    if (PI.menu === 'retrieve') renderSteps();",
+   "replace": "    if (PI.menu === 'retrieve') piFlowRefresh();",
+   "count": 1
+  },
+  {
+   "note": "piFlowRefresh + status strip renderer",
+   "find": "  window.piLoadAgentLatest = async function () {",
+   "replace": "  window.piFlowRefresh = function () {\n    renderSteps();\n    // Do not auto-run Pull — collecting starts from the Collect buttons only.\n    return Promise.resolve(piHealth()).then(function () { return piReload(); }).then(function () {\n      var st = PI.status || {};\n      var shipEl = document.getElementById('pi-ship-to');\n      if (shipEl) shipEl.innerHTML = 'To: <b>' + (st.accountantEmail || 'info@e-newgeneration.gr, info@elysianproperties.eu') + '</b>';\n      try { reviewHtml(); } catch (eR) {}\n      try { piRenderFlowStatus(); } catch (eF) {}\n    }).catch(function (eFlow) {});\n  };\n  window.piRenderFlowStatus = async function () {\n    var box = document.getElementById('pi-flow-status');\n    if (!box) return;\n    var month = monthVal();\n    var h = PI.health || {};\n    var items = (PI.items || []).filter(function (x) { return x.scope === 'leased' && piStoreYm(x) === month; });\n    var bdcHave = items.filter(function (x) { return String(x.channel || '').toLowerCase() === 'booking'; }).length;\n    var airHave = items.length - bdcHave;\n    var airExp = (h.airEstimate && h.airEstimate.docs) || 0;\n    function chip(target, label, val, ok) {\n      return '<a href=\"#\" onclick=\"piGo(' + target + ');return false\" style=\"text-decoration:none;display:inline-flex;align-items:center;gap:6px;border:1px solid ' + (ok ? 'rgba(26,127,55,.45)' : 'var(--bdr)') + ';border-radius:999px;padding:6px 12px;font-size:12px;color:var(--tx2);background:' + (ok ? 'rgba(26,127,55,.08)' : 'var(--bg)') + '\">' + label + ' <b>' + val + '</b></a>';\n    }\n    var airChip = chip(3, 'Airbnb PDFs', airHave + (airExp ? ' / ' + airExp : ''), airExp && airHave >= airExp);\n    var bdcChip = chip(3, 'Booking.com PDFs', bdcHave, bdcHave > 0);\n    box.innerHTML = airChip + bdcChip + '<span style=\"color:var(--tx3);font-size:12px;align-self:center\">checking reconcile…</span>';\n    var reconChip = '';\n    try {\n      var j = await fetch('/api/platform-invoices/reconcile?month=' + encodeURIComponent(month)).then(function (r) { return r.json(); });\n      if (j && !j.error) {\n        bdcChip = chip(3, 'Booking.com PDFs', bdcHave + ' / ' + (j.expected || 0) + ' expected', !!j.match);\n        reconChip = chip(4, 'Reconcile', j.match ? '✓ matches departures' : ((j.errors || []).length + ' alert(s)'), !!j.match);\n      }\n    } catch (eRecon) {}\n    var agentChip = '';\n    try {\n      var aj = await fetch('/api/platform-invoices/agent/latest').then(function (r) { return r.json(); });\n      var rep = aj && aj.report;\n      if (rep && rep.month === month) agentChip = chip(5, 'Agent', (rep.status || '') + ' · ' + ((rep.emailed || []).length) + ' emailed', rep.status === 'sent');\n    } catch (eAgent) {}\n    box.innerHTML = airChip + bdcChip + reconChip + agentChip;\n  };\n  window.piLoadAgentLatest = async function () {",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "id=\"pi-flow-status\"",
+   "note": "status strip"
+  },
+  {
+   "has": "window.piFlowRefresh",
+   "note": "flow auto-refresh"
+  },
+  {
+   "has": "if (PI.menu === 'retrieve') piFlowRefresh();",
+   "note": "opening Retrieve refreshes"
+  },
+  {
+   "has": "1 · Expect — what the month should contain (Hosthub)",
+   "note": "renumbered sections"
+  },
+  {
+   "hasNot": "Continue to collect →",
+   "note": "wizard nav removed"
+  },
+  {
+   "hasNot": "Looks good — ship →",
+   "note": "wizard nav removed"
+  },
+  {
+   "hasNot": "← Back to collect",
+   "note": "wizard nav removed"
+  }
+ ]
+}

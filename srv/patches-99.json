@@ -1,0 +1,29 @@
+{
+ "baseSha256": "633fbcc5bf3c600a6042caa77d25cf5ddfa7b4663b6f914f3b2e1d51a1602918",
+ "expectedSha256": "d1107c50221ad2c713f684c9d220a141e705074fa703151bd924012add3ece9b",
+ "builtAt": "2026-08-22 Accountant cards: per-card apartment packs",
+ "patches": [
+  {
+   "note": "Agent email loop sends each card only its apartments",
+   "find": "        const emailed = [];\n        for (const c of emailPlan.sent) {\n          const mailAtts = [];\n          if (c.attachExcel && pack.xlsBuf) mailAtts.push({ filename: pack.xlsName, content: pack.xlsBuf, contentType: 'application/vnd.ms-excel' });\n          if (c.attachPdfs) {\n            for (const r of pack.pdfRows) {\n              mailAtts.push({ filename: r.filename || (r.channel + '.pdf'), content: Buffer.from(r.data, 'base64'), contentType: r.mime || 'application/pdf' });\n            }\n          }\n          if (!mailAtts.length) continue;\n          await piSendAccountantMail(c.email, 'PLATFORM INVOICES ' + month, 'Platform invoice pack for ' + month + '.\\n', mailAtts);\n          emailed.push({ email: c.email, pdfs: !!c.attachPdfs, excel: !!c.attachExcel });\n        }",
+   "replace": "        const emailed = [];\n        for (const c of emailPlan.sent) {\n          const sub = piAgent.packForCard(pack, c);\n          if (sub.empty) { report.skipped.push({ id: c.id, email: c.email, reason: 'no_rows_for_listed_apartments' }); continue; }\n          const mailAtts = [];\n          if (c.attachExcel && sub.xlsBuf) mailAtts.push({ filename: sub.xlsName, content: sub.xlsBuf, contentType: 'application/vnd.ms-excel' });\n          if (c.attachPdfs) {\n            for (const r of sub.pdfRows) {\n              mailAtts.push({ filename: r.filename || (r.channel + '.pdf'), content: Buffer.from(r.data, 'base64'), contentType: r.mime || 'application/pdf' });\n            }\n          }\n          if (!mailAtts.length) continue;\n          await piSendAccountantMail(c.email, 'PLATFORM INVOICES ' + month, 'Platform invoice pack for ' + month + '.\\n', mailAtts);\n          emailed.push({ email: c.email, pdfs: !!c.attachPdfs, excel: !!c.attachExcel, rows: sub.pdfRows.length });\n        }",
+   "count": 1
+  },
+  {
+   "note": "Manual send loop uses per-card apartment packs",
+   "find": "      for (const c of plan.sent) {\n        const mailAtts = [];\n        let bytes = 0;\n        if (c.attachExcel && pack.xlsBuf) {\n          mailAtts.push({ filename: pack.xlsName, content: pack.xlsBuf, contentType: 'application/vnd.ms-excel' });\n          bytes += pack.xlsBuf.length;\n        }\n        if (c.attachPdfs) {\n          for (const r of pack.pdfRows) {\n            const buf = Buffer.from(r.data, 'base64'); bytes += buf.length;\n            mailAtts.push({ filename: r.filename || (r.channel + '.pdf'), content: buf, contentType: r.mime || 'application/pdf' });\n          }\n        }\n        if (!mailAtts.length) { skipped.push({ email: c.email, reason: 'no attachments' }); continue; }",
+   "replace": "      for (const c of plan.sent) {\n        const sub = piAgent.packForCard(pack, c);\n        if (sub.empty) { skipped.push({ email: c.email, reason: 'no rows for listed apartments' }); continue; }\n        const mailAtts = [];\n        let bytes = 0;\n        if (c.attachExcel && sub.xlsBuf) {\n          mailAtts.push({ filename: sub.xlsName, content: sub.xlsBuf, contentType: 'application/vnd.ms-excel' });\n          bytes += sub.xlsBuf.length;\n        }\n        if (c.attachPdfs) {\n          for (const r of sub.pdfRows) {\n            const buf = Buffer.from(r.data, 'base64'); bytes += buf.length;\n            mailAtts.push({ filename: r.filename || (r.channel + '.pdf'), content: buf, contentType: r.mime || 'application/pdf' });\n          }\n        }\n        if (!mailAtts.length) { skipped.push({ email: c.email, reason: 'no attachments' }); continue; }",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "piAgent.packForCard(pack, c)",
+   "note": "per-card apartment pack"
+  },
+  {
+   "has": "no_rows_for_listed_apartments",
+   "note": "agent skips cards whose apartments match nothing"
+  }
+ ]
+}

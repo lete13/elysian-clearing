@@ -46,6 +46,20 @@ assert(est.apts.some((a) => a.aptName === 'Votsala' && a.bookings === 2), 'Votsa
 assert(!est.apts.some((a) => a.aptName === 'Horizon'), 'July stay is not a July invoice');
 assert.strictEqual(expect.estimateBookingInvoices, booking.estimateBookingInvoices, 'expect.js re-exports booking estimate');
 
+// Booking.com bills by departure month: a 31 May → 4 June stay is on the July
+// invoice; a 28 June → 2 July stay is on the August invoice.
+assert.strictEqual(booking.bookingBillMonth({ checkIn: '31/5/2026', checkOut: '4/6/2026' }), '2026-06');
+assert.strictEqual(booking.bookingBillMonth({ checkIn: '28/6/2026', checkOut: '2/7/2026' }), '2026-07');
+assert.strictEqual(booking.bookingBillMonth({ checkIn: '10/6/2026' }), '2026-06', 'check-in fallback when no check-out');
+const mayCross = { platform: 'Booking.com', aptId: 'b1', aptName: 'Birdhouse', checkIn: '31/5/2026', checkOut: '4/6/2026' };
+const juneCross = { platform: 'Booking.com', aptId: 'h1', aptName: 'Horizon', checkIn: '28/6/2026', checkOut: '2/7/2026' };
+const estCross = booking.estimateBookingInvoices('2026-07', [mayCross, juneCross], apts);
+assert.strictEqual(estCross.bookings, 1, 'May→June stay counts for July; June→July stay moves to August');
+assert(estCross.apts.some((a) => a.aptName === 'Birdhouse'), 'cross-month departure expected on the July invoice');
+assert(!estCross.apts.some((a) => a.aptName === 'Horizon'), 'stay departing in July belongs to the August document month');
+const estAug = booking.estimateBookingInvoices('2026-08', [mayCross, juneCross], apts);
+assert(estAug.apts.some((a) => a.aptName === 'Horizon'), 'June→July stay expected on the August invoice');
+
 const airEst = expect.estimateAirbnbInvoices('2026-06', [airVotsala, juneV1]);
 assert.strictEqual(airEst.stays.length, 1, 'Airbnb Votsala stays stay per unit');
 assert.strictEqual(airEst.stays[0].aptName, 'Votsala 1 Luxury Stay with Patio');
@@ -161,7 +175,7 @@ const xls = buildAccountantXls(
   []
 ).toString('utf8');
 assert(xls.includes('AIUC-1'));
-assert(xls.includes('BDC-1'), 'Excel includes matched Booking.com rows when provided');
+assert(xls.includes('BDC-1'), 'Excel includes vault Booking.com rows when provided');
 assert(xls.includes('Platform invoices') || xls.includes('Worksheet'), 'Excel worksheet present');
 
 assert.strictEqual(booking.bookingTooEarly('2026-07', new Date('2026-08-16T12:00:00Z')), false);
