@@ -65,8 +65,8 @@ function planBookingPdfRefile(row, pdfBuf, apts) {
   const fname = String(row.filename || '');
   if (!/^unmapped-/i.test(partner) && !/unmapped-/i.test(fname)) return null;
   const text = booking.pdfExtractText(pdfBuf);
-  const fields = booking.parseBookingInvoiceFields(text + ' ' + fname);
-  const hotelId = fields.hotelId || booking.parseBookingHotelId(fname) || '';
+  const fields = booking.parseBookingInvoiceFields(text + ' ' + fname, apts);
+  const hotelId = fields.hotelId || booking.parseBookingHotelId(fname) || booking.hotelIdFromKnownApts(text + ' ' + fname, apts) || '';
   const resolved = booking.resolveBookingApt(hotelId, apts);
   if (!resolved.mapped && resolved.folder === partner && !fields.invoiceNumber) return null;
   const fromIssue = booking.ymFromDmy(fields.issueDate);
@@ -87,6 +87,7 @@ function planBookingPdfRefile(row, pdfBuf, apts) {
     bookingHotelId: resolved.bookingHotelId || hotelId || prev.bookingHotelId || '',
     hotelId: resolved.bookingHotelId || hotelId || prev.hotelId || '',
     listingName: resolved.folder,
+    reservationId: resolved.bookingHotelId || hotelId || prev.reservationId || '',
   });
   if (
     resolved.folder === partner &&
