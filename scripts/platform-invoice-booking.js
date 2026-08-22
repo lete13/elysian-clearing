@@ -458,10 +458,23 @@ function looksLikeZip(buf) {
   return buf[0] === 0x50 && buf[1] === 0x4b && (buf[2] === 0x03 || buf[2] === 0x05 || buf[2] === 0x07);
 }
 
-function isBookingStatementBlob(name, text) {
+function isBookingInvoiceBlob(name, text) {
   const blob = (String(name || '') + ' ' + String(text || '')).trim();
+  if (!blob) return false;
+  if (parseBookingHotelId(blob) || parseBookingInvoiceNumber(blob)) return true;
+  return /accommodation\s*(?:number|no\.?|#|id)|invoice\s*(?:number|no\.?|#)|\btotal amount due\b/i.test(blob);
+}
+
+function isBookingStatementBlob(name, text) {
+  const file = String(name || '');
+  const blob = (file + ' ' + String(text || '')).trim();
   if (/\.xlsx?(\s|$|\?)/i.test(blob) || /\.csv(\s|$|\?)/i.test(blob)) return true;
-  return /statement of account|reservation.?statement|finance overview|payout statement/i.test(blob);
+  // Host invoices mention "Reservation Statements" in the footer and
+  // "Commission Reservations" as a line item. Those are invoices.
+  if (isBookingInvoiceBlob(file, text)) return false;
+  return /statement of account|(?:^|[^\w])reservation statements?(?:[^\w]|$)|finance overview|payout statement/i.test(
+    blob
+  );
 }
 
 function isPortalChromeLabel(name) {
@@ -1471,6 +1484,7 @@ module.exports = {
   isPortalChromeLabel,
   looksLikePdf,
   looksLikeZip,
+  isBookingInvoiceBlob,
   isBookingStatementBlob,
   resolveBookingApt,
   bookingInvoiceFilename,
