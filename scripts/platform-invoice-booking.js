@@ -198,12 +198,32 @@ function parseBookingHotelId(text) {
   return '';
 }
 
+function hotelIdFromKnownApts(text, apts) {
+  const s = String(text || '');
+  if (!s || !Array.isArray(apts) || !apts.length) return '';
+  const ids = {};
+  apts.forEach(function (a) {
+    const id = normalizeHotelId(a && a.bookingHotelId);
+    if (id) ids[id] = true;
+  });
+  const known = Object.keys(ids).sort(function (a, b) {
+    return b.length - a.length;
+  });
+  for (let i = 0; i < known.length; i++) {
+    const id = known[i];
+    const re = new RegExp('(?:^|[^0-9])' + id + '(?:[^0-9]|$)');
+    if (re.test(s)) return id;
+  }
+  return '';
+}
+
 function parseBookingInvoiceNumber(text) {
   const s = String(text || '');
   const patterns = [
     /invoice\s*(?:number|no\.?|#)\s*[:.]?\s*([A-Z]{0,4}-?\d{5,14}(?:-[A-Z0-9]+)?)/i,
     /τιμολ[^\n]{0,20}(?:αριθ|no|#)[^\d]{0,8}(\d{5,14})/i,
     /\b(GR-?\d{6,14})\b/i,
+    /\[(\d{8,14})\]/,
   ];
   for (let i = 0; i < patterns.length; i++) {
     const m = s.match(patterns[i]);
@@ -437,10 +457,10 @@ function pdfExtractText(buf) {
   return chunks.join(' ').replace(/\s+/g, ' ').slice(0, 200000);
 }
 
-function parseBookingInvoiceFields(text) {
+function parseBookingInvoiceFields(text, apts) {
   const s = String(text || '');
   return {
-    hotelId: parseBookingHotelId(s),
+    hotelId: parseBookingHotelId(s) || hotelIdFromKnownApts(s, apts),
     invoiceNumber: parseBookingInvoiceNumber(s),
     issueDate: parseBookingIssueDate(s),
     total: parseBookingTotal(s),
@@ -876,7 +896,7 @@ function categorizeBookingZip(buf, apts, fallbackMonth) {
       skipped.push({ name: ent.name, reason: 'statement' });
       return;
     }
-    const fields = parseBookingInvoiceFields(text + ' ' + ent.name);
+    const fields = parseBookingInvoiceFields(text + ' ' + ent.name, apts);
     const hotelId = fields.hotelId || parseBookingHotelId(ent.name) || '';
     const fromIssue = ymFromDmy(fields.issueDate);
     const fromName = monthFromFilenameBlob(ent.name);
@@ -1477,6 +1497,7 @@ module.exports = {
   estimateBookingInvoices,
   normalizeHotelId,
   parseBookingHotelId,
+  hotelIdFromKnownApts,
   parseBookingInvoiceNumber,
   parseBookingInvoiceFields,
   pdfExtractText,

@@ -62,6 +62,20 @@ assert.strictEqual(fields.invoiceNumber, '1234567890');
 assert.strictEqual(fields.issueDate, '01/07/2026');
 assert.strictEqual(fields.total, 12.34);
 
+const greekVotsalaText =
+  'Elysian Properties Management Eleftheriou Sarri Booking.com B.V. 13180441 ΑΦΜ: EL802740626 ' +
+  '[1656768029] 124183557 Elysian Properties Management 03/07/2026 ΤΙΜΟΛΟΓΙΟ EUR 167,12';
+const greekNoMap = booking.parseBookingInvoiceFields(greekVotsalaText);
+assert.strictEqual(greekNoMap.hotelId, '', 'does not invent a hotel id without the apartment map');
+assert.strictEqual(greekNoMap.invoiceNumber, '1656768029', 'title [invoice] is the Booking.com invoice number');
+const greekApts = [
+  { name: 'Votsala 1 Luxury Stay with Patio', clearGroup: 'Votsala', bookingHotelId: '13180441' },
+  { name: 'Votsala 2 Luxury Stay with Patio', clearGroup: 'Votsala', bookingHotelId: '13180441' },
+];
+const greekMapped = booking.parseBookingInvoiceFields(greekVotsalaText, greekApts);
+assert.strictEqual(greekMapped.hotelId, '13180441', 'Greek Votsala PDF matches the shared bookingHotelId');
+assert.strictEqual(booking.resolveBookingApt(greekMapped.hotelId, greekApts).folder, 'Votsala');
+
 const mapped = booking.resolveBookingApt('10980606', apts);
 assert.strictEqual(mapped.mapped, true);
 assert.strictEqual(mapped.folder, 'Birdhouse');
@@ -472,6 +486,27 @@ assert.strictEqual(footerZip.files.length, 1, 'invoice with Reservation Statemen
 assert.strictEqual(footerZip.files[0].mapped, true);
 assert.strictEqual(footerZip.files[0].bookingHotelId, '15253339');
 
+const greekPdf = invoicePdf(greekVotsalaText);
+const greekZip = booking.categorizeBookingZip(
+  zipEntries([{ name: '1000-1656768029.pdf', body: greekPdf }]),
+  greekApts,
+  '2026-07'
+);
+assert.strictEqual(greekZip.files.length, 1, 'Greek Votsala invoice is kept');
+assert.strictEqual(greekZip.files[0].mapped, true);
+assert.strictEqual(greekZip.files[0].partner, 'Votsala');
+assert.strictEqual(greekZip.files[0].bookingHotelId, '13180441');
+assert.strictEqual(greekZip.files[0].invoiceNumber, '1656768029');
+
+if (fs.existsSync('/tmp/pi-2087.pdf')) {
+  const liveGreek = booking.parseBookingInvoiceFields(
+    booking.pdfExtractText(fs.readFileSync('/tmp/pi-2087.pdf')),
+    greekApts
+  );
+  assert.strictEqual(liveGreek.hotelId, '13180441', 'live Greek Votsala PDF maps to 13180441');
+  assert.strictEqual(liveGreek.invoiceNumber, '1656768029');
+}
+
 const refile = require(path.join(root, 'scripts', 'platform-invoice-vault-refile'));
 const navPlan = refile.planBookingPdfRefile(
   {
@@ -488,6 +523,22 @@ assert.strictEqual(navPlan.partner, 'Navarino Athenian Nest');
 assert.strictEqual(navPlan.month, '2026-08', 'issue date month wins over zip fallback');
 assert.strictEqual(navPlan.bookingHotelId, '15253339');
 assert(navPlan.filename.indexOf('Navarino') >= 0, 'store path uses apartment name');
+
+const votsPlan = refile.planBookingPdfRefile(
+  {
+    channel: 'booking',
+    partner: 'unmapped-unknown',
+    filename: 'Booking.com/2026-07/unmapped-unknown/invoice-unknown-1000-1656768029.pdf',
+    month: '2026-07',
+  },
+  greekPdf,
+  greekApts
+);
+assert(votsPlan, 'Greek unmapped PDF is refiled onto Votsala');
+assert.strictEqual(votsPlan.partner, 'Votsala');
+assert.strictEqual(votsPlan.bookingHotelId, '13180441');
+assert.strictEqual(votsPlan.meta.invoiceNumber, '1656768029');
+assert(votsPlan.filename.indexOf('Votsala') >= 0);
 
 const todayPlan = refile.planAirbnbChromeRefile(
   {

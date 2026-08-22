@@ -64,7 +64,14 @@ const ctx = {
   document,
   window: {},
   PI: { vaultItems: [], vaultQ: '', vaultHideEmpty: true },
-  S: { apts: [{ name: 'Birdhouse Apartment' }, { name: 'Coloneum' }] },
+  S: {
+    apts: [
+      { name: 'Birdhouse Apartment' },
+      { name: 'Coloneum' },
+      { name: 'Votsala 1 Luxury Stay with Patio', clearGroup: 'Votsala', bookingHotelId: '13180441' },
+      { name: 'Votsala 2 Luxury Stay with Patio', clearGroup: 'Votsala', bookingHotelId: '13180441' },
+    ],
+  },
   localStorage: { getItem: function () { return null; }, setItem: function () {} },
 };
 vm.runInNewContext(src, ctx);
@@ -125,5 +132,33 @@ assert(
 );
 assert(tree.innerHTML.indexOf('Untagged') >= 0, 'chrome-labeled PDFs fall through to Untagged until refile');
 assert(tree.innerHTML.indexOf('invoice-HMCHROME.pdf') >= 0, 'chrome PDF leaf still listed');
+
+ctx.PI.vaultItems = [
+  {
+    id: 'v-air',
+    month: '2026-07',
+    channel: 'airbnb',
+    partner: 'Votsala 1 Luxury Stay with Patio',
+    filename: 'Airbnb/2026-07/Votsala 1 Luxury Stay with Patio/invoice-HMVOTSALA1.pdf',
+  },
+  {
+    id: 'v-bdc',
+    month: '2026-07',
+    channel: 'booking',
+    partner: 'Votsala',
+    listingName: 'Votsala',
+    reservationId: '13180441',
+    filename: 'Booking.com/2026-07/Votsala/invoice-13180441-1656768029.pdf',
+    invoiceNumber: '1656768029',
+  },
+];
+ctx.PI.vaultHideEmpty = true;
+ctx.renderVaultTree();
+assert(tree.innerHTML.indexOf('Votsala 1 Luxury Stay with Patio') >= 0, 'Votsala 1 folder');
+assert(tree.innerHTML.indexOf('Votsala 2 Luxury Stay with Patio') >= 0, 'Votsala 2 folder gets the shared Booking PDF');
+assert(tree.innerHTML.indexOf('invoice-HMVOTSALA1.pdf') >= 0, 'Votsala 1 keeps its own Airbnb PDF');
+assert((tree.innerHTML.match(/invoice-13180441-1656768029\.pdf/g) || []).length >= 2, 'same Booking PDF listed on each Votsala unit');
+assert(tree.innerHTML.indexOf('</i> Votsala <') < 0, 'no extra Votsala group folder');
+assert(tree.innerHTML.indexOf('unmapped-unknown') < 0, 'unnamed unmapped folder is not created');
 
 console.log('platform-invoice-vault-folders.test.js: ok');

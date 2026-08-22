@@ -1,0 +1,29 @@
+{
+ "baseSha256": "fe71192b62042dc757291b7227cd7421995b601908692c7a22583cbcde70c8e6",
+ "expectedSha256": "0f6037d79d58d4d1cd651f89f1f4f286edacdc06b4671783207df9e65887a4e8",
+ "builtAt": "2026-08-22 Show the shared Votsala Booking.com invoice on Votsala 1–8",
+ "patches": [
+  {
+   "note": "Helpers: Votsala 1–8 share one Booking.com PDF",
+   "find": "  function piAllAptNames(items) {\n    var names = {};\n    (items || []).forEach(function (it) { names[piStoreApt(it)] = true; });\n",
+   "replace": "  function piVotsalaUnitNames() {\n    var out = [];\n    try {\n      (S.apts || []).forEach(function (a) {\n        var n = String((a && a.name) || '').trim();\n        var g = String((a && a.clearGroup) || '').trim();\n        if (n && (/^votsala$/i.test(g) || /^votsala\\b/i.test(n))) out.push(n);\n      });\n    } catch (eV) {}\n    return out;\n  }\n  function piSharedVotsalaBooking(it) {\n    if (!it) return false;\n    var ch = String(it.channel || '').toLowerCase();\n    if (ch !== 'booking' && ch !== 'bdc') return false;\n    var p = String(it.partner || it.listingName || '').trim();\n    if (/^votsala$/i.test(p)) return true;\n    var hid = String(it.bookingHotelId || it.hotelId || it.reservationId || '').replace(/\\D/g, '');\n    if (!hid) return false;\n    try {\n      return (S.apts || []).some(function (a) {\n        var g = String((a && a.clearGroup) || '');\n        var n = String((a && a.name) || '');\n        return (/^votsala$/i.test(g) || /^votsala\\b/i.test(n)) && String(a.bookingHotelId || '').replace(/\\D/g, '') === hid;\n      });\n    } catch (eS) { return false; }\n  }\n  function piAllAptNames(items) {\n    var names = {};\n    (items || []).forEach(function (it) {\n      if (piSharedVotsalaBooking(it)) return;\n      var n = piStoreApt(it);\n      if (n) names[n] = true;\n    });\n",
+   "count": 1
+  },
+  {
+   "note": "Fan the shared Votsala Booking PDF onto each Votsala 1–8 folder",
+   "find": "    items.forEach(function (it) {\n      var apt = piStoreApt(it);\n      (byApt[apt] = byApt[apt] || []).push(it);\n    });\n",
+   "replace": "    items.forEach(function (it) {\n      if (piSharedVotsalaBooking(it)) {\n        piVotsalaUnitNames().forEach(function (n) {\n          (byApt[n] = byApt[n] || []).push(it);\n        });\n        return;\n      }\n      var apt = piStoreApt(it);\n      if (!apt) return;\n      (byApt[apt] = byApt[apt] || []).push(it);\n    });\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "function piSharedVotsalaBooking",
+   "note": "shared Votsala booking helper"
+  },
+  {
+   "has": "piVotsalaUnitNames().forEach",
+   "note": "fan-out onto Votsala 1–8"
+  }
+ ]
+}

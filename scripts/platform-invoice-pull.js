@@ -2193,7 +2193,8 @@ function fileBookingPdf(buf, meta, month, dir, files, apts) {
   const text = booking.pdfExtractText(buf);
   if (booking.isBookingStatementBlob(meta.name || meta.url || '', text)) return null;
   const fields = booking.parseBookingInvoiceFields(
-    (meta.hotelId || '') + ' ' + (meta.url || '') + ' ' + (meta.name || '') + ' ' + text
+    (meta.hotelId || '') + ' ' + (meta.url || '') + ' ' + (meta.name || '') + ' ' + text,
+    apts
   );
   const hotelId = fields.hotelId || booking.normalizeHotelId(meta.hotelId) || booking.parseBookingHotelId(meta.url || meta.name || '');
   const resolved = booking.resolveBookingApt(hotelId, apts);
@@ -2381,7 +2382,8 @@ async function pullBooking(page, context, month, outDir, files, errors) {
     captured.forEach(function (item) {
       if (!item || !item.buf) return;
       const fields = booking.parseBookingInvoiceFields(
-        (item.hotelId || '') + ' ' + (item.url || '') + ' ' + (item.name || '') + ' ' + booking.pdfExtractText(item.buf)
+        (item.hotelId || '') + ' ' + (item.url || '') + ' ' + (item.name || '') + ' ' + booking.pdfExtractText(item.buf),
+        apts
       );
       const hid = fields.hotelId || booking.normalizeHotelId(item.hotelId);
       if (hid && seenHotel[hid]) return;
