@@ -129,9 +129,34 @@ assert.strictEqual(packNoStay.blocked, true, 'invoice without stays still blocks
 assert(packNoStay.xlsBuf.toString('utf8').includes('BDC-1'), 'unmatched Booking invoice still on Excel');
 assert.strictEqual(packNoStay.counts.booking, 1);
 
+// Per-card apartment packs: cards with apartments get only their rows.
+const fullSub = agent.packForCard(pack, { apartments: [] });
+assert.strictEqual(fullSub.pdfRows.length, pack.pdfRows.length, 'card without apartments gets the full pack');
+assert.strictEqual(fullSub.xlsBuf, pack.xlsBuf, 'full card reuses the month Excel');
+const birdSub = agent.packForCard(pack, { apartments: ['Birdhouse Apartment'] });
+assert.strictEqual(birdSub.pdfRows.length, 3, 'Birdhouse card gets Airbnb + Booking Birdhouse rows');
+assert(birdSub.xlsBuf.toString('utf8').includes('1234567890'), 'Birdhouse card Excel has its Booking row');
+assert.strictEqual(birdSub.empty, false);
+const noneSub = agent.packForCard(pack, { apartments: ['Coloneum'] });
+assert.strictEqual(noneSub.pdfRows.length, 0);
+assert.strictEqual(noneSub.empty, true, 'card whose apartments match nothing is empty');
+const votsalaRows = agent.packRowsForCard(
+  [{ channel: 'booking', month: '2026-07', aptName: 'Votsala', filename: 'Booking.com/2026-07/Votsala/invoice-13180441.pdf' }],
+  ['Votsala 3 Luxury Stay with Patio']
+);
+assert.strictEqual(votsalaRows.length, 1, 'Votsala unit matches the shared Votsala Booking folder');
+
 const cards = accountants.seedFromEnv('');
 assert.strictEqual(cards.length, 2);
 assert(cards.every((c) => c.receivePdfs && c.receiveExcel));
+assert(cards.every((c) => Array.isArray(c.apartments) && !c.apartments.length), 'seeded cards receive everything');
+
+const aptCard = accountants.normalizeCard({ email: 'apt@example.com', apartments: ['Birdhouse', ' birdhouse ', '', 'Votsala 3'] });
+assert.deepStrictEqual(aptCard.apartments, ['Birdhouse', 'Votsala 3'], 'apartments are trimmed and deduped');
+const aptCardStr = accountants.normalizeCard({ email: 'apt@example.com', apartments: 'Birdhouse, Votsala 3' });
+assert.deepStrictEqual(aptCardStr.apartments, ['Birdhouse', 'Votsala 3'], 'comma string apartments accepted');
+const sentWithApts = agent.planAccountantEmails([{ email: 'apt@example.com', apartments: ['Birdhouse'] }], pack);
+assert.deepStrictEqual(sentWithApts.sent[0].apartments, ['Birdhouse'], 'send plan keeps the card apartments');
 
 const planSkip = agent.planAccountantEmails(
   [
@@ -177,6 +202,12 @@ assert(srv93.patches.some((p) => (p.replace || '').includes('resolvePull')), 'SR
 const srv98 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-98.json'), 'utf8'));
 assert(srv98.patches.some((p) => (p.replace || '').includes('buildAccountantXls(rows, bks, { includeBooking: true })')), 'SRV Excel uses vault Booking rows');
 assert(srv98.patches.some((p) => (p.find || '').includes('recon.included')), 'SRV Excel stops filtering to matched Booking');
+const srv99 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-99.json'), 'utf8'));
+assert(srv99.patches.some((p) => (p.replace || '').includes('piAgent.packForCard(pack, c)')), 'SRV emails per-card apartment packs');
+const fe136 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-136.json'), 'utf8'));
+assert(fe136.patches.some((p) => (p.replace || '').includes('pi-menu-accountants')), 'FE Accountants sub-menu button');
+assert(fe136.patches.some((p) => (p.replace || '').includes('pi-view-accountants')), 'FE Accountants view');
+assert(fe136.patches.some((p) => (p.replace || '').includes('piAcctAddApt')), 'FE card apartment editor');
 const fe128 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-128.json'), 'utf8'));
 assert(fe128.patches.some((p) => (p.replace || '').includes('piRunAgent')), 'FE run agent');
 assert(fe128.patches.some((p) => (p.replace || '').includes('pi-accountant-cards')), 'FE cards UI');

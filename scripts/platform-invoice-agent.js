@@ -49,6 +49,58 @@ function buildMonthPack(month, vaultRows, bks, apts) {
     xlsName: accountantXlsFilename(month),
     counts: counts,
     errors: recon.errors || [],
+    bks: bks || [],
+  };
+}
+
+function normAptName(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function rowAptName(row) {
+  const direct = String((row && (row.aptName || row.partner)) || '').trim();
+  if (direct) return direct;
+  const parts = String((row && row.filename) || '').replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts.length >= 4 ? parts[2] : '';
+}
+
+/**
+ * A card apartment matches a vault folder on normalized equality or prefix
+ * either way, so "Votsala 3 Luxury Stay with Patio" matches the shared
+ * "Votsala" Booking.com folder and "Birdhouse" matches "Birdhouse Apartment".
+ */
+function aptMatchesCard(rowName, cardApts) {
+  const rn = normAptName(rowName);
+  if (!rn) return false;
+  return (cardApts || []).some(function (a) {
+    const an = normAptName(a);
+    return !!an && (an === rn || an.indexOf(rn) === 0 || rn.indexOf(an) === 0);
+  });
+}
+
+function packRowsForCard(packRows, apartments) {
+  const list = (apartments || []).filter(Boolean);
+  if (!list.length) return (packRows || []).slice();
+  return (packRows || []).filter(function (r) {
+    return aptMatchesCard(rowAptName(r), list);
+  });
+}
+
+/**
+ * Attachments for one accountant card. Cards without apartments get the full
+ * month pack; cards with apartments get only their rows (Excel and PDFs).
+ */
+function packForCard(pack, card) {
+  const apartments = (card && card.apartments) || [];
+  if (!apartments.length) {
+    return { xlsBuf: pack.xlsBuf, xlsName: pack.xlsName, pdfRows: pack.pdfRows || [], empty: false };
+  }
+  const rows = packRowsForCard(pack.packRows, apartments);
+  return {
+    xlsBuf: buildAccountantXls(rows, pack.bks || [], { includeBooking: true }),
+    xlsName: pack.xlsName,
+    pdfRows: rows,
+    empty: !rows.length,
   };
 }
 
@@ -83,6 +135,7 @@ function planAccountantEmails(cards, pack) {
       email: c.email,
       attachPdfs: !!c.receivePdfs,
       attachExcel: !!c.receiveExcel,
+      apartments: c.apartments || [],
     });
   });
   return { sent: sent, skipped: skipped };
@@ -125,6 +178,8 @@ module.exports = {
   isAirbnbRow,
   isBookingRow,
   buildMonthPack,
+  packRowsForCard,
+  packForCard,
   planAccountantEmails,
   buildAgentReport,
 };
