@@ -142,6 +142,17 @@ function bookingBillingKey(b, apts) {
   return 'unk:' + String((b && (b.id || b.reservationId || b.bookingId)) || '');
 }
 
+/**
+ * Booking.com generates the monthly commission invoice for reservations that
+ * DEPARTED (checked out) in that month, so a 31 May → 4 June stay is on the
+ * invoice issued in July. Bill month = check-out month, check-in as fallback.
+ */
+function bookingBillMonth(b) {
+  const fromCheckOut = ymFromDmy((b && (b.checkOut || b.check_out || b.departure)) || '');
+  if (fromCheckOut) return fromCheckOut;
+  return stayMonth(b);
+}
+
 function estimateBookingInvoices(month, bks, apts) {
   const bookMonth = prevMonth(month);
   const byKey = {};
@@ -149,7 +160,7 @@ function estimateBookingInvoices(month, bks, apts) {
   (bks || []).forEach(function (b) {
     if (!isBookingStay(b)) return;
     if (b && b.cancelled) return;
-    if (stayMonth(b) !== bookMonth) return;
+    if (bookingBillMonth(b) !== bookMonth) return;
     bookings += 1;
     const key = bookingBillingKey(b, apts);
     if (!byKey[key]) {
@@ -1004,7 +1015,8 @@ function bookingCompleteness(expectApts, files) {
 }
 
 /**
- * Document month M covers Booking.com stays in M−1.
+ * Document month M covers Booking.com departures (check-outs) in M−1,
+ * matching how Booking.com generates its monthly commission invoices.
  * Include a vault PDF only when Hosthub has matching stays for that property.
  * Error when PDF exists without stays, or stays exist without a PDF.
  */
@@ -1042,7 +1054,7 @@ function reconcileBookingMonth(month, bks, apts, vaultRows) {
         aptName: folder,
         bookingHotelId: String((expectByFolder[folder] && expectByFolder[folder].bookingHotelId) || ''),
         bookings: Number((expectByFolder[folder] && expectByFolder[folder].bookings) || 0),
-        message: 'Booking.com stays in ' + (est.bookMonth || '') + ' for ' + folder + ' but no invoice PDF in vault for ' + month,
+        message: 'Booking.com departures in ' + (est.bookMonth || '') + ' for ' + folder + ' but no invoice PDF in vault for ' + month,
       });
       return;
     }
@@ -1058,7 +1070,7 @@ function reconcileBookingMonth(month, bks, apts, vaultRows) {
         type: 'invoice_without_stays',
         channel: 'booking',
         aptName: folder,
-        message: 'Booking.com invoice folder ' + folder + ' has no Hosthub stays for ' + (est.bookMonth || '') + ' (unmapped hotel id)',
+        message: 'Booking.com invoice folder ' + folder + ' has no Hosthub departures for ' + (est.bookMonth || '') + ' (unmapped hotel id)',
       });
       return;
     }
@@ -1066,7 +1078,7 @@ function reconcileBookingMonth(month, bks, apts, vaultRows) {
       type: 'invoice_without_stays',
       channel: 'booking',
       aptName: folder,
-      message: 'Booking.com invoice for ' + folder + ' in ' + month + ' but no Hosthub stays in ' + (est.bookMonth || ''),
+      message: 'Booking.com invoice for ' + folder + ' in ' + month + ' but no Hosthub departures in ' + (est.bookMonth || ''),
     });
   });
 
@@ -1490,6 +1502,7 @@ module.exports = {
   ymFromDmy,
   isBookingStay,
   stayMonth,
+  bookingBillMonth,
   findApt,
   isVotsalaApt,
   bookingBillingFolder,

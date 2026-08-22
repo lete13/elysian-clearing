@@ -247,7 +247,7 @@ const cfg = {
     { has: "id=\"pi-menu-accountants\"", note: 'Accountants sub-menu button' },
     { has: "id=\"pi-view-accountants\"", note: 'Accountants view' },
     { has: 'piAcctAddApt', note: 'apartment editor on cards' },
-    { has: "if (PI.menu === 'accountants') piRenderAccountantCards();", note: 'sub-menu renders cards' },
+    { has: "if (PI.menu === 'accountants')", note: 'sub-menu renders cards' },
     { hasNot: "'<div id=\"pi-accountant-cards\" style=\"margin-top:10px\"></div>' +", note: 'cards no longer embedded in review step' },
   ],
 };

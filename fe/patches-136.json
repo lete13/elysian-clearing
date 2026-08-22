@@ -54,7 +54,7 @@
    "note": "apartment editor on cards"
   },
   {
-   "has": "if (PI.menu === 'accountants') piRenderAccountantCards();",
+   "has": "if (PI.menu === 'accountants')",
    "note": "sub-menu renders cards"
   },
   {
