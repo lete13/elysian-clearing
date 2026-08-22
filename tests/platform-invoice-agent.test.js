@@ -225,6 +225,26 @@ const fe139 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-139.json
 assert(fe139.patches.some((p) => (p.replace || '').includes('piToggleFold')), 'FE collapsible sections');
 assert(fe139.patches.some((p) => (p.replace || '').includes('piFoldAll')), 'FE collapse/expand all');
 assert(fe139.patches.some((p) => (p.replace || '').includes('piShipAnyway')), 'FE ship-anyway override');
+const srv103 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-103.json'), 'utf8'));
+assert.strictEqual(srv103.baseSha256, srv102.expectedSha256, 'SRV 103 continues SRV 102');
+assert(srv103.patches.some((p) => (p.replace || '').includes("'Agent already running for '")), 'SRV agent single-flight');
+assert(srv103.patches.some((p) => (p.replace || '').includes('leftover.pullStatus = pullJob.status')), 'SRV records a failed/cancelled leftover pull');
+assert(srv103.patches.some((p) => (p.replace || '').includes('const sendBlocked = (pack.blocked || pullFailed) && !b.force;')), 'SRV failed pull blocks the send');
+assert(srv103.patches.some((p) => (p.replace || '').includes('mailBytes > EMAIL_MAX_BYTES')), 'SRV agent mail respects the size cap');
+assert(srv103.patches.some((p) => (p.replace || '').includes("report.status = emailed.length ? 'partial' : 'error';")), 'SRV persists who was emailed on a mid-loop failure');
+assert(srv103.patches.some((p) => (p.replace || '').includes('if (parsed) return parsed;')), 'SRV honors a stored empty accountant list');
+assert(srv103.patches.filter((p) => (p.replace || '').includes('resolvePull();')).length >= 3, 'SRV pull promise resolves on cancel/error/spawn-fail paths');
+assert(srv103.patches.some((p) => (p.replace || '').includes('legacyKey')), 'SRV zip dedupe matches pre-hash filenames');
+const fe140 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-140.json'), 'utf8'));
+assert.strictEqual(fe140.baseSha256, fe139.expectedSha256, 'FE 140 continues FE 139');
+assert(fe140.patches.some((p) => (p.replace || '').includes("replace(/</g, '&lt;')")), 'FE escapes the legacy accountant card title');
+
+// Accountant cards refuse addresses nodemailer/emailAddrOk would refuse.
+assert.strictEqual(accountants.normalizeCard({ email: 'not-an-email' }), null, 'invalid address rejected');
+assert.strictEqual(accountants.normalizeCard({ email: 'a@b<img src=x onerror=alert(1)>' }), null, 'HTML-ish address rejected');
+assert(accountants.normalizeCard({ email: 'ok@example.com' }), 'plain address accepted');
+assert.strictEqual(accountants.emailOk('info@e-newgeneration.gr'), true);
+
 const fe128 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-128.json'), 'utf8'));
 assert(fe128.patches.some((p) => (p.replace || '').includes('piRunAgent')), 'FE run agent');
 assert(fe128.patches.some((p) => (p.replace || '').includes('pi-accountant-cards')), 'FE cards UI');

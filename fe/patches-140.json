@@ -1,0 +1,19 @@
+{
+ "baseSha256": "4c0c6cadfe4d7d986d393d7efe75fae34e1d36bdfeabed2ae2ae3d5477e39433",
+ "expectedSha256": "ba001e33b4dbec39b6ef14d767f8aafe5b95ad4bfcb00bafbeea97c9d080abfd",
+ "builtAt": "2026-08-22 Escape legacy accountant card title",
+ "patches": [
+  {
+   "note": "Legacy accountant card title escapes the stored name",
+   "find": "          '<div style=\"font-weight:600;margin-bottom:6px\">' + (c.name || c.email) + '</div>' +",
+   "replace": "          '<div style=\"font-weight:600;margin-bottom:6px\">' + String(c.name || c.email).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</div>' +",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "String(c.name || c.email).replace(/&/g, '&amp;').replace(/</g, '&lt;')",
+   "note": "card title escaped"
+  }
+ ]
+}
