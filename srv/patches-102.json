@@ -1,0 +1,41 @@
+{
+ "baseSha256": "367e1c018afe24a35cb8d265288780c4850f8ab29d40180deaa8830438cc2ac6",
+ "expectedSha256": "765c8ec645d9ab561c5c72770cc023204f590c433688a8b777d595bfe918faf3",
+ "builtAt": "2026-08-22 Ship anyway: force flag past Booking reconcile block",
+ "patches": [
+  {
+   "note": "Manual send accepts force=true to ship despite reconcile alerts",
+   "find": "    if (scope === 'leased' && pack.blocked) {\n      return res.status(409).json({ error: 'Booking reconcile errors — fix stays vs invoices before shipping', errors: pack.errors });\n    }",
+   "replace": "    if (scope === 'leased' && pack.blocked && !b.force) {\n      return res.status(409).json({ error: 'Booking reconcile errors — fix stays vs invoices before shipping', errors: pack.errors, canForce: true });\n    }",
+   "count": 1
+  },
+  {
+   "note": "Agent accepts force=true past the reconcile block",
+   "find": "      const cards = await piLoadAccountants();\n      const emailPlan = piAgent.planAccountantEmails(cards, pack);",
+   "replace": "      const cards = await piLoadAccountants();\n      const emailPlan = piAgent.planAccountantEmails(cards, b.force ? Object.assign({}, pack, { blocked: false }) : pack);",
+   "count": 1
+  },
+  {
+   "note": "Agent emails when forced despite blocked pack",
+   "find": "      if (!pack.blocked && emailPlan.sent.length && b.send !== false) {",
+   "replace": "      if ((!pack.blocked || b.force) && emailPlan.sent.length && b.send !== false) {",
+   "count": 1
+  },
+  {
+   "note": "Agent hint reflects forced sends",
+   "find": "      job.hint = pack.blocked ? 'Blocked by Booking reconcile errors — not emailed' : 'Agent finished';",
+   "replace": "      job.hint = pack.blocked && !b.force ? 'Blocked by Booking reconcile errors — not emailed' : 'Agent finished';",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "pack.blocked && !b.force",
+   "note": "force flag bypasses the block only when explicit"
+  },
+  {
+   "has": "canForce: true",
+   "note": "409 tells the client an override exists"
+  }
+ ]
+}
