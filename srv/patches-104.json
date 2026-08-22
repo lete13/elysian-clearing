@@ -1,0 +1,19 @@
+{
+ "baseSha256": "89579f51e63ba42bdc2f583a2b22393adadec9213318753decdec39dbd4a96c6",
+ "expectedSha256": "075ab28f41aa00eec7329035acd71e85f7d16fec8374480db09b0e1292cdd0ee",
+ "builtAt": "2026-08-22 Ship anyway reaches the per-card plan on manual send",
+ "patches": [
+  {
+   "note": "Manual send per-card plan honors force like the agent does",
+   "find": "      const plan = piAgent.planAccountantEmails(accountantCards, pack);",
+   "replace": "      const plan = piAgent.planAccountantEmails(accountantCards, b.force ? Object.assign({}, pack, { blocked: false }) : pack);",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "planAccountantEmails(accountantCards, b.force ? Object.assign({}, pack, { blocked: false }) : pack)",
+   "note": "forced manual send emails the cards"
+  }
+ ]
+}
