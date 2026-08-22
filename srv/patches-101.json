@@ -1,0 +1,67 @@
+{
+ "baseSha256": "6fe450d19f437e411a2025b7d19e54d384eaf18af99626f5937aea997a1643c2",
+ "expectedSha256": "367e1c018afe24a35cb8d265288780c4850f8ab29d40180deaa8830438cc2ac6",
+ "builtAt": "2026-08-22 Hosthub sync: rate-limit retry, tax-fetch cap, anti-wipe guard",
+ "patches": [
+  {
+   "note": "fetchPages retries 429/5xx instead of returning a partial list",
+   "find": "async function fetchPages(startUrl, key, onPage) {\n  const all = []; let url = startUrl; let page = 0;\n  while (url) {\n    page++;\n    let obj;\n    try { obj = await hhGet(url, key); } catch(e) { console.error('fetchPages:', e.message); break; }\n    if (obj._err) { console.error(`fetchPages HTTP ${obj.status}`); break; }",
+   "replace": "async function fetchPages(startUrl, key, onPage) {\n  const all = []; let url = startUrl; let page = 0; let retries = 0;\n  while (url) {\n    page++;\n    let obj;\n    try { obj = await hhGet(url, key); } catch(e) { console.error('fetchPages:', e.message); break; }\n    if (obj._err && (obj.status === 429 || obj.status >= 500) && retries < 3) {\n      // Hosthub rate limit: wait for the window to reset, retry the same page.\n      retries++; page--;\n      await new Promise(r => setTimeout(r, 20000 * retries));\n      continue;\n    }\n    if (obj._err) { console.error(`fetchPages HTTP ${obj.status}`); break; }",
+   "count": 1
+  },
+  {
+   "note": "runSync loads current bookings for tax reuse",
+   "find": "  // 2b. Load current apts from DB for aptId matching\n  let currentApts = [];\n  if (pool) {\n    try {\n      const dbRow = await pool.query(\"SELECT data FROM app_data WHERE key='main'\");\n      currentApts = dbRow.rows[0]?.data?.apts || [];\n    } catch(e) {}\n  }",
+   "replace": "  // 2b. Load current apts from DB for aptId matching (+ bookings for tax reuse)\n  let currentApts = [];\n  let currentBksSync = [];\n  if (pool) {\n    try {\n      const dbRow = await pool.query(\"SELECT data FROM app_data WHERE key='main'\");\n      currentApts = dbRow.rows[0]?.data?.apts || [];\n      currentBksSync = dbRow.rows[0]?.data?.bks || [];\n    } catch(e) {}\n  }",
+   "count": 1
+  },
+  {
+   "note": "Fetch Greek taxes only for new/recent/missing bookings, max 500 per cycle",
+   "find": "  // 4. Greek taxes\n  log(`Fetching Greek taxes for ${bookingEvs.length} bookings…`);\n  const grTaxMap = {}; const BATCH_SIZE = 20; let fetched = 0;\n  for (let i = 0; i < bookingEvs.length; i += BATCH_SIZE) {\n    const chunk = bookingEvs.slice(i, i + BATCH_SIZE);",
+   "replace": "  // 4. Greek taxes — only bookings that are new, recent, or still missing tax\n  // data. Refetching all ~2000 every 15 minutes blew Hosthub's rate limit,\n  // which truncated the page fetches above and silently shrank the dataset.\n  const prevBkById = {};\n  (currentBksSync || []).forEach(b => { if (b && b.id != null) prevBkById[b.id] = b; });\n  const hasTaxData = b => !!(b && ((+b.ct || 0) || (+b.vat || 0) || (+b.at || 0) || (+b.bvPrevat || 0)));\n  const taxCutoff = new Date(Date.now() - 90 * 86400 * 1000).toISOString().slice(0, 10);\n  const needTax = bookingEvs.filter(ev => {\n    const prev = prevBkById[ev.id];\n    if (!prev || !hasTaxData(prev)) return true;\n    return String(ev.date_to || '') >= taxCutoff;\n  });\n  needTax.sort((a, b) => String(b.date_to || '').localeCompare(String(a.date_to || '')));\n  const taxTargets = needTax.slice(0, 500);\n  log(`Fetching Greek taxes for ${taxTargets.length}/${bookingEvs.length} bookings (rest reuse stored values)…`);\n  const grTaxMap = {}; const BATCH_SIZE = 20; let fetched = 0;\n  for (let i = 0; i < taxTargets.length; i += BATCH_SIZE) {\n    const chunk = taxTargets.slice(i, i + BATCH_SIZE);",
+   "count": 1
+  },
+  {
+   "note": "Tax progress log counts the capped target list",
+   "find": "    fetched += chunk.length;\n    if (fetched % 200 === 0 || fetched === bookingEvs.length)\n      log(`  Taxes: ${fetched}/${bookingEvs.length} — ${Object.keys(grTaxMap).length} with data`);",
+   "replace": "    fetched += chunk.length;\n    if (fetched % 200 === 0 || fetched === taxTargets.length)\n      log(`  Taxes: ${fetched}/${taxTargets.length} — ${Object.keys(grTaxMap).length} with data`);",
+   "count": 1
+  },
+  {
+   "note": "Bookings not refetched this cycle keep their stored tax fields",
+   "find": "  results.rentals  = rentals;\n  results.bookings = bookings;",
+   "replace": "  // Reuse stored Greek tax fields for bookings we did not refetch this cycle.\n  bookings.forEach(b => {\n    if (grTaxMap[b.id]) return;\n    const prev = prevBkById[b.id];\n    if (!prev || !hasTaxData(prev)) return;\n    b.ct = prev.ct; b.bvPrevat = prev.bvPrevat; b.vat = prev.vat; b.at = prev.at;\n    b.nbv = prev.nbv; b.trHost = prev.trHost;\n  });\n\n  results.rentals  = rentals;\n  results.bookings = bookings;",
+   "count": 1
+  },
+  {
+   "note": "Anti-wipe guard: a shrunken fetch never overwrites the booking history",
+   "find": "        const merged   = {\n          ...current,\n          bks:  result.bookings,\n          apts: mergeApts(current.apts || [], result.rentals),",
+   "replace": "        const currentBksGuard = Array.isArray(current.bks) ? current.bks : [];\n        let nextBks = result.bookings;\n        if (currentBksGuard.length >= 500 && nextBks.length < currentBksGuard.length * 0.7) {\n          console.error(`[auto-sync] ✗ got ${nextBks.length} bookings but DB holds ${currentBksGuard.length} — partial Hosthub fetch, keeping existing bookings`);\n          nextBks = currentBksGuard;\n        }\n        const merged   = {\n          ...current,\n          bks:  nextBks,\n          apts: mergeApts(current.apts || [], result.rentals),",
+   "count": 1
+  },
+  {
+   "note": "Done log and snapshot use the guarded booking list",
+   "find": "        console.log(`[auto-sync] ✓ Done — ${result.bookings.length} bookings saved at ${started.toISOString()}`);\n        await saveSnapshot(pool, result.bookings, result.rentals);",
+   "replace": "        console.log(`[auto-sync] ✓ Done — ${nextBks.length} bookings saved at ${started.toISOString()}`);\n        await saveSnapshot(pool, nextBks, result.rentals);",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "partial Hosthub fetch, keeping existing bookings",
+   "note": "anti-wipe guard"
+  },
+  {
+   "has": "const taxTargets = needTax.slice(0, 500);",
+   "note": "tax fetch cap"
+  },
+  {
+   "has": "retries++; page--;",
+   "note": "429 retry"
+  },
+  {
+   "hasNot": "          bks:  result.bookings,",
+   "note": "raw fetch result no longer written directly"
+  }
+ ]
+}

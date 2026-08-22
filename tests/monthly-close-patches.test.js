@@ -255,7 +255,7 @@ assert.strictEqual(stepCtx.S.moOverride['a1::2026-07-01::2026-07-31'], 2, 'a1 mo
 
 // ── Server patches (srv/patches.json → server.js), mirroring srv-boot.js ─────
 const srvChain = ['patches.json'];
-for (let n = 2; n <= 100; n++) {
+for (let n = 2; n <= 140; n++) {
   if (!fs.existsSync(path.join(root, 'srv', `patches-${n}.json`))) break;
   srvChain.push(`patches-${n}.json`);
 }
