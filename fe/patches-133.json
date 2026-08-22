@@ -1,0 +1,43 @@
+{
+ "baseSha256": "4fcc76142dc57d3642a85c26251c12dbf9792d60f0838d7d916a53ec23597d65",
+ "expectedSha256": "451c924297118a47b313367dabe769cc4c52b808574b2c1329d3f857982488c4",
+ "builtAt": "2026-08-21 Payments Check: migrate stale report-group marks onto the unique apartment line",
+ "patches": [
+  {
+   "note": "Migrate stale Michalakopoulou-style BDC marks onto the unique apt line",
+   "find": "      g.lines.forEach(l => {\n        l.key   = pcKeyBdc(g.thuISO, l.aptKey);\n        l.mark  = marks[l.key] || null;\n",
+   "replace": "      g.lines.forEach(l => {\n        l.key   = pcKeyBdc(g.thuISO, l.aptKey);\n        if (!marks[l.key]) {\n          var liveKeys = g.lines.map(function (x) { return pcKeyBdc(g.thuISO, x.aptKey); });\n          var staleFit = Object.keys(marks).filter(function (k) {\n            if (k.indexOf('bdc|' + g.thuISO + '|') !== 0) return false;\n            if (liveKeys.indexOf(k) >= 0) return false;\n            var m = marks[k];\n            var mv = (m && m.amt != null && m.amt !== '') ? +m.amt : (m ? +m.exp : NaN);\n            return isFinite(mv) && Math.abs(mv - l.exp) <= 0.011;\n          });\n          var siblings = staleFit.length === 1 ? g.lines.filter(function (o) {\n            if (pcKeyBdc(g.thuISO, o.aptKey) === l.key || marks[pcKeyBdc(g.thuISO, o.aptKey)]) return false;\n            var m = marks[staleFit[0]];\n            var mv = (m && m.amt != null && m.amt !== '') ? +m.amt : (m ? +m.exp : NaN);\n            return isFinite(mv) && Math.abs(mv - o.exp) <= 0.011;\n          }) : [];\n          if (staleFit.length === 1 && !siblings.length) {\n            marks[l.key] = marks[staleFit[0]];\n            if (typeof window !== 'undefined') window._pcStaleMigrated = true;\n          }\n        }\n        l.mark  = marks[l.key] || null;\n",
+   "count": 1
+  },
+  {
+   "note": "Persist migrated Payments Check marks",
+   "find": "  function renderPay() {\n    const panel = document.getElementById('tab-pay');\n    if (!panel) return;\n    const C = pcCompute();\n",
+   "replace": "  function renderPay() {\n    const panel = document.getElementById('tab-pay');\n    if (!panel) return;\n    const C = pcCompute();\n    if (window._pcStaleMigrated) {\n      window._pcStaleMigrated = false;\n      if (typeof save === 'function') save();\n    }\n",
+   "count": 1
+  },
+  {
+   "note": "Show leftoverProbe and unclassified Viva credits on Payments Check",
+   "find": "          lr.missingExpected.forEach(x => { html += '<div style=\"color:var(--tx2);padding:1px 0\">' + esc(x.label) + ' — ' + fmt(x.exp) + '</div>'; });\n",
+   "replace": "          lr.missingExpected.forEach(x => { html += '<div style=\"color:var(--tx2);padding:1px 0\">' + esc(x.label) + ' — ' + fmt(x.exp) + '</div>'; });\n        }\n        if ((lr.leftoverProbe || []).length) {\n          html += '<div style=\"font-weight:700;margin:8px 0 4px\">Leftover Lycabettus / Horizon (not yet 3 days late)</div>';\n          lr.leftoverProbe.forEach(function (x) {\n            html += '<div style=\"color:var(--tx2);padding:1px 0;font-family:var(--mono);font-size:11.5px\">' + esc(x.key) + ' · ' + esc(x.date) + ' · ' + fmt(x.exp) + (x.near && x.near.length ? (' · near ' + x.near.map(function (n) { return fmt(n.amount) + ' ' + (n.chan || '?') + (n.used ? ' used' : ''); }).join(', ')) : '') + '</div>';\n          });\n        }\n        if ((lr.sampleUnclassified || []).length) {\n          html += '<div style=\"font-weight:700;margin:8px 0 4px\">Unclassified bank credits (not treated as Booking.com / Airbnb)</div>';\n          lr.sampleUnclassified.forEach(function (x) {\n            html += '<div style=\"color:var(--tx2);padding:1px 0;font-family:var(--mono);font-size:11.5px\">' + esc(x.date) + ' · ' + esc(x.counterpart) + ' · ' + fmt(x.amount) + '</div>';\n          });\n",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "typeof window !== 'undefined'",
+   "note": "stale mark migration flag"
+  },
+  {
+   "has": "liveKeys.indexOf(k) >= 0",
+   "note": "skip live keys when migrating"
+  },
+  {
+   "has": "leftoverProbe",
+   "note": "leftover Horizon probe in UI"
+  },
+  {
+   "has": "sampleUnclassified",
+   "note": "unclassified credits in UI"
+  }
+ ]
+}
