@@ -104,6 +104,31 @@ function packForCard(pack, card) {
   };
 }
 
+/**
+ * Split mail attachments into chunks that fit one email each. 12 MB decoded
+ * stays under common 25 MB wire limits after base64 inflation (~×1.37).
+ */
+const EMAIL_CHUNK_BYTES = 12 * 1024 * 1024;
+
+function chunkAttachments(atts, maxBytes) {
+  const limit = maxBytes || EMAIL_CHUNK_BYTES;
+  const chunks = [];
+  let cur = [];
+  let bytes = 0;
+  (atts || []).forEach(function (a) {
+    const size = a && a.content && a.content.length ? a.content.length : 0;
+    if (cur.length && bytes + size > limit) {
+      chunks.push(cur);
+      cur = [];
+      bytes = 0;
+    }
+    cur.push(a);
+    bytes += size;
+  });
+  if (cur.length) chunks.push(cur);
+  return chunks;
+}
+
 function planAccountantEmails(cards, pack) {
   const recipients = recipientsForSend(cards);
   const sent = [];
@@ -180,6 +205,7 @@ module.exports = {
   buildMonthPack,
   packRowsForCard,
   packForCard,
+  chunkAttachments,
   planAccountantEmails,
   buildAgentReport,
 };
