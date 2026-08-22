@@ -4,7 +4,7 @@
  * A/A, Ημερομηνία, Αιτιολογία, Κατάστημα, Τοκισμός από, Αρ. συναλλαγής, Ποσό, Πρόσημο ποσού
  * then Reservation id, Listing name, Check-in, Check-out (stay identity; not part of the import block).
  *
- * One monthly sheet includes Airbnb VAT rows and matched Booking.com property invoices.
+ * One monthly sheet includes Airbnb VAT rows and vault Booking.com property invoices.
  */
 
 function xmlEscape(s) {
@@ -204,8 +204,7 @@ function issueDateKey(dmy) {
 
 /**
  * Build the monthly accountant sheet.
- * opts.includeBooking — when true (default), include Booking.com rows already present in `rows`
- *   (caller should pass only reconcile-matched Booking rows).
+ * opts.includeBooking — when true (default), include Booking.com rows already present in `rows`.
  */
 function buildAccountantXls(rows, bks, opts) {
   opts = opts || {};

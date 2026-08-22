@@ -20,19 +20,22 @@ function isBookingRow(row) {
 
 /**
  * Build the month pack used by Excel / PDF email.
- * Booking rows are included only when Hosthub has matching stays.
+ * Excel includes every vault Booking.com invoice for the month.
+ * Agent send still blocks when Hosthub stays and invoices do not match.
  */
 function buildMonthPack(month, vaultRows, bks, apts) {
   const airbnb = (vaultRows || []).filter(function (r) {
     return isAirbnbRow(r) && (!r.month || String(r.month) === String(month));
   });
-  const bookingRows = (vaultRows || []).filter(isBookingRow);
+  const bookingRows = (vaultRows || []).filter(function (r) {
+    return isBookingRow(r) && (!r.month || String(r.month) === String(month));
+  });
   const recon = booking.reconcileBookingMonth(month, bks, apts, bookingRows);
-  const packRows = airbnb.concat(recon.included || []);
+  const packRows = airbnb.concat(bookingRows);
   const xlsBuf = buildAccountantXls(packRows, bks, { includeBooking: true });
   const counts = (xlsBuf && xlsBuf._piCounts) || {
     airbnb: airbnb.length,
-    booking: (recon.included || []).length,
+    booking: bookingRows.length,
     total: packRows.length,
   };
   return {

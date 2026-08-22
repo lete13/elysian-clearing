@@ -161,7 +161,7 @@ const xls = buildAccountantXls(
   []
 ).toString('utf8');
 assert(xls.includes('AIUC-1'));
-assert(xls.includes('BDC-1'), 'Excel includes matched Booking.com rows when provided');
+assert(xls.includes('BDC-1'), 'Excel includes vault Booking.com rows when provided');
 assert(xls.includes('Platform invoices') || xls.includes('Worksheet'), 'Excel worksheet present');
 
 assert.strictEqual(booking.bookingTooEarly('2026-07', new Date('2026-08-16T12:00:00Z')), false);
