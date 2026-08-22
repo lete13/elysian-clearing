@@ -181,6 +181,33 @@ assert(booking.looksLikePdf(ents[0].buf));
 
 assert.strictEqual(booking.isBookingStatementBlob('export.xls', ''), true);
 assert.strictEqual(booking.isBookingStatementBlob('invoice.pdf', 'commission invoice'), false);
+assert.strictEqual(booking.isBookingStatementBlob('statement.pdf', 'Statement of account payout'), true);
+assert.strictEqual(
+  booking.isBookingStatementBlob(
+    'invoice.pdf',
+    'INVOICE Description Room Sales Commission Reservations EUR 211.00 Total amount due EUR 35.43 ' +
+      'click on "Reservation Statements" For finance and invoice related questions'
+  ),
+  false,
+  'invoice footer Reservation Statements is not a statement export'
+);
+assert.strictEqual(
+  booking.isBookingStatementBlob(
+    'invoice.pdf',
+    'Accommodation number: 15253339 Invoice number: 1659850126 Date: 03/08/2026 ' +
+      'go to Finance tab and click on Reservation Statements'
+  ),
+  false,
+  'Accommodation-number invoice is not a statement'
+);
+if (fs.existsSync('/tmp/unmapped-unknown.pdf')) {
+  const liveText = booking.pdfExtractText(fs.readFileSync('/tmp/unmapped-unknown.pdf'));
+  assert.strictEqual(
+    booking.isBookingStatementBlob('invoice.pdf', liveText),
+    false,
+    'live Booking.com invoice PDF is not a statement'
+  );
+}
 
 const fe118 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-118.json'), 'utf8'));
 const srv79 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-79.json'), 'utf8'));
@@ -429,6 +456,21 @@ assert.strictEqual(cidZip.files[0].partner, 'Navarino Athenian Nest');
 assert.strictEqual(cidZip.files[0].month, '2026-08');
 assert.strictEqual(cidZip.files[0].filename, 'Booking.com/2026-08/Navarino Athenian Nest/invoice-15253339-1659850126.pdf');
 assert.strictEqual(cidZip.unmapped.length, 0);
+
+const footerInvoice = invoicePdf(
+  'Accommodation number: 15253339 Invoice number: 1659850126 Issue date 03/08/2026 ' +
+    'Total amount due EUR 35.43 Commission Reservations EUR 211.00 ' +
+    'go to Finance tab and click on "Reservation Statements"'
+);
+const footerZip = booking.categorizeBookingZip(
+  zipEntries([{ name: 'invoices/invoice.pdf', body: footerInvoice }]),
+  navApts,
+  '2026-06'
+);
+assert.strictEqual(footerZip.skipped.filter((s) => s.reason === 'statement').length, 0, 'invoice footer is not skipped as statement');
+assert.strictEqual(footerZip.files.length, 1, 'invoice with Reservation Statements footer is saved');
+assert.strictEqual(footerZip.files[0].mapped, true);
+assert.strictEqual(footerZip.files[0].bookingHotelId, '15253339');
 
 const refile = require(path.join(root, 'scripts', 'platform-invoice-vault-refile'));
 const navPlan = refile.planBookingPdfRefile(
