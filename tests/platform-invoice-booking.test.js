@@ -10,7 +10,7 @@ const zlib = require('zlib');
 const root = path.join(__dirname, '..');
 const booking = require(path.join(root, 'scripts', 'platform-invoice-booking'));
 const expect = require(path.join(root, 'scripts', 'platform-invoice-expect'));
-const { buildAccountantXls } = require(path.join(root, 'scripts', 'platform-invoice-accountant-xls'));
+const { buildAccountantXls, accountantRow, fileMetaJson } = require(path.join(root, 'scripts', 'platform-invoice-accountant-xls'));
 const worker = fs.readFileSync(path.join(root, 'scripts', 'platform-invoice-pull.js'), 'utf8');
 
 assert(worker.includes("require('./platform-invoice-booking')"), 'worker uses booking helpers');
@@ -665,6 +665,112 @@ const collected = booking.collectBookingPropertyRows({
 assert(collected.some((r) => r.hotelId === '10980606' && /birdhouse/i.test(r.name)), 'collect json');
 assert(collected.some((r) => r.hotelId === '8881112'), 'collect dom');
 assert(collected.some((r) => r.hotelId === '3330003' && /art house/i.test(r.name)), 'collect html');
+
+// --- Amounts: EU/US thousands separators and negative credit totals ---
+assert.strictEqual(booking.parseBookingTotal('Total amount due EUR 1.234,56'), 1234.56, 'EU thousands amount');
+assert.strictEqual(booking.parseBookingTotal('Total amount due EUR 1,234.56'), 1234.56, 'US thousands amount');
+assert.strictEqual(booking.parseBookingTotal('Total amount due EUR -35.43'), -35.43, 'credit total keeps its sign');
+assert.strictEqual(booking.parseBookingTotal('Total EUR 12.34'), 12.34, 'plain amount still parses');
+assert.strictEqual(booking.parseBookingTotal('ΤΙΜΟΛΟΓΙΟ EUR 167,12'), 167.12, 'Greek comma decimal still parses');
+assert.strictEqual(booking.parseBookingAmount('1.234.567,89'), 1234567.89);
+
+// --- Filenames: no invoice number never collapses two PDFs onto one name ---
+const fnA = booking.bookingInvoiceFilename('10980606', '', 'julyA.pdf', 'aaaa111111');
+const fnB = booking.bookingInvoiceFilename('10980606', '', 'julyB.pdf', 'bbbb222222');
+assert.notStrictEqual(fnA, fnB, 'distinct contents get distinct filenames');
+assert(/^invoice-10980606-/.test(fnA), 'known id keeps the invoice-{id}- prefix');
+assert.strictEqual(
+  booking.bookingInvoiceFilename('10980606', '1234567890', 'x.pdf', 'aaaa111111'),
+  'invoice-10980606-1234567890.pdf',
+  'a parsed invoice number needs no hash'
+);
+const hashRec = accountantRow(
+  { channel: 'booking', filename: 'Booking.com/2026-07/Birdhouse/' + fnA, meta: {} },
+  {}
+);
+assert.notStrictEqual(hashRec.invoiceNumber, 'aaaa111111', 'content hash is not an invoice number');
+
+// --- Credit notes: kind + sign flow into the stored meta and the XLS row ---
+const creditPdf = invoicePdf('Credit note Property ID 10980606 Issue date 05/07/2026 Total amount due EUR -35.43');
+const creditCat = booking.categorizeBookingZip(zipEntries([{ name: 'credit.pdf', body: creditPdf }]), apts, '2026-08');
+assert.strictEqual(creditCat.files.length, 1, 'credit note is ingested');
+assert.strictEqual(creditCat.files[0].kind, 'credit_note');
+assert.strictEqual(creditCat.files[0].sign, '-');
+assert.strictEqual(creditCat.files[0].total, -35.43);
+const creditRec = accountantRow(
+  { channel: 'booking', filename: creditCat.files[0].filename, meta: JSON.parse(fileMetaJson(creditCat.files[0])) },
+  {}
+);
+assert.strictEqual(creditRec.sign, '-', 'credit note exports with Πρόσημο -');
+assert.strictEqual(creditRec.total, 35.43, 'amount column is the absolute value');
+
+// --- Reconcile keys on the booking hotel id, not the display name ---
+assert.strictEqual(
+  booking.vaultRowHotelId({ filename: 'Booking.com/2026-07/X/invoice-10980606-aabbccddee.pdf' }),
+  '10980606'
+);
+const renamedRecon = booking.reconcileBookingMonth(
+  '2026-07',
+  [{ platform: 'Booking.com', aptId: 'b1', aptName: 'Birdhouse Reborn', checkIn: '10/6/2026', checkOut: '12/6/2026' }],
+  [{ id: 'b1', name: 'Birdhouse Reborn', bookingHotelId: '10980606' }],
+  [
+    {
+      channel: 'booking',
+      month: '2026-07',
+      aptName: 'Birdhouse',
+      partner: 'Birdhouse',
+      filename: 'Booking.com/2026-07/Birdhouse/invoice-10980606-1234567890.pdf',
+      meta: { invoiceNumber: '1234567890', hotelId: '10980606' },
+    },
+  ]
+);
+assert.strictEqual(renamedRecon.ok, true, 'renamed apartment does not fabricate missing+extra alerts');
+assert.strictEqual(renamedRecon.included.length, 1);
+const aliasRecon = booking.reconcileBookingMonth(
+  '2026-07',
+  [
+    { platform: 'Booking.com', aptId: 'f1', aptName: 'Filoxenia Apartment Athens', checkIn: '10/6/2026', checkOut: '12/6/2026' },
+    { platform: 'Booking.com', aptId: 'f2', aptName: 'Filonexia Apartment Athens', checkIn: '15/6/2026', checkOut: '18/6/2026' },
+  ],
+  [
+    { id: 'f1', name: 'Filoxenia Apartment Athens', bookingHotelId: '8519226' },
+    { id: 'f2', name: 'Filonexia Apartment Athens', bookingHotelId: '8519226' },
+  ],
+  [
+    {
+      channel: 'booking',
+      month: '2026-07',
+      aptName: 'Filoxenia Apartment Athens',
+      partner: 'Filoxenia Apartment Athens',
+      filename: 'Booking.com/2026-07/Filoxenia Apartment Athens/invoice-8519226-777777.pdf',
+      meta: { invoiceNumber: '777777', hotelId: '8519226' },
+    },
+  ]
+);
+assert.strictEqual(aliasRecon.ok, true, 'alias spellings sharing one hotel id are one property');
+const stillMissing = booking.reconcileBookingMonth(
+  '2026-07',
+  [{ platform: 'Booking.com', aptId: 'b1', aptName: 'Birdhouse', checkIn: '10/6/2026', checkOut: '12/6/2026' }],
+  [{ id: 'b1', name: 'Birdhouse', bookingHotelId: '10980606' }],
+  []
+);
+assert.strictEqual(stillMissing.ok, false, 'a truly missing invoice still blocks');
+assert.strictEqual(stillMissing.errors[0].type, 'stays_without_invoice');
+
+// --- Map: a second property cannot silently claim an already-linked apartment ---
+const dualMap = booking.matchBookingProperties(
+  [
+    { hotelId: '6000001', name: 'Monograph House' },
+    { hotelId: '6000002', name: 'Monograph House Athens Center' },
+  ],
+  [{ id: 'nb1', name: 'Monograph House', aptName: 'Monograph House' }]
+);
+assert.strictEqual(dualMap.linked.length, 1, 'only one property links the apartment');
+assert.strictEqual(dualMap.linked[0].bookingHotelId, '6000001');
+assert(
+  dualMap.skipped.some((s) => s.reason === 'conflict' && s.existing === '6000001' && s.bookingHotelId === '6000002'),
+  'the second candidate is a reported conflict, not a silent overwrite'
+);
 
 booking
   .scrapeBookingProperties(

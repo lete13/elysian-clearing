@@ -80,6 +80,14 @@ function parseMeta(row) {
   };
 }
 
+// A 10-char hex token with at least one letter is the content-hash suffix
+// bookingInvoiceFilename appends when the invoice number is unknown — it must
+// never be presented to the accountant as an invoice number.
+function looksLikeContentHash(s) {
+  const t = String(s || '');
+  return /^[0-9a-f]{10}$/i.test(t) && /[a-f]/i.test(t);
+}
+
 function fallbackInvoiceNumber(row) {
   const leaf = String((row && row.filename) || '')
     .split('/')
@@ -87,7 +95,7 @@ function fallbackInvoiceNumber(row) {
   const ch = String((row && row.channel) || '').toLowerCase();
   if (ch === 'booking' || ch === 'bdc') {
     const bdc = leaf.match(/invoice-(\d{5,10})(?:-([A-Za-z0-9._-]+))?(?:\.pdf)?$/i);
-    if (bdc && bdc[2]) return bdc[2];
+    if (bdc && bdc[2] && !looksLikeContentHash(bdc[2])) return bdc[2];
     if (bdc) return bdc[1];
   }
   const m = leaf.toUpperCase().match(/(?:INVOICE|CREDIT_NOTE)-[A-Z0-9]{6,20}(?:-([A-Z0-9._-]+?))?(?:\.PDF)?$/);
@@ -312,6 +320,7 @@ function fileMetaJson(f) {
     kind: f && f.kind ? String(f.kind) : '',
     hotelId: f && (f.hotelId || f.bookingHotelId) ? String(f.hotelId || f.bookingHotelId) : '',
     bookingHotelId: f && f.bookingHotelId ? String(f.bookingHotelId) : '',
+    zipName: f && f.zipName ? String(f.zipName) : '',
   });
 }
 

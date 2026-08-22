@@ -32,6 +32,11 @@ function normalizeEmail(s) {
     .toLowerCase();
 }
 
+// Same shape the server's emailAddrOk enforces before nodemailer sees it.
+function emailOk(s) {
+  return /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(String(s || '').trim());
+}
+
 function makeId(email, fallback) {
   const base = String(email || fallback || 'accountant')
     .toLowerCase()
@@ -59,7 +64,7 @@ function normalizeApartments(raw) {
 
 function normalizeCard(raw, idx) {
   const email = normalizeEmail(raw && (raw.email || raw.to));
-  if (!email || email.indexOf('@') < 0) return null;
+  if (!emailOk(email)) return null;
   return {
     id: String((raw && raw.id) || makeId(email, 'acct' + (idx || 0))),
     name: String((raw && (raw.name || raw.label)) || email).trim().slice(0, 80),
@@ -128,6 +133,7 @@ module.exports = {
   ACCOUNTANTS_KEY,
   DEFAULT_ACCOUNTANTS,
   normalizeEmail,
+  emailOk,
   normalizeApartments,
   normalizeCard,
   seedFromEnv,

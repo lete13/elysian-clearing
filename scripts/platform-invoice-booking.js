@@ -252,14 +252,33 @@ function parseBookingIssueDate(text) {
   return '';
 }
 
+/**
+ * Normalize an amount token that may use EU ("1.234,56") or US ("1,234.56")
+ * separators. The token always ends with a separator + 2 decimal digits
+ * (enforced by the caller's regex), so the last separator is the decimal one.
+ */
+function parseBookingAmount(token) {
+  let s = String(token || '');
+  let neg = false;
+  if (s[0] === '-') {
+    neg = true;
+    s = s.slice(1);
+  }
+  const li = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+  if (li < 0) return '';
+  const intPart = s.slice(0, li).replace(/[.,]/g, '');
+  const n = parseFloat(intPart + '.' + s.slice(li + 1));
+  if (!isFinite(n)) return '';
+  return neg ? -n : n;
+}
+
 function parseBookingTotal(text) {
   const s = String(text || '');
   const m =
-    s.match(/(?:total|amount|σύνολο)[^\d]{0,24}(?:EUR|€)?\s*([0-9]+[.,][0-9]{2})/i) ||
-    s.match(/(?:EUR|€)\s*([0-9]+[.,][0-9]{2})/i);
+    s.match(/(?:total|amount|σύνολο)[^\d-]{0,24}(?:EUR|€)?\s*(-?[0-9][0-9.,]*[.,][0-9]{2})(?![0-9])/i) ||
+    s.match(/(?:EUR|€)\s*(-?[0-9][0-9.,]*[.,][0-9]{2})(?![0-9])/i);
   if (!m) return '';
-  const n = parseFloat(String(m[1]).replace(',', '.'));
-  return isFinite(n) ? n : '';
+  return parseBookingAmount(m[1]);
 }
 
 function pdfUnescapeLiteral(inner) {
@@ -586,11 +605,14 @@ function bookingInvoiceFilename(hotelId, invoiceNo, zipName, contentKey) {
     .replace(/^_+|_+$/g, '')
     .slice(0, 40);
   if (inv) return 'invoice-' + id + '-' + inv + '.pdf';
-  if (id !== 'unknown') return 'invoice-' + id + '.pdf';
-  const leaf = zipLeafToken(zipName);
   const extra = String(contentKey || '')
     .replace(/[^\w]+/g, '')
     .slice(0, 10);
+  // No invoice number: disambiguate with the content hash so two different
+  // invoices for the same property/month never collapse onto one filename
+  // (the second used to be dropped as a "duplicate" at zip ingest).
+  if (id !== 'unknown') return extra ? 'invoice-' + id + '-' + extra + '.pdf' : 'invoice-' + id + '.pdf';
+  const leaf = zipLeafToken(zipName);
   if (leaf && extra && /^invoice$/i.test(leaf)) return 'invoice-unknown-' + extra + '.pdf';
   if (leaf && extra) return 'invoice-unknown-' + leaf + '-' + extra + '.pdf';
   if (leaf) return 'invoice-unknown-' + leaf + '.pdf';
@@ -908,6 +930,9 @@ function categorizeBookingZip(buf, apts, fallbackMonth) {
       return;
     }
     const fields = parseBookingInvoiceFields(text + ' ' + ent.name, apts);
+    const isCredit =
+      /credit\s*note|πιστωτικ/i.test(text + ' ' + ent.name) ||
+      (typeof fields.total === 'number' && fields.total < 0);
     const hotelId = fields.hotelId || parseBookingHotelId(ent.name) || '';
     const fromIssue = ymFromDmy(fields.issueDate);
     const fromName = monthFromFilenameBlob(ent.name);
@@ -938,7 +963,8 @@ function categorizeBookingZip(buf, apts, fallbackMonth) {
       buf: ent.buf,
       bytes: ent.buf.length,
       channel: 'booking',
-      kind: 'invoice',
+      kind: isCredit ? 'credit_note' : 'invoice',
+      sign: isCredit ? '-' : '',
       scope: 'leased',
       partner: resolved.folder,
       aptName: resolved.folder,
@@ -1015,56 +1041,115 @@ function bookingCompleteness(expectApts, files) {
 }
 
 /**
+ * Booking hotel id for a stored vault row: persisted meta first, then the
+ * stored filename (invoice-{id}…), then an unmapped-{id} folder name.
+ */
+function vaultRowHotelId(row) {
+  let meta = row && row.meta;
+  if (meta && typeof meta === 'string') {
+    try {
+      meta = JSON.parse(meta);
+    } catch (e) {
+      meta = null;
+    }
+  }
+  const fromMeta = normalizeHotelId(meta && (meta.bookingHotelId || meta.hotelId));
+  if (fromMeta) return fromMeta;
+  const leaf = String((row && row.filename) || '').replace(/\\/g, '/').split('/').pop() || '';
+  const m = leaf.match(/^invoice-(\d{5,10})/i);
+  if (m) return m[1];
+  const folder = String((row && (row.aptName || row.partner)) || '');
+  const u = folder.match(/^unmapped-(\d{5,10})$/i);
+  return u ? u[1] : '';
+}
+
+/**
  * Document month M covers Booking.com departures (check-outs) in M−1,
  * matching how Booking.com generates its monthly commission invoices.
- * Include a vault PDF only when Hosthub has matching stays for that property.
+ * Matching keys on the booking hotel id (the filing key) when both sides
+ * know it, falling back to the normalized folder name for legacy rows, so
+ * an apartment rename or an alias spelling sharing one hotel id can no
+ * longer produce a false missing+extra pair that blocks the month.
  * Error when PDF exists without stays, or stays exist without a PDF.
  */
 function reconcileBookingMonth(month, bks, apts, vaultRows) {
   const est = estimateBookingInvoices(month, bks, apts);
-  const expectByFolder = {};
+  const expectBuckets = {};
+  const expectOrder = [];
   (est.apts || []).forEach(function (a) {
     const name = String((a && a.aptName) || '').trim();
     if (!name) return;
-    expectByFolder[name] = a;
+    const id = normalizeHotelId(a && a.bookingHotelId);
+    const key = id ? 'id:' + id : 'name:' + normBookingName(name);
+    if (!expectBuckets[key]) {
+      expectBuckets[key] = { key: key, bookingHotelId: id, aptNames: [], bookings: 0 };
+      expectOrder.push(key);
+    }
+    if (expectBuckets[key].aptNames.indexOf(name) < 0) expectBuckets[key].aptNames.push(name);
+    expectBuckets[key].bookings += Number((a && a.bookings) || 0);
   });
 
-  const filesByFolder = {};
+  const fileGroups = {};
+  const fileOrder = [];
   (vaultRows || []).forEach(function (row) {
     const ch = String((row && row.channel) || '').toLowerCase();
     if (ch !== 'booking' && ch !== 'bdc') return;
     if (month && row.month && String(row.month) !== String(month)) return;
     const folder = String((row && (row.aptName || row.partner)) || '').trim();
     if (!folder) return;
-    if (!filesByFolder[folder]) filesByFolder[folder] = [];
-    filesByFolder[folder].push(row);
+    const id = vaultRowHotelId(row);
+    const key = id ? 'id:' + id : 'name:' + normBookingName(folder);
+    if (!fileGroups[key]) {
+      fileGroups[key] = { key: key, folder: folder, rows: [] };
+      fileOrder.push(key);
+    }
+    fileGroups[key].rows.push(row);
+  });
+
+  const expectByName = {};
+  expectOrder.forEach(function (key) {
+    expectBuckets[key].aptNames.forEach(function (n) {
+      expectByName[normBookingName(n)] = key;
+    });
   });
 
   const included = [];
   const errors = [];
-  const seenFolders = {};
+  const matchedFiles = {};
 
-  Object.keys(expectByFolder).forEach(function (folder) {
-    seenFolders[folder] = true;
-    const rows = filesByFolder[folder] || [];
-    if (!rows.length) {
+  expectOrder.forEach(function (key) {
+    const exp = expectBuckets[key];
+    let group = fileGroups[key] || null;
+    if (!group) {
+      for (let i = 0; i < fileOrder.length; i++) {
+        const g = fileGroups[fileOrder[i]];
+        if (matchedFiles[g.key]) continue;
+        if (expectByName[normBookingName(g.folder)] === key) {
+          group = g;
+          break;
+        }
+      }
+    }
+    if (!group) {
       errors.push({
         type: 'stays_without_invoice',
         channel: 'booking',
-        aptName: folder,
-        bookingHotelId: String((expectByFolder[folder] && expectByFolder[folder].bookingHotelId) || ''),
-        bookings: Number((expectByFolder[folder] && expectByFolder[folder].bookings) || 0),
-        message: 'Booking.com departures in ' + (est.bookMonth || '') + ' for ' + folder + ' but no invoice PDF in vault for ' + month,
+        aptName: exp.aptNames[0] || '',
+        bookingHotelId: exp.bookingHotelId || '',
+        bookings: exp.bookings,
+        message: 'Booking.com departures in ' + (est.bookMonth || '') + ' for ' + exp.aptNames.join(' / ') + ' but no invoice PDF in vault for ' + month,
       });
       return;
     }
-    rows.forEach(function (row) {
+    matchedFiles[group.key] = true;
+    group.rows.forEach(function (row) {
       included.push(row);
     });
   });
 
-  Object.keys(filesByFolder).forEach(function (folder) {
-    if (seenFolders[folder]) return;
+  fileOrder.forEach(function (key) {
+    if (matchedFiles[key]) return;
+    const folder = fileGroups[key].folder;
     if (/^unmapped-/i.test(folder)) {
       errors.push({
         type: 'invoice_without_stays',
@@ -1385,13 +1470,24 @@ function matchBookingProperties(props, apts) {
   const skipped = [];
   const already = [];
 
+  // Ids claimed per apartment within this run: without it, two Extranet
+  // properties that both best-match the same unset apartment would each be
+  // pushed to `linked`, and the server (keeps first) and the FE (keeps last)
+  // would then persist different mappings.
+  const claimed = {};
+
+  function aptClaimKey(apt) {
+    return String((apt && (apt.id || apt.aptId)) || (apt && (apt.aptName || apt.name)) || '');
+  }
+
   function pushLink(apt, hotelId, propertyName, how) {
     const rec = Object.assign(aptRow(apt), {
       bookingHotelId: hotelId,
       propertyName: propertyName,
       how: how,
     });
-    const cur = normalizeHotelId(apt && apt.bookingHotelId);
+    const claimKey = aptClaimKey(apt);
+    const cur = normalizeHotelId(apt && apt.bookingHotelId) || claimed[claimKey] || '';
     if (cur && cur === hotelId) {
       already.push(rec);
       return;
@@ -1400,6 +1496,7 @@ function matchBookingProperties(props, apts) {
       skipped.push(Object.assign({}, rec, { reason: 'conflict', existing: cur }));
       return;
     }
+    claimed[claimKey] = hotelId;
     linked.push(rec);
   }
 
@@ -1512,6 +1609,7 @@ module.exports = {
   parseBookingHotelId,
   hotelIdFromKnownApts,
   parseBookingInvoiceNumber,
+  parseBookingTotal,
   parseBookingInvoiceFields,
   pdfExtractText,
   pdfShortHash,
@@ -1535,6 +1633,8 @@ module.exports = {
   categorizeBookingZip,
   bookingTooEarly,
   bookingCompleteness,
+  vaultRowHotelId,
+  parseBookingAmount,
   reconcileBookingMonth,
   normBookingName,
   bookingUnitNumber,
