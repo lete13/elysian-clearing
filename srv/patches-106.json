@@ -1,0 +1,31 @@
+{
+ "baseSha256": "0bc618133af6932a13903dfee568ea11eb3e5c98f988c0947f268b4dcdb7e7b7",
+ "expectedSha256": "8c6cb0d92049d3d9891862079e836f32c78432f7954004fd471608ba87b6176f",
+ "builtAt": "2026-08-23 Accountant sheet attaches as CSV",
+ "patches": [
+  {
+   "note": "Card send attaches the sheet as CSV",
+   "find": "if (c.attachExcel && sub.xlsBuf) {\n          mailAtts.push({ filename: sub.xlsName, content: sub.xlsBuf, contentType: 'application/vnd.ms-excel' });",
+   "replace": "if (c.attachExcel && sub.xlsBuf) {\n          mailAtts.push({ filename: sub.xlsName, content: sub.xlsBuf, contentType: 'text/csv; charset=utf-8' });",
+   "count": 1
+  },
+  {
+   "note": "Direct send attaches the sheet as CSV",
+   "find": "    mailAtts.push({ filename: pack.xlsName, content: pack.xlsBuf, contentType: 'application/vnd.ms-excel' });",
+   "replace": "    mailAtts.push({ filename: pack.xlsName, content: pack.xlsBuf, contentType: 'text/csv; charset=utf-8' });",
+   "count": 1
+  },
+  {
+   "note": "Agent send attaches the sheet as CSV",
+   "find": "if (c.attachExcel && sub.xlsBuf) mailAtts.push({ filename: sub.xlsName, content: sub.xlsBuf, contentType: 'application/vnd.ms-excel' });",
+   "replace": "if (c.attachExcel && sub.xlsBuf) mailAtts.push({ filename: sub.xlsName, content: sub.xlsBuf, contentType: 'text/csv; charset=utf-8' });",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "contentType: 'text/csv; charset=utf-8' });",
+   "note": "mail attachments are CSV"
+  }
+ ]
+}

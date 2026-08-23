@@ -98,9 +98,12 @@ const pack = agent.buildMonthPack(
   apts
 );
 assert.strictEqual(pack.ok, true);
-assert.strictEqual(pack.xlsName, 'Platform-invoices-2026-07.xls');
+assert.strictEqual(pack.xlsName, 'Platform-invoices-2026-07.csv', 'emailed sheet is CSV');
 assert.strictEqual(accountantXlsFilename('2026-07'), 'Platform-invoices-2026-07.xls');
 const xls = pack.xlsBuf.toString('utf8');
+assert.strictEqual(xls.charCodeAt(0), 0xfeff, 'CSV starts with UTF-8 BOM for Excel');
+assert(xls.includes('A/A,Ημερομηνία,Αιτιολογία'), 'CSV header row');
+assert(!xls.includes('<Workbook'), 'no SpreadsheetML in the emailed sheet');
 assert(xls.includes('1234567890'), 'Booking invoice number in Excel');
 assert(xls.includes('AIUC-104771625-GR-1552747'), 'Airbnb debit in Excel');
 assert(xls.includes('AIUC-104771625-GR-1552747-CN-1'), 'Airbnb credit in Excel');
@@ -249,6 +252,9 @@ assert(srv105.patches.some((p) => (p.replace || '').includes('const sendBlocked 
 assert(srv105.patches.some((p) => (p.replace || '').includes("report.status = emailed.length ? 'partial' : 'error';")), 'SRV persists who was emailed on a mid-loop failure');
 assert(srv105.patches.some((p) => (p.replace || '').includes('if (parsed) return parsed;')), 'SRV honors a stored empty accountant list');
 assert(srv105.patches.filter((p) => (p.replace || '').includes('resolvePull();')).length >= 3, 'SRV pull promise resolves on cancel/error/spawn-fail paths');
+const srv106 = JSON.parse(fs.readFileSync(path.join(root, 'srv', 'patches-106.json'), 'utf8'));
+assert.strictEqual(srv106.baseSha256, srv105.expectedSha256, 'SRV 106 continues SRV 105');
+assert(srv106.patches.every((p) => (p.replace || '').includes("contentType: 'text/csv; charset=utf-8'")), 'SRV mails the sheet as text/csv');
 assert(srv105.patches.some((p) => (p.replace || '').includes('legacyKey')), 'SRV zip dedupe matches pre-hash filenames');
 const fe140 = JSON.parse(fs.readFileSync(path.join(root, 'fe', 'patches-140.json'), 'utf8'));
 assert.strictEqual(fe140.baseSha256, fe139.expectedSha256, 'FE 140 continues FE 139');

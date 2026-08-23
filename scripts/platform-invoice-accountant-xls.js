@@ -210,27 +210,24 @@ function issueDateKey(dmy) {
   return Date.UTC(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
 }
 
-/**
- * Build the monthly accountant sheet.
- * opts.includeBooking — when true (default), include Booking.com rows already present in `rows`.
- */
-function buildAccountantXls(rows, bks, opts) {
+const ACCOUNTANT_HEADERS = [
+  'A/A',
+  'Ημερομηνία',
+  'Αιτιολογία',
+  'Κατάστημα',
+  'Τοκισμός από',
+  'Αρ. συναλλαγής',
+  'Ποσό',
+  'Πρόσημο ποσού',
+  'Reservation id',
+  'Listing name',
+  'Check-in',
+  'Check-out',
+];
+
+function accountantRecords(rows, bks, opts) {
   opts = opts || {};
   const includeBooking = opts.includeBooking !== false;
-  const headers = [
-    'A/A',
-    'Ημερομηνία',
-    'Αιτιολογία',
-    'Κατάστημα',
-    'Τοκισμός από',
-    'Αρ. συναλλαγής',
-    'Ποσό',
-    'Πρόσημο ποσού',
-    'Reservation id',
-    'Listing name',
-    'Check-in',
-    'Check-out',
-  ];
   const byCode = indexBookings(bks);
   const recs = [];
   let airbnbRows = 0;
@@ -250,6 +247,34 @@ function buildAccountantXls(rows, bks, opts) {
       issueDateKey(a.issueDate) - issueDateKey(b.issueDate) ||
       String(a.invoiceNumber).localeCompare(String(b.invoiceNumber))
   );
+  return { recs: recs, counts: { airbnb: airbnbRows, booking: bookingRows, total: recs.length } };
+}
+
+function accountantCells(rec, n) {
+  return [
+    n,
+    rec.issueDate,
+    rec.invoiceNumber,
+    '',
+    rec.issueDate,
+    '',
+    rec.total,
+    rec.sign,
+    rec.reservationId,
+    rec.listingName,
+    rec.checkIn,
+    rec.checkOut,
+  ];
+}
+
+/**
+ * Build the monthly accountant sheet.
+ * opts.includeBooking — when true (default), include Booking.com rows already present in `rows`.
+ */
+function buildAccountantXls(rows, bks, opts) {
+  const headers = ACCOUNTANT_HEADERS;
+  const built = accountantRecords(rows, bks, opts);
+  const recs = built.recs;
   const lines = [];
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push('<?mso-application progid="Excel.Sheet"?>');
@@ -263,21 +288,7 @@ function buildAccountantXls(rows, bks, opts) {
       '</Row>'
   );
   recs.forEach((rec, i) => {
-    const n = i + 1;
-    const cells = [
-      n,
-      rec.issueDate,
-      rec.invoiceNumber,
-      '',
-      rec.issueDate,
-      '',
-      rec.total,
-      rec.sign,
-      rec.reservationId,
-      rec.listingName,
-      rec.checkIn,
-      rec.checkOut,
-    ];
+    const cells = accountantCells(rec, i + 1);
     lines.push(
       '<Row>' +
         cells
@@ -297,13 +308,38 @@ function buildAccountantXls(rows, bks, opts) {
   });
   lines.push('</Table></Worksheet></Workbook>');
   const buf = Buffer.from(lines.join(''), 'utf8');
-  buf._piCounts = { airbnb: airbnbRows, booking: bookingRows, total: recs.length };
+  buf._piCounts = built.counts;
+  return buf;
+}
+
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",;\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+/**
+ * Same sheet as CSV: UTF-8 BOM so Excel opens the Greek headers correctly,
+ * CRLF line endings, comma separated, RFC-4180 quoting.
+ */
+function buildAccountantCsv(rows, bks, opts) {
+  const built = accountantRecords(rows, bks, opts);
+  const lines = [ACCOUNTANT_HEADERS.map(csvCell).join(',')];
+  built.recs.forEach((rec, i) => {
+    lines.push(accountantCells(rec, i + 1).map(csvCell).join(','));
+  });
+  const buf = Buffer.from('\uFEFF' + lines.join('\r\n') + '\r\n', 'utf8');
+  buf._piCounts = built.counts;
   return buf;
 }
 
 function accountantXlsFilename(month) {
   const m = String(month || '').trim();
   return 'Platform-invoices-' + (/^\d{4}-\d{2}$/.test(m) ? m : 'pack') + '.xls';
+}
+
+function accountantCsvFilename(month) {
+  const m = String(month || '').trim();
+  return 'Platform-invoices-' + (/^\d{4}-\d{2}$/.test(m) ? m : 'pack') + '.csv';
 }
 
 function fileMetaJson(f) {
@@ -329,7 +365,9 @@ module.exports = {
   parseMeta,
   accountantRow,
   buildAccountantXls,
+  buildAccountantCsv,
   accountantXlsFilename,
+  accountantCsvFilename,
   fileMetaJson,
   codeFromFilename,
   hotelIdFromBookingRow,

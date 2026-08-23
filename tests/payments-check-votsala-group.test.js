@@ -53,7 +53,7 @@ function extractFn(source, name) {
 const fe = applyKind('fe');
 const srv = applyKind('srv');
 assert.strictEqual(fe.last, 'patches-140.json', 'FE 140 is the tip of the chain');
-assert.strictEqual(srv.last, 'patches-105.json', 'SRV 105 is the tip of the chain');
+assert.strictEqual(srv.last, 'patches-106.json', 'SRV 106 is the tip of the chain');
 assert(fe.src.includes('piRunAgent'), 'FE includes Platform Invoices agent');
 assert(srv.src.includes("app.post('/api/platform-invoices/agent'"), 'SRV includes Platform Invoices agent');
 assert(srv.src.includes("j.event === 'already_have'"), 'SRV tracks already_have');

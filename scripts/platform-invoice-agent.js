@@ -5,7 +5,7 @@
  */
 
 const booking = require('./platform-invoice-booking');
-const { buildAccountantXls, accountantXlsFilename } = require('./platform-invoice-accountant-xls');
+const { buildAccountantCsv, accountantCsvFilename } = require('./platform-invoice-accountant-xls');
 const { recipientsForSend } = require('./platform-invoice-accountants');
 
 function isAirbnbRow(row) {
@@ -32,7 +32,9 @@ function buildMonthPack(month, vaultRows, bks, apts) {
   });
   const recon = booking.reconcileBookingMonth(month, bks, apts, bookingRows);
   const packRows = airbnb.concat(bookingRows);
-  const xlsBuf = buildAccountantXls(packRows, bks, { includeBooking: true });
+  // Accountants receive the sheet as CSV; xlsBuf/xlsName keep their historical
+  // field names because the server routes reference them.
+  const xlsBuf = buildAccountantCsv(packRows, bks, { includeBooking: true });
   const counts = (xlsBuf && xlsBuf._piCounts) || {
     airbnb: airbnb.length,
     booking: bookingRows.length,
@@ -46,7 +48,7 @@ function buildMonthPack(month, vaultRows, bks, apts) {
     packRows: packRows,
     pdfRows: packRows,
     xlsBuf: xlsBuf,
-    xlsName: accountantXlsFilename(month),
+    xlsName: accountantCsvFilename(month),
     counts: counts,
     errors: recon.errors || [],
     bks: bks || [],
@@ -97,7 +99,7 @@ function packForCard(pack, card) {
   }
   const rows = packRowsForCard(pack.packRows, apartments);
   return {
-    xlsBuf: buildAccountantXls(rows, pack.bks || [], { includeBooking: true }),
+    xlsBuf: buildAccountantCsv(rows, pack.bks || [], { includeBooking: true }),
     xlsName: pack.xlsName,
     pdfRows: rows,
     empty: !rows.length,
