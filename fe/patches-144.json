@@ -1,0 +1,183 @@
+{
+ "note": "Greek clearing report: PDF, email preview and on-screen report fully in Greek when Configuration -> Language = GR; Greek month names; accented labels; Net Earnings = Καθαρά Έσοδα; PDF title Μηνιαία Εκκαθάριση",
+ "baseSha256": "73899677fef4f725d3a32722794d2e5e4ce3d4a18fa128ee25c535dfd0ca1f4a",
+ "expectedSha256": "b7054943f8f39816edcb4d91a789adcb041e97df9197ad3ce7b2355867ebf395",
+ "patches": [
+  {
+   "note": "Load the Greek report dictionary (fe/gr-report.js)",
+   "find": "  <script src=\"/fe/daily-ops-beta.js\"></script>\n",
+   "replace": "  <script src=\"/fe/daily-ops-beta.js\"></script>\n  <script src=\"/fe/gr-report.js\"></script>\n",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Έσοδα Κρατήσεων",
+   "find": "isGR?'Εσοδα Κρατησεων'",
+   "replace": "isGR?'Έσοδα Κρατήσεων'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Έσοδα' ",
+   "find": "isGR?'Εσοδα'  ",
+   "replace": "isGR?'Έσοδα'  ",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Φόροι & Προμήθειες",
+   "find": "isGR?'Φοροι & Προμηθειες'",
+   "replace": "isGR?'Φόροι & Προμήθειες'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Απόδοση ΤΑΚΚ",
+   "find": "isGR?'Αποδοση ΤΑΚΚ'",
+   "replace": "isGR?'Απόδοση ΤΑΚΚ'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Φόρος διαμονής",
+   "find": "isGR?'Φορος διαμονης παρεπ.'",
+   "replace": "isGR?'Φόρος διαμονής'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Προμήθειες πλατφόρμας",
+   "find": "isGR?'Προμηθειες πλατφορμας'",
+   "replace": "isGR?'Προμήθειες πλατφόρμας'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Χρεώσεις Υπηρεσιών Elysian",
+   "find": "isGR?'Χρεωσεις Υπηρεσιων Elysian'",
+   "replace": "isGR?'Χρεώσεις Υπηρεσιών Elysian'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Καθαρισμός",
+   "find": "isGR?'Καθαρισμος'",
+   "replace": "isGR?'Καθαρισμός'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Καθαρά Έσοδα",
+   "find": "isGR?'Καθαρα Κερδη'",
+   "replace": "isGR?'Καθαρά Έσοδα'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Αμοιβή Διαχείρισης",
+   "find": "isGR?'Αμοιβη Διαχειρισης'",
+   "replace": "isGR?'Αμοιβή Διαχείρισης'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Ποσό Απόδοσης Ιδιοκτήτη",
+   "find": "isGR?'Ποσο Αποδοσης Ιδιοκτητη'",
+   "replace": "isGR?'Ποσό Απόδοσης Ιδιοκτήτη'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Ποσό Απόδοσης",
+   "find": "isGR?'Ποσο Αποδοσης'",
+   "replace": "isGR?'Ποσό Απόδοσης'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Απόδοση Συνεργάτη B2B",
+   "find": "isGR?'Αποδοση Συνεργατη B2B'",
+   "replace": "isGR?'Απόδοση Συνεργάτη B2B'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Περιγραφή",
+   "find": "isGR?'Περιγραφη'",
+   "replace": "isGR?'Περιγραφή'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Χρεώσεις (€)",
+   "find": "isGR?'Χρεωσεις (€)'",
+   "replace": "isGR?'Χρεώσεις (€)'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: Σύνολο (€)",
+   "find": "isGR?'Συνολο (€)'",
+   "replace": "isGR?'Σύνολο (€)'",
+   "count": 2
+  },
+  {
+   "note": "Accented Greek label: Κρατήσεις",
+   "find": "isGR?'Κρατησεις'",
+   "replace": "isGR?'Κρατήσεις'",
+   "count": 1
+  },
+  {
+   "note": "Accented Greek label: * Οι τιμές υπόκεινται σε 24% ΦΠΑ",
+   "find": "isGR?'* Οι τιμες υποκεινται σε 24% ΦΠΑ'",
+   "replace": "isGR?'* Οι τιμές υπόκεινται σε 24% ΦΠΑ'",
+   "count": 1
+  },
+  {
+   "note": "On-screen report in Greek when Language = GR",
+   "find": "  panels.innerHTML=panelHTML;\n  window._rpt={apt,bks,exps,gea,geaVat,dates,payout,occ,nights,totalDays,panelHTML,m,selApts:_selApts,packets,cmb};",
+   "replace": "  if ((apt.language||'EN')==='GR') panelHTML=_grReportHtml(panelHTML);\n  panels.innerHTML=panelHTML;\n  window._rpt={apt,bks,exps,gea,geaVat,dates,payout,occ,nights,totalDays,panelHTML,m,selApts:_selApts,packets,cmb};",
+   "count": 1
+  },
+  {
+   "note": "PDF template in Greek when Language = GR",
+   "find": "  return { html, apt, dates, payout, occ, nights, totalDays, m, cmb, packets, bks, exps,",
+   "replace": "  return { html: ((apt.language||'EN')==='GR') ? _grReportHtml(html) : html, apt, dates, payout, occ, nights, totalDays, m, cmb, packets, bks, exps,",
+   "count": 1
+  },
+  {
+   "note": "Greek email subject shows the month in Greek",
+   "find": "    subj: (p, per) => p + ' – Εκκαθάριση – ' + per,",
+   "replace": "    subj: (p, per) => p + ' – Εκκαθάριση – ' + _grPeriod(per),",
+   "count": 1
+  },
+  {
+   "note": "Greek email intro shows the month in Greek",
+   "find": "    intro: (prop, per) => 'Σας επισυνάπτουμε την εκκαθάριση για ' + prop + ' για την περίοδο ' + per + '.",
+   "replace": "    intro: (prop, per) => 'Σας επισυνάπτουμε την εκκαθάριση για ' + prop + ' για την περίοδο ' + _grPeriod(per) + '.",
+   "count": 1
+  },
+  {
+   "note": "Greek email: notes heading",
+   "find": "    introDefault += '\\n\\nNotes for this period:\\n' + window._mcEmailComment;",
+   "replace": "    introDefault += '\\n\\n' + (isGR ? 'Σημειώσεις περιόδου:' : 'Notes for this period:') + '\\n' + window._mcEmailComment;",
+   "count": 1
+  },
+  {
+   "note": "Greek email: footer line",
+   "find": "Elysian Property Management &middot; Clearing Report &middot; ' + e(d.propNames)",
+   "replace": "Elysian Property Management &middot; ' + (st.isGR ? 'Μηνιαία Εκκαθάριση' : 'Clearing Report') + ' &middot; ' + e(d.propNames)",
+   "count": 1
+  }
+ ],
+ "assertions": [
+  {
+   "has": "<script src=\"/fe/gr-report.js\"></script>",
+   "note": "Greek report dictionary loaded"
+  },
+  {
+   "has": "return { html: ((apt.language||'EN')==='GR') ? _grReportHtml(html) : html,",
+   "note": "PDF goes through the dictionary"
+  },
+  {
+   "has": "if ((apt.language||'EN')==='GR') panelHTML=_grReportHtml(panelHTML);",
+   "note": "screen report goes through the dictionary"
+  },
+  {
+   "has": "isGR?'Καθαρά Έσοδα'",
+   "note": "Net Earnings label per accountant wording"
+  },
+  {
+   "has": "' – Εκκαθάριση – ' + _grPeriod(per)",
+   "note": "Greek month in the email subject"
+  },
+  {
+   "hasNot": "isGR?'Καθαρα Κερδη'",
+   "note": "old unaccented label gone"
+  }
+ ]
+}

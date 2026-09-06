@@ -53,7 +53,7 @@ function extractFn(source, name) {
 
 const fe = applyKind('fe');
 const srv = applyKind('srv');
-assert.strictEqual(fe.last, 'patches-143.json', 'FE 143 is the tip');
+assert.strictEqual(fe.last, 'patches-144.json', 'FE 144 is the tip');
 assert.strictEqual(srv.last, 'patches-108.json', 'SRV 108 is the tip');
 assert(fe.src.includes('mcbadge ready'), 'badge class in the patched frontend');
 assert(fe.src.includes("statusFilter = 'ready'"), 'list can filter to ready apartments');
