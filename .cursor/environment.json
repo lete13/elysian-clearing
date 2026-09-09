@@ -1,0 +1,15 @@
+{
+  "name": "Elysian Ecosystem",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "app",
+      "command": "bash .cursor/run.sh",
+      "description": "Elysian Clearing app server on http://localhost:3000, backed by an isolated local PostgreSQL (never the production database). Sign in with any username and the dev password 'elysian-dev'."
+    }
+  ],
+  "ports": [
+    { "name": "web", "port": 3000 }
+  ]
+}
